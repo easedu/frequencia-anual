@@ -1,14 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { db, auth } from '@/firebase.config';
+import { db } from '@/firebase.config';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
 import { toast, Toaster } from 'sonner';
 
 /* ==================== TIPOS E CONSTANTES ==================== */
@@ -49,7 +46,6 @@ const daysOfWeek: string[] = [
  * Componente principal da página de Cadastro de Ano Letivo.
  */
 export default function CadastrarAnoLetivoPage() {
-    const router = useRouter();
     const bimestres = useMemo(
         () => ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'],
         []
@@ -102,36 +98,8 @@ export default function CadastrarAnoLetivoPage() {
         }
     }
 
-    // Realiza o logout do usuário utilizando Firebase Auth, limpa os dados de sessão e redireciona para /login
-    async function handleLogout() {
-        try {
-            await signOut(auth);
-            window.sessionStorage.clear();
-            toast.success("Logout efetuado com sucesso!");
-            router.push('/login');
-        } catch (error) {
-            console.error("Erro ao efetuar logout", error);
-            toast.error("Erro ao efetuar logout");
-        }
-    }
-
     return (
         <div>
-            {/* Header com botão de voltar e logout */}
-            <header className="flex items-center justify-between p-4 bg-gray-100 border-b">
-                <Link href="/home">
-                    <button className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800">
-                        Voltar
-                    </button>
-                </Link>
-                <button
-                    onClick={handleLogout}
-                    className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800"
-                >
-                    Sair
-                </button>
-            </header>
-
             {/* Componente Toaster para exibir as notificações */}
             <Toaster />
 
