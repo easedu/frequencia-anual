@@ -222,11 +222,23 @@ export default function DashboardPage() {
             acc[s.turma].count++;
             return acc;
         }, {} as Record<string, { turma: string; totalFaltas: number; totalFrequencia: number; count: number }>);
-        return Object.values(stats).map(group => ({
+
+        // Converte para array e calcula as médias
+        const result = Object.values(stats).map(group => ({
             turma: group.turma,
             avgFaltas: Number((group.totalFaltas / group.count).toFixed(1)),
             avgFrequencia: Number((group.totalFrequencia / group.count).toFixed(1)),
         }));
+
+        // Ordena por número e letra
+        return result.sort((a, b) => {
+            const [numA, letterA] = a.turma.match(/(\d+)([A-Z]+)/)!.slice(1);
+            const [numB, letterB] = b.turma.match(/(\d+)([A-Z]+)/)!.slice(1);
+
+            const numCompare = Number(numA) - Number(numB);
+            if (numCompare !== 0) return numCompare; // Ordena por número primeiro
+            return letterA.localeCompare(letterB); // Se os números forem iguais, ordena por letra
+        });
     }, [data]);
 
     const comparativeData = useMemo(
@@ -268,7 +280,16 @@ export default function DashboardPage() {
             acc[s.turma].b4 += s.faltasB4;
             return acc;
         }, {} as Record<string, HeatmapData>);
-        return Object.values(grouped);
+
+        // Converte para array e ordena por número e letra
+        return Object.values(grouped).sort((a, b) => {
+            const [numA, letterA] = a.turma.match(/(\d+)([A-Z]+)/)!.slice(1);
+            const [numB, letterB] = b.turma.match(/(\d+)([A-Z]+)/)!.slice(1);
+
+            const numCompare = Number(numA) - Number(numB);
+            if (numCompare !== 0) return numCompare; // Ordena por número primeiro
+            return letterA.localeCompare(letterB); // Se os números forem iguais, ordena por letra
+        });
     }, [data]);
 
     const maxHeatmapValue = useMemo(
