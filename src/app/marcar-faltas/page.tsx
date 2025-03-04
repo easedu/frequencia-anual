@@ -73,7 +73,7 @@ function getValidDates(academicYearData: AcademicYearData | null): string[] {
     if (!academicYearData) return [];
 
     // Obtém todas as datas válidas (isChecked === true)
-    let validDates: string[] = [];
+    const validDates: string[] = [];
     Object.values(academicYearData).forEach((bimData) => {
         bimData?.dates?.forEach((d) => {
             if (d.isChecked) validDates.push(d.date);
@@ -82,7 +82,6 @@ function getValidDates(academicYearData: AcademicYearData | null): string[] {
 
     // Converte a data atual para o formato DD/MM/YYYY
     const today = new Date();
-    const todayStr = formatDateToDDMMYYYY(today);
 
     // Converte as datas para um formato comparável (timestamp) e ordena
     const sortedDates = validDates

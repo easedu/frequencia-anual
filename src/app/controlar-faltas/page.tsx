@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -73,16 +73,16 @@ interface BimesterDates {
 
 // --- Helper para identificar bimestre ---
 function getBimester(dateStr: string): number {
-    const date = parseDate(dateStr); // Usa parseDate para garantir que a data seja interpretada corretamente
+    const date = parseDate(dateStr);
     if (!date || isNaN(date.getTime())) {
         console.error("Data inválida:", dateStr);
-        return 0; // Retorna 0 para datas inválidas (pode ser ajustado para outro valor ou tratamento)
+        return 0;
     }
-    const month = date.getMonth(); // 0 = Jan, 11 = Dez
-    if (month < 3) return 1; // Jan, Feb, Mar
-    if (month < 6) return 2; // Apr, May, Jun
-    if (month < 9) return 3; // Jul, Aug, Sep
-    return 4;             // Oct, Nov, Dec
+    const month = date.getMonth();
+    if (month < 3) return 1;
+    if (month < 6) return 2;
+    if (month < 9) return 3;
+    return 4;
 }
 
 // --- Helper para formatar data ---
@@ -96,7 +96,6 @@ function formatDateInput(value: string): string {
 // --- Helper para validar e formatar data ---
 function parseDate(dateStr: string): Date | null {
     if (!dateStr) return null;
-    // Tenta parsear tanto "DD/MM/YYYY" quanto "YYYY-MM-DD"
     let [day, month, year] = [0, 0, 0];
     if (dateStr.includes('/')) {
         [day, month, year] = dateStr.split('/').map(Number);
@@ -105,14 +104,6 @@ function parseDate(dateStr: string): Date | null {
     }
     if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || month < 1 || month > 12 || day > 31) return null;
     return new Date(year, month - 1, day);
-}
-
-function formatDate(date: Date): string {
-    return date.toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-    });
 }
 
 // --- Função auxiliar para converter data do Firebase para o formato DD/MM/YYYY ---
@@ -124,12 +115,11 @@ function formatFirebaseDate(dateStr: string): string {
 // --- Função auxiliar para buscar dados dos alunos ---
 async function fetchStudentData(totalDiasLetivos: number, start: string, end: string, selectedBimesters: Set<number>): Promise<StudentRecord[]> {
     try {
-        // Busca os registros de faltas na coleção "controle"
         const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
         const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
             estudanteId: doc.data().estudanteId,
             turma: doc.data().turma,
-            data: doc.data().data, // Formato "YYYY-MM-DD" conforme a imagem
+            data: doc.data().data,
         }));
 
         const studentsDocSnap = await getDoc(doc(db, "2025", "lista_de_estudantes"));
@@ -158,16 +148,15 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
 
         const aggregated: Record<string, StudentRecord> = {};
         absenceRecords.forEach(record => {
-            const formattedDate = formatFirebaseDate(record.data); // Converte para "DD/MM/YYYY"
+            const formattedDate = formatFirebaseDate(record.data);
             const date = parseDate(formattedDate);
             if (!date || isNaN(date.getTime()) || date < startDateObj || date > endDateObj) {
-                return; // Ignora faltas fora do intervalo de datas
+                return;
             }
 
             const bimester = getBimester(formattedDate);
-            // Só conta as faltas se o bimestre estiver selecionado
             if (selectedBimesters.size > 0 && !selectedBimesters.has(bimester)) {
-                return; // Ignora faltas de bimestres não selecionados
+                return;
             }
 
             const studentId = record.estudanteId;
@@ -185,7 +174,6 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
                 };
             }
 
-            // Incrementa as faltas no bimestre correspondente
             if (bimester === 1) aggregated[studentId].faltasB1++;
             else if (bimester === 2) aggregated[studentId].faltasB2++;
             else if (bimester === 3) aggregated[studentId].faltasB3++;
@@ -223,45 +211,16 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
     }
 }
 
-// --- Função para buscar dias letivos totais ---
-function useAnoLetivo(): number {
-    const [totalDiasLetivos, setTotalDiasLetivos] = useState<number>(0);
-
-    useEffect(() => {
-        const fetchAnoLetivo = async () => {
-            try {
-                const docRef = doc(db, "2025", "ano_letivo");
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    const anoData = docSnap.data() as AnoLetivoData;
-                    let total = 0;
-                    for (const key in anoData) {
-                        if (anoData[key]?.dates) {
-                            total += anoData[key].dates.filter(d => d.isChecked).length;
-                        }
-                    }
-                    setTotalDiasLetivos(total);
-                }
-            } catch (error) {
-                console.error("Erro ao carregar dados do ano letivo:", error);
-            }
-        };
-        fetchAnoLetivo();
-    }, []);
-
-    return totalDiasLetivos;
-}
-
 // --- Página Dashboard ---
 export default function DashboardPage() {
     const [selectedBimesters, setSelectedBimesters] = useState<Set<number>>(new Set());
     const [startDate, setStartDate] = useState<string>("");
     const [endDate, setEndDate] = useState<string>("");
-    const [useToday, setUseToday] = useState<boolean>(true); // "Até Hoje" selecionado por padrão
-    const [useCustom, setUseCustom] = useState<boolean>(false); // "Personalizado" como novo filtro
+    const [useToday, setUseToday] = useState<boolean>(true);
+    const [useCustom, setUseCustom] = useState<boolean>(false);
     const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});
-    const [data, setData] = useState<StudentRecord[]>([]); // Estado para os dados dos estudantes
-    const [totalDiasLetivos, setTotalDiasLetivos] = useState<number>(0); // Estado para os dias letivos
+    const [data, setData] = useState<StudentRecord[]>([]);
+    const [totalDiasLetivos, setTotalDiasLetivos] = useState<number>(0);
 
     // Busca os períodos dos bimestres no Firebase
     useEffect(() => {
@@ -312,7 +271,7 @@ export default function DashboardPage() {
         setUseToday(checked);
         if (checked) {
             setUseCustom(false);
-            setSelectedBimesters(new Set()); // Limpa a seleção de bimestres
+            setSelectedBimesters(new Set());
         }
     };
 
@@ -321,7 +280,7 @@ export default function DashboardPage() {
         setUseCustom(checked);
         if (checked) {
             setUseToday(false);
-            setSelectedBimesters(new Set()); // Limpa a seleção de bimestres
+            setSelectedBimesters(new Set());
         }
     };
 
@@ -334,8 +293,8 @@ export default function DashboardPage() {
         }
     };
 
-    // Função para calcular dias letivos no período ( incluindo "Até Hoje" )
-    const calculateDiasLetivos = async (start: string, end: string): Promise<number> => {
+    // Função para calcular dias letivos no período, memoizada com useCallback
+    const calculateDiasLetivos = useCallback(async (start: string, end: string): Promise<number> => {
         try {
             const docRef = doc(db, "2025", "ano_letivo");
             const docSnap = await getDoc(docRef);
@@ -350,20 +309,18 @@ export default function DashboardPage() {
                 }
 
                 if (useToday) {
-                    // Para "Até Hoje", calcula dias letivos desde o startDate do 1º bimestre até o dia atual
                     const bimesters = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
                     for (const bimesterKey of bimesters) {
                         if (anoData[bimesterKey]?.dates) {
                             total += anoData[bimesterKey].dates.filter(d => {
                                 const date = parseDate(d.date);
                                 const today = new Date();
-                                today.setHours(0, 0, 0, 0); // Normaliza o horário para comparação
+                                today.setHours(0, 0, 0, 0);
                                 return d.isChecked && date && date >= startDateObj && date <= today;
                             }).length;
                         }
                     }
                 } else if (useCustom) {
-                    // Para "Personalizado", soma todos os dias com isChecked: true entre start e end, independente do bimestre
                     for (const key in anoData) {
                         if (anoData[key]?.dates) {
                             total += anoData[key].dates.filter(d => {
@@ -373,7 +330,6 @@ export default function DashboardPage() {
                         }
                     }
                 } else {
-                    // Para outros filtros (bimestres selecionados), soma apenas os dias letivos dos bimestres selecionados
                     const bimesters = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
                     for (const bimesterNum of Array.from(selectedBimesters)) {
                         const bimesterKey = bimesters[bimesterNum - 1];
@@ -392,7 +348,7 @@ export default function DashboardPage() {
             console.error("Erro ao calcular dias letivos:", error);
             return 0;
         }
-    };
+    }, [useToday, useCustom, selectedBimesters]);
 
     // Atualiza datas com base nos filtros selecionados
     useEffect(() => {
@@ -427,10 +383,9 @@ export default function DashboardPage() {
                 setEndDate(maxBimester.end);
             }
         } else if (!useToday && !useCustom && selectedBimesters.size === 0) {
-            // Se nenhum filtro for selecionado, limpa os dados
             setStartDate("");
             setEndDate("");
-            setData([]); // Limpa os dados exibidos
+            setData([]);
         }
     }, [selectedBimesters, useToday, useCustom, bimesterDates]);
 
@@ -442,8 +397,7 @@ export default function DashboardPage() {
                 const end = parseDate(endDate);
                 if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
                     const total = await calculateDiasLetivos(startDate, endDate);
-                    setTotalDiasLetivos(total); // Atualiza o estado totalDiasLetivos
-                    // Busca os dados usando a função auxiliar fetchStudentData
+                    setTotalDiasLetivos(total);
                     const newData = await fetchStudentData(total, startDate, endDate, selectedBimesters);
                     setData(newData);
                 } else {
@@ -451,13 +405,12 @@ export default function DashboardPage() {
                     setData([]);
                 }
             } else if (!useToday && !useCustom && selectedBimesters.size === 0) {
-                // Nenhum filtro selecionado, limpa os dados
                 setTotalDiasLetivos(0);
                 setData([]);
             }
         };
         updateData();
-    }, [startDate, endDate, useToday, useCustom, selectedBimesters]);
+    }, [startDate, endDate, useToday, useCustom, selectedBimesters, calculateDiasLetivos]);
 
     // Cálculos memorizados com useMemo
     const totalStudents = useMemo(() => data.length, [data]);
