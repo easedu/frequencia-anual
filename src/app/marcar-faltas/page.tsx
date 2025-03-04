@@ -71,13 +71,38 @@ function convertToISO(dateStr: string): string {
 // Função para extrair as datas válidas (isChecked === true) do ano letivo
 function getValidDates(academicYearData: AcademicYearData | null): string[] {
     if (!academicYearData) return [];
-    const dates: string[] = [];
+
+    // Obtém todas as datas válidas (isChecked === true)
+    let validDates: string[] = [];
     Object.values(academicYearData).forEach((bimData) => {
         bimData?.dates?.forEach((d) => {
-            if (d.isChecked) dates.push(d.date);
+            if (d.isChecked) validDates.push(d.date);
         });
     });
-    return dates;
+
+    // Converte a data atual para o formato DD/MM/YYYY
+    const today = new Date();
+    const todayStr = formatDateToDDMMYYYY(today);
+
+    // Converte as datas para um formato comparável (timestamp) e ordena
+    const sortedDates = validDates
+        .map((date) => {
+            const [day, month, year] = date.split("/").map(Number);
+            return { date, timestamp: new Date(year, month - 1, day).getTime() };
+        })
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+    // Encontra a data mais próxima anterior ou igual à data atual
+    const todayTimestamp = today.getTime();
+    const filteredDates = sortedDates.filter(
+        (d) => d.timestamp <= todayTimestamp
+    );
+
+    // Se não houver datas válidas até hoje, retorna vazio
+    if (filteredDates.length === 0) return [];
+
+    // Retorna apenas as datas no formato original (DD/MM/YYYY)
+    return filteredDates.map((d) => d.date);
 }
 
 export default function MarcarFaltasPage() {
