@@ -10,6 +10,7 @@ export interface Estudante {
     turma: string;
     nome: string;
     status: string;
+    bolsaFamilia: "SIM" | "NÃO"; // Novo campo
 }
 
 export const useStudents = () => {
