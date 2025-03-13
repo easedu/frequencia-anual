@@ -72,7 +72,6 @@ function convertToISO(dateStr: string): string {
 function getValidDates(academicYearData: AcademicYearData | null): string[] {
     if (!academicYearData) return [];
 
-    // Obtém todas as datas válidas (isChecked === true)
     const validDates: string[] = [];
     Object.values(academicYearData).forEach((bimData) => {
         bimData?.dates?.forEach((d) => {
@@ -80,10 +79,7 @@ function getValidDates(academicYearData: AcademicYearData | null): string[] {
         });
     });
 
-    // Converte a data atual para o formato DD/MM/YYYY
     const today = new Date();
-
-    // Converte as datas para um formato comparável (timestamp) e ordena
     const sortedDates = validDates
         .map((date) => {
             const [day, month, year] = date.split("/").map(Number);
@@ -91,16 +87,11 @@ function getValidDates(academicYearData: AcademicYearData | null): string[] {
         })
         .sort((a, b) => a.timestamp - b.timestamp);
 
-    // Encontra a data mais próxima anterior ou igual à data atual
     const todayTimestamp = today.getTime();
     const filteredDates = sortedDates.filter(
         (d) => d.timestamp <= todayTimestamp
     );
 
-    // Se não houver datas válidas até hoje, retorna vazio
-    if (filteredDates.length === 0) return [];
-
-    // Retorna apenas as datas no formato original (DD/MM/YYYY)
     return filteredDates.map((d) => d.date);
 }
 
@@ -116,7 +107,7 @@ export default function MarcarFaltasPage() {
     const [selectedClass, setSelectedClass] = useState("");
     const [existingAbsences, setExistingAbsences] = useState<{ [key: string]: boolean }>({});
     const [markedAbsences, setMarkedAbsences] = useState<{ [key: string]: boolean }>({});
-    const [existingAbsenceDocs, setExistingAbsenceDocs] = useState<{ [key: string]: string }>({});
+    const [, setExistingAbsenceDocs] = useState<{ [key: string]: string }>({});
     const [openDialog, setOpenDialog] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -215,12 +206,11 @@ export default function MarcarFaltasPage() {
                     const data = docSnap.data();
                     const studentId = data.estudanteId;
                     newExistingAbsences[studentId] = true;
-                    newExistingAbsenceDocs[studentId] = docSnap.id;
+                    newExistingAbsenceDocs[studentId] = docSnap.id; // Armazena o ID do documento existente
                 });
                 setExistingAbsences(newExistingAbsences);
                 setExistingAbsenceDocs(newExistingAbsenceDocs);
-                // Inicializa o estado dos checkboxes com o estado atual do BD
-                setMarkedAbsences(newExistingAbsences);
+                setMarkedAbsences(newExistingAbsences); // Inicializa com o estado atual
             } catch (error) {
                 console.error("Erro ao carregar faltas existentes:", error);
             }
@@ -264,16 +254,31 @@ export default function MarcarFaltasPage() {
         }));
     };
 
-    // Salva faltas com feedback de loading
+    // Salva faltas evitando duplicatas
     const handleSaveAbsences = async () => {
         setIsSaving(true);
         const formattedDate = convertToISO(selectedDate);
         try {
             const batch = writeBatch(db);
             const controleColRef = collection(db, ACADEMIC_YEAR, COLLECTION_FALTAS, SUBCOLLECTION_CONTROLE);
+
+            // Carrega novamente as faltas existentes para evitar duplicatas concorrentes
+            const q = query(
+                controleColRef,
+                where("turma", "==", selectedClass),
+                where("data", "==", formattedDate)
+            );
+            const querySnapshot = await getDocs(q);
+            const currentAbsences: { [key: string]: string } = {};
+            querySnapshot.forEach((docSnap) => {
+                const data = docSnap.data();
+                currentAbsences[data.estudanteId] = docSnap.id;
+            });
+
             if (role === "user") {
+                // Para "user", apenas adiciona novas faltas, ignorando existentes
                 filteredStudents.forEach((est: Estudante) => {
-                    if (markedAbsences[est.estudanteId] && !existingAbsences[est.estudanteId]) {
+                    if (markedAbsences[est.estudanteId] && !currentAbsences[est.estudanteId]) {
                         const absenceData = {
                             estudanteId: est.estudanteId,
                             data: formattedDate,
@@ -284,10 +289,13 @@ export default function MarcarFaltasPage() {
                     }
                 });
             } else {
+                // Para "admin" ou "super-user", adiciona ou remove faltas
                 filteredStudents.forEach((est: Estudante) => {
                     const currentlyMarked = markedAbsences[est.estudanteId] || false;
-                    const previouslyMarked = existingAbsences[est.estudanteId] || false;
+                    const previouslyMarked = !!currentAbsences[est.estudanteId];
+
                     if (currentlyMarked && !previouslyMarked) {
+                        // Adiciona nova falta apenas se não existir
                         const absenceData = {
                             estudanteId: est.estudanteId,
                             data: formattedDate,
@@ -296,17 +304,33 @@ export default function MarcarFaltasPage() {
                         const newDocRef = doc(controleColRef);
                         batch.set(newDocRef, absenceData);
                     } else if (!currentlyMarked && previouslyMarked) {
-                        const docId = existingAbsenceDocs[est.estudanteId];
+                        // Remove falta existente
+                        const docId = currentAbsences[est.estudanteId];
                         if (docId) {
                             const docRef = doc(db, ACADEMIC_YEAR, COLLECTION_FALTAS, SUBCOLLECTION_CONTROLE, docId);
                             batch.delete(docRef);
                         }
                     }
+                    // Se já existe e está marcada, não faz nada (evita duplicata)
                 });
             }
+
             await batch.commit();
             toast.success("Faltas salvas com sucesso!");
             setOpenDialog(false);
+
+            // Atualiza o estado após salvar
+            const newExistingAbsences: { [key: string]: boolean } = {};
+            const newExistingAbsenceDocs: { [key: string]: string } = {};
+            const updatedSnapshot = await getDocs(q);
+            updatedSnapshot.forEach((docSnap) => {
+                const data = docSnap.data();
+                newExistingAbsences[data.estudanteId] = true;
+                newExistingAbsenceDocs[data.estudanteId] = docSnap.id;
+            });
+            setExistingAbsences(newExistingAbsences);
+            setExistingAbsenceDocs(newExistingAbsenceDocs);
+            setMarkedAbsences(newExistingAbsences);
         } catch (error) {
             console.error("Erro ao salvar faltas:", error);
             toast.error("Erro ao salvar faltas.");
