@@ -6,6 +6,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
 
 // Componentes de Chart do shadcn/ui (baseados em Recharts)
 import {
@@ -17,14 +27,15 @@ import {
 } from "@/components/ui/chart";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 
-// Importações para a DataTable
-import { collection, getDocs, getDoc, doc } from "firebase/firestore";
+// Importações para a DataTable e manipulação do Firebase
+import { collection, getDocs, getDoc, doc, deleteDoc } from "firebase/firestore";
 import { db } from "@/firebase.config";
 import { AlertDataTable } from "@/components/CustomAlertDataTable";
 import { FullDataTable } from "@/components/CustomFullDataTable";
 
 // --- Tipos e Interfaces ---
 interface StudentRecord {
+    estudanteId: string;
     turma: string;
     nome: string;
     faltasB1: number;
@@ -48,6 +59,7 @@ interface AbsenceRecord {
     estudanteId: string;
     turma: string;
     data: string;
+    docId: string;
 }
 
 interface Student {
@@ -69,6 +81,14 @@ interface AnoLetivoData {
 
 interface BimesterDates {
     [key: number]: { start: string; end: string };
+}
+
+// Interface para as faltas separadas por bimestre
+interface StudentAbsencesByBimester {
+    b1: string[];
+    b2: string[];
+    b3: string[];
+    b4: string[];
 }
 
 // --- Helper para identificar bimestre ---
@@ -120,6 +140,7 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
             estudanteId: doc.data().estudanteId,
             turma: doc.data().turma,
             data: doc.data().data,
+            docId: doc.id,
         }));
 
         const studentsDocSnap = await getDoc(doc(db, "2025", "lista_de_estudantes"));
@@ -160,10 +181,15 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
             }
 
             const studentId = record.estudanteId;
+            if (!studentMap[studentId]) {
+                return; // Ignora registros de estudantes não ativos
+            }
+
             if (!aggregated[studentId]) {
                 aggregated[studentId] = {
+                    estudanteId: studentId,
                     turma: record.turma,
-                    nome: studentMap[studentId]?.nome || studentId,
+                    nome: studentMap[studentId].nome,
                     faltasB1: 0,
                     faltasB2: 0,
                     faltasB3: 0,
@@ -183,6 +209,7 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
         studentList.forEach(student => {
             if (!aggregated[student.estudanteId]) {
                 aggregated[student.estudanteId] = {
+                    estudanteId: student.estudanteId,
                     turma: student.turma,
                     nome: student.nome,
                     faltasB1: 0,
@@ -221,6 +248,10 @@ export default function DashboardPage() {
     const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});
     const [data, setData] = useState<StudentRecord[]>([]);
     const [totalDiasLetivos, setTotalDiasLetivos] = useState<number>(0);
+    const [selectedTurma, setSelectedTurma] = useState<string>("");
+    const [selectedStudent, setSelectedStudent] = useState<string>("");
+    const [studentAbsences, setStudentAbsences] = useState<StudentAbsencesByBimester>({ b1: [], b2: [], b3: [], b4: [] });
+    const [duplicateAbsences, setDuplicateAbsences] = useState<AbsenceRecord[]>([]);
 
     // Busca os períodos dos bimestres no Firebase
     useEffect(() => {
@@ -411,6 +442,150 @@ export default function DashboardPage() {
         };
         updateData();
     }, [startDate, endDate, useToday, useCustom, selectedBimesters, calculateDiasLetivos]);
+
+    // Função para buscar dias de falta de um estudante específico, separada por bimestre
+    const fetchStudentAbsences = useCallback(async (studentId: string) => {
+        try {
+            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
+                estudanteId: doc.data().estudanteId,
+                turma: doc.data().turma,
+                data: formatFirebaseDate(doc.data().data),
+                docId: doc.id,
+            }));
+
+            const absencesByBimester: StudentAbsencesByBimester = { b1: [], b2: [], b3: [], b4: [] };
+            absenceRecords
+                .filter(record => record.estudanteId === studentId)
+                .forEach(record => {
+                    const bimester = getBimester(record.data);
+                    if (bimester === 1) absencesByBimester.b1.push(record.data);
+                    else if (bimester === 2) absencesByBimester.b2.push(record.data);
+                    else if (bimester === 3) absencesByBimester.b3.push(record.data);
+                    else if (bimester === 4) absencesByBimester.b4.push(record.data);
+                });
+
+            // Ordena as datas em cada bimestre
+            absencesByBimester.b1.sort((a, b) => (parseDate(a)?.getTime() || 0) - (parseDate(b)?.getTime() || 0));
+            absencesByBimester.b2.sort((a, b) => (parseDate(a)?.getTime() || 0) - (parseDate(b)?.getTime() || 0));
+            absencesByBimester.b3.sort((a, b) => (parseDate(a)?.getTime() || 0) - (parseDate(b)?.getTime() || 0));
+            absencesByBimester.b4.sort((a, b) => (parseDate(a)?.getTime() || 0) - (parseDate(b)?.getTime() || 0));
+
+            setStudentAbsences(absencesByBimester);
+        } catch (error) {
+            console.error("Erro ao buscar faltas do estudante:", error);
+            setStudentAbsences({ b1: [], b2: [], b3: [], b4: [] });
+        }
+    }, []);
+
+    // Função para buscar duplicatas de faltas
+    const fetchDuplicateAbsences = useCallback(async () => {
+        try {
+            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
+                estudanteId: doc.data().estudanteId,
+                turma: doc.data().turma,
+                data: formatFirebaseDate(doc.data().data),
+                docId: doc.id,
+            }));
+
+            const seen: Record<string, AbsenceRecord[]> = {};
+            absenceRecords.forEach(record => {
+                const key = `${record.estudanteId}-${record.data}`;
+                if (!seen[key]) {
+                    seen[key] = [];
+                }
+                seen[key].push(record);
+            });
+
+            const duplicates = Object.values(seen)
+                .filter(group => group.length > 1)
+                .flat();
+
+            setDuplicateAbsences(duplicates);
+        } catch (error) {
+            console.error("Erro ao buscar duplicatas de faltas:", error);
+            setDuplicateAbsences([]);
+        }
+    }, []);
+
+    // Função para remover duplicatas, mantendo apenas o primeiro registro
+    const removeDuplicateAbsences = useCallback(async () => {
+        try {
+            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
+                estudanteId: doc.data().estudanteId,
+                turma: doc.data().turma,
+                data: formatFirebaseDate(doc.data().data),
+                docId: doc.id,
+            }));
+
+            const seen: Record<string, AbsenceRecord[]> = {};
+            absenceRecords.forEach(record => {
+                const key = `${record.estudanteId}-${record.data}`;
+                if (!seen[key]) {
+                    seen[key] = [];
+                }
+                seen[key].push(record);
+            });
+
+            const duplicatesToRemove = Object.values(seen)
+                .filter(group => group.length > 1)
+                .flatMap(group => group.slice(1)); // Mantém o primeiro, remove os demais
+
+            // Remove os documentos duplicados do Firebase
+            const deletePromises = duplicatesToRemove.map(record =>
+                deleteDoc(doc(db, "2025", "faltas", "controle", record.docId))
+            );
+            await Promise.all(deletePromises);
+
+            console.log(`Removidos ${duplicatesToRemove.length} registros duplicados.`);
+
+            // Atualiza a lista de duplicatas após a remoção
+            await fetchDuplicateAbsences();
+
+            // Atualiza os dados principais, pois as faltas mudaram
+            if (startDate && endDate) {
+                const total = await calculateDiasLetivos(startDate, endDate);
+                const newData = await fetchStudentData(total, startDate, endDate, selectedBimesters);
+                setData(newData);
+            }
+        } catch (error) {
+            console.error("Erro ao remover duplicatas de faltas:", error);
+        }
+    }, [fetchDuplicateAbsences, startDate, endDate, selectedBimesters, calculateDiasLetivos]);
+
+    // Busca duplicatas ao carregar a página
+    useEffect(() => {
+        fetchDuplicateAbsences();
+    }, [fetchDuplicateAbsences]);
+
+    // Lista de turmas únicas
+    const uniqueTurmas = useMemo(() => {
+        return Array.from(new Set(data.map(item => item.turma))).sort((a, b) => {
+            const [numA, letterA] = a.match(/(\d+)([A-Z]+)/)!.slice(1);
+            const [numB, letterB] = b.match(/(\d+)([A-Z]+)/)!.slice(1);
+            const numCompare = Number(numA) - Number(numB);
+            if (numCompare !== 0) return numCompare;
+            return letterA.localeCompare(letterB);
+        });
+    }, [data]);
+
+    // Lista de estudantes da turma selecionada
+    const studentsInTurma = useMemo(() => {
+        return data
+            .filter(student => student.turma === selectedTurma)
+            .sort((a, b) => a.nome.localeCompare(b.nome));
+    }, [data, selectedTurma]);
+
+    // Efeito para buscar faltas quando o estudante é selecionado
+    useEffect(() => {
+        if (selectedStudent) {
+            fetchStudentAbsences(selectedStudent);
+        } else {
+            setStudentAbsences({ b1: [], b2: [], b3: [], b4: [] });
+        }
+    }, [selectedStudent, fetchStudentAbsences]);
 
     // Cálculos memorizados com useMemo
     const totalStudents = useMemo(() => data.length, [data]);
@@ -618,7 +793,7 @@ export default function DashboardPage() {
 
     return (
         <div className="p-4 space-y-8">
-            {/* Novo Card de Filtros */}
+            {/* Card de Filtros */}
             <Card>
                 <CardHeader>
                     <CardTitle>Filtros de Período</CardTitle>
@@ -818,6 +993,175 @@ export default function DashboardPage() {
                         <Skeleton className="h-10 w-full" />
                     ) : (
                         <FullDataTable data={data} />
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Seção 6: Faltas por Estudante */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Faltas por Estudante</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <Label htmlFor="select-turma">Selecionar Turma</Label>
+                            <Select
+                                onValueChange={(value) => {
+                                    setSelectedTurma(value);
+                                    setSelectedStudent("");
+                                }}
+                                value={selectedTurma}
+                            >
+                                <SelectTrigger id="select-turma">
+                                    <SelectValue placeholder="Escolha uma turma" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {uniqueTurmas.map(turma => (
+                                        <SelectItem key={turma} value={turma}>
+                                            {turma}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label htmlFor="select-student">Selecionar Estudante</Label>
+                            <Select
+                                onValueChange={setSelectedStudent}
+                                value={selectedStudent}
+                                disabled={!selectedTurma}
+                            >
+                                <SelectTrigger id="select-student">
+                                    <SelectValue placeholder="Escolha um estudante" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {studentsInTurma.map(student => (
+                                        <SelectItem key={student.estudanteId} value={student.estudanteId}>
+                                            {student.nome}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    {selectedStudent && (studentAbsences.b1.length > 0 || studentAbsences.b2.length > 0 || studentAbsences.b3.length > 0 || studentAbsences.b4.length > 0) ? (
+                        <div>
+                            <h3 className="text-lg font-semibold mb-2">Dias de Falta por Bimestre</h3>
+                            <div className="rounded-md border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-1/4 text-center">1º Bimestre</TableHead>
+                                            <TableHead className="w-1/4 text-center">2º Bimestre</TableHead>
+                                            <TableHead className="w-1/4 text-center">3º Bimestre</TableHead>
+                                            <TableHead className="w-1/4 text-center">4º Bimestre</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        <TableRow>
+                                            <TableCell className="align-top text-center">
+                                                <div className="max-h-40 overflow-y-auto">
+                                                    {studentAbsences.b1.length > 0 ? (
+                                                        <div className="space-y-1">
+                                                            {studentAbsences.b1.map((date, index) => (
+                                                                <p key={index} className="text-sm">{date}</p>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-muted-foreground">Nenhuma falta</p>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="align-top text-center">
+                                                <div className="max-h-40 overflow-y-auto">
+                                                    {studentAbsences.b2.length > 0 ? (
+                                                        <div className="space-y-1">
+                                                            {studentAbsences.b2.map((date, index) => (
+                                                                <p key={index} className="text-sm">{date}</p>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-muted-foreground">Nenhuma falta</p>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="align-top text-center">
+                                                <div className="max-h-40 overflow-y-auto">
+                                                    {studentAbsences.b3.length > 0 ? (
+                                                        <div className="space-y-1">
+                                                            {studentAbsences.b3.map((date, index) => (
+                                                                <p key={index} className="text-sm">{date}</p>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-muted-foreground">Nenhuma falta</p>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="align-top text-center">
+                                                <div className="max-h-40 overflow-y-auto">
+                                                    {studentAbsences.b4.length > 0 ? (
+                                                        <div className="space-y-1">
+                                                            {studentAbsences.b4.map((date, index) => (
+                                                                <p key={index} className="text-sm">{date}</p>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-muted-foreground">Nenhuma falta</p>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </div>
+                    ) : selectedStudent ? (
+                        <p className="text-sm text-muted-foreground">Nenhuma falta registrada para este estudante.</p>
+                    ) : null}
+                </CardContent>
+            </Card>
+
+            {/* Seção 7: Duplicatas de Faltas */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Registros de Faltas Duplicados</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {duplicateAbsences.length > 0 ? (
+                        <>
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse text-sm">
+                                    <thead>
+                                        <tr>
+                                            <th className="border p-2">ID do Documento</th>
+                                            <th className="border p-2">Estudante ID</th>
+                                            <th className="border p-2">Turma</th>
+                                            <th className="border p-2">Data</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {duplicateAbsences.map((record, index) => (
+                                            <tr key={index}>
+                                                <td className="border p-2">{record.docId}</td>
+                                                <td className="border p-2">{record.estudanteId}</td>
+                                                <td className="border p-2">{record.turma}</td>
+                                                <td className="border p-2">{record.data}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <Button
+                                onClick={removeDuplicateAbsences}
+                                className="mt-4 bg-red-500 hover:bg-red-600"
+                            >
+                                Remover Duplicatas
+                            </Button>
+                        </>
+                    ) : (
+                        <p>Nenhum registro de falta duplicado encontrado.</p>
                     )}
                 </CardContent>
             </Card>
