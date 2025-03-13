@@ -1061,52 +1061,44 @@ export default function DashboardPage() {
                                     <TableBody>
                                         <TableRow>
                                             <TableCell className="align-top text-center">
-                                                <div className="max-h-40 overflow-y-auto">
+                                                <div className="space-y-1">
                                                     {studentAbsences.b1.length > 0 ? (
-                                                        <div className="space-y-1">
-                                                            {studentAbsences.b1.map((date, index) => (
-                                                                <p key={index} className="text-sm">{date}</p>
-                                                            ))}
-                                                        </div>
+                                                        studentAbsences.b1.map((date, index) => (
+                                                            <p key={index} className="text-sm">{date}</p>
+                                                        ))
                                                     ) : (
                                                         <p className="text-sm text-muted-foreground">Nenhuma falta</p>
                                                     )}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="align-top text-center">
-                                                <div className="max-h-40 overflow-y-auto">
+                                                <div className="space-y-1">
                                                     {studentAbsences.b2.length > 0 ? (
-                                                        <div className="space-y-1">
-                                                            {studentAbsences.b2.map((date, index) => (
-                                                                <p key={index} className="text-sm">{date}</p>
-                                                            ))}
-                                                        </div>
+                                                        studentAbsences.b2.map((date, index) => (
+                                                            <p key={index} className="text-sm">{date}</p>
+                                                        ))
                                                     ) : (
                                                         <p className="text-sm text-muted-foreground">Nenhuma falta</p>
                                                     )}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="align-top text-center">
-                                                <div className="max-h-40 overflow-y-auto">
+                                                <div className="space-y-1">
                                                     {studentAbsences.b3.length > 0 ? (
-                                                        <div className="space-y-1">
-                                                            {studentAbsences.b3.map((date, index) => (
-                                                                <p key={index} className="text-sm">{date}</p>
-                                                            ))}
-                                                        </div>
+                                                        studentAbsences.b3.map((date, index) => (
+                                                            <p key={index} className="text-sm">{date}</p>
+                                                        ))
                                                     ) : (
                                                         <p className="text-sm text-muted-foreground">Nenhuma falta</p>
                                                     )}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="align-top text-center">
-                                                <div className="max-h-40 overflow-y-auto">
+                                                <div className="space-y-1">
                                                     {studentAbsences.b4.length > 0 ? (
-                                                        <div className="space-y-1">
-                                                            {studentAbsences.b4.map((date, index) => (
-                                                                <p key={index} className="text-sm">{date}</p>
-                                                            ))}
-                                                        </div>
+                                                        studentAbsences.b4.map((date, index) => (
+                                                            <p key={index} className="text-sm">{date}</p>
+                                                        ))
                                                     ) : (
                                                         <p className="text-sm text-muted-foreground">Nenhuma falta</p>
                                                     )}
