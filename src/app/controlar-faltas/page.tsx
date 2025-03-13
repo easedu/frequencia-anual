@@ -596,8 +596,8 @@ export default function DashboardPage() {
         [alunosConformes, totalStudents]
     );
     const mediaFaltasGlobal = useMemo(
-        () => totalStudents ? Number((data.reduce((sum, s) => sum + s.totalFaltas, 0) / totalStudents).toFixed(1)) : 0,
-        [data, totalStudents]
+        () => totalDiasLetivos ? Number((data.reduce((sum, s) => sum + s.totalFaltas, 0) / totalDiasLetivos).toFixed(1)) : 0,
+        [data, totalDiasLetivos]
     );
 
     const turmaStats = useMemo(() => {
@@ -918,8 +918,8 @@ export default function DashboardPage() {
                                 </p>
                             </Card>
                             <Card className="border p-4">
-                                <h2 className="text-lg font-semibold">Média de Faltas por Estudante</h2>
-                                <p className="text-3xl font-bold">{mediaFaltasGlobal.toFixed(1)}</p>
+                                <h2 className="text-lg font-semibold">Média de Faltas Diárias</h2>
+                                <p className="text-3xl font-bold">{mediaFaltasGlobal}</p>
                             </Card>
                         </div>
                     ) : null}
