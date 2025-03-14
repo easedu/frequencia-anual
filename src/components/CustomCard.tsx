@@ -1,26 +1,20 @@
-"use client";
-
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { useRouter } from "next/navigation";
+import { LucideIcon } from "lucide-react";
+import Link from "next/link";
 
 interface CustomCardProps {
     title: string;
-    icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+    icon: LucideIcon;
     href: string;
+    color?: string;
 }
 
-export function CustomCard({ title, icon: Icon, href }: CustomCardProps) {
-    const router = useRouter();
-
+export function CustomCard({ title, icon: Icon, href, color = "gray" }: CustomCardProps) {
     return (
-        <Card
-            className="cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => router.push(href)}
-        >
-            <CardHeader className="flex flex-col items-center">
-                <Icon className="h-12 w-12 mb-2" />
-                <CardTitle>{title}</CardTitle>
-            </CardHeader>
-        </Card>
+        <Link href={href}>
+            <div className="p-6 bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer">
+                <Icon className={`w-10 h-10 mb-3 text-${color}-500`} />
+                <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
+            </div>
+        </Link>
     );
 }

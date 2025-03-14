@@ -1,11 +1,10 @@
-// src/app/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { CustomCard } from "@/components/CustomCard";
 import { auth, db } from "@/firebase.config";
 import { useRouter } from "next/navigation";
-import { User, Calendar, ClipboardCheck, Users } from "lucide-react";
+import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield } from "lucide-react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 
 // Define os tipos possíveis para o perfil do usuário
@@ -17,7 +16,6 @@ export default function Home() {
 
     useEffect(() => {
         const fetchUserRole = async () => {
-            // Se não houver usuário logado, redireciona para a página de login
             if (!auth.currentUser) {
                 router.push("/login");
                 return;
@@ -44,7 +42,6 @@ export default function Home() {
         fetchUserRole();
     }, [router]);
 
-    // Enquanto o perfil não for carregado, mostra uma tela de loading
     if (role === null) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -53,15 +50,22 @@ export default function Home() {
         );
     }
 
-    // Função para montar os cards de acordo com o perfil do usuário
     const getCards = () => {
         if (role === "user") {
             return [
                 <CustomCard
                     key="marcar-faltas"
-                    title="Marcar Faltas"
-                    icon={ClipboardCheck}
+                    title="Registrar Faltas Agora"
+                    icon={CheckCircle}
                     href="/marcar-faltas"
+                    color="green"
+                />,
+                <CustomCard
+                    key="perfil-estudante"
+                    title="Perfil do Aluno"
+                    icon={UserCheck}
+                    href="/perfil-estudante"
+                    color="blue"
                 />,
             ];
         }
@@ -70,27 +74,38 @@ export default function Home() {
             return [
                 <CustomCard
                     key="cadastro-estudante"
-                    title="Cadastro de Estudante"
-                    icon={User}
+                    title="Adicionar Novo Aluno"
+                    icon={UserPlus}
                     href="/cadastrar-estudante"
+                    color="purple"
                 />,
                 <CustomCard
                     key="cadastro-ano-letivo"
-                    title="Cadastro Ano Letivo"
+                    title="Criar Ano Letivo"
                     icon={Calendar}
                     href="/cadastrar-ano-letivo"
+                    color="orange"
                 />,
                 <CustomCard
                     key="marcar-faltas"
-                    title="Marcar Faltas"
-                    icon={ClipboardCheck}
+                    title="Registrar Faltas Agora"
+                    icon={CheckCircle}
                     href="/marcar-faltas"
+                    color="green"
                 />,
                 <CustomCard
                     key="controlar-faltas"
-                    title="Controle de Faltas"
-                    icon={Users}
+                    title="Monitorar Faltas"
+                    icon={BarChart}
                     href="/controlar-faltas"
+                    color="teal"
+                />,
+                <CustomCard
+                    key="perfil-estudante"
+                    title="Perfil do Aluno"
+                    icon={UserCheck}
+                    href="/perfil-estudante"
+                    color="blue"
                 />,
             ];
         }
@@ -99,33 +114,45 @@ export default function Home() {
             return [
                 <CustomCard
                     key="cadastro-estudante"
-                    title="Cadastro de Estudante"
-                    icon={User}
+                    title="Adicionar Novo Aluno"
+                    icon={UserPlus}
                     href="/cadastrar-estudante"
+                    color="purple"
                 />,
                 <CustomCard
                     key="cadastro-ano-letivo"
-                    title="Cadastro Ano Letivo"
+                    title="Criar Ano Letivo"
                     icon={Calendar}
                     href="/cadastrar-ano-letivo"
+                    color="orange"
                 />,
                 <CustomCard
                     key="marcar-faltas"
-                    title="Marcar Faltas"
-                    icon={ClipboardCheck}
+                    title="Registrar Faltas Agora"
+                    icon={CheckCircle}
                     href="/marcar-faltas"
+                    color="green"
                 />,
                 <CustomCard
                     key="gerenciar-usuarios"
-                    title="Gerenciar Usuários"
-                    icon={Users}
+                    title="Gestão de Equipe"
+                    icon={Shield}
                     href="/gerenciar-usuarios"
+                    color="red"
                 />,
                 <CustomCard
                     key="controlar-faltas"
-                    title="Controle de Faltas"
-                    icon={Users}
+                    title="Monitorar Faltas"
+                    icon={BarChart}
                     href="/controlar-faltas"
+                    color="teal"
+                />,
+                <CustomCard
+                    key="perfil-estudante"
+                    title="Perfil do Aluno"
+                    icon={UserCheck}
+                    href="/perfil-estudante"
+                    color="blue"
                 />,
             ];
         }
@@ -136,7 +163,7 @@ export default function Home() {
     return (
         <section
             aria-label="Cards de Acesso"
-            className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
         >
             {getCards()}
         </section>
