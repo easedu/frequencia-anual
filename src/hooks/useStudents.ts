@@ -28,8 +28,9 @@ export const useStudents = () => {
                 const data = docSnap.data();
                 // Garante que cada estudante possua um estudanteId; se não tiver, gera um novo UUID
                 const fetchedStudents: Estudante[] = (data.estudantes || []).map((student: unknown) => {
-                    const s = student as { estudanteId?: string; turma: string; nome: string; status: string };
+                    const s = student as { estudanteId?: string; bolsaFamilia: string; turma: string; nome: string; status: string };
                     return {
+                        bolsaFamilia: s.bolsaFamilia,
                         estudanteId: s.estudanteId || uuidv4(),
                         turma: s.turma,
                         nome: s.nome,

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { CustomCard } from "@/components/CustomCard";
 import { auth, db } from "@/firebase.config";
 import { useRouter } from "next/navigation";
-import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield } from "lucide-react";
+import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX } from "lucide-react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 
 // Define os tipos possíveis para o perfil do usuário
@@ -67,6 +67,13 @@ export default function Home() {
                     href="/perfil-estudante"
                     color="blue"
                 />,
+                <CustomCard
+                    key="relatorio-bolsa-familia"
+                    title="Relatório Bolsa Família"
+                    icon={CalendarX}
+                    href="/relatorio-bolsa-familia"
+                    color="blue"
+                />,
             ];
         }
 
@@ -105,6 +112,13 @@ export default function Home() {
                     title="Perfil do Aluno"
                     icon={UserCheck}
                     href="/perfil-estudante"
+                    color="blue"
+                />,
+                <CustomCard
+                    key="relatorio-bolsa-familia"
+                    title="Relatório Bolsa Família"
+                    icon={CalendarX}
+                    href="/relatorio-bolsa-familia"
                     color="blue"
                 />,
             ];
@@ -152,6 +166,13 @@ export default function Home() {
                     title="Perfil do Aluno"
                     icon={UserCheck}
                     href="/perfil-estudante"
+                    color="blue"
+                />,
+                <CustomCard
+                    key="relatorio-bolsa-familia"
+                    title="Relatório Bolsa Família"
+                    icon={CalendarX}
+                    href="/relatorio-bolsa-familia"
                     color="blue"
                 />,
             ];
