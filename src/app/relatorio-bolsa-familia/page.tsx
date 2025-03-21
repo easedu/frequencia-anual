@@ -137,6 +137,78 @@ export default function RelatorioFaltasPage() {
         }
     };
 
+    const handlePrint = () => {
+        // Cria um iframe oculto
+        const printFrame = document.createElement('iframe');
+        printFrame.style.display = 'none';
+        document.body.appendChild(printFrame);
+
+        // Escreve o conteúdo no iframe
+        const printDoc = printFrame.contentWindow?.document;
+        if (!printDoc) {
+            console.error("Não foi possível acessar o documento do iframe.");
+            document.body.removeChild(printFrame);
+            return;
+        }
+
+        const tableHtml = `
+            <html>
+            <head>
+                <title>Relatório de Faltas</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 14px; }
+                    h1 { font-size: 16px; margin-bottom: 10px; }
+                    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                    th, td { border: 1px solid black; padding: 8px; text-align: center; }
+                    th { background-color: #f2f2f2; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <h1>Relatório de Faltas</h1>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Turma</th>
+                            <th>Nome do Estudante</th>
+                            ${months
+                .filter(month => selectedMonths.has(month))
+                .map(month => `<th>${month}</th>`)
+                .join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filteredStudents
+                .map(student => `
+                                <tr>
+                                    <td>${student.turma}</td>
+                                    <td>${student.nome}</td>
+                                    ${months
+                        .filter(month => selectedMonths.has(month))
+                        .map((month) => `
+                                            <td>${getAbsencesByMonth(student.estudanteId, months.indexOf(month))}</td>
+                                        `)
+                        .join('')}
+                                </tr>
+                            `)
+                .join('')}
+                    </tbody>
+                </table>
+            </body>
+            </html>
+        `;
+
+        printDoc.open();
+        printDoc.write(tableHtml);
+        printDoc.close();
+
+        // Aguarda o carregamento e dispara a impressão
+        printFrame.contentWindow?.focus();
+        setTimeout(() => {
+            printFrame.contentWindow?.print();
+            document.body.removeChild(printFrame);
+        }, 100);
+    };
+
     if (loadingStudents || loadingAbsences) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -173,7 +245,12 @@ export default function RelatorioFaltasPage() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Relatório de Faltas</CardTitle>
+                        <div className="flex justify-between items-center">
+                            <CardTitle>Relatório de Faltas</CardTitle>
+                            <Button size="sm" onClick={handlePrint}>
+                                Imprimir Relatório
+                            </Button>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         <div className="mb-4">
