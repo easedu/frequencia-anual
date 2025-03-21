@@ -339,11 +339,30 @@ export default function StudentProfilePage() {
     const handlePrintReport = () => {
         if (!student || !studentRecord) return;
 
+        const order = [
+            'Contato telefônico',
+            'Contato digital',
+            'Conversa com a família',
+            'Visita domiciliar da ABAE',
+            'Carta registrada',
+            'Conselho tutelar',
+            'Desligamento',
+            'Justificativa da família',
+            'Observações'
+        ] as const; // 'as const' ajuda a inferir tipos literais
+
         const consolidatedInteractions = interactions.reduce((acc, curr) => {
             if (!acc[curr.type]) acc[curr.type] = [];
             acc[curr.type].push(`${curr.date}: ${curr.description}`);
             return acc;
         }, {} as Record<string, string[]>);
+
+        // Tipagem explícita para sortedInteractions
+        const sortedInteractions: Record<string, string[]> = Object.fromEntries(
+            order
+                .map(type => [type, consolidatedInteractions[type] || []])
+                .filter(([, value]) => value.length > 0)
+        );
 
         const reportContent = `
                 <div style="text-align: center; margin-bottom: 20px;">
@@ -357,22 +376,10 @@ export default function StudentProfilePage() {
                 <p><strong>Frequência atual:</strong> ${studentRecord.percentualFrequenciaAteHoje}%</p>
                 <p><strong>Faltas:</strong> ${studentRecord.totalFaltasAteHoje}</p>
                 <h2 style="text-align: center; font-weight: bold; text-decoration: underline;">Providências da escola</h2>
-                ${Object.entries(consolidatedInteractions).map(([type, entries]) => `
+                ${Object.entries(sortedInteractions).map(([type, entries]) => `
                     <h3 style="text-align: justify; font-size: 12px;">${type}: </h3>
                     <ul style="text-align: justify; font-size: 12px;">${entries.map(entry => `<li>${entry}</li>`).join('')}</ul>
                 `).join('') || '<p>Nenhuma providência registrada.</p>'}
-                <p style="font-size: 12px; margin-top: 20px;">
-                    <strong>Justificativa da família: </strong>
-                </p>
-                <p style="margin-top: 20px; border-bottom: 1px solid #000; width: 100%; box-sizing: border-box;"></p>
-                <p style="margin-top: 20px; border-bottom: 1px solid #000; width: 100%; box-sizing: border-box;"></p>
-                <p style="margin-top: 20px; border-bottom: 1px solid #000; width: 100%; box-sizing: border-box;"></p>
-                <p style="font-size: 12px; margin-top: 20px;">
-                    <strong>Observações: </strong>
-                </p>
-                <p style="margin-top: 20px; border-bottom: 1px solid #000; width: 100%; box-sizing: border-box;"></p>
-                <p style="margin-top: 20px; border-bottom: 1px solid #000; width: 100%; box-sizing: border-box;"></p>
-                <p style="margin-top: 20px; border-bottom: 1px solid #000; width: 100%; box-sizing: border-box;"></p>
                 <div style="margin-top: 40px;">
                     <p>Eu, responsável pela criança/adolescente identificado(a) acima, estou ciente que:</p>
                     <ul style="list-style-type: disc; margin-left: 20px;">
@@ -389,26 +396,40 @@ export default function StudentProfilePage() {
                 </div>
             `;
 
-        const printWindow = window.open('', '_blank');
-        printWindow?.document.write(`
-                <html>
-                    <head>
-                        <title>Relatório do Aluno - ${student.nome}</title>
-                        <style>
-                            body { font-family: Arial, sans-serif; padding: 14px; }
-                            h1 { font-size: 12px; }
-                            h2 { font-size: 12px; }
-                            h3 { font-size: 12px; margin-bottom: 5px; }
-                            ul { margin: 0 0 10px 20px; }
-                            p { margin: 5px 0; font-size: 12px; }
-                            div, p, h3 { width: 100%; }
-                        </style>
-                    </head>
-                    <body>${reportContent}</body>
-                </html>
-            `);
-        printWindow?.document.close();
-        printWindow?.print();
+        // Cria um iframe oculto
+        const printFrame = document.createElement('iframe');
+        printFrame.style.display = 'none';
+        document.body.appendChild(printFrame);
+
+        // Escreve o conteúdo no iframe
+        const printDoc = printFrame.contentWindow?.document;
+        printDoc?.open();
+        printDoc?.write(`
+            <html>
+                <head>
+                    <title>Relatório do Aluno - ${student.nome}</title>
+                    <meta name="title" content="Relatório do Aluno - ${student.nome}">
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 14px; }
+                        h1 { font-size: 12px; }
+                        h2 { font-size: 12px; }
+                        h3 { font-size: 12px; margin-bottom: 5px; }
+                        ul { margin: 0 0 10px 20px; }
+                        p { margin: 5px 0; font-size: 12px; }
+                        div, p, h3 { width: 100%; }
+                    </style>
+                </head>
+                <body>${reportContent}</body>
+            </html>
+        `);
+        printDoc?.close();
+
+        // Aguarda o carregamento e dispara a impressão
+        printFrame.contentWindow?.focus();
+        setTimeout(() => {
+            printFrame.contentWindow?.print();
+            document.body.removeChild(printFrame);
+        }, 100);
     };
 
     return (
@@ -687,6 +708,8 @@ export default function StudentProfilePage() {
                                             <SelectItem value="Carta registrada">Carta registrada</SelectItem>
                                             <SelectItem value="Conselho tutelar">Conselho tutelar</SelectItem>
                                             <SelectItem value="Desligamento">Desligamento</SelectItem>
+                                            <SelectItem value="Justificativa da família">Justificativa da família</SelectItem>
+                                            <SelectItem value="Observações">Observações</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
