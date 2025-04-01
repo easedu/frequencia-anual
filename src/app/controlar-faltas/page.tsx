@@ -17,7 +17,6 @@ import {
     TableRow,
 } from "@/components/ui/table";
 
-// Componentes de Chart do shadcn/ui (baseados em Recharts)
 import {
     ChartContainer,
     ChartTooltip,
@@ -27,13 +26,11 @@ import {
 } from "@/components/ui/chart";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 
-// Importações para a DataTable e manipulação do Firebase
 import { collection, getDocs, getDoc, doc, deleteDoc } from "firebase/firestore";
 import { db } from "@/firebase.config";
 import { AlertDataTable } from "@/components/CustomAlertDataTable";
 import { FullDataTable } from "@/components/CustomFullDataTable";
 
-// --- Tipos e Interfaces ---
 interface StudentRecord {
     estudanteId: string;
     turma: string;
@@ -83,7 +80,6 @@ interface BimesterDates {
     [key: number]: { start: string; end: string };
 }
 
-// Interface para as faltas separadas por bimestre
 interface StudentAbsencesByBimester {
     b1: string[];
     b2: string[];
@@ -91,7 +87,11 @@ interface StudentAbsencesByBimester {
     b4: string[];
 }
 
-// --- Helper para identificar bimestre ---
+interface DayOfWeekData {
+    day: string;
+    absences: number;
+}
+
 function getBimester(dateStr: string): number {
     const date = parseDate(dateStr);
     if (!date || isNaN(date.getTime())) {
@@ -105,7 +105,6 @@ function getBimester(dateStr: string): number {
     return 4;
 }
 
-// --- Helper para formatar data ---
 function formatDateInput(value: string): string {
     const numbers = value.replace(/\D/g, '');
     if (numbers.length <= 2) return numbers;
@@ -113,7 +112,6 @@ function formatDateInput(value: string): string {
     return `${numbers.slice(0, 2)}/${numbers.slice(2, 4)}/${numbers.slice(4, 8)}`;
 }
 
-// --- Helper para validar e formatar data ---
 function parseDate(dateStr: string): Date | null {
     if (!dateStr) return null;
     let [day, month, year] = [0, 0, 0];
@@ -126,13 +124,11 @@ function parseDate(dateStr: string): Date | null {
     return new Date(year, month - 1, day);
 }
 
-// --- Função auxiliar para converter data do Firebase para o formato DD/MM/YYYY ---
 function formatFirebaseDate(dateStr: string): string {
     const [year, month, day] = dateStr.split('-').map(Number);
     return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
 }
 
-// --- Função auxiliar para buscar dados dos alunos ---
 async function fetchStudentData(totalDiasLetivos: number, start: string, end: string, selectedBimesters: Set<number>): Promise<StudentRecord[]> {
     try {
         const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
@@ -182,7 +178,7 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
 
             const studentId = record.estudanteId;
             if (!studentMap[studentId]) {
-                return; // Ignora registros de estudantes não ativos
+                return;
             }
 
             if (!aggregated[studentId]) {
@@ -238,7 +234,6 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
     }
 }
 
-// --- Página Dashboard ---
 export default function DashboardPage() {
     const [selectedBimesters, setSelectedBimesters] = useState<Set<number>>(new Set());
     const [startDate, setStartDate] = useState<string>("");
@@ -253,7 +248,6 @@ export default function DashboardPage() {
     const [studentAbsences, setStudentAbsences] = useState<StudentAbsencesByBimester>({ b1: [], b2: [], b3: [], b4: [] });
     const [duplicateAbsences, setDuplicateAbsences] = useState<AbsenceRecord[]>([]);
 
-    // Busca os períodos dos bimestres no Firebase
     useEffect(() => {
         const fetchBimesterDates = async () => {
             try {
@@ -284,7 +278,6 @@ export default function DashboardPage() {
         fetchBimesterDates();
     }, []);
 
-    // Função para lidar com a mudança de seleção de bimestre
     const handleBimesterChange = (bimester: number, checked: boolean) => {
         setSelectedBimesters(prev => {
             const newSet = new Set(prev);
@@ -297,7 +290,6 @@ export default function DashboardPage() {
         });
     };
 
-    // Função para lidar com a mudança de seleção de "Até Hoje"
     const handleTodayChange = (checked: boolean) => {
         setUseToday(checked);
         if (checked) {
@@ -306,7 +298,6 @@ export default function DashboardPage() {
         }
     };
 
-    // Função para lidar com a mudança de seleção de "Personalizado"
     const handleCustomChange = (checked: boolean) => {
         setUseCustom(checked);
         if (checked) {
@@ -315,7 +306,6 @@ export default function DashboardPage() {
         }
     };
 
-    // Função para lidar com a mudança de data
     const handleDateChange = (type: "start" | "end", value: string) => {
         if (type === "start") {
             setStartDate(formatDateInput(value));
@@ -324,7 +314,6 @@ export default function DashboardPage() {
         }
     };
 
-    // Função para calcular dias letivos no período, memoizada com useCallback
     const calculateDiasLetivos = useCallback(async (start: string, end: string): Promise<number> => {
         try {
             const docRef = doc(db, "2025", "ano_letivo");
@@ -381,7 +370,6 @@ export default function DashboardPage() {
         }
     }, [useToday, useCustom, selectedBimesters]);
 
-    // Atualiza datas com base nos filtros selecionados
     useEffect(() => {
         if (Object.keys(bimesterDates).length === 0) return;
 
@@ -420,7 +408,6 @@ export default function DashboardPage() {
         }
     }, [selectedBimesters, useToday, useCustom, bimesterDates]);
 
-    // Calcula dias letivos e atualiza dados quando os filtros mudam
     useEffect(() => {
         const updateData = async () => {
             if ((useToday || selectedBimesters.size > 0 || useCustom) && startDate && endDate) {
@@ -443,7 +430,6 @@ export default function DashboardPage() {
         updateData();
     }, [startDate, endDate, useToday, useCustom, selectedBimesters, calculateDiasLetivos]);
 
-    // Função para buscar dias de falta de um estudante específico, separada por bimestre
     const fetchStudentAbsences = useCallback(async (studentId: string) => {
         try {
             const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
@@ -465,7 +451,6 @@ export default function DashboardPage() {
                     else if (bimester === 4) absencesByBimester.b4.push(record.data);
                 });
 
-            // Ordena as datas em cada bimestre
             absencesByBimester.b1.sort((a, b) => (parseDate(a)?.getTime() || 0) - (parseDate(b)?.getTime() || 0));
             absencesByBimester.b2.sort((a, b) => (parseDate(a)?.getTime() || 0) - (parseDate(b)?.getTime() || 0));
             absencesByBimester.b3.sort((a, b) => (parseDate(a)?.getTime() || 0) - (parseDate(b)?.getTime() || 0));
@@ -478,7 +463,6 @@ export default function DashboardPage() {
         }
     }, []);
 
-    // Função para buscar duplicatas de faltas
     const fetchDuplicateAbsences = useCallback(async () => {
         try {
             const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
@@ -509,7 +493,6 @@ export default function DashboardPage() {
         }
     }, []);
 
-    // Função para remover duplicatas, mantendo apenas o primeiro registro
     const removeDuplicateAbsences = useCallback(async () => {
         try {
             const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
@@ -531,9 +514,8 @@ export default function DashboardPage() {
 
             const duplicatesToRemove = Object.values(seen)
                 .filter(group => group.length > 1)
-                .flatMap(group => group.slice(1)); // Mantém o primeiro, remove os demais
+                .flatMap(group => group.slice(1));
 
-            // Remove os documentos duplicados do Firebase
             const deletePromises = duplicatesToRemove.map(record =>
                 deleteDoc(doc(db, "2025", "faltas", "controle", record.docId))
             );
@@ -541,10 +523,8 @@ export default function DashboardPage() {
 
             console.log(`Removidos ${duplicatesToRemove.length} registros duplicados.`);
 
-            // Atualiza a lista de duplicatas após a remoção
             await fetchDuplicateAbsences();
 
-            // Atualiza os dados principais, pois as faltas mudaram
             if (startDate && endDate) {
                 const total = await calculateDiasLetivos(startDate, endDate);
                 const newData = await fetchStudentData(total, startDate, endDate, selectedBimesters);
@@ -555,12 +535,10 @@ export default function DashboardPage() {
         }
     }, [fetchDuplicateAbsences, startDate, endDate, selectedBimesters, calculateDiasLetivos]);
 
-    // Busca duplicatas ao carregar a página
     useEffect(() => {
         fetchDuplicateAbsences();
     }, [fetchDuplicateAbsences]);
 
-    // Lista de turmas únicas
     const uniqueTurmas = useMemo(() => {
         return Array.from(new Set(data.map(item => item.turma))).sort((a, b) => {
             const [numA, letterA] = a.match(/(\d+)([A-Z]+)/)!.slice(1);
@@ -571,14 +549,12 @@ export default function DashboardPage() {
         });
     }, [data]);
 
-    // Lista de estudantes da turma selecionada
     const studentsInTurma = useMemo(() => {
         return data
             .filter(student => student.turma === selectedTurma)
             .sort((a, b) => a.nome.localeCompare(b.nome));
     }, [data, selectedTurma]);
 
-    // Efeito para buscar faltas quando o estudante é selecionado
     useEffect(() => {
         if (selectedStudent) {
             fetchStudentAbsences(selectedStudent);
@@ -587,7 +563,6 @@ export default function DashboardPage() {
         }
     }, [selectedStudent, fetchStudentAbsences]);
 
-    // Cálculos memorizados com useMemo
     const totalStudents = useMemo(() => data.length, [data]);
     const alunosConformes = useMemo(() => data.filter(s => s.percentualFaltas < 25).length, [data]);
     const alunosRisco = useMemo(() => data.filter(s => s.percentualFaltas >= 25).length, [data]);
@@ -674,6 +649,63 @@ export default function DashboardPage() {
         });
     }, [data]);
 
+    const dayOfWeekStats = useMemo(() => {
+        const fetchDayOfWeekData = async () => {
+            try {
+                const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+                const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
+                    estudanteId: doc.data().estudanteId,
+                    turma: doc.data().turma,
+                    data: formatFirebaseDate(doc.data().data),
+                    docId: doc.id,
+                }));
+
+                const startDateObj = parseDate(startDate);
+                const endDateObj = parseDate(endDate);
+
+                if (!startDateObj || !endDateObj) return { overall: [], byTurma: {} };
+
+                const filteredRecords = absenceRecords.filter(record => {
+                    const date = parseDate(record.data);
+                    const bimester = getBimester(record.data);
+                    return (
+                        date &&
+                        date >= startDateObj &&
+                        date <= endDateObj &&
+                        (selectedBimesters.size === 0 || selectedBimesters.has(bimester))
+                    );
+                });
+
+                const daysOfWeek = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+                const overall: DayOfWeekData[] = daysOfWeek.map(day => ({ day, absences: 0 }));
+                const byTurma: Record<string, DayOfWeekData[]> = {};
+
+                uniqueTurmas.forEach(turma => {
+                    byTurma[turma] = daysOfWeek.map(day => ({ day, absences: 0 }));
+                });
+
+                filteredRecords.forEach(record => {
+                    const date = parseDate(record.data);
+                    if (date) {
+                        const dayIndex = date.getDay();
+                        overall[dayIndex].absences++;
+
+                        if (byTurma[record.turma]) {
+                            byTurma[record.turma][dayIndex].absences++;
+                        }
+                    }
+                });
+
+                return { overall, byTurma };
+            } catch (error) {
+                console.error("Erro ao calcular faltas por dia da semana:", error);
+                return { overall: [], byTurma: {} };
+            }
+        };
+
+        return fetchDayOfWeekData();
+    }, [startDate, endDate, selectedBimesters, uniqueTurmas]);
+
     const maxHeatmapValue = useMemo(
         () => Math.max(...heatmapData.flatMap(d => [d.b1, d.b2, d.b3, d.b4])),
         [heatmapData]
@@ -689,7 +721,6 @@ export default function DashboardPage() {
         return `rgb(255, ${computed < 0 ? 0 : computed}, ${computed < 0 ? 0 : computed})`;
     };
 
-    // --- Subcomponentes ---
     const TurmaFrequencyGrid = () => (
         <div className="grid grid-cols-2 md:grid-cols-11 gap-4 p-1">
             {turmaStats.map((group, idx) => (
@@ -757,7 +788,6 @@ export default function DashboardPage() {
     );
 
     const HeatmapFaltas = () => {
-        // Calculate totals for each bimester
         const totals = heatmapData.reduce(
             (acc, row) => ({
                 b1: acc.b1 + row.b1,
@@ -821,9 +851,89 @@ export default function DashboardPage() {
         );
     };
 
+    const DayOfWeekDistribution = () => {
+        const [dayStats, setDayStats] = useState<{ overall: DayOfWeekData[]; byTurma: Record<string, DayOfWeekData[]> }>({ overall: [], byTurma: {} });
+        const [selectedTurmaDay, setSelectedTurmaDay] = useState<string | null>(null);
+
+        useEffect(() => {
+            dayOfWeekStats.then(stats => setDayStats(stats));
+        }, []);
+
+        const handleTurmaClick = (turma: string) => {
+            setSelectedTurmaDay(prev => (prev === turma ? null : turma));
+        };
+
+        const DayOfWeekGrid = () => {
+            const turmas = Object.entries(dayStats.byTurma);
+
+            return (
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-11 gap-4 p-1">
+                        {turmas.map(([turma, days]) => (
+                            <Card
+                                key={turma}
+                                className={`p-2 cursor-pointer ${selectedTurmaDay === turma ? 'border-2 border-blue-500 bg-blue-50' : ''}`}
+                                onClick={() => handleTurmaClick(turma)}
+                            >
+                                <CardHeader className="p-1">
+                                    <CardTitle className="text-sm">{turma}</CardTitle>
+                                </CardHeader>
+                                <CardContent className="p-1">
+                                    <p className="text-lg font-bold">
+                                        {days.reduce((max, day) => Math.max(max, day.absences), 0)} ({days.find(d => d.absences === Math.max(...days.map(d => d.absences)))?.day})
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const DayChart = () => (
+            <ChartContainer config={{}} className="max-h-[250px] w-full">
+                <BarChart
+                    data={selectedTurmaDay ? dayStats.byTurma[selectedTurmaDay] : dayStats.overall}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 10 }}
+                >
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="day" tickLine={false} axisLine={false} />
+                    <YAxis />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="absences" fill="#FF9800" radius={4} name="Faltas" />
+                </BarChart>
+            </ChartContainer>
+        );
+
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Distribuição de Faltas por Dia da Semana</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {data.length > 0 && dayStats.overall.length > 0 ? (
+                        <>
+                            <div>
+                                <h3 className="text-xl font-semibold mb-2">
+                                    {selectedTurmaDay ? `Faltas por Dia da Semana - Turma ${selectedTurmaDay}` : "Visão Geral da Escola"}
+                                </h3>
+                                <DayChart />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-semibold mb-2">Dia com Mais Faltas por Turma</h3>
+                                <DayOfWeekGrid />
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">Nenhum dado disponível para o período selecionado.</p>
+                    )}
+                </CardContent>
+            </Card>
+        );
+    };
+
     return (
         <div className="p-4 space-y-8">
-            {/* Card de Filtros */}
             <Card>
                 <CardHeader>
                     <CardTitle>Filtros de Período</CardTitle>
@@ -885,13 +995,11 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* Cabeçalho */}
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold">Dashboard de Frequência</h1>
                 <div className="text-lg font-bold">Dias Letivos: {totalDiasLetivos}</div>
             </div>
 
-            {/* Seção 1: KPIs */}
             <Card>
                 <CardHeader>
                     <CardTitle>KPIs (Indicadores-Chave)</CardTitle>
@@ -934,7 +1042,6 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* Seção 2: Gráficos Comparativos */}
             <Card>
                 <CardHeader>
                     <CardTitle>Gráficos Comparativos</CardTitle>
@@ -955,7 +1062,6 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* Seção 3: Análise Temporal e por Bimestre */}
             <Card>
                 <CardHeader>
                     <CardTitle>Análise Temporal e por Bimestre</CardTitle>
@@ -976,7 +1082,6 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* Seção 4: Alertas e Listagens de Risco */}
             <Card>
                 <CardHeader>
                     <CardTitle>Alertas e Listagens de Risco</CardTitle>
@@ -1013,7 +1118,6 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* Seção 5: Tabela Completa de Dados */}
             <Card>
                 <CardHeader>
                     <CardTitle>Tabela de Frequência dos Estudantes</CardTitle>
@@ -1027,7 +1131,6 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* Seção 6: Faltas por Estudante */}
             <Card>
                 <CardHeader>
                     <CardTitle>Faltas por Estudante</CardTitle>
@@ -1145,7 +1248,8 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* Seção 7: Duplicatas de Faltas */}
+            <DayOfWeekDistribution />
+
             <Card>
                 <CardHeader>
                     <CardTitle>Registros de Faltas Duplicados</CardTitle>
