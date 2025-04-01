@@ -103,6 +103,23 @@ function getBimester(dateStr: string): number {
     return 4;
 }
 
+function getBimesterByDate(dateStr: string, bimesterDates: BimesterDates): number {
+    const date = parseDate(dateStr);
+    if (!date || isNaN(date.getTime())) {
+        console.error("Data inválida:", dateStr);
+        return 0;
+    }
+
+    for (const [bimester, { start, end }] of Object.entries(bimesterDates)) {
+        const startDate = parseDate(start);
+        const endDate = parseDate(end);
+        if (startDate && endDate && date >= startDate && date <= endDate) {
+            return Number(bimester);
+        }
+    }
+    return 0;
+}
+
 function formatDateInput(value: string): string {
     const numbers = value.replace(/\D/g, '');
     if (numbers.length <= 2) return numbers;
@@ -127,7 +144,14 @@ function formatFirebaseDate(dateStr: string): string {
     return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
 }
 
-async function fetchStudentData(totalDiasLetivos: number, start: string, end: string, selectedBimesters: Set<number>): Promise<StudentRecord[]> {
+async function fetchStudentData(
+    totalDiasLetivos: number,
+    start: string,
+    end: string,
+    selectedBimesters: Set<number>,
+    useToday: boolean,
+    bimesterDates: BimesterDates
+): Promise<StudentRecord[]> {
     try {
         const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
         const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
@@ -141,21 +165,16 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
         let studentList: Student[] = [];
         if (studentsDocSnap.exists()) {
             const studentData = studentsDocSnap.data() as { estudantes: Student[] };
-            studentList = (studentData.estudantes || []).filter(
-                (student: Student) => student.status === "ATIVO"
-            );
+            studentList = (studentData.estudantes || []).filter(student => student.status === "ATIVO");
         }
 
         const studentMap: Record<string, { nome: string; turma: string }> = {};
         studentList.forEach(student => {
-            studentMap[student.estudanteId] = {
-                nome: student.nome,
-                turma: student.turma,
-            };
+            studentMap[student.estudanteId] = { nome: student.nome, turma: student.turma };
         });
 
         const startDateObj = parseDate(start);
-        const endDateObj = parseDate(end);
+        const endDateObj = useToday ? new Date() : parseDate(end);
 
         if (!startDateObj || !endDateObj || isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
             return [];
@@ -165,12 +184,12 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
         absenceRecords.forEach(record => {
             const formattedDate = formatFirebaseDate(record.data);
             const date = parseDate(formattedDate);
-            if (!date || isNaN(date.getTime()) || date < startDateObj || date > endDateObj) {
+            if (!date || date < startDateObj || date > endDateObj) {
                 return;
             }
 
-            const bimester = getBimester(formattedDate);
-            if (selectedBimesters.size > 0 && !selectedBimesters.has(bimester)) {
+            const bimester = getBimesterByDate(formattedDate, bimesterDates);
+            if (bimester === 0 || (selectedBimesters.size > 0 && !selectedBimesters.has(bimester))) {
                 return;
             }
 
@@ -219,8 +238,7 @@ async function fetchStudentData(totalDiasLetivos: number, start: string, end: st
 
         const total = totalDiasLetivos || 40;
         Object.values(aggregated).forEach(student => {
-            student.totalFaltas =
-                student.faltasB1 + student.faltasB2 + student.faltasB3 + student.faltasB4;
+            student.totalFaltas = student.faltasB1 + student.faltasB2 + student.faltasB3 + student.faltasB4;
             student.percentualFaltas = Number(Math.min((student.totalFaltas / total) * 100, 100).toFixed(1));
             student.percentualFrequencia = Number((100 - student.percentualFaltas).toFixed(1));
         });
@@ -320,43 +338,25 @@ export default function DashboardPage() {
                 const anoData = docSnap.data() as AnoLetivoData;
                 let total = 0;
                 const startDateObj = parseDate(start);
-                const endDateObj = parseDate(end);
+                const endDateObj = useToday ? new Date() : parseDate(end); // Limita ao dia atual
 
                 if (!startDateObj || !endDateObj || isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
                     return 0;
                 }
 
-                if (useToday) {
-                    const bimesters = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
-                    for (const bimesterKey of bimesters) {
-                        if (anoData[bimesterKey]?.dates) {
-                            total += anoData[bimesterKey].dates.filter(d => {
-                                const date = parseDate(d.date);
-                                const today = new Date();
-                                today.setHours(0, 0, 0, 0);
-                                return d.isChecked && date && date >= startDateObj && date <= today;
-                            }).length;
-                        }
-                    }
-                } else if (useCustom) {
-                    for (const key in anoData) {
-                        if (anoData[key]?.dates) {
-                            total += anoData[key].dates.filter(d => {
-                                const date = parseDate(d.date);
-                                return d.isChecked && date && date >= startDateObj && date <= endDateObj;
-                            }).length;
-                        }
-                    }
-                } else {
-                    const bimesters = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
-                    for (const bimesterNum of Array.from(selectedBimesters)) {
-                        const bimesterKey = bimesters[bimesterNum - 1];
-                        if (anoData[bimesterKey]?.dates) {
-                            total += anoData[bimesterKey].dates.filter(d => {
-                                const date = parseDate(d.date);
-                                return d.isChecked && date && date >= startDateObj && date <= endDateObj;
-                            }).length;
-                        }
+                const bimesters = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
+                for (const bimesterKey of bimesters) {
+                    if (anoData[bimesterKey]?.dates) {
+                        total += anoData[bimesterKey].dates.filter(d => {
+                            const date = parseDate(d.date);
+                            return (
+                                d.isChecked &&
+                                date &&
+                                date >= startDateObj &&
+                                date <= endDateObj &&
+                                (!selectedBimesters.size || selectedBimesters.has(getBimester(d.date)))
+                            );
+                        }).length;
                     }
                 }
                 return total;
@@ -366,7 +366,7 @@ export default function DashboardPage() {
             console.error("Erro ao calcular dias letivos:", error);
             return 0;
         }
-    }, [useToday, useCustom, selectedBimesters]);
+    }, [useToday, selectedBimesters]);
 
     useEffect(() => {
         if (Object.keys(bimesterDates).length === 0) return;
@@ -377,21 +377,13 @@ export default function DashboardPage() {
                 setUseCustom(false);
             }
             const firstBimester = bimesterDates[1];
-            if (firstBimester) {
-                setStartDate(firstBimester.start);
-                setEndDate(new Date().toLocaleDateString("pt-BR"));
-            } else {
-                setStartDate("01/01/2025");
-                setEndDate(new Date().toLocaleDateString("pt-BR"));
-            }
+            const today = new Date().toLocaleDateString("pt-BR");
+            setStartDate(firstBimester ? firstBimester.start : "01/01/2025");
+            setEndDate(today); // Sempre usar a data atual
         } else if (useCustom) {
-            if (selectedBimesters.size > 0) {
-                setSelectedBimesters(new Set());
-            }
             setStartDate("");
             setEndDate("");
         } else if (selectedBimesters.size > 0) {
-            if (useCustom) setUseCustom(false);
             const sortedBimesters = Array.from(selectedBimesters).sort();
             const minBimester = bimesterDates[sortedBimesters[0]];
             const maxBimester = bimesterDates[sortedBimesters[sortedBimesters.length - 1]];
@@ -399,7 +391,7 @@ export default function DashboardPage() {
                 setStartDate(minBimester.start);
                 setEndDate(maxBimester.end);
             }
-        } else if (!useToday && !useCustom && selectedBimesters.size === 0) {
+        } else {
             setStartDate("");
             setEndDate("");
             setData([]);
@@ -414,7 +406,7 @@ export default function DashboardPage() {
                 if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
                     const total = await calculateDiasLetivos(startDate, endDate);
                     setTotalDiasLetivos(total);
-                    const newData = await fetchStudentData(total, startDate, endDate, selectedBimesters);
+                    const newData = await fetchStudentData(total, startDate, endDate, selectedBimesters, useToday, bimesterDates);
                     setData(newData);
                 } else {
                     setTotalDiasLetivos(0);
@@ -426,7 +418,7 @@ export default function DashboardPage() {
             }
         };
         updateData();
-    }, [startDate, endDate, useToday, useCustom, selectedBimesters, calculateDiasLetivos]);
+    }, [startDate, endDate, useToday, useCustom, selectedBimesters, calculateDiasLetivos, bimesterDates]);
 
     const fetchStudentAbsences = useCallback(async (studentId: string) => {
         try {
@@ -525,13 +517,13 @@ export default function DashboardPage() {
 
             if (startDate && endDate) {
                 const total = await calculateDiasLetivos(startDate, endDate);
-                const newData = await fetchStudentData(total, startDate, endDate, selectedBimesters);
+                const newData = await fetchStudentData(total, startDate, endDate, selectedBimesters, useToday, bimesterDates);
                 setData(newData);
             }
         } catch (error) {
             console.error("Erro ao remover duplicatas de faltas:", error);
         }
-    }, [fetchDuplicateAbsences, startDate, endDate, selectedBimesters, calculateDiasLetivos]);
+    }, [fetchDuplicateAbsences, startDate, endDate, selectedBimesters, calculateDiasLetivos, useToday, bimesterDates]);
 
     useEffect(() => {
         fetchDuplicateAbsences();
@@ -887,21 +879,21 @@ export default function DashboardPage() {
     const DayOfWeekDistribution = () => {
         const [dayStats, setDayStats] = useState<{ overall: DayOfWeekData[]; byTurma: Record<string, DayOfWeekData[]> }>({ overall: [], byTurma: {} });
         const [selectedTurmaDay, setSelectedTurmaDay] = useState<string | null>(null);
-    
+
         useEffect(() => {
             dayOfWeekStats.then(stats => setDayStats(stats));
         }, []);
-    
+
         const handleTurmaClick = (turma: string) => {
             setSelectedTurmaDay(prev => (prev === turma ? null : turma));
         };
-    
+
         const chartData = useMemo(() => {
             const dataToUse = selectedTurmaDay ? dayStats.byTurma[selectedTurmaDay] : dayStats.overall;
-    
+
             // Obtém os valores únicos de faltas e ordena do maior para o menor
             const uniqueAbsences = Array.from(new Set(dataToUse.map(item => item.absences))).sort((a, b) => b - a);
-    
+
             // Define os tons de azul do mais escuro ao mais claro
             const blueShades = [
                 "#1E3A8A", // Azul mais escuro
@@ -912,16 +904,16 @@ export default function DashboardPage() {
                 "#D1E9FF", // Azul muito claro
                 "#E0F2FE", // Azul quase branco
             ];
-    
+
             // Cria um mapa de valores de faltas para cores
             const absenceToColorMap: Record<number, string> = {};
             uniqueAbsences.forEach((absences, index) => {
                 absenceToColorMap[absences] = blueShades[index] || blueShades[blueShades.length - 1]; // Usa a última cor como fallback
             });
-    
+
             // Calcula o valor máximo de faltas
             const maxAbsences = Math.max(...dataToUse.map(d => d.absences));
-    
+
             // Mapeia os dados com as cores e adiciona uma propriedade para destaque
             return dataToUse.map(item => ({
                 day: item.day,
@@ -930,10 +922,10 @@ export default function DashboardPage() {
                 isMax: item.absences === maxAbsences, // Marca os dias com o valor máximo
             }));
         }, [dayStats, selectedTurmaDay]);
-    
+
         const DayOfWeekGrid = () => {
             const turmas = Object.entries(dayStats.byTurma);
-    
+
             return (
                 <div className="grid grid-cols-2 md:grid-cols-11 gap-4 p-1">
                     {turmas.map(([turma, days]) => {
@@ -957,7 +949,7 @@ export default function DashboardPage() {
                 </div>
             );
         };
-    
+
         return (
             <Card>
                 <CardHeader>
