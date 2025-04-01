@@ -57,8 +57,8 @@ export default function RelatorioFaltasPage() {
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
     const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set([new Date().toLocaleString('pt-BR', { month: 'long' }).charAt(0).toUpperCase() + new Date().toLocaleString('pt-BR', { month: 'long' }).slice(1)]));
-    const [showAbsences, setShowAbsences] = useState<boolean>(true);
-    const [showPercentages, setShowPercentages] = useState<boolean>(false);
+    const [showAbsences, setShowAbsences] = useState<boolean>(false);
+    const [showFrequency, setShowFrequency] = useState<boolean>(true);
     const [diasLetivos, setDiasLetivos] = useState<{ [key: number]: number }>({});
 
     const parseDate = (dateStr: string): Date | null => {
@@ -169,7 +169,7 @@ export default function RelatorioFaltasPage() {
     const getPercentageByMonth = (estudanteId: string, monthIndex: number): string => {
         const absences = getAbsencesByMonth(estudanteId, monthIndex);
         const diasLetivosMes = diasLetivos[monthIndex] || 0;
-        return diasLetivosMes > 0 ? ((absences / diasLetivosMes) * 100).toFixed(1) + "%" : "0%";
+        return diasLetivosMes > 0 ? ((1 - absences / diasLetivosMes) * 100).toFixed(1) + "%" : "100%";
     };
 
     const handleMonthChange = (month: string): void => {
@@ -231,7 +231,7 @@ export default function RelatorioFaltasPage() {
                             ${months
                 .filter(month => selectedMonths.has(month))
                 .map(month => `
-                                    <th>${month} (${diasLetivos[months.indexOf(month)] || 0} dias)${(showAbsences && showPercentages) ? '<br>Faltas | %' : showAbsences ? '<br>Faltas' : '<br>%'}</th>
+                                    <th>${month} (${diasLetivos[months.indexOf(month)] || 0} dias)${(showAbsences && showFrequency) ? '<br>Faltas | %' : showAbsences ? '<br>Faltas' : '<br>%'}</th>
                                 `)
                 .join('')}
                         </tr>
@@ -250,7 +250,7 @@ export default function RelatorioFaltasPage() {
                             const percentage = getPercentageByMonth(student.estudanteId, monthIndex);
                             return `
                                                 <td>
-                                                    ${showAbsences && showPercentages ? `
+                                                    ${showAbsences && showFrequency ? `
                                                         <div class="data-cell">
                                                             <span class="absences">${absences}</span>
                                                             <span class="separator">|</span>
@@ -342,11 +342,11 @@ export default function RelatorioFaltasPage() {
                             </div>
                             <div className="flex items-center space-x-2">
                                 <Checkbox
-                                    id="showPercentages"
-                                    checked={showPercentages}
-                                    onCheckedChange={(checked) => setShowPercentages(checked as boolean)}
+                                    id="showFrequency"
+                                    checked={showFrequency}
+                                    onCheckedChange={(checked) => setShowFrequency(checked as boolean)}
                                 />
-                                <label htmlFor="showPercentages" className="text-sm">Porcentagem</label>
+                                <label htmlFor="showFrequency" className="text-sm">Frequência</label>
                             </div>
                         </div>
 
@@ -360,7 +360,7 @@ export default function RelatorioFaltasPage() {
                                             selectedMonths.has(month) && (
                                                 <TableHead key={month} className="font-bold text-center">
                                                     {month} ({diasLetivos[months.indexOf(month)] || 0} dias)
-                                                    {(showAbsences && showPercentages) ? <><br />Faltas | %</> : showAbsences ? <><br />Faltas</> : <><br />%</>}
+                                                    {(showAbsences && showFrequency) ? <><br />Faltas | %</> : showAbsences ? <><br />Faltas</> : <><br />%</>}
                                                 </TableHead>
                                             )
                                         ))}
@@ -381,7 +381,7 @@ export default function RelatorioFaltasPage() {
                                                 {months.map((month, index) => (
                                                     selectedMonths.has(month) && (
                                                         <TableCell key={month} className="text-center">
-                                                            {showAbsences && showPercentages ? (
+                                                            {showAbsences && showFrequency ? (
                                                                 <div className="flex justify-center items-center">
                                                                     <span className="w-12 text-right">{getAbsencesByMonth(student.estudanteId, index)}</span>
                                                                     <span className="mx-1">|</span>
