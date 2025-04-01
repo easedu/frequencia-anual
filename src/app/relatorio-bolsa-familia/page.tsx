@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHeader, TableRow, TableHead } from "@/components/ui/table";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { collection, getDocs, getDoc, doc } from "firebase/firestore";
+import { collection, getDocs, getDoc, doc, DocumentSnapshot, DocumentData } from "firebase/firestore";
 import { db } from "@/firebase.config";
 
 interface Estudante {
@@ -26,6 +26,28 @@ interface AbsenceRecord {
     docId: string;
 }
 
+interface AnoLetivoData {
+    "1º Bimestre"?: BimesterData;
+    "2º Bimestre"?: BimesterData;
+    "3º Bimestre"?: BimesterData;
+    "4º Bimestre"?: BimesterData;
+}
+
+interface BimesterData {
+    startDate?: string;
+    dates: BimesterDate[];
+}
+
+interface BimesterDate {
+    date: string;
+    isChecked: boolean;
+}
+
+const months = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+] as const;
+
 export default function RelatorioFaltasPage() {
     const [students, setStudents] = useState<Estudante[]>([]);
     const [absenceRecords, setAbsenceRecords] = useState<AbsenceRecord[]>([]);
@@ -34,18 +56,51 @@ export default function RelatorioFaltasPage() {
     const [searchFilter, setSearchFilter] = useState<string>("");
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
+    const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set([new Date().toLocaleString('pt-BR', { month: 'long' }).charAt(0).toUpperCase() + new Date().toLocaleString('pt-BR', { month: 'long' }).slice(1)]));
+    const [showAbsences, setShowAbsences] = useState<boolean>(true);
+    const [showPercentages, setShowPercentages] = useState<boolean>(false);
+    const [diasLetivos, setDiasLetivos] = useState<{ [key: number]: number }>({});
 
-    const months = [
-        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ] as const;
+    const parseDate = (dateStr: string): Date | null => {
+        const [day, month, year] = dateStr.split('/').map(Number);
+        if (!day || !month || !year) return null;
+        return new Date(year, month - 1, day);
+    };
 
-    // Pré-selecionar o mês atual diretamente no estado inicial
-    const currentMonthIndex = new Date().getMonth(); // 0-based index
-    const currentMonth = months[currentMonthIndex];
-    const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set([currentMonth]));
+    const calculateDiasLetivos = useCallback(async () => {
+        try {
+            const docRef = doc(db, "2025", "ano_letivo");
+            const docSnap: DocumentSnapshot<DocumentData> = await getDoc(docRef);
+            if (!docSnap.exists()) return {};
 
-    // Carregar estudantes e faltas
+            const anoData = docSnap.data() as AnoLetivoData;
+            const diasPorMes: { [key: number]: number } = {};
+
+            months.forEach((_, index) => {
+                diasPorMes[index] = 0;
+            });
+
+            for (const key in anoData) {
+                const bimesterData = anoData[key as keyof AnoLetivoData];
+                if (bimesterData?.dates) {
+                    bimesterData.dates.forEach((d: BimesterDate) => {
+                        if (d.isChecked && d.date) {
+                            const date = parseDate(d.date);
+                            if (date) {
+                                const monthIndex = date.getMonth();
+                                diasPorMes[monthIndex] = (diasPorMes[monthIndex] || 0) + 1;
+                            }
+                        }
+                    });
+                }
+            }
+            setDiasLetivos(diasPorMes);
+        } catch (error) {
+            console.error("Erro ao calcular dias letivos:", error);
+            return {};
+        }
+    }, []);
+
     useEffect(() => {
         const fetchStudents = async () => {
             try {
@@ -84,9 +139,9 @@ export default function RelatorioFaltasPage() {
 
         fetchStudents();
         fetchAbsences();
-    }, []);
+        calculateDiasLetivos();
+    }, [calculateDiasLetivos]);
 
-    // Filtrar alunos e aplicar busca genérica
     const filteredStudents = students
         .filter(student =>
             searchFilter === "" ||
@@ -95,14 +150,12 @@ export default function RelatorioFaltasPage() {
         )
         .sort((a, b) => a.nome.localeCompare(b.nome));
 
-    // Paginação
     const totalRecords = filteredStudents.length;
     const totalPages = Math.ceil(totalRecords / recordsPerPage);
     const indexOfLastRecord = currentPage * recordsPerPage;
     const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
     const currentRecords = filteredStudents.slice(indexOfFirstRecord, indexOfLastRecord);
 
-    // Calcular faltas por mês para cada estudante
     const getAbsencesByMonth = (estudanteId: string, monthIndex: number): number => {
         return absenceRecords.filter(record => {
             const recordDate = new Date(record.data);
@@ -113,7 +166,12 @@ export default function RelatorioFaltasPage() {
         }).length;
     };
 
-    // Manipular seleção de meses
+    const getPercentageByMonth = (estudanteId: string, monthIndex: number): string => {
+        const absences = getAbsencesByMonth(estudanteId, monthIndex);
+        const diasLetivosMes = diasLetivos[monthIndex] || 0;
+        return diasLetivosMes > 0 ? ((absences / diasLetivosMes) * 100).toFixed(1) + "%" : "0%";
+    };
+
     const handleMonthChange = (month: string): void => {
         const newSelectedMonths = new Set(selectedMonths);
         if (newSelectedMonths.has(month)) {
@@ -124,13 +182,11 @@ export default function RelatorioFaltasPage() {
         setSelectedMonths(newSelectedMonths);
     };
 
-    // Manipular mudança de registros por página
     const handleRecordsPerPageChange = (value: string): void => {
         setRecordsPerPage(Number(value));
         setCurrentPage(1);
     };
 
-    // Manipular mudança de página
     const handlePageChange = (page: number): void => {
         if (page >= 1 && page <= totalPages) {
             setCurrentPage(page);
@@ -138,12 +194,10 @@ export default function RelatorioFaltasPage() {
     };
 
     const handlePrint = () => {
-        // Cria um iframe oculto
         const printFrame = document.createElement('iframe');
         printFrame.style.display = 'none';
         document.body.appendChild(printFrame);
 
-        // Escreve o conteúdo no iframe
         const printDoc = printFrame.contentWindow?.document;
         if (!printDoc) {
             console.error("Não foi possível acessar o documento do iframe.");
@@ -161,6 +215,10 @@ export default function RelatorioFaltasPage() {
                     table { width: 100%; border-collapse: collapse; font-size: 12px; }
                     th, td { border: 1px solid black; padding: 8px; text-align: center; }
                     th { background-color: #f2f2f2; font-weight: bold; }
+                    .data-cell { display: flex; justify-content: center; align-items: center; }
+                    .data-cell .absences { width: 48px; text-align: right; }
+                    .data-cell .separator { margin: 0 4px; }
+                    .data-cell .percentage { width: 48px; text-align: left; }
                 </style>
             </head>
             <body>
@@ -172,7 +230,9 @@ export default function RelatorioFaltasPage() {
                             <th>Nome do Estudante</th>
                             ${months
                 .filter(month => selectedMonths.has(month))
-                .map(month => `<th>${month}</th>`)
+                .map(month => `
+                                    <th>${month} (${diasLetivos[months.indexOf(month)] || 0} dias)${(showAbsences && showPercentages) ? '<br>Faltas | %' : showAbsences ? '<br>Faltas' : '<br>%'}</th>
+                                `)
                 .join('')}
                         </tr>
                     </thead>
@@ -184,9 +244,22 @@ export default function RelatorioFaltasPage() {
                                     <td>${student.nome}</td>
                                     ${months
                         .filter(month => selectedMonths.has(month))
-                        .map((month) => `
-                                            <td>${getAbsencesByMonth(student.estudanteId, months.indexOf(month))}</td>
-                                        `)
+                        .map((month) => {
+                            const monthIndex = months.indexOf(month);
+                            const absences = getAbsencesByMonth(student.estudanteId, monthIndex);
+                            const percentage = getPercentageByMonth(student.estudanteId, monthIndex);
+                            return `
+                                                <td>
+                                                    ${showAbsences && showPercentages ? `
+                                                        <div class="data-cell">
+                                                            <span class="absences">${absences}</span>
+                                                            <span class="separator">|</span>
+                                                            <span class="percentage">${percentage}</span>
+                                                        </div>
+                                                    ` : showAbsences ? absences : percentage}
+                                                </td>
+                                            `;
+                        })
                         .join('')}
                                 </tr>
                             `)
@@ -201,7 +274,6 @@ export default function RelatorioFaltasPage() {
         printDoc.write(tableHtml);
         printDoc.close();
 
-        // Aguarda o carregamento e dispara a impressão
         printFrame.contentWindow?.focus();
         setTimeout(() => {
             printFrame.contentWindow?.print();
@@ -253,12 +325,29 @@ export default function RelatorioFaltasPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="mb-4">
+                        <div className="mb-4 flex items-center space-x-4">
                             <Input
                                 placeholder="Buscar por turma ou nome..."
                                 value={searchFilter}
                                 onChange={(e) => setSearchFilter(e.target.value)}
+                                className="flex-1"
                             />
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="showAbsences"
+                                    checked={showAbsences}
+                                    onCheckedChange={(checked) => setShowAbsences(checked as boolean)}
+                                />
+                                <label htmlFor="showAbsences" className="text-sm">Faltas</label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="showPercentages"
+                                    checked={showPercentages}
+                                    onCheckedChange={(checked) => setShowPercentages(checked as boolean)}
+                                />
+                                <label htmlFor="showPercentages" className="text-sm">Porcentagem</label>
+                            </div>
                         </div>
 
                         <div className="rounded-md border">
@@ -270,7 +359,8 @@ export default function RelatorioFaltasPage() {
                                         {months.map((month) => (
                                             selectedMonths.has(month) && (
                                                 <TableHead key={month} className="font-bold text-center">
-                                                    {month}
+                                                    {month} ({diasLetivos[months.indexOf(month)] || 0} dias)
+                                                    {(showAbsences && showPercentages) ? <><br />Faltas | %</> : showAbsences ? <><br />Faltas</> : <><br />%</>}
                                                 </TableHead>
                                             )
                                         ))}
@@ -291,7 +381,17 @@ export default function RelatorioFaltasPage() {
                                                 {months.map((month, index) => (
                                                     selectedMonths.has(month) && (
                                                         <TableCell key={month} className="text-center">
-                                                            {getAbsencesByMonth(student.estudanteId, index)}
+                                                            {showAbsences && showPercentages ? (
+                                                                <div className="flex justify-center items-center">
+                                                                    <span className="w-12 text-right">{getAbsencesByMonth(student.estudanteId, index)}</span>
+                                                                    <span className="mx-1">|</span>
+                                                                    <span className="w-12 text-left">{getPercentageByMonth(student.estudanteId, index)}</span>
+                                                                </div>
+                                                            ) : showAbsences ? (
+                                                                getAbsencesByMonth(student.estudanteId, index)
+                                                            ) : (
+                                                                getPercentageByMonth(student.estudanteId, index)
+                                                            )}
                                                         </TableCell>
                                                     )
                                                 ))}
