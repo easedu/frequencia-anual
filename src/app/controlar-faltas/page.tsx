@@ -246,6 +246,7 @@ export default function DashboardPage() {
     const [selectedStudent, setSelectedStudent] = useState<string>("");
     const [studentAbsences, setStudentAbsences] = useState<StudentAbsencesByBimester>({ b1: [], b2: [], b3: [], b4: [] });
     const [duplicateAbsences, setDuplicateAbsences] = useState<AbsenceRecord[]>([]);
+    const [trendValue, setTrendValue] = useState<string>("0.0");
 
     useEffect(() => {
         const fetchBimesterDates = async () => {
@@ -705,6 +706,73 @@ export default function DashboardPage() {
         return fetchDayOfWeekData();
     }, [startDate, endDate, selectedBimesters, uniqueTurmas]);
 
+    const calculateTrend = useCallback(async () => {
+        try {
+            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
+                estudanteId: doc.data().estudanteId,
+                turma: doc.data().turma,
+                data: formatFirebaseDate(doc.data().data),
+                docId: doc.id,
+            }));
+
+            const startDateObj = parseDate(startDate);
+            const endDateObj = parseDate(endDate);
+
+            if (!startDateObj || !endDateObj) return "0.0";
+
+            const filteredRecords = absenceRecords.filter(record => {
+                const date = parseDate(record.data);
+                const bimester = getBimester(record.data);
+                return (
+                    date &&
+                    date >= startDateObj &&
+                    date <= endDateObj &&
+                    (selectedBimesters.size === 0 || selectedBimesters.has(bimester)) &&
+                    (!selectedTurma || record.turma === selectedTurma)
+                );
+            });
+
+            if (filteredRecords.length === 0) return "0.0";
+
+            const absencesByWeek: Record<number, number> = {};
+            filteredRecords.forEach(record => {
+                const date = parseDate(record.data);
+                if (date) {
+                    const weekNumber = getWeekNumber(date);
+                    absencesByWeek[weekNumber] = (absencesByWeek[weekNumber] || 0) + 1;
+                }
+            });
+
+            const weeks = Object.entries(absencesByWeek)
+                .map(([week, absences]) => ({ week: Number(week), absences }))
+                .sort((a, b) => b.week - a.week);
+
+            if (weeks.length < 2) return "0.0";
+
+            const currentWeekAbsences = weeks[0].absences;
+            const previousWeekAbsences = weeks[1].absences;
+
+            const trend = ((currentWeekAbsences - previousWeekAbsences) / previousWeekAbsences) * 100;
+            return trend.toFixed(1);
+        } catch (error) {
+            console.error("Erro ao calcular tendência por semanas:", error);
+            return "0.0";
+        }
+    }, [startDate, endDate, selectedBimesters, selectedTurma]);
+
+    const getWeekNumber = (date: Date): number => {
+        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const dayNum = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    };
+
+    useEffect(() => {
+        calculateTrend().then(value => setTrendValue(value));
+    }, [calculateTrend]);
+
     const maxHeatmapValue = useMemo(
         () => Math.max(...heatmapData.flatMap(d => [d.b1, d.b2, d.b3, d.b4])),
         [heatmapData]
@@ -853,88 +921,50 @@ export default function DashboardPage() {
     const dayChartConfig = {
         absences: {
             label: "Faltas",
-            color: "#000000", // Default color for absences
+            color: "#000000",
         },
-        dom: {
-            label: "Dom",
-            color: "#1E3A8A", // Azul escuro
-        },
-        seg: {
-            label: "Seg",
-            color: "#3B82F6", // Azul médio
-        },
-        ter: {
-            label: "Ter",
-            color: "#60A5FA", // Azul claro
-        },
-        qua: {
-            label: "Qua",
-            color: "#93C5FD", // Azul mais claro
-        },
-        qui: {
-            label: "Qui",
-            color: "#BFDBFE", // Azul muito claro
-        },
-        sex: {
-            label: "Sex",
-            color: "#3B82F6", // Azul médio (repetido para harmonia)
-        },
-        sab: {
-            label: "Sáb",
-            color: "#1E3A8A", // Azul escuro (repetido para harmonia)
-        },
+        dom: { label: "Dom", color: "#1E3A8A" },
+        seg: { label: "Seg", color: "#3B82F6" },
+        ter: { label: "Ter", color: "#60A5FA" },
+        qua: { label: "Qua", color: "#93C5FD" },
+        qui: { label: "Qui", color: "#BFDBFE" },
+        sex: { label: "Sex", color: "#3B82F6" },
+        sab: { label: "Sáb", color: "#1E3A8A" },
     };
 
-    const DayOfWeekDistribution = () => {
+    const DayOfWeekDistribution = ({ trendValue }: { trendValue: string }) => {
         const [dayStats, setDayStats] = useState<{ overall: DayOfWeekData[]; byTurma: Record<string, DayOfWeekData[]> }>({ overall: [], byTurma: {} });
         const [selectedTurmaDay, setSelectedTurmaDay] = useState<string | null>(null);
-    
+
         useEffect(() => {
             dayOfWeekStats.then(stats => setDayStats(stats));
         }, []);
-    
+
         const handleTurmaClick = (turma: string) => {
             setSelectedTurmaDay(prev => (prev === turma ? null : turma));
         };
-    
+
         const chartData = useMemo(() => {
             const dataToUse = selectedTurmaDay ? dayStats.byTurma[selectedTurmaDay] : dayStats.overall;
-    
-            // Obtém os valores únicos de faltas e ordena do maior para o menor
+
             const uniqueAbsences = Array.from(new Set(dataToUse.map(item => item.absences))).sort((a, b) => b - a);
-    
-            // Define os tons de azul do mais escuro ao mais claro
-            const blueShades = [
-                "#1E3A8A", // Azul mais escuro
-                "#3B82F6", // Azul médio-escuro
-                "#60A5FA", // Azul médio
-                "#93C5FD", // Azul médio-claro
-                "#BFDBFE", // Azul mais claro
-                "#D1E9FF", // Azul muito claro
-                "#E0F2FE", // Azul quase branco
-            ];
-    
-            // Cria um mapa de valores de faltas para cores
+            const blueShades = ["#1E3A8A", "#3B82F6", "#60A5FA", "#93C5FD", "#BFDBFE", "#D1E9FF", "#E0F2FE"];
             const absenceToColorMap: Record<number, string> = {};
             uniqueAbsences.forEach((absences, index) => {
-                absenceToColorMap[absences] = blueShades[index] || blueShades[blueShades.length - 1]; // Usa a última cor como fallback
+                absenceToColorMap[absences] = blueShades[index] || blueShades[blueShades.length - 1];
             });
-    
-            // Calcula o valor máximo de faltas
+
             const maxAbsences = Math.max(...dataToUse.map(d => d.absences));
-    
-            // Mapeia os dados com as cores e adiciona uma propriedade para destaque
             return dataToUse.map(item => ({
                 day: item.day,
                 absences: item.absences,
                 fill: absenceToColorMap[item.absences],
-                isMax: item.absences === maxAbsences, // Marca os dias com o valor máximo
+                isMax: item.absences === maxAbsences,
             }));
         }, [dayStats, selectedTurmaDay]);
-    
+
         const DayOfWeekGrid = () => {
             const turmas = Object.entries(dayStats.byTurma);
-    
             return (
                 <div className="grid grid-cols-2 md:grid-cols-11 gap-4 p-1">
                     {turmas.map(([turma, days]) => {
@@ -958,14 +988,18 @@ export default function DashboardPage() {
                 </div>
             );
         };
-    
-        const calculateTrend = () => {
-            const currentMonthData = dayStats.overall.reduce((sum, day) => sum + day.absences, 0);
-            const previousMonthEstimate = currentMonthData * 0.95; // 5% a menos como exemplo
-            const trend = ((currentMonthData - previousMonthEstimate) / previousMonthEstimate) * 100;
-            return trend.toFixed(1);
+
+        const getTrendMessage = (trend: string) => {
+            const trendNum = parseFloat(trend);
+            if (trendNum > 0) {
+                return `Aumento de ${trendNum}% nas faltas esta semana`;
+            } else if (trendNum < 0) {
+                return `Redução de ${Math.abs(trendNum)}% nas faltas esta semana`;
+            } else {
+                return "Nenhuma variação nas faltas esta semana";
+            }
         };
-    
+
         return (
             <Card>
                 <CardHeader>
@@ -989,11 +1023,7 @@ export default function DashboardPage() {
                                         cursor={false}
                                         content={<ChartTooltipContent hideLabel />}
                                     />
-                                    <Bar
-                                        dataKey="absences"
-                                        strokeWidth={2}
-                                        radius={8}
-                                    >
+                                    <Bar dataKey="absences" strokeWidth={2} radius={8}>
                                         {chartData.map((entry, index) => (
                                             <Cell
                                                 key={`cell-${index}`}
@@ -1019,10 +1049,10 @@ export default function DashboardPage() {
                 {data.length > 0 && dayStats.overall.length > 0 && (
                     <CardFooter className="flex-col items-start gap-2 text-sm">
                         <div className="flex gap-2 font-medium leading-none">
-                            Tendência de {calculateTrend()}% este mês <TrendingUp className="h-4 w-4" />
+                            {getTrendMessage(trendValue)} <TrendingUp className="h-4 w-4" />
                         </div>
                         <div className="leading-none text-muted-foreground">
-                            Mostrando total de faltas para o período selecionado em 2025
+                            Comparação entre a última semana e a semana anterior no período selecionado
                         </div>
                     </CardFooter>
                 )}
@@ -1346,7 +1376,7 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
 
-            <DayOfWeekDistribution />
+            <DayOfWeekDistribution trendValue={trendValue} />
 
             <Card>
                 <CardHeader>
