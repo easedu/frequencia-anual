@@ -169,7 +169,20 @@ export default function RelatorioFaltasPage() {
     const getPercentageByMonth = (estudanteId: string, monthIndex: number): string => {
         const absences = getAbsencesByMonth(estudanteId, monthIndex);
         const diasLetivosMes = diasLetivos[monthIndex] || 0;
-        return diasLetivosMes > 0 ? ((1 - absences / diasLetivosMes) * 100).toFixed(1) + "%" : "100%";
+        const frequency = diasLetivosMes > 0 ? (1 - absences / diasLetivosMes) * 100 : 100;
+        return frequency.toFixed(1) + "%";
+    };
+
+    const hasLowFrequency = (estudanteId: string): boolean => {
+        return months.some((month, index) => {
+            if (selectedMonths.has(month) && showFrequency) {
+                const absences = getAbsencesByMonth(estudanteId, index);
+                const diasLetivosMes = diasLetivos[index] || 0;
+                const frequency = diasLetivosMes > 0 ? (1 - absences / diasLetivosMes) * 100 : 100;
+                return frequency < 75;
+            }
+            return false;
+        });
     };
 
     const handleMonthChange = (month: string): void => {
@@ -219,6 +232,7 @@ export default function RelatorioFaltasPage() {
                     .data-cell .absences { width: 48px; text-align: right; }
                     .data-cell .separator { margin: 0 4px; }
                     .data-cell .percentage { width: 48px; text-align: left; }
+                    .low-frequency { color: red; font-weight: bold; }
                 </style>
             </head>
             <body>
@@ -239,7 +253,7 @@ export default function RelatorioFaltasPage() {
                     <tbody>
                         ${filteredStudents
                 .map(student => `
-                                <tr>
+                                <tr class="${hasLowFrequency(student.estudanteId) ? 'low-frequency' : ''}">
                                     <td>${student.turma}</td>
                                     <td>${student.nome}</td>
                                     ${months
@@ -375,7 +389,7 @@ export default function RelatorioFaltasPage() {
                                         </TableRow>
                                     ) : (
                                         currentRecords.map(student => (
-                                            <TableRow key={student.estudanteId}>
+                                            <TableRow key={student.estudanteId} className={hasLowFrequency(student.estudanteId) ? 'text-red-500 font-bold' : ''}>
                                                 <TableCell className="text-center">{student.turma}</TableCell>
                                                 <TableCell>{student.nome}</TableCell>
                                                 {months.map((month, index) => (
