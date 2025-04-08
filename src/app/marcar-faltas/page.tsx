@@ -385,11 +385,13 @@ export default function MarcarFaltasPage() {
                                 <SelectValue placeholder="Selecione a turma" />
                             </SelectTrigger>
                             <SelectContent>
-                                {turmas.map((turma) => (
-                                    <SelectItem key={turma} value={turma}>
-                                        {turma}
-                                    </SelectItem>
-                                ))}
+                                {turmas
+                                    .sort((a, b) => a.localeCompare(b)) // Ordena turmas alfabeticamente
+                                    .map((turma) => (
+                                        <SelectItem key={turma} value={turma}>
+                                            {turma}
+                                        </SelectItem>
+                                    ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -405,28 +407,30 @@ export default function MarcarFaltasPage() {
                             {filteredStudents.length === 0 ? (
                                 <p>Não há alunos cadastrados para esta turma.</p>
                             ) : (
-                                filteredStudents.map((est: Estudante) => {
-                                    const isLocked = role === "user" && existingAbsences[est.estudanteId];
-                                    return (
-                                        <div
-                                            key={est.estudanteId}
-                                            className={`flex items-center gap-2 p-2 rounded hover:bg-gray-50 ${!isLocked ? "cursor-pointer" : "cursor-default"
-                                                }`}
-                                            onClick={!isLocked ? () => handleCheckboxChange(est.estudanteId) : undefined}
-                                        >
-                                            <Checkbox
-                                                checked={!!markedAbsences[est.estudanteId]}
-                                                disabled={isLocked}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (!isLocked) handleCheckboxChange(est.estudanteId);
-                                                }}
-                                                className="text-black"
-                                            />
-                                            <span>{est.nome}</span>
-                                        </div>
-                                    );
-                                })
+                                filteredStudents
+                                    .sort((a, b) => a.nome.localeCompare(b.nome)) // Ordena por nome
+                                    .map((est: Estudante) => {
+                                        const isLocked = role === "user" && existingAbsences[est.estudanteId];
+                                        return (
+                                            <div
+                                                key={est.estudanteId}
+                                                className={`flex items-center gap-2 p-2 rounded hover:bg-gray-50 ${!isLocked ? "cursor-pointer" : "cursor-default"
+                                                    }`}
+                                                onClick={!isLocked ? () => handleCheckboxChange(est.estudanteId) : undefined}
+                                            >
+                                                <Checkbox
+                                                    checked={!!markedAbsences[est.estudanteId]}
+                                                    disabled={isLocked}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (!isLocked) handleCheckboxChange(est.estudanteId);
+                                                    }}
+                                                    className="text-black"
+                                                />
+                                                <span>{est.nome}</span>
+                                            </div>
+                                        );
+                                    })
                             )}
                         </div>
                     ) : (
