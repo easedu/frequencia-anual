@@ -123,10 +123,26 @@ export default function CadastrarEstudantePage() {
             toast.error("Turma, nome e status são obrigatórios.");
             return;
         }
+
+        const newTurma = editingEstudante.turma.toUpperCase();
+        const newNome = editingEstudante.nome.toUpperCase();
+
+        // Verifica se já existe um estudante com o mesmo nome e turma (ignorando o estudante sendo editado)
+        const duplicateExists = students.some((est, index) =>
+            est.turma.toUpperCase() === newTurma &&
+            est.nome.toUpperCase() === newNome &&
+            (editingIndex === null || index !== editingIndex)
+        );
+
+        if (duplicateExists) {
+            toast.error("Já existe um estudante com esse nome e turma!");
+            return;
+        }
+
         const student = {
             estudanteId: editingEstudante.estudanteId || uuidv4(),
-            turma: editingEstudante.turma.toUpperCase(),
-            nome: editingEstudante.nome.toUpperCase(),
+            turma: newTurma,
+            nome: newNome,
             status: editingEstudante.status.toUpperCase(),
             bolsaFamilia: editingEstudante.bolsaFamilia || "NÃO", // Valor padrão
         };
