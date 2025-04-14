@@ -32,6 +32,41 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { useStudents, Estudante } from "@/hooks/useStudents";
 
+// Interface para Contato
+interface Contato {
+    nome: string;
+    telefone: string;
+}
+
+// Funções utilitárias para contatos
+const formatTelefone = (telefone: string): string => {
+    const digits = telefone.replace(/\D/g, "");
+    if (digits.length === 0) {
+        return "";
+    } else if (digits.length <= 2) {
+        return `(${digits}`;
+    } else if (digits.length <= 6) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    } else if (digits.length <= 10) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    } else {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+    }
+};
+
+const cleanTelefone = (telefone: string): string => {
+    return telefone.replace(/\D/g, "");
+};
+
+const validateTelefone = (telefone: string): boolean => {
+    const cleanedTelefone = cleanTelefone(telefone);
+    return cleanedTelefone.length === 10 || cleanedTelefone.length === 11;
+};
+
+const validateNomeContato = (nome: string): boolean => {
+    return nome.trim().length >= 2 && nome.trim().length <= 100;
+};
+
 export default function CadastrarEstudantePage() {
     const { students, loading, saveStudents, setStudents } = useStudents();
 
@@ -39,12 +74,13 @@ export default function CadastrarEstudantePage() {
     const [nomeFiltro, setNomeFiltro] = useState<string>("");
     const [statusFiltro, setStatusFiltro] = useState<string>("");
     const [bolsaFamiliaFiltro, setBolsaFamiliaFiltro] = useState<string>("");
+    const [contatoFiltro, setContatoFiltro] = useState<string>("");
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
     const [sortColumn, setSortColumn] = useState<string>("");
     const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
     const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
-        new Set(["turma", "nome", "bolsaFamilia", "status", "actions"])
+        new Set(["turma", "nome", "bolsaFamilia", "status", "contatos", "actions"])
     );
 
     const [editingEstudante, setEditingEstudante] = useState<Estudante | null>(null);
@@ -54,31 +90,66 @@ export default function CadastrarEstudantePage() {
     // Debug dos dados
     useEffect(() => {
         if (!loading && students.length > 0) {
-            console.log('Students data:', students);
-            console.log('Primeiro estudante:', students[0]);
-            console.log('Contém bolsaFamilia?', 'bolsaFamilia' in students[0]);
+            console.log("Students data:", students);
+            console.log("Primeiro estudante:", students[0]);
+            console.log("Contém bolsaFamilia?", "bolsaFamilia" in students[0]);
+            console.log("Contém contatos?", "contatos" in students[0]);
         }
     }, [students, loading]);
 
     // --- Filtragem e Ordenação ---
-    const turmas = Array.from(new Set(students.map((est) => est.turma))).sort((a, b) => a.localeCompare(b));
-    const statusList = Array.from(new Set(students.map((est) => est.status))).sort((a, b) => a.localeCompare(b));
+    const turmas = Array.from(new Set(students.map((est) => est.turma))).sort((a, b) =>
+        a.localeCompare(b)
+    );
+    const statusList = Array.from(new Set(students.map((est) => est.status))).sort((a, b) =>
+        a.localeCompare(b)
+    );
     const bolsaFamiliaOptions = ["SIM", "NÃO"];
 
     const estudantesFiltrados = students.filter((est) => {
-        const matchTurma = turmaFiltro === "" || turmaFiltro === "all" || est.turma === turmaFiltro;
+        const matchTurma =
+            turmaFiltro === "" || turmaFiltro === "all" || est.turma === turmaFiltro;
         const matchNome =
-            nomeFiltro === "" || est.nome.toLowerCase().includes(nomeFiltro.toLowerCase());
-        const matchStatus = statusFiltro === "" || statusFiltro === "all" || est.status === statusFiltro;
-        const matchBolsaFamilia = bolsaFamiliaFiltro === "" ||
+            nomeFiltro === "" ||
+            est.nome.toLowerCase().includes(nomeFiltro.toLowerCase());
+        const matchStatus =
+            statusFiltro === "" || statusFiltro === "all" || est.status === statusFiltro;
+        const matchBolsaFamilia =
+            bolsaFamiliaFiltro === "" ||
             bolsaFamiliaFiltro === "all" ||
-            (est.bolsaFamilia || "NÃO") === bolsaFamiliaFiltro;
-        return matchTurma && matchNome && matchStatus && matchBolsaFamilia;
+            est.bolsaFamilia === bolsaFamiliaFiltro;
+        const matchContato =
+            contatoFiltro === "" ||
+            (est.contatos?.some(
+                (contato) =>
+                    contato.nome.toLowerCase().includes(contatoFiltro.toLowerCase()) ||
+                    formatTelefone(contato.telefone).includes(contatoFiltro)
+            ) ?? false);
+        return (
+            matchTurma &&
+            matchNome &&
+            matchStatus &&
+            matchBolsaFamilia &&
+            matchContato
+        );
     });
 
     const sortData = (data: Estudante[]) => {
         if (sortColumn) {
             return [...data].sort((a, b) => {
+                if (sortColumn === "contatos") {
+                    const aValue =
+                        a.contatos && a.contatos.length > 0
+                            ? a.contatos[0].nome.toLowerCase()
+                            : "";
+                    const bValue =
+                        b.contatos && b.contatos.length > 0
+                            ? b.contatos[0].nome.toLowerCase()
+                            : "";
+                    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+                    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+                    return 0;
+                }
                 const aValue = (a[sortColumn as keyof Estudante] as string)?.toLowerCase() || "";
                 const bValue = (b[sortColumn as keyof Estudante] as string)?.toLowerCase() || "";
                 if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
@@ -120,18 +191,32 @@ export default function CadastrarEstudantePage() {
         e.preventDefault();
         if (!editingEstudante) return;
         if (!editingEstudante.turma || !editingEstudante.nome || !editingEstudante.status) {
-            toast.error("Turma, nome e status são obrigatórios.");
+            toast.error("Por favor, preencha os campos obrigatórios: Turma, Nome e Status.");
             return;
+        }
+
+        if (editingEstudante.contatos) {
+            for (const contato of editingEstudante.contatos) {
+                if (!validateNomeContato(contato.nome)) {
+                    toast.error("O nome do contato deve ter entre 2 e 100 caracteres.");
+                    return;
+                }
+                console.log("Telefone antes da validação:", contato.telefone); // Log para depuração
+                if (!validateTelefone(contato.telefone)) {
+                    toast.error("O telefone deve ter 10 ou 11 dígitos.");
+                    return;
+                }
+            }
         }
 
         const newTurma = editingEstudante.turma.toUpperCase();
         const newNome = editingEstudante.nome.toUpperCase();
 
-        // Verifica se já existe um estudante com o mesmo nome e turma (ignorando o estudante sendo editado)
-        const duplicateExists = students.some((est, index) =>
-            est.turma.toUpperCase() === newTurma &&
-            est.nome.toUpperCase() === newNome &&
-            (editingIndex === null || index !== editingIndex)
+        const duplicateExists = students.some(
+            (est, index) =>
+                est.turma.toUpperCase() === newTurma &&
+                est.nome.toUpperCase() === newNome &&
+                (editingIndex === null || index !== editingIndex)
         );
 
         if (duplicateExists) {
@@ -139,13 +224,18 @@ export default function CadastrarEstudantePage() {
             return;
         }
 
-        const student = {
+        const student: Estudante = {
             estudanteId: editingEstudante.estudanteId || uuidv4(),
             turma: newTurma,
             nome: newNome,
             status: editingEstudante.status.toUpperCase(),
-            bolsaFamilia: editingEstudante.bolsaFamilia || "NÃO", // Valor padrão
+            bolsaFamilia: editingEstudante.bolsaFamilia,
+            contatos: editingEstudante.contatos?.map(contato => ({
+                nome: contato.nome.trim(),
+                telefone: cleanTelefone(contato.telefone)
+            })) || [],
         };
+
         const newStudents = [...students];
         if (editingIndex !== null) {
             newStudents[editingIndex] = student;
@@ -185,11 +275,13 @@ export default function CadastrarEstudantePage() {
                             variant="default"
                             onClick={() => {
                                 setEditingEstudante({
+                                    estudanteId: "",
                                     turma: "",
                                     nome: "",
                                     status: "ATIVO",
                                     bolsaFamilia: "NÃO",
-                                } as Estudante);
+                                    contatos: [],
+                                });
                                 setEditingIndex(null);
                                 setOpenModal(true);
                             }}
@@ -225,7 +317,10 @@ export default function CadastrarEstudantePage() {
                         </div>
                         <div>
                             <label className="block mb-1 font-semibold">Bolsa Família</label>
-                            <Select onValueChange={setBolsaFamiliaFiltro} value={bolsaFamiliaFiltro}>
+                            <Select
+                                onValueChange={setBolsaFamiliaFiltro}
+                                value={bolsaFamiliaFiltro}
+                            >
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione" />
                                 </SelectTrigger>
@@ -256,6 +351,14 @@ export default function CadastrarEstudantePage() {
                             </Select>
                         </div>
                         <div>
+                            <label className="block mb-1 font-semibold">Contato</label>
+                            <Input
+                                placeholder="Nome ou telefone do contato"
+                                value={contatoFiltro}
+                                onChange={(e) => setContatoFiltro(e.target.value)}
+                            />
+                        </div>
+                        <div>
                             <label className="block mb-1 font-semibold">Colunas visíveis</label>
                             <Select
                                 onValueChange={(value) => {
@@ -276,6 +379,7 @@ export default function CadastrarEstudantePage() {
                                     <SelectItem value="nome">Nome do Estudante</SelectItem>
                                     <SelectItem value="bolsaFamilia">Bolsa Família</SelectItem>
                                     <SelectItem value="status">Status</SelectItem>
+                                    <SelectItem value="contatos">Contatos</SelectItem>
                                     <SelectItem value="actions">Ações</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -330,6 +434,17 @@ export default function CadastrarEstudantePage() {
                                             )}
                                         </TableHead>
                                     )}
+                                    {visibleColumns.has("contatos") && (
+                                        <TableHead
+                                            onClick={() => handleSort("contatos")}
+                                            className="cursor-pointer font-bold text-center"
+                                        >
+                                            Contatos{" "}
+                                            {sortColumn === "contatos" && (
+                                                <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                                            )}
+                                        </TableHead>
+                                    )}
                                     {visibleColumns.has("actions") && (
                                         <TableHead className="font-bold text-center">Ações</TableHead>
                                     )}
@@ -346,7 +461,7 @@ export default function CadastrarEstudantePage() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    currentRecords.map((est, index) => (
+                                    currentRecords.map((est: Estudante, index: number) => (
                                         <TableRow key={index}>
                                             {visibleColumns.has("turma") && (
                                                 <TableCell className="text-center">{est.turma}</TableCell>
@@ -356,11 +471,22 @@ export default function CadastrarEstudantePage() {
                                             )}
                                             {visibleColumns.has("bolsaFamilia") && (
                                                 <TableCell className="text-center">
-                                                    {est.bolsaFamilia || "NÃO INFORMADO"}
+                                                    {est.bolsaFamilia}
                                                 </TableCell>
                                             )}
                                             {visibleColumns.has("status") && (
                                                 <TableCell className="text-center">{est.status}</TableCell>
+                                            )}
+                                            {visibleColumns.has("contatos") && (
+                                                <TableCell className="text-center">
+                                                    {est.contatos && est.contatos.length > 0
+                                                        ? est.contatos
+                                                            .map((contato: Contato) =>
+                                                                `${contato.nome}: ${formatTelefone(contato.telefone)}`
+                                                            )
+                                                            .join(", ")
+                                                        : "NENHUM"}
+                                                </TableCell>
                                             )}
                                             {visibleColumns.has("actions") && (
                                                 <TableCell className="text-center">
@@ -372,7 +498,7 @@ export default function CadastrarEstudantePage() {
                                                                     item.turma === est.turma &&
                                                                     item.nome === est.nome &&
                                                                     item.status === est.status &&
-                                                                    (item.bolsaFamilia || "NÃO") === (est.bolsaFamilia || "NÃO") &&
+                                                                    item.bolsaFamilia === est.bolsaFamilia &&
                                                                     item.estudanteId === est.estudanteId
                                                             );
                                                             setEditingEstudante(est);
@@ -513,6 +639,81 @@ export default function CadastrarEstudantePage() {
                                         <SelectItem value="INATIVO">INATIVO</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+                            <div>
+                                <label className="block mb-1 font-semibold">Contatos</label>
+                                {editingEstudante?.contatos?.map((contato: Contato, index: number) => (
+                                    <div
+                                        key={index}
+                                        className="flex flex-col gap-2 mb-2 p-2 border rounded"
+                                    >
+                                        <Input
+                                            placeholder="Nome do contato"
+                                            value={contato.nome}
+                                            onChange={(e) => {
+                                                const newContatos = [...(editingEstudante.contatos || [])];
+                                                newContatos[index] = {
+                                                    ...newContatos[index],
+                                                    nome: e.target.value,
+                                                };
+                                                setEditingEstudante({
+                                                    ...editingEstudante!,
+                                                    contatos: newContatos,
+                                                });
+                                            }}
+                                            required
+                                        />
+                                        <Input
+                                            placeholder="(xx) xxxxx-xxxx"
+                                            value={formatTelefone(contato.telefone)}
+                                            onChange={(e) => {
+                                                const inputValue = e.target.value;
+                                                const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
+                                                const newContatos = [...(editingEstudante.contatos || [])];
+                                                newContatos[index] = {
+                                                    ...newContatos[index],
+                                                    telefone: cleanedValue,
+                                                };
+                                                setEditingEstudante({
+                                                    ...editingEstudante!,
+                                                    contatos: newContatos,
+                                                });
+                                            }}
+                                            required
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={() => {
+                                                const newContatos = editingEstudante.contatos!.filter(
+                                                    (_, i) => i !== index
+                                                );
+                                                setEditingEstudante({
+                                                    ...editingEstudante!,
+                                                    contatos: newContatos,
+                                                });
+                                            }}
+                                        >
+                                            Remover
+                                        </Button>
+                                    </div>
+                                ))}
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        setEditingEstudante({
+                                            ...editingEstudante!,
+                                            contatos: [
+                                                ...(editingEstudante?.contatos || []),
+                                                { nome: "", telefone: "" },
+                                            ],
+                                        });
+                                    }}
+                                >
+                                    + Adicionar Contato
+                                </Button>
                             </div>
                             <Button type="submit">Salvar</Button>
                         </form>

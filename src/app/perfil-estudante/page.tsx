@@ -18,17 +18,80 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
-import { doc, getDoc, collection, addDoc, getDocs, DocumentSnapshot, DocumentData } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, getDocs } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 // Tipos e Interfaces
-interface Student { estudanteId: string; nome: string; turma: string; status: string; bolsaFamilia: string; }
-interface StudentRecord { estudanteId: string; turma: string; nome: string; faltasB1: number; faltasB2: number; faltasB3: number; faltasB4: number; totalFaltas: number; totalFaltasAteHoje: number; percentualFaltas: number; percentualFaltasAteHoje: number; percentualFrequencia: number; percentualFrequenciaAteHoje: number; diasLetivosAteHoje: number; diasLetivosB1: number; diasLetivosB2: number; diasLetivosB3: number; diasLetivosB4: number; diasLetivosAnual: number; }
-interface FamilyInteraction { id: string; type: string; date: string; description: string; createdBy: string; }
-interface AbsenceRecord { estudanteId: string; data: string; }
-interface BimesterDate { date: string; isChecked: boolean; }
-interface BimesterData { dates: BimesterDate[]; startDate: string; endDate: string; }
-interface AnoLetivoData { "1º Bimestre": BimesterData; "2º Bimestre": BimesterData; "3º Bimestre": BimesterData; "4º Bimestre": BimesterData; }
+interface Contato {
+    nome: string;
+    telefone: string;
+}
+
+interface Student {
+    estudanteId: string;
+    nome: string;
+    turma: string;
+    status: string;
+    bolsaFamilia: string;
+    contatos?: Contato[];
+}
+
+interface StudentRecord {
+    estudanteId: string;
+    turma: string;
+    nome: string;
+    faltasB1: number;
+    faltasB2: number;
+    faltasB3: number;
+    faltasB4: number;
+    totalFaltas: number;
+    totalFaltasAteHoje: number;
+    percentualFaltas: number;
+    percentualFaltasAteHoje: number;
+    percentualFrequencia: number;
+    percentualFrequenciaAteHoje: number;
+    diasLetivosAteHoje: number;
+    diasLetivosB1: number;
+    diasLetivosB2: number;
+    diasLetivosB3: number;
+    diasLetivosB4: number;
+    diasLetivosAnual: number;
+}
+
+interface FamilyInteraction {
+    id: string;
+    type: string;
+    date: string;
+    description: string;
+    createdBy: string;
+}
+
+interface AbsenceRecord {
+    estudanteId: string;
+    data: string;
+}
+
+interface BimesterDate {
+    date: string;
+    isChecked: boolean;
+}
+
+interface BimesterData {
+    dates: BimesterDate[];
+    startDate: string;
+    endDate: string;
+}
+
+interface AnoLetivoData {
+    "1º Bimestre": BimesterData;
+    "2º Bimestre": BimesterData;
+    "3º Bimestre": BimesterData;
+    "4º Bimestre": BimesterData;
+}
+
+interface BimesterDates {
+    [key: number]: { start: string; end: string };
+}
 
 // Funções Auxiliares
 function formatFirebaseDate(dateStr: string | undefined): string {
@@ -45,6 +108,15 @@ function formatDateInput(value: string): string {
     return `${numbers.slice(0, 2)}/${numbers.slice(2, 4)}/${numbers.slice(4, 8)}`;
 }
 
+function formatPhoneNumber(value: string | undefined): string {
+    if (!value) return '';
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 2) return numbers;
+    if (numbers.length <= 6) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
+    if (numbers.length <= 10) return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 6)}-${numbers.slice(6, 10)}`;
+    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
+}
+
 function parseDateToFirebase(dateStr: string): string | null {
     const [day, month, year] = dateStr.split('/').map(Number);
     if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || month < 1 || month > 12 || day > 31) return null;
@@ -57,14 +129,18 @@ function parseDate(dateStr: string): Date | null {
     return new Date(year, month - 1, day);
 }
 
-function getBimester(dateStr: string): number {
+function getBimesterByDate(dateStr: string, bimesterDates: BimesterDates): number {
     const date = parseDate(dateStr);
     if (!date || isNaN(date.getTime())) return 0;
-    const month = date.getMonth();
-    if (month < 3) return 1;
-    if (month < 6) return 2;
-    if (month < 9) return 3;
-    return 4;
+
+    for (const [bimester, { start, end }] of Object.entries(bimesterDates)) {
+        const startDate = parseDate(start);
+        const endDate = parseDate(end);
+        if (startDate && endDate && date >= startDate && date <= endDate) {
+            return Number(bimester);
+        }
+    }
+    return 0;
 }
 
 function getFrequencyColor(percentual: number): string {
@@ -72,6 +148,56 @@ function getFrequencyColor(percentual: number): string {
     else if (percentual >= 75 && percentual <= 80) return "text-yellow-600 text-center";
     else return "text-red-600 text-center";
 }
+
+const calculateDiasLetivos = async (start: string, end: string): Promise<{ ateHoje: number; b1: number; b2: number; b3: number; b4: number; anual: number }> => {
+    try {
+        const docRef = doc(db, "2025", "ano_letivo");
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+            return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
+        }
+
+        const anoData = docSnap.data() as AnoLetivoData;
+        const startDateObj = parseDate(start);
+        const endDateObj = parseDate(end) || new Date();
+        if (!startDateObj || !endDateObj) {
+            return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
+        }
+
+        let totalAteHoje = 0;
+        const totalsByBimester: { b1: number; b2: number; b3: number; b4: number } = { b1: 0, b2: 0, b3: 0, b4: 0 };
+
+        const bimesters: (keyof AnoLetivoData)[] = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
+        for (let i = 0; i < bimesters.length; i++) {
+            const bimesterKey: keyof AnoLetivoData = bimesters[i];
+            if (anoData[bimesterKey]?.dates) {
+                const bimesterCount = anoData[bimesterKey].dates.filter((d: BimesterDate) => {
+                    const date = parseDate(d.date);
+                    return d.isChecked && date && date >= startDateObj && date <= endDateObj;
+                }).length;
+                if (i === 0) totalsByBimester.b1 = bimesterCount;
+                if (i === 1) totalsByBimester.b2 = bimesterCount;
+                if (i === 2) totalsByBimester.b3 = bimesterCount;
+                if (i === 3) totalsByBimester.b4 = bimesterCount;
+                totalAteHoje += bimesterCount;
+            }
+        }
+
+        const totalAnual = totalsByBimester.b1 + totalsByBimester.b2 + totalsByBimester.b3 + totalsByBimester.b4;
+
+        return {
+            ateHoje: totalAteHoje,
+            b1: totalsByBimester.b1,
+            b2: totalsByBimester.b2,
+            b3: totalsByBimester.b3,
+            b4: totalsByBimester.b4,
+            anual: totalAnual,
+        };
+    } catch (error) {
+        console.error("Erro ao calcular dias letivos:", error);
+        return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
+    }
+};
 
 export default function StudentProfilePage() {
     const [allStudents, setAllStudents] = useState<Student[]>([]);
@@ -88,7 +214,7 @@ export default function StudentProfilePage() {
     const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
     const [searchName, setSearchName] = useState<string>("");
     const [suggestions, setSuggestions] = useState<Student[]>([]);
-    const [notification,] = useState<{ message: string; type: 'success' | 'error' | null }>({ message: '', type: null });
+    const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});
     const interactionCardRef = useRef<HTMLDivElement>(null);
 
     const auth = getAuth();
@@ -99,7 +225,12 @@ export default function StudentProfilePage() {
             const studentDoc = await getDoc(doc(db, "2025", "lista_de_estudantes"));
             if (studentDoc.exists()) {
                 const studentData = studentDoc.data() as { estudantes: Student[] };
-                const activeStudents = studentData.estudantes.filter(s => s.status === "ATIVO");
+                const activeStudents = studentData.estudantes
+                    .filter(s => s.status === "ATIVO")
+                    .map(student => ({
+                        ...student,
+                        contatos: student.contatos || [],
+                    }));
                 setAllStudents(activeStudents.sort((a, b) => a.nome.localeCompare(b.nome)));
             }
         } catch (error) {
@@ -109,74 +240,22 @@ export default function StudentProfilePage() {
         }
     }, []);
 
-    const calculateDiasLetivos = useCallback(async (): Promise<{ ateHoje: number; b1: number; b2: number; b3: number; b4: number; anual: number }> => {
+    const fetchBimesterDates = useCallback(async () => {
         try {
             const docRef = doc(db, "2025", "ano_letivo");
-            const docSnap: DocumentSnapshot<DocumentData> = await getDoc(docRef);
-            if (!docSnap.exists()) {
-                console.warn("Documento 'ano_letivo' não encontrado.");
-                return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const anoData = docSnap.data() as AnoLetivoData;
+                const dates: BimesterDates = {
+                    1: { start: anoData["1º Bimestre"]?.startDate || "01/01/2025", end: anoData["1º Bimestre"]?.endDate || "31/12/2025" },
+                    2: { start: anoData["2º Bimestre"]?.startDate || "01/01/2025", end: anoData["2º Bimestre"]?.endDate || "31/12/2025" },
+                    3: { start: anoData["3º Bimestre"]?.startDate || "01/01/2025", end: anoData["3º Bimestre"]?.endDate || "31/12/2025" },
+                    4: { start: anoData["4º Bimestre"]?.startDate || "01/01/2025", end: anoData["4º Bimestre"]?.endDate || "31/12/2025" },
+                };
+                setBimesterDates(dates);
             }
-
-            const anoData = docSnap.data() as AnoLetivoData;
-            const today: Date = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            const startDateStr = anoData["1º Bimestre"]?.startDate || "05/02/2025";
-            const startDateObj: Date | null = parseDate(startDateStr);
-            if (!startDateObj) {
-                console.warn("Data de início do 1º bimestre inválida.");
-                return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
-            }
-
-            let totalAteHoje: number = 0;
-            const totalsByBimester: { b1: number; b2: number; b3: number; b4: number } = { b1: 0, b2: 0, b3: 0, b4: 0 };
-            const diasLetivosAteHoje: string[] = [];
-
-            for (const key in anoData) {
-                const bimesterKey = key as keyof AnoLetivoData;
-                if (anoData[bimesterKey]?.dates) {
-                    const filteredDates = anoData[bimesterKey].dates.filter((d: BimesterDate): boolean => {
-                        const dateStr = d.date;
-                        if (!dateStr || typeof dateStr !== "string") return false;
-                        const date: Date | null = parseDate(dateStr);
-                        const isValid = d.isChecked && date !== null && date >= startDateObj && date <= today;
-                        if (isValid) diasLetivosAteHoje.push(dateStr);
-                        return isValid;
-                    });
-                    totalAteHoje += filteredDates.length;
-                }
-            }
-
-            diasLetivosAteHoje.sort((a, b) => (parseDate(a)?.getTime() || 0) - (parseDate(b)?.getTime() || 0));
-
-            const bimesters: (keyof AnoLetivoData)[] = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
-            for (let i: number = 0; i < bimesters.length; i++) {
-                const bimesterKey: keyof AnoLetivoData = bimesters[i];
-                const bimesterData: BimesterData | undefined = anoData[bimesterKey];
-                if (!bimesterData?.dates) continue;
-                const bimesterCount: number = bimesterData.dates.filter((d: BimesterDate): boolean =>
-                    d.isChecked && !!d.date && typeof d.date === "string" && parseDate(d.date) !== null
-                ).length;
-                if (i === 0) totalsByBimester.b1 = bimesterCount;
-                if (i === 1) totalsByBimester.b2 = bimesterCount;
-                if (i === 2) totalsByBimester.b3 = bimesterCount;
-                if (i === 3) totalsByBimester.b4 = bimesterCount;
-            }
-
-            const totalAnual: number = totalsByBimester.b1 + totalsByBimester.b2 + totalsByBimester.b3 + totalsByBimester.b4;
-
-            return {
-                ateHoje: totalAteHoje,
-                b1: totalsByBimester.b1,
-                b2: totalsByBimester.b2,
-                b3: totalsByBimester.b3,
-                b4: totalsByBimester.b4,
-                anual: totalAnual,
-            };
         } catch (error) {
-            console.error("Erro ao calcular dias letivos:", error);
-            return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
+            console.error("Erro ao buscar períodos dos bimestres:", error);
         }
     }, []);
 
@@ -198,19 +277,21 @@ export default function StudentProfilePage() {
 
             setAbsences(absenceRecords.map((record: AbsenceRecord) => record.data));
 
-            const diasLetivos = await calculateDiasLetivos();
-            const today = new Date(2025, 2, 14);
+            // Calcular dias letivos até hoje
+            const today = new Date();
             today.setHours(0, 0, 0, 0);
-            const firstDayB1 = parseDate(formatFirebaseDate((await getDoc(doc(db, "2025", "ano_letivo"))).data()?.["1º Bimestre"]?.startDate || "01/01/2025"));
+            const startDate = parseDate(bimesterDates[1]?.start) || new Date(2025, 0, 1);
+            const diasLetivos = await calculateDiasLetivos(startDate.toLocaleDateString("pt-BR"), today.toLocaleDateString("pt-BR"));
 
-            const faltasB1 = absenceRecords.filter((d: AbsenceRecord) => getBimester(d.data) === 1).length;
-            const faltasB2 = absenceRecords.filter((d: AbsenceRecord) => getBimester(d.data) === 2).length;
-            const faltasB3 = absenceRecords.filter((d: AbsenceRecord) => getBimester(d.data) === 3).length;
-            const faltasB4 = absenceRecords.filter((d: AbsenceRecord) => getBimester(d.data) === 4).length;
+            const faltasB1 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 1).length;
+            const faltasB2 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 2).length;
+            const faltasB3 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 3).length;
+            const faltasB4 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 4).length;
             const totalFaltas = faltasB1 + faltasB2 + faltasB3 + faltasB4;
+
             const totalFaltasAteHoje = absenceRecords.filter((record: AbsenceRecord) => {
                 const date = parseDate(record.data);
-                return date !== null && date >= (firstDayB1 || new Date()) && date <= today;
+                return date !== null && date >= startDate && date <= today;
             }).length;
 
             const aggregated: StudentRecord = {
@@ -250,17 +331,18 @@ export default function StudentProfilePage() {
         } finally {
             setLoadingProfile(false);
         }
-    }, [allStudents, calculateDiasLetivos]);
+    }, [allStudents, bimesterDates]);
 
     useEffect(() => {
         fetchAllStudents();
-    }, [fetchAllStudents]);
+        fetchBimesterDates();
+    }, [fetchAllStudents, fetchBimesterDates]);
 
     useEffect(() => {
-        if (selectedStudentId) {
+        if (selectedStudentId && Object.keys(bimesterDates).length > 0) {
             fetchStudentData(selectedStudentId);
         }
-    }, [selectedStudentId, fetchStudentData]);
+    }, [selectedStudentId, fetchStudentData, bimesterDates]);
 
     const handleAddInteraction = async (): Promise<void> => {
         if (!selectedStudentId || !interactionType || !interactionDate || !interactionDescription) {
@@ -349,7 +431,7 @@ export default function StudentProfilePage() {
             'Desligamento',
             'Justificativa da família',
             'Observações'
-        ] as const; // 'as const' ajuda a inferir tipos literais
+        ] as const;
 
         const consolidatedInteractions = interactions.reduce((acc, curr) => {
             if (!acc[curr.type]) acc[curr.type] = [];
@@ -357,7 +439,6 @@ export default function StudentProfilePage() {
             return acc;
         }, {} as Record<string, string[]>);
 
-        // Tipagem explícita para sortedInteractions
         const sortedInteractions: Record<string, string[]> = Object.fromEntries(
             order
                 .map(type => [type, consolidatedInteractions[type] || []])
@@ -377,9 +458,10 @@ export default function StudentProfilePage() {
                 <p><strong>Faltas:</strong> ${studentRecord.totalFaltasAteHoje}</p>
                 <h2 style="text-align: center; font-weight: bold; text-decoration: underline;">Providências da escola</h2>
                 ${Object.entries(sortedInteractions).map(([type, entries]) => `
-                    <h3 style="text-align: justify; font-size: 12px;">${type}: </h3>
-                    <ul style="text-align: justify; font-size: 12px;">${entries.map(entry => `<li>${entry}</li>`).join('')}</ul>
-                `).join('') || '<p>Nenhuma providência registrada.</p>'}
+                        <h3 style="text-align: justify; font-size: 12px;">${type}: </h3>
+                        <ul style="text-align: justify; font-size: 12px;">${entries.map(entry => `<li>${entry}</li>`).join('')}</ul>
+                    `).join('') || '<p>Nenhuma providência registrada.</p>'
+            }
                 <div style="margin-top: 40px;">
                     <p>Eu, responsável pela criança/adolescente identificado(a) acima, estou ciente que:</p>
                     <ul style="list-style-type: disc; margin-left: 20px;">
@@ -405,23 +487,23 @@ export default function StudentProfilePage() {
         const printDoc = printFrame.contentWindow?.document;
         printDoc?.open();
         printDoc?.write(`
-            <html>
-                <head>
-                    <title>Relatório do Aluno - ${student.nome}</title>
-                    <meta name="title" content="Relatório do Aluno - ${student.nome}">
-                    <style>
-                        body { font-family: Arial, sans-serif; padding: 14px; }
-                        h1 { font-size: 12px; }
-                        h2 { font-size: 12px; }
-                        h3 { font-size: 12px; margin-bottom: 5px; }
-                        ul { margin: 0 0 10px 20px; }
-                        p { margin: 5px 0; font-size: 12px; }
-                        div, p, h3 { width: 100%; }
-                    </style>
-                </head>
-                <body>${reportContent}</body>
-            </html>
-        `);
+                <html>
+                    <head>
+                        <title>Relatório do Aluno - ${student.nome}</title>
+                        <meta name="title" content="Relatório do Aluno - ${student.nome}">
+                        <style>
+                            body { font-family: Arial, sans-serif; padding: 14px; }
+                            h1 { font-size: 12px; }
+                            h2 { font-size: 12px; }
+                            h3 { font-size: 12px; margin-bottom: 5px; }
+                            ul { margin: 0 0 10px 20px; }
+                            p { margin: 5px 0; font-size: 12px; }
+                            div, p, h3 { width: 100%; }
+                        </style>
+                    </head>
+                    <body>${reportContent}</body>
+                </html>
+            `);
         printDoc?.close();
 
         // Aguarda o carregamento e dispara a impressão
@@ -433,48 +515,46 @@ export default function StudentProfilePage() {
     };
 
     return (
-        <div className="p-4 space-y-8">
-            <Toaster richColors position="top-right" />
-            <h1 className="text-3xl font-bold">Ficha do Aluno</h1>
-            {notification.message && (
-                <div className={`p-4 rounded-lg text-white ${notification.type === "success" ? "bg-green-600" : "bg-red-600"}`}>
-                    {notification.message}
-                </div>
-            )}
-
+        <div className="p-4 space-y-6">
+            <Toaster />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Card 1: Busca por Nome */}
                 <Card className="shadow-sm">
-                    <CardContent className="p-4">
-                        <div className="relative">
-                            <Label htmlFor="search-name">Pesquisar por Nome</Label>
-                            <Input
-                                id="search-name"
-                                value={searchName}
-                                onChange={(e) => handleSearchName(e.target.value)}
-                                placeholder="Digite o nome do aluno"
-                                autoComplete="off"
-                            />
-                            {suggestions.length > 0 && (
-                                <div className="absolute z-10 bg-white border rounded-md mt-1 w-full max-h-40 overflow-y-auto">
-                                    {suggestions.map((student) => (
-                                        <div
-                                            key={student.estudanteId}
-                                            className="p-2 hover:bg-gray-100 cursor-pointer"
-                                            onClick={() => handleSuggestionSelect(student.estudanteId)}
-                                        >
-                                            {student.nome} ({student.turma})
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                    <CardHeader>
+                        <CardTitle>Buscar por Nome</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div>
+                                <Label htmlFor="select-turma">Estudante</Label>
+                                <Input
+                                    value={searchName}
+                                    onChange={(e) => handleSearchName(e.target.value)}
+                                    placeholder="Digite o nome do estudante"
+                                    autoComplete="off"
+                                />
+                                {suggestions.length > 0 && (
+                                    <div className="absolute z-10 bg-white border rounded-md mt-1 w-full max-h-40 overflow-y-auto">
+                                        {suggestions.map((student) => (
+                                            <div
+                                                key={student.estudanteId}
+                                                className="p-2 hover:bg-gray-100 cursor-pointer"
+                                                onClick={() => handleSuggestionSelect(student.estudanteId)}
+                                            >
+                                                {student.nome} ({student.turma})
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Card 2: Filtros de Turma e Estudante */}
                 <Card className="shadow-sm">
-                    <CardContent className="p-4">
+                    <CardHeader>
+                        <CardTitle>Buscar por Turma/Estudante</CardTitle>
+                    </CardHeader>
+                    <CardContent>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             <div>
                                 <Label htmlFor="select-turma">Turma</Label>
@@ -553,6 +633,18 @@ export default function StudentProfilePage() {
                                 <div>
                                     <Label>Status</Label>
                                     <p className="text-lg font-semibold">{student.status}</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
+                                <div>
+                                    <Label>Contatos</Label>
+                                    <p className="text-lg font-semibold">
+                                        {student.contatos && student.contatos.length > 0
+                                            ? student.contatos
+                                                .map((contato) => `${contato.nome}: ${formatPhoneNumber(contato.telefone)}`)
+                                                .join(" / ")
+                                            : "Nenhum"}
+                                    </p>
                                 </div>
                             </div>
 
@@ -655,35 +747,35 @@ export default function StudentProfilePage() {
                             <CardTitle>Faltas Registradas</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            {absences.length > 0 ? (
+                            {absences.length > 0 && Object.keys(bimesterDates).length > 0 ? (
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div>
                                         <h3 className="text-lg font-semibold mb-2 text-center">1º Bimestre</h3>
-                                        {absences.filter((date: string) => getBimester(date) === 1).map((date: string, index: number) => (
+                                        {absences.filter((date: string) => getBimesterByDate(date, bimesterDates) === 1).map((date: string, index: number) => (
                                             <p key={index} className="text-sm text-center">{date}</p>
                                         ))}
                                     </div>
                                     <div>
                                         <h3 className="text-lg font-semibold mb-2 text-center">2º Bimestre</h3>
-                                        {absences.filter((date: string) => getBimester(date) === 2).map((date: string, index: number) => (
+                                        {absences.filter((date: string) => getBimesterByDate(date, bimesterDates) === 2).map((date: string, index: number) => (
                                             <p key={index} className="text-sm text-center">{date}</p>
                                         ))}
                                     </div>
                                     <div>
                                         <h3 className="text-lg font-semibold mb-2 text-center">3º Bimestre</h3>
-                                        {absences.filter((date: string) => getBimester(date) === 3).map((date: string, index: number) => (
+                                        {absences.filter((date: string) => getBimesterByDate(date, bimesterDates) === 3).map((date: string, index: number) => (
                                             <p key={index} className="text-sm text-center">{date}</p>
                                         ))}
                                     </div>
                                     <div>
                                         <h3 className="text-lg font-semibold mb-2 text-center">4º Bimestre</h3>
-                                        {absences.filter((date: string) => getBimester(date) === 4).map((date: string, index: number) => (
+                                        {absences.filter((date: string) => getBimesterByDate(date, bimesterDates) === 4).map((date: string, index: number) => (
                                             <p key={index} className="text-sm text-center">{date}</p>
                                         ))}
                                     </div>
                                 </div>
                             ) : (
-                                <p className="text-sm text-muted-foreground text-center">Nenhuma falta registrada.</p>
+                                <p className="text-sm text-muted-foreground text-center">Nenhuma falta registrada ou períodos de bimestre não carregados.</p>
                             )}
                         </CardContent>
                     </Card>

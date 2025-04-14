@@ -5,12 +5,18 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase.config";
 import { v4 as uuidv4 } from "uuid";
 
+export interface Contato {
+    nome: string;
+    telefone: string;
+}
+
 export interface Estudante {
     estudanteId: string;
     turma: string;
     nome: string;
     status: string;
-    bolsaFamilia: "SIM" | "NÃO"; // Novo campo
+    bolsaFamilia: "SIM" | "NÃO";
+    contatos?: Contato[];
 }
 
 export const useStudents = () => {
@@ -26,18 +32,33 @@ export const useStudents = () => {
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                // Garante que cada estudante possua um estudanteId; se não tiver, gera um novo UUID
+                // Garante que cada estudante possua um estudanteId e contatos; se não tiver, inicializa adequadamente
                 const fetchedStudents: Estudante[] = (data.estudantes || []).map((student: unknown) => {
-                    const s = student as { estudanteId?: string; bolsaFamilia: string; turma: string; nome: string; status: string };
+                    const s = student as {
+                        estudanteId?: string;
+                        bolsaFamilia: string;
+                        turma: string;
+                        nome: string;
+                        status: string;
+                        contatos?: Contato[];
+                    };
                     return {
-                        bolsaFamilia: s.bolsaFamilia,
                         estudanteId: s.estudanteId || uuidv4(),
-                        turma: s.turma,
-                        nome: s.nome,
-                        status: s.status,
+                        turma: s.turma || "",
+                        nome: s.nome || "",
+                        status: s.status || "",
+                        bolsaFamilia: s.bolsaFamilia || "NÃO",
+                        contatos: s.contatos
+                            ? s.contatos.map((contato) => ({
+                                nome: contato.nome || "",
+                                telefone: contato.telefone || "",
+                            }))
+                            : [],
                     };
                 });
                 setStudents(fetchedStudents);
+            } else {
+                setStudents([]);
             }
         } catch (err) {
             setError(err as Error);
