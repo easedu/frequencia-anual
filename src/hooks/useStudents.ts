@@ -36,14 +36,14 @@ export const useStudents = () => {
     const [error, setError] = useState<Error | null>(null);
 
     // Função para remover campos undefined recursivamente
-    const removeUndefined = (obj: any): any => {
+    const removeUndefined = (obj: unknown): unknown => {
         if (Array.isArray(obj)) {
             return obj.map(removeUndefined);
         }
         if (obj && typeof obj === "object") {
             return Object.fromEntries(
                 Object.entries(obj)
-                    .filter(([_, value]) => value !== undefined)
+                    .filter(([, value]) => value !== undefined)
                     .map(([key, value]) => [key, removeUndefined(value)])
             );
         }
