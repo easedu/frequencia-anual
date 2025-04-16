@@ -29,6 +29,16 @@ interface Contato {
     telefone: string;
 }
 
+interface Endereco {
+    rua: string;
+    numero: string;
+    bairro: string;
+    cidade: string;
+    estado: string;
+    cep: string;
+    complemento: string;
+}
+
 interface Student {
     estudanteId: string;
     nome: string;
@@ -36,6 +46,8 @@ interface Student {
     status: string;
     bolsaFamilia: string;
     contatos?: Contato[];
+    email?: string;
+    endereco?: Endereco;
 }
 
 interface StudentRecord {
@@ -117,6 +129,27 @@ function formatPhoneNumber(value: string | undefined): string {
     if (numbers.length <= 6) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
     if (numbers.length <= 10) return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 6)}-${numbers.slice(6, 10)}`;
     return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
+}
+
+function formatCep(cep: string | undefined): string {
+    if (!cep) return '';
+    const digits = cep.replace(/\D/g, '');
+    if (digits.length <= 5) return digits;
+    return `${digits.slice(0, 5)}-${digits.slice(5, 8)}`;
+}
+
+function formatAddress(endereco: Endereco | undefined): string {
+    if (!endereco) return 'Nenhum';
+    const { rua, numero, complemento, bairro, cidade, estado, cep } = endereco;
+    const parts = [
+        rua || '',
+        numero ? `nº ${numero}` : '',
+        complemento ? `, ${complemento}` : '',
+        bairro || '',
+        cidade && estado ? `${cidade}-${estado}` : cidade || estado || '',
+        cep ? formatCep(cep) : '',
+    ].filter(part => part.trim() !== '');
+    return parts.length > 0 ? parts.join(', ') : 'Nenhum';
 }
 
 function parseDateToFirebase(dateStr: string): string | null {
@@ -619,7 +652,7 @@ export default function StudentProfilePage() {
                             <CardTitle>Informações do Aluno</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                                 <div>
                                     <Label>Nome</Label>
                                     <p className="text-lg font-semibold">{student.nome}</p>
@@ -635,6 +668,14 @@ export default function StudentProfilePage() {
                                 <div>
                                     <Label>Status</Label>
                                     <p className="text-lg font-semibold">{student.status}</p>
+                                </div>
+                                <div>
+                                    <Label>E-mail</Label>
+                                    <p className="text-lg font-semibold">{student.email || "Nenhum"}</p>
+                                </div>
+                                <div className="md:col-span-3">
+                                    <Label>Endereço</Label>
+                                    <p className="text-lg font-semibold">{formatAddress(student.endereco)}</p>
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
