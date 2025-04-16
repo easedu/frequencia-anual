@@ -38,6 +38,16 @@ interface Contato {
     telefone: string;
 }
 
+// Interface para Endereço
+interface Endereco {
+    rua: string;
+    numero: string;
+    bairro: string;
+    cidade: string;
+    estado: string;
+    cep: string;
+}
+
 // Funções utilitárias para contatos
 const formatTelefone = (telefone: string): string => {
     const digits = telefone.replace(/\D/g, "");
@@ -67,6 +77,53 @@ const validateNomeContato = (nome: string): boolean => {
     return nome.trim().length >= 2 && nome.trim().length <= 100;
 };
 
+const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+};
+
+const formatCep = (cep: string): string => {
+    const digits = cep.replace(/\D/g, "");
+    if (digits.length <= 5) {
+        return digits;
+    }
+    return `${digits.slice(0, 5)}-${digits.slice(5, 8)}`;
+};
+
+const cleanCep = (cep: string): string => {
+    return cep.replace(/\D/g, "");
+};
+
+const validateCep = (cep: string): boolean => {
+    const cleanedCep = cleanCep(cep);
+    return cleanedCep.length === 8;
+};
+
+// Função para consultar a API do ViaCEP
+const fetchAddressFromCep = async (cep: string): Promise<Endereco | null> => {
+    try {
+        const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        if (!response.ok) {
+            throw new Error("Erro na consulta do CEP");
+        }
+        const data = await response.json();
+        if (data.erro) {
+            throw new Error("CEP não encontrado");
+        }
+        return {
+            rua: data.logradouro || "",
+            numero: "",
+            bairro: data.bairro || "",
+            cidade: data.localidade || "",
+            estado: data.uf || "",
+            cep: cep,
+        };
+    } catch (error) {
+        console.error("Erro ao consultar ViaCEP:", error);
+        return null;
+    }
+};
+
 export default function CadastrarEstudantePage() {
     const { students, loading, saveStudents, setStudents } = useStudents();
 
@@ -75,12 +132,23 @@ export default function CadastrarEstudantePage() {
     const [statusFiltro, setStatusFiltro] = useState<string>("");
     const [bolsaFamiliaFiltro, setBolsaFamiliaFiltro] = useState<string>("");
     const [contatoFiltro, setContatoFiltro] = useState<string>("");
+    const [emailFiltro, setEmailFiltro] = useState<string>("");
+    const [enderecoFiltro, setEnderecoFiltro] = useState<string>("");
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
     const [sortColumn, setSortColumn] = useState<string>("");
     const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
     const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
-        new Set(["turma", "nome", "bolsaFamilia", "status", "contatos", "actions"])
+        new Set([
+            "turma",
+            "nome",
+            "bolsaFamilia",
+            "status",
+            "contatos",
+            "email",
+            "endereco",
+            "actions",
+        ])
     );
 
     const [editingEstudante, setEditingEstudante] = useState<Estudante | null>(null);
@@ -94,8 +162,35 @@ export default function CadastrarEstudantePage() {
             console.log("Primeiro estudante:", students[0]);
             console.log("Contém bolsaFamilia?", "bolsaFamilia" in students[0]);
             console.log("Contém contatos?", "contatos" in students[0]);
+            console.log("Contém email?", "email" in students[0]);
+            console.log("Contém endereco?", "endereco" in students[0]);
         }
     }, [students, loading]);
+
+    // Efeito para consultar CEP quando o campo CEP muda
+    useEffect(() => {
+        if (editingEstudante?.endereco?.cep) {
+            const cleanedCep = cleanCep(editingEstudante.endereco.cep);
+            if (cleanedCep.length === 8) {
+                fetchAddressFromCep(cleanedCep).then((address) => {
+                    if (address) {
+                        setEditingEstudante({
+                            ...editingEstudante!,
+                            endereco: {
+                                ...editingEstudante!.endereco!,
+                                rua: address.rua,
+                                bairro: address.bairro,
+                                cidade: address.cidade,
+                                estado: address.estado,
+                            },
+                        });
+                    } else {
+                        toast.error("CEP não encontrado ou inválido.");
+                    }
+                });
+            }
+        }
+    }, [editingEstudante?.endereco?.cep]);
 
     // --- Filtragem e Ordenação ---
     const turmas = Array.from(new Set(students.map((est) => est.turma))).sort((a, b) =>
@@ -125,12 +220,24 @@ export default function CadastrarEstudantePage() {
                     contato.nome.toLowerCase().includes(contatoFiltro.toLowerCase()) ||
                     formatTelefone(contato.telefone).includes(contatoFiltro)
             ) ?? false);
+        const matchEmail =
+            emailFiltro === "" ||
+            (est.email?.toLowerCase().includes(emailFiltro.toLowerCase()) ?? false);
+        const matchEndereco =
+            enderecoFiltro === "" ||
+            (est.endereco
+                ? `${est.endereco.rua} ${est.endereco.numero} ${est.endereco.bairro} ${est.endereco.cidade} ${est.endereco.estado} ${formatCep(est.endereco.cep)}`
+                    .toLowerCase()
+                    .includes(enderecoFiltro.toLowerCase())
+                : false);
         return (
             matchTurma &&
             matchNome &&
             matchStatus &&
             matchBolsaFamilia &&
-            matchContato
+            matchContato &&
+            matchEmail &&
+            matchEndereco
         );
     });
 
@@ -146,6 +253,20 @@ export default function CadastrarEstudantePage() {
                         b.contatos && b.contatos.length > 0
                             ? b.contatos[0].nome.toLowerCase()
                             : "";
+                    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+                    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+                    return 0;
+                }
+                if (sortColumn === "email") {
+                    const aValue = a.email?.toLowerCase() || "";
+                    const bValue = b.email?.toLowerCase() || "";
+                    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+                    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+                    return 0;
+                }
+                if (sortColumn === "endereco") {
+                    const aValue = a.endereco?.rua.toLowerCase() || "";
+                    const bValue = b.endereco?.rua.toLowerCase() || "";
                     if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
                     if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
                     return 0;
@@ -195,6 +316,28 @@ export default function CadastrarEstudantePage() {
             return;
         }
 
+        if (editingEstudante.email && !validateEmail(editingEstudante.email)) {
+            toast.error("Por favor, insira um e-mail válido.");
+            return;
+        }
+
+        if (editingEstudante.endereco) {
+            if (
+                !editingEstudante.endereco.rua ||
+                !editingEstudante.endereco.cidade ||
+                !editingEstudante.endereco.estado
+            ) {
+                toast.error(
+                    "Por favor, preencha os campos obrigatórios do endereço: Rua, Cidade e Estado."
+                );
+                return;
+            }
+            if (editingEstudante.endereco.cep && !validateCep(editingEstudante.endereco.cep)) {
+                toast.error("O CEP deve ter 8 dígitos.");
+                return;
+            }
+        }
+
         if (editingEstudante.contatos) {
             for (const contato of editingEstudante.contatos) {
                 if (!validateNomeContato(contato.nome)) {
@@ -230,11 +373,32 @@ export default function CadastrarEstudantePage() {
             nome: newNome,
             status: editingEstudante.status.toUpperCase(),
             bolsaFamilia: editingEstudante.bolsaFamilia,
-            contatos: editingEstudante.contatos?.map(contato => ({
-                nome: contato.nome.trim(),
-                telefone: cleanTelefone(contato.telefone)
-            })) || [],
+            contatos:
+                editingEstudante.contatos?.map((contato) => ({
+                    nome: contato.nome.trim(),
+                    telefone: cleanTelefone(contato.telefone),
+                })) || [],
+            email: editingEstudante.email?.trim() || "",
         };
+
+        // Inclui endereco apenas se todos os campos obrigatórios estiverem preenchidos
+        if (
+            editingEstudante.endereco &&
+            editingEstudante.endereco.rua &&
+            editingEstudante.endereco.cidade &&
+            editingEstudante.endereco.estado
+        ) {
+            student.endereco = {
+                rua: editingEstudante.endereco.rua.trim(),
+                numero: editingEstudante.endereco.numero?.trim() || "",
+                bairro: editingEstudante.endereco.bairro?.trim() || "",
+                cidade: editingEstudante.endereco.cidade.trim(),
+                estado: editingEstudante.endereco.estado.trim(),
+                cep: editingEstudante.endereco.cep ? cleanCep(editingEstudante.endereco.cep) : "",
+            };
+        }
+
+        console.log("Student object before saving:", student); // Debug: log do objeto student
 
         const newStudents = [...students];
         if (editingIndex !== null) {
@@ -281,6 +445,15 @@ export default function CadastrarEstudantePage() {
                                     status: "ATIVO",
                                     bolsaFamilia: "NÃO",
                                     contatos: [],
+                                    email: "",
+                                    endereco: {
+                                        rua: "",
+                                        numero: "",
+                                        bairro: "",
+                                        cidade: "",
+                                        estado: "",
+                                        cep: "",
+                                    },
                                 });
                                 setEditingIndex(null);
                                 setOpenModal(true);
@@ -359,6 +532,22 @@ export default function CadastrarEstudantePage() {
                             />
                         </div>
                         <div>
+                            <label className="block mb-1 font-semibold">E-mail</label>
+                            <Input
+                                placeholder="E-mail do estudante"
+                                value={emailFiltro}
+                                onChange={(e) => setEmailFiltro(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="block mb-1 font-semibold">Endereço</label>
+                            <Input
+                                placeholder="Rua, número, bairro..."
+                                value={enderecoFiltro}
+                                onChange={(e) => setEnderecoFiltro(e.target.value)}
+                            />
+                        </div>
+                        <div>
                             <label className="block mb-1 font-semibold">Colunas visíveis</label>
                             <Select
                                 onValueChange={(value) => {
@@ -380,6 +569,8 @@ export default function CadastrarEstudantePage() {
                                     <SelectItem value="bolsaFamilia">Bolsa Família</SelectItem>
                                     <SelectItem value="status">Status</SelectItem>
                                     <SelectItem value="contatos">Contatos</SelectItem>
+                                    <SelectItem value="email">E-mail</SelectItem>
+                                    <SelectItem value="endereco">Endereço</SelectItem>
                                     <SelectItem value="actions">Ações</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -445,6 +636,28 @@ export default function CadastrarEstudantePage() {
                                             )}
                                         </TableHead>
                                     )}
+                                    {visibleColumns.has("email") && (
+                                        <TableHead
+                                            onClick={() => handleSort("email")}
+                                            className="cursor-pointer font-bold text-center"
+                                        >
+                                            E-mail{" "}
+                                            {sortColumn === "email" && (
+                                                <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                                            )}
+                                        </TableHead>
+                                    )}
+                                    {visibleColumns.has("endereco") && (
+                                        <TableHead
+                                            onClick={() => handleSort("endereco")}
+                                            className="cursor-pointer font-bold text-center"
+                                        >
+                                            Endereço{" "}
+                                            {sortColumn === "endereco" && (
+                                                <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                                            )}
+                                        </TableHead>
+                                    )}
                                     {visibleColumns.has("actions") && (
                                         <TableHead className="font-bold text-center">Ações</TableHead>
                                     )}
@@ -464,7 +677,9 @@ export default function CadastrarEstudantePage() {
                                     currentRecords.map((est: Estudante, index: number) => (
                                         <TableRow key={index}>
                                             {visibleColumns.has("turma") && (
-                                                <TableCell className="text-center">{est.turma}</TableCell>
+                                                <TableCell className="text-center">
+                                                    {est.turma}
+                                                </TableCell>
                                             )}
                                             {visibleColumns.has("nome") && (
                                                 <TableCell className="text-left">{est.nome}</TableCell>
@@ -475,16 +690,35 @@ export default function CadastrarEstudantePage() {
                                                 </TableCell>
                                             )}
                                             {visibleColumns.has("status") && (
-                                                <TableCell className="text-center">{est.status}</TableCell>
+                                                <TableCell className="text-center">
+                                                    {est.status}
+                                                </TableCell>
                                             )}
                                             {visibleColumns.has("contatos") && (
                                                 <TableCell className="text-center">
                                                     {est.contatos && est.contatos.length > 0
                                                         ? est.contatos
-                                                            .map((contato: Contato) =>
-                                                                `${contato.nome}: ${formatTelefone(contato.telefone)}`
+                                                            .map(
+                                                                (contato: Contato) =>
+                                                                    `${contato.nome}: ${formatTelefone(
+                                                                        contato.telefone
+                                                                    )}`
                                                             )
                                                             .join(", ")
+                                                        : "NENHUM"}
+                                                </TableCell>
+                                            )}
+                                            {visibleColumns.has("email") && (
+                                                <TableCell className="text-center">
+                                                    {est.email || "NENHUM"}
+                                                </TableCell>
+                                            )}
+                                            {visibleColumns.has("endereco") && (
+                                                <TableCell className="text-center">
+                                                    {est.endereco
+                                                        ? `${est.endereco.rua}, ${est.endereco.numero}, ${est.endereco.bairro}, ${est.endereco.cidade}-${est.endereco.estado}, ${formatCep(
+                                                            est.endereco.cep
+                                                        )}`
                                                         : "NENHUM"}
                                                 </TableCell>
                                             )}
@@ -498,8 +732,10 @@ export default function CadastrarEstudantePage() {
                                                                     item.turma === est.turma &&
                                                                     item.nome === est.nome &&
                                                                     item.status === est.status &&
-                                                                    item.bolsaFamilia === est.bolsaFamilia &&
-                                                                    item.estudanteId === est.estudanteId
+                                                                    item.bolsaFamilia ===
+                                                                    est.bolsaFamilia &&
+                                                                    item.estudanteId ===
+                                                                    est.estudanteId
                                                             );
                                                             setEditingEstudante(est);
                                                             setEditingIndex(globalIndex);
@@ -601,6 +837,19 @@ export default function CadastrarEstudantePage() {
                                 />
                             </div>
                             <div>
+                                <label className="block mb-1 font-semibold">E-mail</label>
+                                <Input
+                                    placeholder="Digite o e-mail"
+                                    value={editingEstudante?.email || ""}
+                                    onChange={(e) =>
+                                        setEditingEstudante({
+                                            ...editingEstudante!,
+                                            email: e.target.value,
+                                        })
+                                    }
+                                />
+                            </div>
+                            <div>
                                 <label className="block mb-1 font-semibold">Bolsa Família</label>
                                 <Select
                                     onValueChange={(value) =>
@@ -641,6 +890,102 @@ export default function CadastrarEstudantePage() {
                                 </Select>
                             </div>
                             <div>
+                                <label className="block mb-1 font-semibold">Endereço</label>
+                                <div className="space-y-2">
+                                    <Input
+                                        placeholder="CEP (xxxxx-xxx)"
+                                        value={
+                                            editingEstudante?.endereco?.cep
+                                                ? formatCep(editingEstudante.endereco.cep)
+                                                : ""
+                                        }
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            const cleanedValue = cleanCep(inputValue).slice(0, 8);
+                                            setEditingEstudante({
+                                                ...editingEstudante!,
+                                                endereco: {
+                                                    ...editingEstudante!.endereco!,
+                                                    cep: cleanedValue,
+                                                },
+                                            });
+                                        }}
+                                    />
+                                    <Input
+                                        placeholder="Rua"
+                                        value={editingEstudante?.endereco?.rua || ""}
+                                        onChange={(e) =>
+                                            setEditingEstudante({
+                                                ...editingEstudante!,
+                                                endereco: {
+                                                    ...editingEstudante!.endereco!,
+                                                    rua: e.target.value,
+                                                },
+                                            })
+                                        }
+                                        required
+                                    />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Input
+                                            placeholder="Número"
+                                            value={editingEstudante?.endereco?.numero || ""}
+                                            onChange={(e) =>
+                                                setEditingEstudante({
+                                                    ...editingEstudante!,
+                                                    endereco: {
+                                                        ...editingEstudante!.endereco!,
+                                                        numero: e.target.value,
+                                                    },
+                                                })
+                                            }
+                                        />
+                                        <Input
+                                            placeholder="Bairro"
+                                            value={editingEstudante?.endereco?.bairro || ""}
+                                            onChange={(e) =>
+                                                setEditingEstudante({
+                                                    ...editingEstudante!,
+                                                    endereco: {
+                                                        ...editingEstudante!.endereco!,
+                                                        bairro: e.target.value,
+                                                    },
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Input
+                                            placeholder="Cidade"
+                                            value={editingEstudante?.endereco?.cidade || ""}
+                                            onChange={(e) =>
+                                                setEditingEstudante({
+                                                    ...editingEstudante!,
+                                                    endereco: {
+                                                        ...editingEstudante!.endereco!,
+                                                        cidade: e.target.value,
+                                                    },
+                                                })
+                                            }
+                                            required
+                                        />
+                                        <Input
+                                            placeholder="Estado"
+                                            value={editingEstudante?.endereco?.estado || ""}
+                                            onChange={(e) =>
+                                                setEditingEstudante({
+                                                    ...editingEstudante!,
+                                                    endereco: {
+                                                        ...editingEstudante!.endereco!,
+                                                        estado: e.target.value,
+                                                    },
+                                                })
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
                                 <label className="block mb-1 font-semibold">Contatos</label>
                                 {editingEstudante?.contatos?.map((contato: Contato, index: number) => (
                                     <div
@@ -651,7 +996,9 @@ export default function CadastrarEstudantePage() {
                                             placeholder="Nome do contato"
                                             value={contato.nome}
                                             onChange={(e) => {
-                                                const newContatos = [...(editingEstudante.contatos || [])];
+                                                const newContatos = [
+                                                    ...(editingEstudante.contatos || []),
+                                                ];
                                                 newContatos[index] = {
                                                     ...newContatos[index],
                                                     nome: e.target.value,
@@ -668,8 +1015,13 @@ export default function CadastrarEstudantePage() {
                                             value={formatTelefone(contato.telefone)}
                                             onChange={(e) => {
                                                 const inputValue = e.target.value;
-                                                const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
-                                                const newContatos = [...(editingEstudante.contatos || [])];
+                                                const cleanedValue = cleanTelefone(inputValue).slice(
+                                                    0,
+                                                    11
+                                                );
+                                                const newContatos = [
+                                                    ...(editingEstudante.contatos || []),
+                                                ];
                                                 newContatos[index] = {
                                                     ...newContatos[index],
                                                     telefone: cleanedValue,
