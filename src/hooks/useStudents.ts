@@ -17,6 +17,7 @@ export interface Endereco {
     cidade: string;
     estado: string;
     cep: string;
+    complemento: string;
 }
 
 export interface Estudante {
@@ -92,6 +93,7 @@ export const useStudents = () => {
                                 cidade: s.endereco.cidade || "",
                                 estado: s.endereco.estado || "",
                                 cep: s.endereco.cep || "",
+                                complemento: s.endereco.complemento || "",
                             }
                             : undefined,
                     };
