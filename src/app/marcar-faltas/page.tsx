@@ -461,6 +461,9 @@ export default function MarcarFaltasPage() {
                     </DialogHeader>
                     <div className="mb-4">
                         <p>
+                            <span className="font-bold">Data:</span> {selectedDate}
+                        </p>
+                        <p className="mt-2">
                             <span className="font-bold">Turma:</span> {selectedClass}
                         </p>
                         <p className="mt-2 font-bold">Alunos faltantes:</p>
