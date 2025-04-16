@@ -26,7 +26,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { Edit } from "lucide-react";
+import { Edit, Trash2 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -169,7 +169,7 @@ export default function CadastrarEstudantePage() {
         }
     }, [students, loading]);
 
-    // Efeito para consultar CEP quando o campo CEP muda
+    // Efeito para consultar CEP quando o campo CEP tem 8 dígitos
     useEffect(() => {
         if (editingEstudante?.endereco?.cep) {
             const cleanedCep = cleanCep(editingEstudante.endereco.cep);
@@ -191,6 +191,27 @@ export default function CadastrarEstudantePage() {
                         toast.error("CEP não encontrado ou inválido.");
                     }
                 });
+            }
+        }
+    }, [editingEstudante?.endereco?.cep]);
+
+    // Efeito para limpar campos de endereço se CEP for incompleto
+    useEffect(() => {
+        if (editingEstudante?.endereco?.cep) {
+            const cleanedCep = cleanCep(editingEstudante.endereco.cep);
+            if (cleanedCep.length > 0 && cleanedCep.length < 8) {
+                setEditingEstudante((prev) => ({
+                    ...prev!,
+                    endereco: {
+                        ...prev!.endereco!,
+                        rua: "",
+                        numero: "",
+                        bairro: "",
+                        cidade: "",
+                        estado: "",
+                        complemento: "",
+                    },
+                }));
             }
         }
     }, [editingEstudante?.endereco?.cep]);
@@ -324,35 +345,61 @@ export default function CadastrarEstudantePage() {
             return;
         }
 
-        if (editingEstudante.endereco) {
-            if (
-                !editingEstudante.endereco.rua ||
-                !editingEstudante.endereco.cidade ||
-                !editingEstudante.endereco.estado
-            ) {
-                toast.error(
-                    "Por favor, preencha os campos obrigatórios do endereço: Rua, Cidade e Estado."
-                );
-                return;
-            }
-            if (editingEstudante.endereco.cep && !validateCep(editingEstudante.endereco.cep)) {
-                toast.error("O CEP deve ter 8 dígitos.");
-                return;
+        // Validação de contatos
+        if (editingEstudante.contatos && editingEstudante.contatos.length > 0) {
+            for (const contato of editingEstudante.contatos) {
+                const hasNome = contato.nome.trim().length > 0;
+                const hasTelefone = contato.telefone.trim().length > 0;
+
+                if (hasNome || hasTelefone) {
+                    if (!hasNome) {
+                        toast.error("O nome do contato é obrigatório quando o telefone está preenchido.");
+                        return;
+                    }
+                    if (!hasTelefone) {
+                        toast.error("O telefone do contato é obrigatório quando o nome está preenchido.");
+                        return;
+                    }
+                    if (!validateNomeContato(contato.nome)) {
+                        toast.error("O nome do contato deve ter entre 2 e 100 caracteres.");
+                        return;
+                    }
+                    if (!validateTelefone(contato.telefone)) {
+                        toast.error("O telefone deve ter 10 ou 11 dígitos.");
+                        return;
+                    }
+                }
             }
         }
 
-        if (editingEstudante.contatos) {
-            for (const contato of editingEstudante.contatos) {
-                if (!validateNomeContato(contato.nome)) {
-                    toast.error("O nome do contato deve ter entre 2 e 100 caracteres.");
-                    return;
-                }
-                console.log("Telefone antes da validação:", contato.telefone); // Log para depuração
-                if (!validateTelefone(contato.telefone)) {
-                    toast.error("O telefone deve ter 10 ou 11 dígitos.");
-                    return;
-                }
+        // Validação de endereço
+        if (editingEstudante.endereco?.cep) {
+            const cleanedCep = cleanCep(editingEstudante.endereco.cep);
+            if (!validateCep(cleanedCep)) {
+                toast.error("O CEP deve ter 8 dígitos.");
+                return;
             }
+            if (!editingEstudante.endereco.rua) {
+                toast.error("A rua é obrigatória quando o CEP está preenchido.");
+                return;
+            }
+            if (!editingEstudante.endereco.numero) {
+                toast.error("O número é obrigatório quando o CEP está preenchido.");
+                return;
+            }
+            if (!editingEstudante.endereco.bairro) {
+                toast.error("O bairro é obrigatório quando o CEP está preenchido.");
+                return;
+            }
+            if (!editingEstudante.endereco.cidade) {
+                toast.error("A cidade é obrigatória quando o CEP está preenchido.");
+                return;
+            }
+            if (!editingEstudante.endereco.estado) {
+                toast.error("O estado é obrigatório quando o CEP está preenchido.");
+                return;
+            }
+            // Complemento é opcional, não precisa de validação
         }
 
         const newTurma = editingEstudante.turma.toUpperCase();
@@ -377,27 +424,24 @@ export default function CadastrarEstudantePage() {
             status: editingEstudante.status.toUpperCase(),
             bolsaFamilia: editingEstudante.bolsaFamilia,
             contatos:
-                editingEstudante.contatos?.map((contato) => ({
-                    nome: contato.nome.trim(),
-                    telefone: cleanTelefone(contato.telefone),
-                })) || [],
+                editingEstudante.contatos
+                    ?.filter((contato) => contato.nome.trim() || contato.telefone.trim())
+                    .map((contato) => ({
+                        nome: contato.nome.trim(),
+                        telefone: cleanTelefone(contato.telefone),
+                    })) || [],
             email: editingEstudante.email?.trim() || "",
         };
 
-        // Inclui endereco apenas se todos os campos obrigatórios estiverem preenchidos
-        if (
-            editingEstudante.endereco &&
-            editingEstudante.endereco.rua &&
-            editingEstudante.endereco.cidade &&
-            editingEstudante.endereco.estado
-        ) {
+        // Inclui endereco apenas se o CEP estiver preenchido
+        if (editingEstudante.endereco?.cep) {
             student.endereco = {
                 rua: editingEstudante.endereco.rua.trim(),
-                numero: editingEstudante.endereco.numero?.trim() || "",
-                bairro: editingEstudante.endereco.bairro?.trim() || "",
+                numero: editingEstudante.endereco.numero.trim(),
+                bairro: editingEstudante.endereco.bairro.trim(),
                 cidade: editingEstudante.endereco.cidade.trim(),
                 estado: editingEstudante.endereco.estado.trim(),
-                cep: editingEstudante.endereco.cep ? cleanCep(editingEstudante.endereco.cep) : "",
+                cep: cleanCep(editingEstudante.endereco.cep),
                 complemento: editingEstudante.endereco.complemento?.trim() || "",
             };
         }
@@ -448,7 +492,7 @@ export default function CadastrarEstudantePage() {
                                     nome: "",
                                     status: "ATIVO",
                                     bolsaFamilia: "NÃO",
-                                    contatos: [],
+                                    contatos: [{ nome: "", telefone: "" }],
                                     email: "",
                                     endereco: {
                                         rua: "",
@@ -742,7 +786,13 @@ export default function CadastrarEstudantePage() {
                                                                     item.estudanteId ===
                                                                     est.estudanteId
                                                             );
-                                                            setEditingEstudante(est);
+                                                            const contatos = est.contatos?.length
+                                                                ? est.contatos
+                                                                : [{ nome: "", telefone: "" }];
+                                                            setEditingEstudante({
+                                                                ...est,
+                                                                contatos,
+                                                            });
                                                             setEditingIndex(globalIndex);
                                                             setOpenModal(true);
                                                         }}
@@ -814,20 +864,6 @@ export default function CadastrarEstudantePage() {
                         </DialogHeader>
                         <form onSubmit={handleFormSubmit} className="space-y-4 mt-4">
                             <div>
-                                <label className="block mb-1 font-semibold">Turma</label>
-                                <Input
-                                    placeholder="Digite a turma"
-                                    value={editingEstudante?.turma || ""}
-                                    onChange={(e) =>
-                                        setEditingEstudante({
-                                            ...editingEstudante!,
-                                            turma: e.target.value,
-                                        })
-                                    }
-                                    required
-                                />
-                            </div>
-                            <div>
                                 <label className="block mb-1 font-semibold">Nome</label>
                                 <Input
                                     placeholder="Digite o nome"
@@ -841,6 +877,62 @@ export default function CadastrarEstudantePage() {
                                     required
                                 />
                             </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                    <label className="block mb-1 font-semibold">Turma</label>
+                                    <Input
+                                        placeholder="Digite a turma"
+                                        value={editingEstudante?.turma || ""}
+                                        onChange={(e) =>
+                                            setEditingEstudante({
+                                                ...editingEstudante!,
+                                                turma: e.target.value,
+                                            })
+                                        }
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block mb-1 font-semibold">Bolsa Família</label>
+                                    <Select
+                                        onValueChange={(value) =>
+                                            setEditingEstudante({
+                                                ...editingEstudante!,
+                                                bolsaFamilia: value as "SIM" | "NÃO",
+                                            })
+                                        }
+                                        value={editingEstudante?.bolsaFamilia || "NÃO"}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="SIM">SIM</SelectItem>
+                                            <SelectItem value="NÃO">NÃO</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <label className="block mb-1 font-semibold">Status</label>
+                                    <Select
+                                        onValueChange={(value) =>
+                                            setEditingEstudante({
+                                                ...editingEstudante!,
+                                                status: value,
+                                            })
+                                        }
+                                        value={editingEstudante?.status || "ATIVO"}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione o Status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ATIVO">ATIVO</SelectItem>
+                                            <SelectItem value="INATIVO">INATIVO</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
                             <div>
                                 <label className="block mb-1 font-semibold">E-mail</label>
                                 <Input
@@ -853,46 +945,6 @@ export default function CadastrarEstudantePage() {
                                         })
                                     }
                                 />
-                            </div>
-                            <div>
-                                <label className="block mb-1 font-semibold">Bolsa Família</label>
-                                <Select
-                                    onValueChange={(value) =>
-                                        setEditingEstudante({
-                                            ...editingEstudante!,
-                                            bolsaFamilia: value as "SIM" | "NÃO",
-                                        })
-                                    }
-                                    value={editingEstudante?.bolsaFamilia || "NÃO"}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="SIM">SIM</SelectItem>
-                                        <SelectItem value="NÃO">NÃO</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div>
-                                <label className="block mb-1 font-semibold">Status</label>
-                                <Select
-                                    onValueChange={(value) =>
-                                        setEditingEstudante({
-                                            ...editingEstudante!,
-                                            status: value,
-                                        })
-                                    }
-                                    value={editingEstudante?.status || "ATIVO"}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione o Status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="ATIVO">ATIVO</SelectItem>
-                                        <SelectItem value="INATIVO">INATIVO</SelectItem>
-                                    </SelectContent>
-                                </Select>
                             </div>
                             <div>
                                 <label className="block mb-1 font-semibold">Endereço</label>
@@ -916,30 +968,48 @@ export default function CadastrarEstudantePage() {
                                             });
                                         }}
                                     />
-                                    <Input
-                                        placeholder="Rua"
-                                        value={editingEstudante?.endereco?.rua || ""}
-                                        onChange={(e) =>
-                                            setEditingEstudante({
-                                                ...editingEstudante!,
-                                                endereco: {
-                                                    ...editingEstudante!.endereco!,
-                                                    rua: e.target.value,
-                                                },
-                                            })
-                                        }
-                                        required
-                                    />
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                        <div className="md:col-span-3">
+                                            <Input
+                                                placeholder="Rua"
+                                                value={editingEstudante?.endereco?.rua || ""}
+                                                onChange={(e) =>
+                                                    setEditingEstudante({
+                                                        ...editingEstudante!,
+                                                        endereco: {
+                                                            ...editingEstudante!.endereco!,
+                                                            rua: e.target.value,
+                                                        },
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                        <div className="md:col-span-1">
+                                            <Input
+                                                placeholder="Número"
+                                                value={editingEstudante?.endereco?.numero || ""}
+                                                onChange={(e) =>
+                                                    setEditingEstudante({
+                                                        ...editingEstudante!,
+                                                        endereco: {
+                                                            ...editingEstudante!.endereco!,
+                                                            numero: e.target.value,
+                                                        },
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <Input
-                                            placeholder="Número"
-                                            value={editingEstudante?.endereco?.numero || ""}
+                                            placeholder="Complemento"
+                                            value={editingEstudante?.endereco?.complemento || ""}
                                             onChange={(e) =>
                                                 setEditingEstudante({
                                                     ...editingEstudante!,
                                                     endereco: {
                                                         ...editingEstudante!.endereco!,
-                                                        numero: e.target.value,
+                                                        complemento: e.target.value,
                                                     },
                                                 })
                                             }
@@ -958,48 +1028,37 @@ export default function CadastrarEstudantePage() {
                                             }
                                         />
                                     </div>
-                                    <Input
-                                        placeholder="Complemento"
-                                        value={editingEstudante?.endereco?.complemento || ""}
-                                        onChange={(e) =>
-                                            setEditingEstudante({
-                                                ...editingEstudante!,
-                                                endereco: {
-                                                    ...editingEstudante!.endereco!,
-                                                    complemento: e.target.value,
-                                                },
-                                            })
-                                        }
-                                    />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <Input
-                                            placeholder="Cidade"
-                                            value={editingEstudante?.endereco?.cidade || ""}
-                                            onChange={(e) =>
-                                                setEditingEstudante({
-                                                    ...editingEstudante!,
-                                                    endereco: {
-                                                        ...editingEstudante!.endereco!,
-                                                        cidade: e.target.value,
-                                                    },
-                                                })
-                                            }
-                                            required
-                                        />
-                                        <Input
-                                            placeholder="Estado"
-                                            value={editingEstudante?.endereco?.estado || ""}
-                                            onChange={(e) =>
-                                                setEditingEstudante({
-                                                    ...editingEstudante!,
-                                                    endereco: {
-                                                        ...editingEstudante!.endereco!,
-                                                        estado: e.target.value,
-                                                    },
-                                                })
-                                            }
-                                            required
-                                        />
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                        <div className="md:col-span-3">
+                                            <Input
+                                                placeholder="Cidade"
+                                                value={editingEstudante?.endereco?.cidade || ""}
+                                                onChange={(e) =>
+                                                    setEditingEstudante({
+                                                        ...editingEstudante!,
+                                                        endereco: {
+                                                            ...editingEstudante!.endereco!,
+                                                            cidade: e.target.value,
+                                                        },
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                        <div className="md:col-span-1">
+                                            <Input
+                                                placeholder="Estado"
+                                                value={editingEstudante?.endereco?.estado || ""}
+                                                onChange={(e) =>
+                                                    setEditingEstudante({
+                                                        ...editingEstudante!,
+                                                        endereco: {
+                                                            ...editingEstudante!.endereco!,
+                                                            estado: e.target.value,
+                                                        },
+                                                    })
+                                                }
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1008,53 +1067,51 @@ export default function CadastrarEstudantePage() {
                                 {editingEstudante?.contatos?.map((contato: Contato, index: number) => (
                                     <div
                                         key={index}
-                                        className="flex flex-col gap-2 mb-2 p-2 border rounded"
+                                        className="flex items-center gap-2 mb-2 p-2 border rounded"
                                     >
-                                        <Input
-                                            placeholder="Nome do contato"
-                                            value={contato.nome}
-                                            onChange={(e) => {
-                                                const newContatos = [
-                                                    ...(editingEstudante.contatos || []),
-                                                ];
-                                                newContatos[index] = {
-                                                    ...newContatos[index],
-                                                    nome: e.target.value,
-                                                };
-                                                setEditingEstudante({
-                                                    ...editingEstudante!,
-                                                    contatos: newContatos,
-                                                });
-                                            }}
-                                            required
-                                        />
-                                        <Input
-                                            placeholder="(xx) xxxxx-xxxx"
-                                            value={formatTelefone(contato.telefone)}
-                                            onChange={(e) => {
-                                                const inputValue = e.target.value;
-                                                const cleanedValue = cleanTelefone(inputValue).slice(
-                                                    0,
-                                                    11
-                                                );
-                                                const newContatos = [
-                                                    ...(editingEstudante.contatos || []),
-                                                ];
-                                                newContatos[index] = {
-                                                    ...newContatos[index],
-                                                    telefone: cleanedValue,
-                                                };
-                                                setEditingEstudante({
-                                                    ...editingEstudante!,
-                                                    contatos: newContatos,
-                                                });
-                                            }}
-                                            required
-                                        />
-                                        <Button
-                                            type="button"
-                                            variant="destructive"
-                                            size="sm"
+                                        <div className="flex-1">
+                                            <Input
+                                                placeholder="Nome do contato"
+                                                value={contato.nome}
+                                                onChange={(e) => {
+                                                    const newContatos = [
+                                                        ...(editingEstudante.contatos || []),
+                                                    ];
+                                                    newContatos[index] = {
+                                                        ...newContatos[index],
+                                                        nome: e.target.value,
+                                                    };
+                                                    setEditingEstudante({
+                                                        ...editingEstudante!,
+                                                        contatos: newContatos,
+                                                    });
+                                                }}
+                                            />
+                                            <Input
+                                                placeholder="(xx) xxxxx-xxxx"
+                                                value={formatTelefone(contato.telefone)}
+                                                onChange={(e) => {
+                                                    const inputValue = e.target.value;
+                                                    const cleanedValue = cleanTelefone(inputValue).slice(
+                                                        0,
+                                                        11
+                                                    );
+                                                    const newContatos = [
+                                                        ...(editingEstudante.contatos || []),
+                                                    ];
+                                                    newContatos[index] = {
+                                                        ...newContatos[index],
+                                                        telefone: cleanedValue,
+                                                    };
+                                                    setEditingEstudante({
+                                                        ...editingEstudante!,
+                                                        contatos: newContatos,
+                                                    });
+                                                }}
+                                            />
+                                        </div>
+                                        <Trash2
+                                            className="h-5 w-5 text-red-500 cursor-pointer"
                                             onClick={() => {
                                                 const newContatos = editingEstudante.contatos!.filter(
                                                     (_, i) => i !== index
@@ -1064,9 +1121,7 @@ export default function CadastrarEstudantePage() {
                                                     contatos: newContatos,
                                                 });
                                             }}
-                                        >
-                                            Remover
-                                        </Button>
+                                        />
                                     </div>
                                 ))}
                                 <Button
@@ -1085,7 +1140,9 @@ export default function CadastrarEstudantePage() {
                                     + Adicionar Contato
                                 </Button>
                             </div>
-                            <Button type="submit">Salvar</Button>
+                            <Button type="submit" className="w-full">
+                                Salvar
+                            </Button>
                         </form>
                     </DialogContent>
                 </Dialog>
