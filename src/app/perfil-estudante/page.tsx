@@ -573,6 +573,7 @@ export default function StudentProfilePage() {
             'Contato digital',
             'Conversa com a família',
             'Visita domiciliar da ABAE',
+            'Compensação de ausência',
             'Carta registrada',
             'Conselho tutelar',
             'Desligamento',
@@ -581,7 +582,7 @@ export default function StudentProfilePage() {
         ] as const;
 
         const consolidatedInteractions = interactions
-            .filter((interaction) => !interaction.sensitive) // Exclude sensitive interactions
+            .filter((interaction) => !interaction.sensitive)
             .reduce((acc, curr) => {
                 if (!acc[curr.type]) acc[curr.type] = [];
                 acc[curr.type].push(`${curr.date}: ${curr.description}`);
@@ -951,7 +952,9 @@ export default function StudentProfilePage() {
                                             <SelectItem value="Contato digital">Contato digital</SelectItem>
                                             <SelectItem value="Conversa com a família">Conversa com a família</SelectItem>
                                             <SelectItem value="Visita domiciliar da ABAE">Visita domiciliar da ABAE</SelectItem>
-                                            <SelectItem value="Compensação de ausência">Compensação de ausência</SelectItem>
+                                            {userRole === "admin" && (
+                                                <SelectItem value="Compensação de ausência">Compensação de ausência</SelectItem>
+                                            )}
                                             <SelectItem value="Carta registrada">Carta registrada</SelectItem>
                                             <SelectItem value="Conselho tutelar">Conselho tutelar</SelectItem>
                                             <SelectItem value="Desligamento">Desligamento</SelectItem>
