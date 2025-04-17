@@ -1,265 +1,25 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useState, useEffect, useCallback } from "react";
 import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
-import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where, deleteField } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import { Pencil, Trash } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-
 import { headerImageBase64 } from "@/assets/headerImage";
-
-// Tipos e Interfaces
-interface Contato {
-    nome: string;
-    telefone: string;
-}
-
-interface Endereco {
-    rua: string;
-    numero: string;
-    bairro: string;
-    cidade: string;
-    estado: string;
-    cep: string;
-    complemento: string;
-}
-
-interface Student {
-    estudanteId: string;
-    nome: string;
-    turma: string;
-    status: string;
-    bolsaFamilia: string;
-    contatos?: Contato[];
-    email?: string;
-    endereco?: Endereco;
-}
-
-interface StudentRecord {
-    estudanteId: string;
-    turma: string;
-    nome: string;
-    faltasB1: number;
-    faltasB2: number;
-    faltasB3: number;
-    faltasB4: number;
-    totalFaltas: number;
-    totalFaltasAteHoje: number;
-    percentualFaltas: number;
-    percentualFaltasAteHoje: number;
-    percentualFrequencia: number;
-    percentualFrequenciaAteHoje: number;
-    diasLetivosAteHoje: number;
-    diasLetivosB1: number;
-    diasLetivosB2: number;
-    diasLetivosB3: number;
-    diasLetivosB4: number;
-    diasLetivosAnual: number;
-}
-
-interface FamilyInteraction {
-    id: string;
-    type: string;
-    date: string;
-    description: string;
-    createdBy: string;
-    sensitive: boolean;
-}
-
-interface AbsenceRecord {
-    estudanteId: string;
-    data: string;
-}
-
-interface BimesterDate {
-    date: string;
-    isChecked: boolean;
-}
-
-interface BimesterData {
-    dates: BimesterDate[];
-    startDate: string;
-    endDate: string;
-}
-
-interface AnoLetivoData {
-    "1º Bimestre": BimesterData;
-    "2º Bimestre": BimesterData;
-    "3º Bimestre": BimesterData;
-    "4º Bimestre": BimesterData;
-}
-
-interface BimesterDates {
-    [key: number]: { start: string; end: string };
-}
-
-// Funções Auxiliares
-function formatFirebaseDate(dateStr: string | undefined): string {
-    if (!dateStr || typeof dateStr !== "string") return "01/01/1970";
-    const [year, month, day] = dateStr.split('-').map(Number);
-    if (isNaN(year) || isNaN(month) || isNaN(day)) return "01/01/1970";
-    return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
-}
-
-function formatDateInput(value: string): string {
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length <= 2) return numbers;
-    if (numbers.length <= 4) return `${numbers.slice(0, 2)}/${numbers.slice(2)}`;
-    return `${numbers.slice(0, 2)}/${numbers.slice(2, 4)}/${numbers.slice(4, 8)}`;
-}
-
-function formatPhoneNumber(value: string | undefined): string {
-    if (!value) return '';
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length <= 2) return numbers;
-    if (numbers.length <= 6) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
-    if (numbers.length <= 10) return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 6)}-${numbers.slice(6, 10)}`;
-    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
-}
-
-function formatCep(cep: string | undefined): string {
-    if (!cep) return '';
-    const digits = cep.replace(/\D/g, '');
-    if (digits.length <= 5) return digits;
-    return `${digits.slice(0, 5)}-${digits.slice(5, 8)}`;
-}
-
-function formatAddress(endereco: Endereco | undefined): string {
-    if (!endereco) return 'Nenhum';
-    const { rua, numero, complemento, bairro, cidade, estado, cep } = endereco;
-    const parts = [
-        rua || '',
-        numero ? `nº ${numero}` : '',
-        complemento ? `, ${complemento}` : '',
-        bairro || '',
-        cidade && estado ? `${cidade}-${estado}` : cidade || estado || '',
-        cep ? formatCep(cep) : '',
-    ].filter(part => part.trim() !== '');
-    return parts.length > 0 ? parts.join(', ') : 'Nenhum';
-}
-
-function parseDateToFirebase(dateStr: string): string | null {
-    const [day, month, year] = dateStr.split('/').map(Number);
-    if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || month < 1 || month > 12 || day > 31) return null;
-    return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-}
-
-function parseDate(dateStr: string): Date | null {
-    const [day, month, year] = dateStr.split('/').map(Number);
-    if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
-    return new Date(year, month - 1, day);
-}
-
-function getBimesterByDate(dateStr: string, bimesterDates: BimesterDates): number {
-    const date = parseDate(dateStr);
-    if (!date || isNaN(date.getTime())) return 0;
-
-    for (const [bimester, { start, end }] of Object.entries(bimesterDates)) {
-        const startDate = parseDate(start);
-        const endDate = parseDate(end);
-        if (startDate && endDate && date >= startDate && date <= endDate) {
-            return Number(bimester);
-        }
-    }
-    return 0;
-}
-
-function getFrequencyColor(percentual: number): string {
-    if (percentual >= 81 && percentual <= 100) return "text-green-600 text-center";
-    else if (percentual >= 75 && percentual <= 80) return "text-yellow-600 text-center";
-    else return "text-red-600 text-center";
-}
-
-const calculateDiasLetivos = async (start: string, end: string): Promise<{ ateHoje: number; b1: number; b2: number; b3: number; b4: number; anual: number }> => {
-    try {
-        const docRef = doc(db, "2025", "ano_letivo");
-        const docSnap = await getDoc(docRef);
-        if (!docSnap.exists()) {
-            return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
-        }
-
-        const anoData = docSnap.data() as AnoLetivoData;
-        const startDateObj = parseDate(start);
-        const endDateObj = parseDate(end) || new Date();
-        if (!startDateObj || !endDateObj) {
-            return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
-        }
-
-        let totalAteHoje = 0;
-        const totalsByBimester: { b1: number; b2: number; b3: number; b4: number } = { b1: 0, b2: 0, b3: 0, b4: 0 };
-        const bimesters: (keyof AnoLetivoData)[] = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
-
-        for (let i = 0; i < bimesters.length; i++) {
-            const bimesterKey = bimesters[i];
-            if (anoData[bimesterKey]?.dates) {
-                const bimesterStart = parseDate(anoData[bimesterKey].startDate);
-                const bimesterEnd = parseDate(anoData[bimesterKey].endDate);
-                if (!bimesterStart || !bimesterEnd) continue;
-
-                const bimesterCount = anoData[bimesterKey].dates.filter((d: BimesterDate) => {
-                    const date = parseDate(d.date);
-                    return d.isChecked && date && date >= bimesterStart && date <= bimesterEnd;
-                }).length;
-
-                if (i === 0) totalsByBimester.b1 = bimesterCount;
-                if (i === 1) totalsByBimester.b2 = bimesterCount;
-                if (i === 2) totalsByBimester.b3 = bimesterCount;
-                if (i === 3) totalsByBimester.b4 = bimesterCount;
-            }
-        }
-
-        for (const bimesterKey of bimesters) {
-            if (anoData[bimesterKey]?.dates) {
-                totalAteHoje += anoData[bimesterKey].dates.filter((d: BimesterDate) => {
-                    const date = parseDate(d.date);
-                    return d.isChecked && date && date >= startDateObj && date <= endDateObj;
-                }).length;
-            }
-        }
-
-        const totalAnual = totalsByBimester.b1 + totalsByBimester.b2 + totalsByBimester.b3 + totalsByBimester.b4;
-
-        return {
-            ateHoje: totalAteHoje,
-            b1: totalsByBimester.b1,
-            b2: totalsByBimester.b2,
-            b3: totalsByBimester.b3,
-            b4: totalsByBimester.b4,
-            anual: totalAnual,
-        };
-    } catch (error) {
-        console.error("Erro ao calcular dias letivos:", error);
-        return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
-    }
-};
+import SearchByNameCard from "../../components/SearchByNameCard";
+import SearchByClassCard from "../../components/SearchByClassCard";
+import StudentInfoCard from "../../components/StudentInfoCard";
+import FrequencyAllAbsencesCard from "../../components/FrequencyAllAbsencesCard";
+import FrequencyNoJustifiedCard from "../../components/FrequencyNoJustifiedCard";
+import RegisteredAbsencesCard from "../../components/RegisteredAbsencesCard";
+import RegisterAtestadoCard from "../../components/RegisterAtestadoCard";
+import AtestadoHistoryCard from "../../components/AtestadoHistoryCard";
+import RegisterInteractionCard from "../../components/RegisterInteractionCard";
+import InteractionHistoryCard from "../../components/InteractionHistoryCard";
+import { Student, StudentRecord, FamilyInteraction, Atestado, AbsenceRecord, BimesterDates, AnoLetivoData } from "../types";
+import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate } from "../utils";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function StudentProfilePage() {
     const [allStudents, setAllStudents] = useState<Student[]>([]);
@@ -267,12 +27,18 @@ export default function StudentProfilePage() {
     const [selectedStudentId, setSelectedStudentId] = useState<string>("");
     const [student, setStudent] = useState<Student | null>(null);
     const [studentRecord, setStudentRecord] = useState<StudentRecord | null>(null);
-    const [absences, setAbsences] = useState<string[]>([]);
+    const [studentRecordWithoutJustified, setStudentRecordWithoutJustified] = useState<StudentRecord | null>(null);
+    const [absences, setAbsences] = useState<AbsenceRecord[]>([]);
+    const [atestados, setAtestados] = useState<Atestado[]>([]);
     const [interactions, setInteractions] = useState<FamilyInteraction[]>([]);
     const [interactionType, setInteractionType] = useState<string>("");
     const [interactionDate, setInteractionDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
     const [interactionDescription, setInteractionDescription] = useState<string>("");
     const [interactionSensitive, setInteractionSensitive] = useState<boolean>(false);
+    const [atestadoStartDate, setAtestadoStartDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
+    const [atestadoDays, setAtestadoDays] = useState<string>("");
+    const [atestadoDescription, setAtestadoDescription] = useState<string>("");
+    const [editingAtestado, setEditingAtestado] = useState<Atestado | null>(null);
     const [, setLoadingStudents] = useState<boolean>(true);
     const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
     const [, setLoadingUserRole] = useState<boolean>(true);
@@ -282,9 +48,23 @@ export default function StudentProfilePage() {
     const [userRole, setUserRole] = useState<string | null>(null);
     const [editingInteraction, setEditingInteraction] = useState<FamilyInteraction | null>(null);
     const [showDeleteDialog, setShowDeleteDialog] = useState<string | null>(null);
-    const interactionCardRef = useRef<HTMLDivElement>(null);
+    const [showDeleteAtestadoDialog, setShowDeleteAtestadoDialog] = useState<string | null>(null);
 
     const auth = getAuth();
+
+    // Sync form fields with editingAtestado
+    useEffect(() => {
+        if (editingAtestado) {
+            setAtestadoStartDate(editingAtestado.startDate);
+            setAtestadoDays(editingAtestado.days.toString());
+            setAtestadoDescription(editingAtestado.description);
+        } else {
+            // Reset fields when not editing
+            setAtestadoStartDate(new Date().toLocaleDateString("pt-BR"));
+            setAtestadoDays("");
+            setAtestadoDescription("");
+        }
+    }, [editingAtestado]);
 
     // Fetch user role by email
     useEffect(() => {
@@ -299,7 +79,7 @@ export default function StudentProfilePage() {
                 const q = query(collection(db, "users"), where("email", "==", user.email));
                 const querySnapshot = await getDocs(q);
                 if (!querySnapshot.empty) {
-                    const userDoc = querySnapshot.docs[0]; // Assume first match is the correct user
+                    const userDoc = querySnapshot.docs[0];
                     const userData = userDoc.data();
                     setUserRole(userData.perfil || "user");
                 } else {
@@ -362,22 +142,37 @@ export default function StudentProfilePage() {
             const foundStudent = allStudents.find((s: Student) => s.estudanteId === studentId);
             if (foundStudent) setStudent(foundStudent);
 
+            // Fetch absences
             const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
             const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs
                 .map((doc) => ({
                     estudanteId: doc.data().estudanteId as string,
                     data: formatFirebaseDate(doc.data().data as string),
+                    justified: doc.data().justified || false,
+                    atestadoId: doc.data().atestadoId || undefined,
                 }))
                 .filter((record: AbsenceRecord) => record.estudanteId === studentId)
                 .sort((a, b) => (parseDateToFirebase(a.data)?.localeCompare(parseDateToFirebase(b.data) || "") || 0));
 
-            setAbsences(absenceRecords.map((record: AbsenceRecord) => record.data));
+            setAbsences(absenceRecords);
+
+            // Fetch atestados
+            const atestadosSnapshot = await getDocs(collection(db, "2025", "atestados", studentId));
+            const atestadoRecords: Atestado[] = atestadosSnapshot.docs.map((doc) => ({
+                id: doc.id,
+                startDate: formatFirebaseDate(doc.data().startDate as string),
+                days: doc.data().days as number,
+                description: doc.data().description as string,
+                createdBy: doc.data().createdBy as string || "Não informado",
+            })).sort((a, b) => (parseDateToFirebase(b.startDate)?.localeCompare(parseDateToFirebase(a.startDate) || "") || 0));
+            setAtestados(atestadoRecords);
 
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const startDate = parseDate(bimesterDates[1]?.start) || new Date(2025, 0, 1);
             const diasLetivos = await calculateDiasLetivos(startDate.toLocaleDateString("pt-BR"), today.toLocaleDateString("pt-BR"));
 
+            // Calculate for all absences
             const faltasB1 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 1).length;
             const faltasB2 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 2).length;
             const faltasB3 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 3).length;
@@ -412,6 +207,42 @@ export default function StudentProfilePage() {
             };
             setStudentRecord(aggregated);
 
+            // Calculate excluding justified absences
+            const faltasB1NoJustified = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 1 && !d.justified).length;
+            const faltasB2NoJustified = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 2 && !d.justified).length;
+            const faltasB3NoJustified = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 3 && !d.justified).length;
+            const faltasB4NoJustified = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 4 && !d.justified).length;
+            const totalFaltasNoJustified = faltasB1NoJustified + faltasB2NoJustified + faltasB3NoJustified + faltasB4NoJustified;
+
+            const totalFaltasAteHojeNoJustified = absenceRecords.filter((record: AbsenceRecord) => {
+                const date = parseDate(record.data);
+                return date !== null && date >= startDate && date <= today && !record.justified;
+            }).length;
+
+            const aggregatedNoJustified: StudentRecord = {
+                estudanteId: studentId,
+                turma: foundStudent?.turma || "",
+                nome: foundStudent?.nome || "",
+                faltasB1: faltasB1NoJustified,
+                faltasB2: faltasB2NoJustified,
+                faltasB3: faltasB3NoJustified,
+                faltasB4: faltasB4NoJustified,
+                totalFaltas: totalFaltasNoJustified,
+                totalFaltasAteHoje: totalFaltasAteHojeNoJustified,
+                percentualFaltas: diasLetivos.anual ? Number((totalFaltasNoJustified / diasLetivos.anual * 100).toFixed(1)) : 0,
+                percentualFaltasAteHoje: diasLetivos.ateHoje ? Number((totalFaltasAteHojeNoJustified / diasLetivos.ateHoje * 100).toFixed(1)) : 0,
+                percentualFrequencia: diasLetivos.anual ? Number((100 - (totalFaltasNoJustified / diasLetivos.anual * 100)).toFixed(1)) : 100,
+                percentualFrequenciaAteHoje: diasLetivos.ateHoje ? Number((100 - (totalFaltasAteHojeNoJustified / diasLetivos.ateHoje * 100)).toFixed(1)) : 100,
+                diasLetivosAteHoje: diasLetivos.ateHoje,
+                diasLetivosB1: diasLetivos.b1,
+                diasLetivosB2: diasLetivos.b2,
+                diasLetivosB3: diasLetivos.b3,
+                diasLetivosB4: diasLetivos.b4,
+                diasLetivosAnual: diasLetivos.anual,
+            };
+            setStudentRecordWithoutJustified(aggregatedNoJustified);
+
+            // Fetch interactions
             const interactionsSnapshot = await getDocs(collection(db, "2025", "interactions", studentId));
             const interactionRecords: FamilyInteraction[] = interactionsSnapshot.docs.map((doc) => ({
                 id: doc.id,
@@ -473,9 +304,7 @@ export default function StudentProfilePage() {
             await fetchStudentData(selectedStudentId);
 
             window.scrollTo(0, scrollPosition);
-            if (interactionCardRef.current) {
-                interactionCardRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-            }
+            document.getElementById("interaction-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
 
             toast.success("Interação salva com sucesso!");
         } catch (error) {
@@ -530,6 +359,169 @@ export default function StudentProfilePage() {
             toast.error("Erro ao excluir interação. Tente novamente.");
         } finally {
             setShowDeleteDialog(null);
+        }
+    };
+
+    const handleAddAtestado = async (): Promise<void> => {
+        if (!selectedStudentId || !atestadoStartDate || !atestadoDays || !atestadoDescription) {
+            toast.error("Preencha todos os campos para adicionar um atestado.");
+            return;
+        }
+
+        const formattedDate = parseDateToFirebase(atestadoStartDate);
+        const days = parseInt(atestadoDays);
+        if (!formattedDate) {
+            toast.error("Data inválida. Use o formato DD/MM/YYYY.");
+            return;
+        }
+        if (isNaN(days) || days < 1) {
+            toast.error("Número de dias inválido.");
+            return;
+        }
+
+        try {
+            const startDate = parseDate(atestadoStartDate);
+            if (!startDate) throw new Error("Data inválida");
+            const endDate = new Date(startDate);
+            endDate.setDate(startDate.getDate() + days - 1);
+
+            const atestadoData: Omit<Atestado, "id"> = {
+                startDate: formattedDate,
+                days,
+                description: atestadoDescription,
+                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
+            };
+
+            const atestadoRef = await addDoc(collection(db, "2025", "atestados", selectedStudentId), atestadoData);
+            const atestadoId = atestadoRef.id;
+
+            // Update absences within the atestado period
+            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            for (const doc of absenceSnapshot.docs) {
+                const absence = doc.data();
+                const absenceDate = parseDate(formatFirebaseDate(absence.data));
+                if (
+                    absence.estudanteId === selectedStudentId &&
+                    absenceDate &&
+                    absenceDate >= startDate &&
+                    absenceDate <= endDate
+                ) {
+                    await updateDoc(doc.ref, {
+                        justified: true,
+                        atestadoId,
+                    });
+                }
+            }
+
+            setAtestadoStartDate(new Date().toLocaleDateString("pt-BR"));
+            setAtestadoDays("");
+            setAtestadoDescription("");
+            await fetchStudentData(selectedStudentId);
+
+            document.getElementById("atestado-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+            toast.success("Atestado salvo com sucesso!");
+        } catch (error) {
+            console.error("Erro ao cadastrar atestado:", error);
+            toast.error("Erro ao salvar atestado. Tente novamente.");
+        }
+    };
+
+    const handleEditAtestado = async (): Promise<void> => {
+        if (!editingAtestado || !selectedStudentId || !atestadoStartDate || !atestadoDays || !atestadoDescription) {
+            toast.error("Preencha todos os campos para editar o atestado.");
+            return;
+        }
+
+        const formattedDate = parseDateToFirebase(atestadoStartDate);
+        const days = parseInt(atestadoDays);
+        if (!formattedDate) {
+            toast.error("Data inválida. Use o formato DD/MM/YYYY.");
+            return;
+        }
+        if (isNaN(days) || days < 1) {
+            toast.error("Número de dias inválido.");
+            return;
+        }
+
+        try {
+            const atestadoRef = doc(db, "2025", "atestados", selectedStudentId, editingAtestado.id);
+            await updateDoc(atestadoRef, {
+                startDate: formattedDate,
+                days,
+                description: atestadoDescription,
+                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
+            });
+
+            // Reset absences previously justified by this atestado
+            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            for (const doc of absenceSnapshot.docs) {
+                if (doc.data().atestadoId === editingAtestado.id) {
+                    await updateDoc(doc.ref, {
+                        justified: false,
+                        atestadoId: deleteField(),
+                    });
+                }
+            }
+
+            // Update absences within the new atestado period
+            const startDate = parseDate(atestadoStartDate);
+            if (!startDate) throw new Error("Data inválida");
+            const endDate = new Date(startDate);
+            endDate.setDate(startDate.getDate() + days - 1);
+
+            for (const doc of absenceSnapshot.docs) {
+                const absence = doc.data();
+                const absenceDate = parseDate(formatFirebaseDate(absence.data));
+                if (
+                    absence.estudanteId === selectedStudentId &&
+                    absenceDate &&
+                    absenceDate >= startDate &&
+                    absenceDate <= endDate
+                ) {
+                    await updateDoc(doc.ref, {
+                        justified: true,
+                        atestadoId: editingAtestado.id,
+                    });
+                }
+            }
+
+            setEditingAtestado(null);
+            setAtestadoStartDate(new Date().toLocaleDateString("pt-BR"));
+            setAtestadoDays("");
+            setAtestadoDescription("");
+            await fetchStudentData(selectedStudentId);
+            toast.success("Atestado atualizado com sucesso!");
+        } catch (error) {
+            console.error("Erro ao atualizar atestado:", error);
+            toast.error("Erro ao atualizar atestado. Tente novamente.");
+        }
+    };
+
+    const handleDeleteAtestado = async (atestadoId: string): Promise<void> => {
+        if (!selectedStudentId) return;
+        try {
+            const atestadoRef = doc(db, "2025", "atestados", selectedStudentId, atestadoId);
+            await deleteDoc(atestadoRef);
+
+            // Reset absences justified by this atestado
+            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            for (const doc of absenceSnapshot.docs) {
+                if (doc.data().atestadoId === atestadoId) {
+                    await updateDoc(doc.ref, {
+                        justified: false,
+                        atestadoId: deleteField(),
+                    });
+                }
+            }
+
+            await fetchStudentData(selectedStudentId);
+            toast.success("Atestado excluído com sucesso!");
+        } catch (error) {
+            console.error("Erro ao excluir atestado:", error);
+            toast.error("Erro ao excluir atestado. Tente novamente.");
+        } finally {
+            setShowDeleteAtestadoDialog(null);
         }
     };
 
@@ -596,37 +588,36 @@ export default function StudentProfilePage() {
         );
 
         const reportContent = `
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <img src="data:image/png;base64,${headerImageBase64}" alt="Cabeçalho" style="max-width: 100%; height: auto;" />
-                </div>
-                <h1 style="text-align: center; font-weight: bold; text-decoration: underline; font-size: 12px;">Comunicado de frequência abaixo de 75%</h1>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                    <p><strong>Nome:</strong> ${student.nome}</p>
-                    <p><strong>Ano:</strong> ${student.turma}</p>
-                </div>
-                <p><strong>Frequência atual:</strong> ${studentRecord.percentualFrequenciaAteHoje}%</p>
-                <p><strong>Faltas:</strong> ${studentRecord.totalFaltasAteHoje}</p>
-                <h2 style="text-align: center; font-weight: bold; text-decoration: underline;">Providências da escola</h2>
-                ${Object.entries(sortedInteractions).map(([type, entries]) => `
-                        <h3 style="text-align: justify; font-size: 12px;">${type}: </h3>
-                        <ul style="text-align: justify; font-size: 12px;">${entries.map(entry => `<li>${entry}</li>`).join('')}</ul>
-                    `).join('') || '<p>Nenhuma providência registrada.</p>'
-            }
-                <div style="margin-top: 40px;">
-                    <p>Eu, responsável pela criança/adolescente identificado(a) acima, estou ciente que:</p>
-                    <ul style="list-style-type: disc; margin-left: 20px;">
-                        <li style="text-align: justify; font-size: 12px;">A <strong>frequência mínima</strong> para garantir a aprovação dos alunos é definida em <strong>75%</strong> de presença nas atividades escolares, conforme estipulado pela LDB e regulamentado pelas instituições de ensino.</li>
-                        <li style="text-align: justify; font-size: 12px;">O <strong>Artigo 55 do Estatuto da Criança e do Adolescente (ECA)</strong> aborda o direito à educação, prevendo que a falta de frequência escolar injustificada pode levar à aplicação de medidas de proteção, inclusive com o envolvimento do Conselho Tutelar para garantir a frequência e o direito à educação.</li>
-                        <li style="text-align: justify; font-size: 12px;">A <strong>obrigação de garantir a frequência escolar</strong> recai sobre os pais ou responsáveis. Caso a criança ou adolescente tenha faltas <strong>frequentes ou injustificadas</strong>, as escolas devem comunicar o fato às autoridades competentes, como o <strong>Conselho Tutelar</strong>, para que sejam tomadas providências.</li>
-                        <li style="text-align: justify; font-size: 12px;">Segundo o Artigo 31 da IN SME Nº 26/2023, a <strong>matrícula será cancelada</strong>, após 15 (quinze) dias de faltas consecutivas, sem justificativas e esgotadas todas as possibilidades de contato com a família, responsáveis ou o próprio estudante.</li>
-                        <li style="text-align: justify; font-size: 12px;">O <strong>aprendizado</strong> é um direito da criança e do adolescente e é função da família garantir este direito.</li>
-                    </ul>
-                    <div style="display: flex; justify-content: space-between; margin-top: 20px;">
-                        <p>Ciente: _______________________________</p>
-                        <p>Data: _____ /______ /__________</p>
-                    </div>
-                </div>
-            `;
+      <div style="text-align: center; margin-bottom: 20px;">
+        <img src="data:image/png;base64,${headerImageBase64}" alt="Cabeçalho" style="max-width: 100%; height: auto;" />
+      </div>
+      <h1 style="text-align: center; font-weight: bold; text-decoration: underline; font-size: 12px;">Comunicado de frequência abaixo de 75%</h1>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+        <p><strong>Nome:</strong> ${student.nome}</p>
+        <p><strong>Ano:</strong> ${student.turma}</p>
+      </div>
+      <p><strong>Frequência atual:</strong> ${studentRecord.percentualFrequenciaAteHoje}%</p>
+      <p><strong>Faltas:</strong> ${studentRecord.totalFaltasAteHoje}</p>
+      <h2 style="text-align: center; font-weight: bold; text-decoration: underline;">Providências da escola</h2>
+      ${Object.entries(sortedInteractions).map(([type, entries]) => `
+        <h3 style="text-align: justify; font-size: 12px;">${type}: </h3>
+        <ul style="text-align: justify; font-size: 12px;">${entries.map(entry => `<li>${entry}</li>`).join('')}</ul>
+      `).join('') || '<p>Nenhuma providência registrada.</p>'}
+      <div style="margin-top: 40px;">
+        <p>Eu, responsável pela criança/adolescente identificado(a) acima, estou ciente que:</p>
+        <ul style="list-style-type: disc; margin-left: 20px;">
+          <li style="text-align: justify; font-size: 12px;">A <strong>frequência mínima</strong> para garantir a aprovação dos alunos é definida em <strong>75%</strong> de presença nas atividades escolares, conforme estipulado pela LDB e regulamentado pelas instituições de ensino.</li>
+          <li style="text-align: justify; font-size: 12px;">O <strong>Artigo 55 do Estatuto da Criança e do Adolescente (ECA)</strong> aborda o direito à educação, prevendo que a falta de frequência escolar injustificada pode levar à aplicação de medidas de proteção, inclusive com o envolvimento do Conselho Tutelar para garantir a frequência e o direito à educação.</li>
+          <li style="text-align: justify; font-size: 12px;">A <strong>obrigação de garantir a frequência escolar</strong> recai sobre os pais ou responsáveis. Caso a criança ou adolescente tenha faltas <strong>frequentes ou injustificadas</strong>, as escolas devem comunicar o fato às autoridades competentes, como o <strong>Conselho Tutelar</strong>, para que sejam tomadas providências.</li>
+          <li style="text-align: justify; font-size: 12px;">Segundo o Artigo 31 da IN SME Nº 26/2023, a <strong>matrícula será cancelada</strong>, após 15 (quinze) dias de faltas consecutivas, sem justificativas e esgotadas todas as possibilidades de contato com a família, responsáveis ou o próprio estudante.</li>
+          <li style="text-align: justify; font-size: 12px;">O <strong>aprendizado</strong> é um direito da criança e do adolescente e é função da família garantir este direito.</li>
+        </ul>
+        <div style="display: flex; justify-content: space-between; margin-top: 20px;">
+          <p>Ciente: _______________________________</p>
+          <p>Data: _____ /______ /__________</p>
+        </div>
+      </div>
+    `;
 
         const printFrame = document.createElement('iframe');
         printFrame.style.display = 'none';
@@ -635,23 +626,23 @@ export default function StudentProfilePage() {
         const printDoc = printFrame.contentWindow?.document;
         printDoc?.open();
         printDoc?.write(`
-                <html>
-                    <head>
-                        <title>Relatório do Aluno - ${student.nome}</title>
-                        <meta name="title" content="Relatório do Aluno - ${student.nome}">
-                        <style>
-                            body { font-family: Arial, sans-serif; padding: 14px; }
-                            h1 { font-size: 12px; }
-                            h2 { font-size: 12px; }
-                            h3 { font-size: 12px; margin-bottom: 5px; }
-                            ul { margin: 0 0 10px 20px; }
-                            p { margin: 5px 0; font-size: 12px; }
-                            div, p, h3 { width: 100%; }
-                        </style>
-                    </head>
-                    <body>${reportContent}</body>
-                </html>
-            `);
+      <html>
+        <head>
+          <title>Relatório do Aluno - ${student.nome}</title>
+          <meta name="title" content="Relatório do Aluno - ${student.nome}">
+          <style>
+            body { font-family: Arial, sans-serif; padding: 14px; }
+            h1 { font-size: 12px; }
+            h2 { font-size: 12px; }
+            h3 { font-size: 12px; margin-bottom: 5px; }
+            ul { margin: 0 0 10px 20px; }
+            p { margin: 5px 0; font-size: 12px; }
+            div, p, h3 { width: 100%; }
+          </style>
+        </head>
+        <body>${reportContent}</body>
+      </html>
+    `);
         printDoc?.close();
 
         printFrame.contentWindow?.focus();
@@ -665,90 +656,26 @@ export default function StudentProfilePage() {
         <div className="p-4 space-y-6">
             <Toaster />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="shadow-sm">
-                    <CardHeader>
-                        <CardTitle>Buscar por Nome</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <div>
-                                <Label htmlFor="select-turma">Estudante</Label>
-                                <Input
-                                    value={searchName}
-                                    onChange={(e) => handleSearchName(e.target.value)}
-                                    placeholder="Digite o nome do estudante"
-                                    autoComplete="off"
-                                />
-                                {suggestions.length > 0 && (
-                                    <div className="absolute z-10 bg-white border rounded-md mt-1 w-full max-h-40 overflow-y-auto">
-                                        {suggestions.map((student) => (
-                                            <div
-                                                key={student.estudanteId}
-                                                className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                onClick={() => handleSuggestionSelect(student.estudanteId)}
-                                            >
-                                                {student.nome} ({student.turma})
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="shadow-sm">
-                    <CardHeader>
-                        <CardTitle>Buscar por Turma/Estudante</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <div>
-                                <Label htmlFor="select-turma">Turma</Label>
-                                <Select
-                                    onValueChange={(value: string) => {
-                                        setSelectedTurma(value);
-                                        setSelectedStudentId("");
-                                        setSearchName("");
-                                        setSuggestions([]);
-                                    }}
-                                    value={selectedTurma}
-                                    disabled={searchName.length > 0}
-                                >
-                                    <SelectTrigger id="select-turma">
-                                        <SelectValue placeholder="Selecione uma turma" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {uniqueTurmas.map((turma: string) => (
-                                            <SelectItem key={turma} value={turma}>
-                                                {turma}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div>
-                                <Label htmlFor="select-student">Estudante</Label>
-                                <Select
-                                    onValueChange={setSelectedStudentId}
-                                    value={selectedStudentId}
-                                    disabled={!selectedTurma || searchName.length > 0}
-                                >
-                                    <SelectTrigger id="select-student">
-                                        <SelectValue placeholder="Selecione um estudante" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {studentsInTurma.map((student: Student) => (
-                                            <SelectItem key={student.estudanteId} value={student.estudanteId}>
-                                                {student.nome}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                <SearchByNameCard
+                    searchName={searchName}
+                    suggestions={suggestions}
+                    onSearchChange={handleSearchName}
+                    onSuggestionSelect={handleSuggestionSelect}
+                />
+                <SearchByClassCard
+                    selectedTurma={selectedTurma}
+                    selectedStudentId={selectedStudentId}
+                    uniqueTurmas={uniqueTurmas}
+                    studentsInTurma={studentsInTurma}
+                    searchName={searchName}
+                    onTurmaChange={(value) => {
+                        setSelectedTurma(value);
+                        setSelectedStudentId("");
+                        setSearchName("");
+                        setSuggestions([]);
+                    }}
+                    onStudentChange={setSelectedStudentId}
+                />
             </div>
 
             {loadingProfile ? (
@@ -759,368 +686,64 @@ export default function StudentProfilePage() {
                 </Card>
             ) : student && (
                 <>
-                    <Card className="shadow-md">
-                        <CardHeader>
-                            <CardTitle>Informações do Aluno</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                                <div>
-                                    <Label>Nome</Label>
-                                    <p className="text-lg font-semibold">{student.nome}</p>
-                                </div>
-                                <div>
-                                    <Label>Turma</Label>
-                                    <p className="text-lg font-semibold">{student.turma}</p>
-                                </div>
-                                <div>
-                                    <Label>Bolsa Família</Label>
-                                    <p className="text-lg font-semibold">{student.bolsaFamilia}</p>
-                                </div>
-                                <div>
-                                    <Label>Status</Label>
-                                    <p className="text-lg font-semibold">{student.status}</p>
-                                </div>
-                                <div>
-                                    <Label>E-mail</Label>
-                                    <p className="text-lg font-semibold">{student.email || "Nenhum"}</p>
-                                </div>
-                                <div className="md:col-span-3">
-                                    <Label>Endereço</Label>
-                                    <p className="text-lg font-semibold">{formatAddress(student.endereco)}</p>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
-                                <div>
-                                    <Label>Contatos</Label>
-                                    <p className="text-lg font-semibold">
-                                        {student.contatos && student.contatos.length > 0
-                                            ? student.contatos
-                                                .map((contato) => `${contato.nome}: ${formatPhoneNumber(contato.telefone)}`)
-                                                .join(" / ")
-                                            : "Nenhum"}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {studentRecord && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-lg font-semibold mb-4">Frequência</h3>
-                                        <div className="bg-gray-100 p-5 rounded-lg shadow-sm">
-                                            <h4 className="text-md font-medium mb-3 text-center">Até Hoje</h4>
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                                                <div>
-                                                    <p className="text-sm text-muted-foreground">Faltas</p>
-                                                    <p className="text-lg font-semibold">{studentRecord.totalFaltasAteHoje}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm text-muted-foreground">% Faltas</p>
-                                                    <p className="text-lg font-semibold">{studentRecord.percentualFaltasAteHoje}%</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm text-muted-foreground">% Frequência</p>
-                                                    <p className={`text-lg font-semibold ${getFrequencyColor(studentRecord.percentualFrequenciaAteHoje)}`}>
-                                                        {studentRecord.percentualFrequenciaAteHoje}%
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm text-muted-foreground">Dias Letivos</p>
-                                                    <p className="text-lg font-semibold">{studentRecord.diasLetivosAteHoje}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="overflow-x-auto">
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead className="w-1/4 text-left">Bimestre</TableHead>
-                                                    <TableHead className="w-1/6 text-center">Faltas</TableHead>
-                                                    <TableHead className="w-1/6 text-center">% Faltas</TableHead>
-                                                    <TableHead className="w-1/6 text-center">% Frequência</TableHead>
-                                                    <TableHead className="w-1/6 text-center">Dias Letivos</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                <TableRow>
-                                                    <TableCell className="text-left">1º Bimestre</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.faltasB1}</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.diasLetivosB1 ? Number((studentRecord.faltasB1 / studentRecord.diasLetivosB1 * 100).toFixed(1)) : 0}%</TableCell>
-                                                    <TableCell className={getFrequencyColor(studentRecord.diasLetivosB1 ? Number((100 - (studentRecord.faltasB1 / studentRecord.diasLetivosB1 * 100)).toFixed(1)) : 100)}>
-                                                        {studentRecord.diasLetivosB1 ? Number((100 - (studentRecord.faltasB1 / studentRecord.diasLetivosB1 * 100)).toFixed(1)) : 100}%
-                                                    </TableCell>
-                                                    <TableCell className="text-center">{studentRecord.diasLetivosB1}</TableCell>
-                                                </TableRow>
-                                                <TableRow>
-                                                    <TableCell className="text-left">2º Bimestre</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.faltasB2}</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.diasLetivosB2 ? Number((studentRecord.faltasB2 / studentRecord.diasLetivosB2 * 100).toFixed(1)) : 0}%</TableCell>
-                                                    <TableCell className={getFrequencyColor(studentRecord.diasLetivosB2 ? Number((100 - (studentRecord.faltasB2 / studentRecord.diasLetivosB2 * 100)).toFixed(1)) : 100)}>
-                                                        {studentRecord.diasLetivosB2 ? Number((100 - (studentRecord.faltasB2 / studentRecord.diasLetivosB2 * 100)).toFixed(1)) : 100}%
-                                                    </TableCell>
-                                                    <TableCell className="text-center">{studentRecord.diasLetivosB2}</TableCell>
-                                                </TableRow>
-                                                <TableRow>
-                                                    <TableCell className="text-left">3º Bimestre</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.faltasB3}</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.diasLetivosB3 ? Number((studentRecord.faltasB3 / studentRecord.diasLetivosB3 * 100).toFixed(1)) : 0}%</TableCell>
-                                                    <TableCell className={getFrequencyColor(studentRecord.diasLetivosB3 ? Number((100 - (studentRecord.faltasB3 / studentRecord.diasLetivosB3 * 100)).toFixed(1)) : 100)}>
-                                                        {studentRecord.diasLetivosB3 ? Number((100 - (studentRecord.faltasB3 / studentRecord.diasLetivosB3 * 100)).toFixed(1)) : 100}%
-                                                    </TableCell>
-                                                    <TableCell className="text-center">{studentRecord.diasLetivosB3}</TableCell>
-                                                </TableRow>
-                                                <TableRow>
-                                                    <TableCell className="text-left">4º Bimestre</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.faltasB4}</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.diasLetivosB4 ? Number((studentRecord.faltasB4 / studentRecord.diasLetivosB4 * 100).toFixed(1)) : 0}%</TableCell>
-                                                    <TableCell className={getFrequencyColor(studentRecord.diasLetivosB4 ? Number((100 - (studentRecord.faltasB4 / studentRecord.diasLetivosB4 * 100)).toFixed(1)) : 100)}>
-                                                        {studentRecord.diasLetivosB4 ? Number((100 - (studentRecord.faltasB4 / studentRecord.diasLetivosB4 * 100)).toFixed(1)) : 100}%
-                                                    </TableCell>
-                                                    <TableCell className="text-center">{studentRecord.diasLetivosB4}</TableCell>
-                                                </TableRow>
-                                                <TableRow className="bg-gray-50 font-semibold">
-                                                    <TableCell className="text-left">Anual</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.totalFaltas}</TableCell>
-                                                    <TableCell className="text-center">{studentRecord.percentualFaltas}%</TableCell>
-                                                    <TableCell className={getFrequencyColor(studentRecord.percentualFrequencia)}>
-                                                        {studentRecord.percentualFrequencia}%
-                                                    </TableCell>
-                                                    <TableCell className="text-center">{studentRecord.diasLetivosAnual}</TableCell>
-                                                </TableRow>
-                                            </TableBody>
-                                        </Table>
-                                    </div>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Faltas Registradas</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {absences.length > 0 && Object.keys(bimesterDates).length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    <div>
-                                        <h3 className="text-lg font-semibold mb-2 text-center">1º Bimestre</h3>
-                                        {absences.filter((date: string) => getBimesterByDate(date, bimesterDates) === 1).map((date: string, index: number) => (
-                                            <p key={index} className="text-sm text-center">{date}</p>
-                                        ))}
-                                    </div>
-                                    <div>
-                                        <h3 className="text-lg font-semibold mb-2 text-center">2º Bimestre</h3>
-                                        {absences.filter((date: string) => getBimesterByDate(date, bimesterDates) === 2).map((date: string, index: number) => (
-                                            <p key={index} className="text-sm text-center">{date}</p>
-                                        ))}
-                                    </div>
-                                    <div>
-                                        <h3 className="text-lg font-semibold mb-2 text-center">3º Bimestre</h3>
-                                        {absences.filter((date: string) => getBimesterByDate(date, bimesterDates) === 3).map((date: string, index: number) => (
-                                            <p key={index} className="text-sm text-center">{date}</p>
-                                        ))}
-                                    </div>
-                                    <div>
-                                        <h3 className="text-lg font-semibold mb-2 text-center">4º Bimestre</h3>
-                                        {absences.filter((date: string) => getBimesterByDate(date, bimesterDates) === 4).map((date: string, index: number) => (
-                                            <p key={index} className="text-sm text-center">{date}</p>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : (
-                                <p className="text-sm text-muted-foreground text-center">Nenhuma falta registrada ou períodos de bimestre não carregados.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <Card ref={interactionCardRef}>
-                        <CardHeader>
-                            <CardTitle>Cadastrar Interação com a Família</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <Label htmlFor="interaction-type">Tipo de Interação</Label>
-                                    <Select onValueChange={setInteractionType} value={interactionType}>
-                                        <SelectTrigger id="interaction-type">
-                                            <SelectValue placeholder="Selecione o tipo" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="Contato telefônico">Contato telefônico</SelectItem>
-                                            <SelectItem value="Contato digital">Contato digital</SelectItem>
-                                            <SelectItem value="Conversa com a família">Conversa com a família</SelectItem>
-                                            <SelectItem value="Visita domiciliar da ABAE">Visita domiciliar da ABAE</SelectItem>
-                                            {userRole === "admin" && (
-                                                <SelectItem value="Compensação de ausência">Compensação de ausência</SelectItem>
-                                            )}
-                                            <SelectItem value="Carta registrada">Carta registrada</SelectItem>
-                                            <SelectItem value="Conselho tutelar">Conselho tutelar</SelectItem>
-                                            <SelectItem value="Desligamento">Desligamento</SelectItem>
-                                            <SelectItem value="Justificativa da família">Justificativa da família</SelectItem>
-                                            <SelectItem value="Observações">Observações</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div>
-                                    <Label htmlFor="interaction-date">Data</Label>
-                                    <Input
-                                        id="interaction-date"
-                                        placeholder="dd/mm/aaaa"
-                                        value={interactionDate}
-                                        onChange={(e) => setInteractionDate(formatDateInput(e.target.value))}
-                                        maxLength={10}
-                                    />
-                                </div>
-                            </div>
-                            <div className="mt-4">
-                                <Label htmlFor="interaction-description">Descrição</Label>
-                                <Textarea
-                                    id="interaction-description"
-                                    value={interactionDescription}
-                                    onChange={(e) => setInteractionDescription(e.target.value)}
-                                    placeholder="Descreva a interação"
-                                    rows={4}
-                                />
-                            </div>
-                            <div className="mt-4 flex items-center space-x-2">
-                                <Checkbox
-                                    id="interaction-sensitive"
-                                    checked={interactionSensitive}
-                                    onCheckedChange={(checked) => setInteractionSensitive(!!checked)}
-                                />
-                                <Label htmlFor="interaction-sensitive">Marcar como conteúdo sensível</Label>
-                            </div>
-                            <Button
-                                onClick={editingInteraction ? handleEditInteraction : handleAddInteraction}
-                                className="mt-4"
-                            >
-                                {editingInteraction ? "Salvar Alterações" : "Adicionar Interação"}
-                            </Button>
-                            {editingInteraction && (
-                                <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                        setEditingInteraction(null);
-                                        setInteractionType("");
-                                        setInteractionDate(new Date().toLocaleDateString("pt-BR"));
-                                        setInteractionDescription("");
-                                        setInteractionSensitive(false);
-                                    }}
-                                    className="mt-4 ml-2"
-                                >
-                                    Cancelar
-                                </Button>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader className="flex flex-row justify-between items-center">
-                            <CardTitle>Histórico de Interações com a Família</CardTitle>
-                            <Button onClick={handlePrintReport} disabled={!student || !studentRecord}>
-                                Imprimir Relatório
-                            </Button>
-                        </CardHeader>
-                        <CardContent>
-                            {interactions.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>Tipo</TableHead>
-                                                <TableHead>Data</TableHead>
-                                                <TableHead>Descrição</TableHead>
-                                                <TableHead>Criado por</TableHead>
-                                                {userRole === "admin" && <TableHead className="w-[100px] text-right">Ações</TableHead>}
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {interactions.map((interaction: FamilyInteraction) => (
-                                                <TableRow
-                                                    key={interaction.id}
-                                                    className={interaction.sensitive ? "bg-red-50" : ""}
-                                                >
-                                                    <TableCell>
-                                                        {interaction.type}
-                                                        {interaction.sensitive && (
-                                                            <span className="ml-2 inline-block bg-red-500 text-white text-xs px-2 py-1 rounded">
-                                                                Sensível
-                                                            </span>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>{interaction.date}</TableCell>
-                                                    <TableCell>{interaction.description}</TableCell>
-                                                    <TableCell>{interaction.createdBy}</TableCell>
-                                                    {userRole === "admin" && (
-                                                        <TableCell className="text-right">
-                                                            <TooltipProvider>
-                                                                <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            onClick={() => {
-                                                                                setEditingInteraction(interaction);
-                                                                                setInteractionType(interaction.type);
-                                                                                setInteractionDate(interaction.date);
-                                                                                setInteractionDescription(interaction.description);
-                                                                                setInteractionSensitive(interaction.sensitive);
-                                                                                interactionCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                                                                            }}
-                                                                        >
-                                                                            <Pencil className="h-4 w-4" />
-                                                                        </Button>
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent>
-                                                                        <p>Editar interação</p>
-                                                                    </TooltipContent>
-                                                                </Tooltip>
-                                                                <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            onClick={() => setShowDeleteDialog(interaction.id)}
-                                                                        >
-                                                                            <Trash className="h-4 w-4 text-red-500" />
-                                                                        </Button>
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent>
-                                                                        <p>Excluir interação</p>
-                                                                    </TooltipContent>
-                                                                </Tooltip>
-                                                            </TooltipProvider>
-                                                        </TableCell>
-                                                    )}
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            ) : (
-                                <p className="text-sm text-muted-foreground">Nenhuma interação registrada.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <AlertDialog open={!!showDeleteDialog} onOpenChange={() => setShowDeleteDialog(null)}>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    Tem certeza de que deseja excluir esta interação? Esta ação não pode ser desfeita.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => showDeleteDialog && handleDeleteInteraction(showDeleteDialog)}>
-                                    Excluir
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
+                    <StudentInfoCard student={student} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FrequencyAllAbsencesCard studentRecord={studentRecord} />
+                        <FrequencyNoJustifiedCard studentRecordWithoutJustified={studentRecordWithoutJustified} />
+                    </div>
+                    <RegisteredAbsencesCard absences={absences} atestados={atestados} bimesterDates={bimesterDates} />
+                    {userRole === "admin" && (
+                        <>
+                            <RegisterAtestadoCard
+                                atestadoStartDate={atestadoStartDate}
+                                atestadoDays={atestadoDays}
+                                atestadoDescription={atestadoDescription}
+                                editingAtestado={editingAtestado}
+                                setAtestadoStartDate={setAtestadoStartDate}
+                                setAtestadoDays={setAtestadoDays}
+                                setAtestadoDescription={setAtestadoDescription}
+                                setEditingAtestado={setEditingAtestado}
+                                onAddAtestado={handleAddAtestado}
+                                onEditAtestado={handleEditAtestado}
+                                id="atestado-card"
+                            />
+                            <AtestadoHistoryCard
+                                atestados={atestados}
+                                userRole={userRole}
+                                showDeleteAtestadoDialog={showDeleteAtestadoDialog}
+                                setShowDeleteAtestadoDialog={setShowDeleteAtestadoDialog}
+                                setEditingAtestado={setEditingAtestado}
+                                onDeleteAtestado={handleDeleteAtestado}
+                            />
+                        </>
+                    )}
+                    <RegisterInteractionCard
+                        interactionType={interactionType}
+                        interactionDate={interactionDate}
+                        interactionDescription={interactionDescription}
+                        interactionSensitive={interactionSensitive}
+                        editingInteraction={editingInteraction}
+                        userRole={userRole}
+                        setInteractionType={setInteractionType}
+                        setInteractionDate={setInteractionDate}
+                        setInteractionDescription={setInteractionDescription}
+                        setInteractionSensitive={setInteractionSensitive}
+                        setEditingInteraction={setEditingInteraction}
+                        onAddInteraction={handleAddInteraction}
+                        onEditInteraction={handleEditInteraction}
+                        id="interaction-card"
+                    />
+                    <InteractionHistoryCard
+                        interactions={interactions}
+                        student={student}
+                        studentRecord={studentRecord}
+                        userRole={userRole}
+                        showDeleteDialog={showDeleteDialog}
+                        setShowDeleteDialog={setShowDeleteDialog}
+                        setEditingInteraction={setEditingInteraction}
+                        onDeleteInteraction={handleDeleteInteraction}
+                        onPrintReport={handlePrintReport}
+                    />
                 </>
             )}
         </div>
