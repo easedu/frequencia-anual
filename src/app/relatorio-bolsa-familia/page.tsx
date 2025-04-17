@@ -24,6 +24,7 @@ interface AbsenceRecord {
     turma: string;
     data: string;
     docId: string;
+    justified: boolean; // Novo campo para indicar se a falta é justificada
 }
 
 interface AnoLetivoData {
@@ -56,9 +57,12 @@ export default function RelatorioFaltasPage() {
     const [searchFilter, setSearchFilter] = useState<string>("");
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
-    const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set([new Date().toLocaleString('pt-BR', { month: 'long' }).charAt(0).toUpperCase() + new Date().toLocaleString('pt-BR', { month: 'long' }).slice(1)]));
+    const [selectedMonths, setSelectedMonths] = useState<Set<string>>(
+        new Set([new Date().toLocaleString('pt-BR', { month: 'long' }).charAt(0).toUpperCase() + new Date().toLocaleString('pt-BR', { month: 'long' }).slice(1)])
+    );
     const [showAbsences, setShowAbsences] = useState<boolean>(false);
     const [showFrequency, setShowFrequency] = useState<boolean>(true);
+    const [excludeJustified, setExcludeJustified] = useState<boolean>(false); // Novo estado para controlar exclusão de faltas justificadas
     const [diasLetivos, setDiasLetivos] = useState<{ [key: number]: number }>({});
 
     const parseDate = (dateStr: string): Date | null => {
@@ -128,6 +132,7 @@ export default function RelatorioFaltasPage() {
                     turma: doc.data().turma,
                     data: doc.data().data,
                     docId: doc.id,
+                    justified: doc.data().justified || false, // Recupera o campo justified
                 }));
                 setAbsenceRecords(records);
             } catch (error) {
@@ -161,7 +166,8 @@ export default function RelatorioFaltasPage() {
             const recordDate = new Date(record.data);
             return (
                 record.estudanteId === estudanteId &&
-                recordDate.getMonth() === monthIndex
+                recordDate.getMonth() === monthIndex &&
+                (!excludeJustified || !record.justified) // Exclui faltas justificadas se excludeJustified for true
             );
         }).length;
     };
@@ -236,7 +242,7 @@ export default function RelatorioFaltasPage() {
                 </style>
             </head>
             <body>
-                <h1>Relatório de Faltas</h1>
+                <h1>Relatório de Faltas${excludeJustified ? ' (Excluindo Faltas Justificadas)' : ''}</h1>
                 <table>
                     <thead>
                         <tr>
@@ -361,6 +367,14 @@ export default function RelatorioFaltasPage() {
                                     onCheckedChange={(checked) => setShowFrequency(checked as boolean)}
                                 />
                                 <label htmlFor="showFrequency" className="text-sm">Frequência</label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="excludeJustified"
+                                    checked={excludeJustified}
+                                    onCheckedChange={(checked) => setExcludeJustified(checked as boolean)}
+                                />
+                                <label htmlFor="excludeJustified" className="text-sm">Excluir Justificadas</label>
                             </div>
                         </div>
 
