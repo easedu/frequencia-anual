@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     Table,
     TableBody,
@@ -18,8 +19,20 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
-import { doc, getDoc, collection, addDoc, getDocs } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { Pencil, Trash } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { headerImageBase64 } from "@/assets/headerImage";
 
@@ -78,6 +91,7 @@ interface FamilyInteraction {
     date: string;
     description: string;
     createdBy: string;
+    sensitive: boolean;
 }
 
 interface AbsenceRecord {
@@ -203,7 +217,6 @@ const calculateDiasLetivos = async (start: string, end: string): Promise<{ ateHo
         const totalsByBimester: { b1: number; b2: number; b3: number; b4: number } = { b1: 0, b2: 0, b3: 0, b4: 0 };
         const bimesters: (keyof AnoLetivoData)[] = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
 
-        // Calculate school days for each bimester based on its full period
         for (let i = 0; i < bimesters.length; i++) {
             const bimesterKey = bimesters[i];
             if (anoData[bimesterKey]?.dates) {
@@ -223,7 +236,6 @@ const calculateDiasLetivos = async (start: string, end: string): Promise<{ ateHo
             }
         }
 
-        // Calculate school days up to today within the provided start and end dates
         for (const bimesterKey of bimesters) {
             if (anoData[bimesterKey]?.dates) {
                 totalAteHoje += anoData[bimesterKey].dates.filter((d: BimesterDate) => {
@@ -260,14 +272,48 @@ export default function StudentProfilePage() {
     const [interactionType, setInteractionType] = useState<string>("");
     const [interactionDate, setInteractionDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
     const [interactionDescription, setInteractionDescription] = useState<string>("");
+    const [interactionSensitive, setInteractionSensitive] = useState<boolean>(false);
     const [, setLoadingStudents] = useState<boolean>(true);
     const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
+    const [, setLoadingUserRole] = useState<boolean>(true);
     const [searchName, setSearchName] = useState<string>("");
     const [suggestions, setSuggestions] = useState<Student[]>([]);
     const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});
+    const [userRole, setUserRole] = useState<string | null>(null);
+    const [editingInteraction, setEditingInteraction] = useState<FamilyInteraction | null>(null);
+    const [showDeleteDialog, setShowDeleteDialog] = useState<string | null>(null);
     const interactionCardRef = useRef<HTMLDivElement>(null);
 
     const auth = getAuth();
+
+    // Fetch user role by email
+    useEffect(() => {
+        const fetchUserRole = async () => {
+            setLoadingUserRole(true);
+            try {
+                const user = auth.currentUser;
+                if (!user || !user.email) {
+                    setUserRole("user");
+                    return;
+                }
+                const q = query(collection(db, "users"), where("email", "==", user.email));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                    const userDoc = querySnapshot.docs[0]; // Assume first match is the correct user
+                    const userData = userDoc.data();
+                    setUserRole(userData.perfil || "user");
+                } else {
+                    setUserRole("user");
+                }
+            } catch (error) {
+                console.error("Erro ao carregar perfil do usuário:", error);
+                setUserRole("user");
+            } finally {
+                setLoadingUserRole(false);
+            }
+        };
+        fetchUserRole();
+    }, [auth]);
 
     const fetchAllStudents = useCallback(async (): Promise<void> => {
         try {
@@ -327,7 +373,6 @@ export default function StudentProfilePage() {
 
             setAbsences(absenceRecords.map((record: AbsenceRecord) => record.data));
 
-            // Calcular dias letivos até hoje
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const startDate = parseDate(bimesterDates[1]?.start) || new Date(2025, 0, 1);
@@ -374,6 +419,7 @@ export default function StudentProfilePage() {
                 date: formatFirebaseDate(doc.data().date as string),
                 description: doc.data().description as string,
                 createdBy: doc.data().createdBy as string || "Não informado",
+                sensitive: doc.data().sensitive as boolean || false,
             })).sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
             setInteractions(interactionRecords);
         } catch (error) {
@@ -416,12 +462,14 @@ export default function StudentProfilePage() {
                 date: formattedDate,
                 description: interactionDescription,
                 createdBy: currentUser,
+                sensitive: interactionSensitive,
             };
 
             await addDoc(collection(db, "2025", "interactions", selectedStudentId), interactionData);
             setInteractionType("");
             setInteractionDate(new Date().toLocaleDateString("pt-BR"));
             setInteractionDescription("");
+            setInteractionSensitive(false);
             await fetchStudentData(selectedStudentId);
 
             window.scrollTo(0, scrollPosition);
@@ -433,6 +481,55 @@ export default function StudentProfilePage() {
         } catch (error) {
             console.error("Erro ao cadastrar interação:", error);
             toast.error("Erro ao salvar interação. Tente novamente.");
+        }
+    };
+
+    const handleEditInteraction = async (): Promise<void> => {
+        if (!editingInteraction || !selectedStudentId || !interactionType || !interactionDate || !interactionDescription) {
+            toast.error("Preencha todos os campos para editar a interação.");
+            return;
+        }
+
+        const formattedDate = parseDateToFirebase(interactionDate);
+        if (!formattedDate) {
+            toast.error("Data inválida. Use o formato DD/MM/YYYY.");
+            return;
+        }
+
+        try {
+            const interactionRef = doc(db, "2025", "interactions", selectedStudentId, editingInteraction.id);
+            await updateDoc(interactionRef, {
+                type: interactionType,
+                date: formattedDate,
+                description: interactionDescription,
+                sensitive: interactionSensitive,
+                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
+            });
+            setEditingInteraction(null);
+            setInteractionType("");
+            setInteractionDate(new Date().toLocaleDateString("pt-BR"));
+            setInteractionDescription("");
+            setInteractionSensitive(false);
+            await fetchStudentData(selectedStudentId);
+            toast.success("Interação atualizada com sucesso!");
+        } catch (error) {
+            console.error("Erro ao atualizar interação:", error);
+            toast.error("Erro ao atualizar interação. Tente novamente.");
+        }
+    };
+
+    const handleDeleteInteraction = async (interactionId: string): Promise<void> => {
+        if (!selectedStudentId) return;
+        try {
+            const interactionRef = doc(db, "2025", "interactions", selectedStudentId, interactionId);
+            await deleteDoc(interactionRef);
+            await fetchStudentData(selectedStudentId);
+            toast.success("Interação excluída com sucesso!");
+        } catch (error) {
+            console.error("Erro ao excluir interação:", error);
+            toast.error("Erro ao excluir interação. Tente novamente.");
+        } finally {
+            setShowDeleteDialog(null);
         }
     };
 
@@ -483,11 +580,13 @@ export default function StudentProfilePage() {
             'Observações'
         ] as const;
 
-        const consolidatedInteractions = interactions.reduce((acc, curr) => {
-            if (!acc[curr.type]) acc[curr.type] = [];
-            acc[curr.type].push(`${curr.date}: ${curr.description}`);
-            return acc;
-        }, {} as Record<string, string[]>);
+        const consolidatedInteractions = interactions
+            .filter((interaction) => !interaction.sensitive) // Exclude sensitive interactions
+            .reduce((acc, curr) => {
+                if (!acc[curr.type]) acc[curr.type] = [];
+                acc[curr.type].push(`${curr.date}: ${curr.description}`);
+                return acc;
+            }, {} as Record<string, string[]>);
 
         const sortedInteractions: Record<string, string[]> = Object.fromEntries(
             order
@@ -528,12 +627,10 @@ export default function StudentProfilePage() {
                 </div>
             `;
 
-        // Cria um iframe oculto
         const printFrame = document.createElement('iframe');
         printFrame.style.display = 'none';
         document.body.appendChild(printFrame);
 
-        // Escreve o conteúdo no iframe
         const printDoc = printFrame.contentWindow?.document;
         printDoc?.open();
         printDoc?.write(`
@@ -556,7 +653,6 @@ export default function StudentProfilePage() {
             `);
         printDoc?.close();
 
-        // Aguarda o carregamento e dispara a impressão
         printFrame.contentWindow?.focus();
         setTimeout(() => {
             printFrame.contentWindow?.print();
@@ -884,9 +980,35 @@ export default function StudentProfilePage() {
                                     rows={4}
                                 />
                             </div>
-                            <Button onClick={handleAddInteraction} className="mt-4">
-                                Adicionar Interação
+                            <div className="mt-4 flex items-center space-x-2">
+                                <Checkbox
+                                    id="interaction-sensitive"
+                                    checked={interactionSensitive}
+                                    onCheckedChange={(checked) => setInteractionSensitive(!!checked)}
+                                />
+                                <Label htmlFor="interaction-sensitive">Marcar como conteúdo sensível</Label>
+                            </div>
+                            <Button
+                                onClick={editingInteraction ? handleEditInteraction : handleAddInteraction}
+                                className="mt-4"
+                            >
+                                {editingInteraction ? "Salvar Alterações" : "Adicionar Interação"}
                             </Button>
+                            {editingInteraction && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setEditingInteraction(null);
+                                        setInteractionType("");
+                                        setInteractionDate(new Date().toLocaleDateString("pt-BR"));
+                                        setInteractionDescription("");
+                                        setInteractionSensitive(false);
+                                    }}
+                                    className="mt-4 ml-2"
+                                >
+                                    Cancelar
+                                </Button>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -907,15 +1029,67 @@ export default function StudentProfilePage() {
                                                 <TableHead>Data</TableHead>
                                                 <TableHead>Descrição</TableHead>
                                                 <TableHead>Criado por</TableHead>
+                                                {userRole === "admin" && <TableHead className="w-[100px] text-right">Ações</TableHead>}
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
                                             {interactions.map((interaction: FamilyInteraction) => (
-                                                <TableRow key={interaction.id}>
-                                                    <TableCell>{interaction.type}</TableCell>
+                                                <TableRow
+                                                    key={interaction.id}
+                                                    className={interaction.sensitive ? "bg-red-50" : ""}
+                                                >
+                                                    <TableCell>
+                                                        {interaction.type}
+                                                        {interaction.sensitive && (
+                                                            <span className="ml-2 inline-block bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                                                Sensível
+                                                            </span>
+                                                        )}
+                                                    </TableCell>
                                                     <TableCell>{interaction.date}</TableCell>
                                                     <TableCell>{interaction.description}</TableCell>
                                                     <TableCell>{interaction.createdBy}</TableCell>
+                                                    {userRole === "admin" && (
+                                                        <TableCell className="text-right">
+                                                            <TooltipProvider>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            onClick={() => {
+                                                                                setEditingInteraction(interaction);
+                                                                                setInteractionType(interaction.type);
+                                                                                setInteractionDate(interaction.date);
+                                                                                setInteractionDescription(interaction.description);
+                                                                                setInteractionSensitive(interaction.sensitive);
+                                                                                interactionCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                                                            }}
+                                                                        >
+                                                                            <Pencil className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p>Editar interação</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            onClick={() => setShowDeleteDialog(interaction.id)}
+                                                                        >
+                                                                            <Trash className="h-4 w-4 text-red-500" />
+                                                                        </Button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p>Excluir interação</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        </TableCell>
+                                                    )}
                                                 </TableRow>
                                             ))}
                                         </TableBody>
@@ -926,6 +1100,23 @@ export default function StudentProfilePage() {
                             )}
                         </CardContent>
                     </Card>
+
+                    <AlertDialog open={!!showDeleteDialog} onOpenChange={() => setShowDeleteDialog(null)}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Tem certeza de que deseja excluir esta interação? Esta ação não pode ser desfeita.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => showDeleteDialog && handleDeleteInteraction(showDeleteDialog)}>
+                                    Excluir
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                 </>
             )}
         </div>
