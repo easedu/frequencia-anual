@@ -90,19 +90,6 @@ interface DayOfWeekData {
     absences: number;
 }
 
-function getBimester(dateStr: string): number {
-    const date = parseDate(dateStr);
-    if (!date || isNaN(date.getTime())) {
-        console.error("Data inválida:", dateStr);
-        return 0;
-    }
-    const month = date.getMonth();
-    if (month < 3) return 1;
-    if (month < 6) return 2;
-    if (month < 9) return 3;
-    return 4;
-}
-
 function getBimesterByDate(dateStr: string, bimesterDates: BimesterDates): number {
     const date = parseDate(dateStr);
     if (!date || isNaN(date.getTime())) {
@@ -338,7 +325,7 @@ export default function DashboardPage() {
                 const anoData = docSnap.data() as AnoLetivoData;
                 let total = 0;
                 const startDateObj = parseDate(start);
-                const endDateObj = useToday ? new Date() : parseDate(end); // Limita ao dia atual
+                const endDateObj = useToday ? new Date() : parseDate(end);
 
                 if (!startDateObj || !endDateObj || isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
                     return 0;
@@ -349,12 +336,13 @@ export default function DashboardPage() {
                     if (anoData[bimesterKey]?.dates) {
                         total += anoData[bimesterKey].dates.filter(d => {
                             const date = parseDate(d.date);
+                            const bimesterNum = bimesters.indexOf(bimesterKey) + 1;
                             return (
                                 d.isChecked &&
                                 date &&
                                 date >= startDateObj &&
                                 date <= endDateObj &&
-                                (!selectedBimesters.size || selectedBimesters.has(getBimester(d.date)))
+                                (!selectedBimesters.size || selectedBimesters.has(bimesterNum))
                             );
                         }).length;
                     }
@@ -379,7 +367,7 @@ export default function DashboardPage() {
             const firstBimester = bimesterDates[1];
             const today = new Date().toLocaleDateString("pt-BR");
             setStartDate(firstBimester ? firstBimester.start : "01/01/2025");
-            setEndDate(today); // Sempre usar a data atual
+            setEndDate(today);
         } else if (useCustom) {
             setStartDate("");
             setEndDate("");
@@ -434,7 +422,7 @@ export default function DashboardPage() {
             absenceRecords
                 .filter(record => record.estudanteId === studentId)
                 .forEach(record => {
-                    const bimester = getBimester(record.data);
+                    const bimester = getBimesterByDate(record.data, bimesterDates);
                     if (bimester === 1) absencesByBimester.b1.push(record.data);
                     else if (bimester === 2) absencesByBimester.b2.push(record.data);
                     else if (bimester === 3) absencesByBimester.b3.push(record.data);
@@ -451,7 +439,7 @@ export default function DashboardPage() {
             console.error("Erro ao buscar faltas do estudante:", error);
             setStudentAbsences({ b1: [], b2: [], b3: [], b4: [] });
         }
-    }, []);
+    }, [bimesterDates]);
 
     const fetchDuplicateAbsences = useCallback(async () => {
         try {
@@ -657,7 +645,7 @@ export default function DashboardPage() {
 
                 const filteredRecords = absenceRecords.filter(record => {
                     const date = parseDate(record.data);
-                    const bimester = getBimester(record.data);
+                    const bimester = getBimesterByDate(record.data, bimesterDates);
                     return (
                         date &&
                         date >= startDateObj &&
@@ -694,7 +682,7 @@ export default function DashboardPage() {
         };
 
         return fetchDayOfWeekData();
-    }, [startDate, endDate, selectedBimesters, uniqueTurmas]);
+    }, [startDate, endDate, selectedBimesters, uniqueTurmas, bimesterDates]);
 
     const maxHeatmapValue = useMemo(
         () => Math.max(...heatmapData.flatMap(d => [d.b1, d.b2, d.b3, d.b4])),
@@ -844,35 +832,35 @@ export default function DashboardPage() {
     const dayChartConfig = {
         absences: {
             label: "Faltas",
-            color: "#000000", // Default color for absences
+            color: "#000000",
         },
         dom: {
             label: "Dom",
-            color: "#1E3A8A", // Azul escuro
+            color: "#1E3A8A",
         },
         seg: {
             label: "Seg",
-            color: "#3B82F6", // Azul médio
+            color: "#3B82F6",
         },
         ter: {
             label: "Ter",
-            color: "#60A5FA", // Azul claro
+            color: "#60A5FA",
         },
         qua: {
             label: "Qua",
-            color: "#93C5FD", // Azul mais claro
+            color: "#93C5FD",
         },
         qui: {
             label: "Qui",
-            color: "#BFDBFE", // Azul muito claro
+            color: "#BFDBFE",
         },
         sex: {
             label: "Sex",
-            color: "#3B82F6", // Azul médio (repetido para harmonia)
+            color: "#3B82F6",
         },
         sab: {
             label: "Sáb",
-            color: "#1E3A8A", // Azul escuro (repetido para harmonia)
+            color: "#1E3A8A",
         },
     };
 
@@ -891,35 +879,30 @@ export default function DashboardPage() {
         const chartData = useMemo(() => {
             const dataToUse = selectedTurmaDay ? dayStats.byTurma[selectedTurmaDay] : dayStats.overall;
 
-            // Obtém os valores únicos de faltas e ordena do maior para o menor
             const uniqueAbsences = Array.from(new Set(dataToUse.map(item => item.absences))).sort((a, b) => b - a);
 
-            // Define os tons de azul do mais escuro ao mais claro
             const blueShades = [
-                "#1E3A8A", // Azul mais escuro
-                "#3B82F6", // Azul médio-escuro
-                "#60A5FA", // Azul médio
-                "#93C5FD", // Azul médio-claro
-                "#BFDBFE", // Azul mais claro
-                "#D1E9FF", // Azul muito claro
-                "#E0F2FE", // Azul quase branco
+                "#1E3A8A",
+                "#3B82F6",
+                "#60A5FA",
+                "#93C5FD",
+                "#BFDBFE",
+                "#D1E9FF",
+                "#E0F2FE",
             ];
 
-            // Cria um mapa de valores de faltas para cores
             const absenceToColorMap: Record<number, string> = {};
             uniqueAbsences.forEach((absences, index) => {
-                absenceToColorMap[absences] = blueShades[index] || blueShades[blueShades.length - 1]; // Usa a última cor como fallback
+                absenceToColorMap[absences] = blueShades[index] || blueShades[blueShades.length - 1];
             });
 
-            // Calcula o valor máximo de faltas
             const maxAbsences = Math.max(...dataToUse.map(d => d.absences));
 
-            // Mapeia os dados com as cores e adiciona uma propriedade para destaque
             return dataToUse.map(item => ({
                 day: item.day,
                 absences: item.absences,
                 fill: absenceToColorMap[item.absences],
-                isMax: item.absences === maxAbsences, // Marca os dias com o valor máximo
+                isMax: item.absences === maxAbsences,
             }));
         }, [dayStats, selectedTurmaDay]);
 
