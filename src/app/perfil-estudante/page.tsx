@@ -951,6 +951,7 @@ export default function StudentProfilePage() {
                                             <SelectItem value="Contato digital">Contato digital</SelectItem>
                                             <SelectItem value="Conversa com a família">Conversa com a família</SelectItem>
                                             <SelectItem value="Visita domiciliar da ABAE">Visita domiciliar da ABAE</SelectItem>
+                                            <SelectItem value="Compensação de ausência">Compensação de ausência</SelectItem>
                                             <SelectItem value="Carta registrada">Carta registrada</SelectItem>
                                             <SelectItem value="Conselho tutelar">Conselho tutelar</SelectItem>
                                             <SelectItem value="Desligamento">Desligamento</SelectItem>
