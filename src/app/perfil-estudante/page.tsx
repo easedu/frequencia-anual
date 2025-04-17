@@ -201,20 +201,35 @@ const calculateDiasLetivos = async (start: string, end: string): Promise<{ ateHo
 
         let totalAteHoje = 0;
         const totalsByBimester: { b1: number; b2: number; b3: number; b4: number } = { b1: 0, b2: 0, b3: 0, b4: 0 };
-
         const bimesters: (keyof AnoLetivoData)[] = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
+
+        // Calculate school days for each bimester based on its full period
         for (let i = 0; i < bimesters.length; i++) {
-            const bimesterKey: keyof AnoLetivoData = bimesters[i];
+            const bimesterKey = bimesters[i];
             if (anoData[bimesterKey]?.dates) {
+                const bimesterStart = parseDate(anoData[bimesterKey].startDate);
+                const bimesterEnd = parseDate(anoData[bimesterKey].endDate);
+                if (!bimesterStart || !bimesterEnd) continue;
+
                 const bimesterCount = anoData[bimesterKey].dates.filter((d: BimesterDate) => {
                     const date = parseDate(d.date);
-                    return d.isChecked && date && date >= startDateObj && date <= endDateObj;
+                    return d.isChecked && date && date >= bimesterStart && date <= bimesterEnd;
                 }).length;
+
                 if (i === 0) totalsByBimester.b1 = bimesterCount;
                 if (i === 1) totalsByBimester.b2 = bimesterCount;
                 if (i === 2) totalsByBimester.b3 = bimesterCount;
                 if (i === 3) totalsByBimester.b4 = bimesterCount;
-                totalAteHoje += bimesterCount;
+            }
+        }
+
+        // Calculate school days up to today within the provided start and end dates
+        for (const bimesterKey of bimesters) {
+            if (anoData[bimesterKey]?.dates) {
+                totalAteHoje += anoData[bimesterKey].dates.filter((d: BimesterDate) => {
+                    const date = parseDate(d.date);
+                    return d.isChecked && date && date >= startDateObj && date <= endDateObj;
+                }).length;
             }
         }
 
