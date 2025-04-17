@@ -1,10 +1,12 @@
+// RegisterInteractionCard.tsx
 import { useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input"; // Verifique se este import está correto
 import { FamilyInteraction } from "../app/types";
 import { formatDateInput } from "../app/utils";
 
@@ -62,6 +64,19 @@ export default function RegisterInteractionCard({
         setInteractionSensitive(isChecked);
     };
 
+    const interactionTypes = [
+        'Contato telefônico',
+        'Contato digital',
+        'Conversa com a família',
+        'Visita domiciliar da ABAE',
+        'Compensação de ausência',
+        'Carta registrada',
+        'Conselho tutelar',
+        'Desligamento',
+        'Justificativa da família',
+        'Observações'
+    ];
+
     return (
         <Card id={id}>
             <CardHeader>
@@ -71,12 +86,18 @@ export default function RegisterInteractionCard({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <Label htmlFor="interaction-type">Tipo de Interação</Label>
-                        <Input
-                            id="interaction-type"
-                            value={interactionType}
-                            onChange={(e) => setInteractionType(e.target.value)}
-                            placeholder="Ex: Contato telefônico"
-                        />
+                        <Select value={interactionType} onValueChange={setInteractionType}>
+                            <SelectTrigger id="interaction-type">
+                                <SelectValue placeholder="Selecione o tipo de interação" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {interactionTypes.map((type) => (
+                                    <SelectItem key={type} value={type}>
+                                        {type}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div>
                         <Label htmlFor="interaction-date">Data</Label>
