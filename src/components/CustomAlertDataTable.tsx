@@ -13,7 +13,7 @@ import {
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronDown } from "lucide-react";
+import { ArrowUpDown, ChevronDown, Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,9 +137,103 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
             rowSelection,
             globalFilter,
         },
-        // Caso deseje usar uma função customizada de filtro global, adicione a opção globalFilterFn aqui.
-        // globalFilterFn: yourGlobalFilterFn,
     });
+
+    // Função para formatar o valor da célula para impressão
+    const formatCellValue = (value: unknown, columnId: string): string => {
+        if (columnId === "percentualFaltas") {
+            return `${value}%`;
+        }
+        return value?.toString() || "";
+    };
+
+    // Função para imprimir a tabela
+    const handlePrint = () => {
+        const printFrame = document.createElement('iframe');
+        printFrame.style.display = 'none';
+        document.body.appendChild(printFrame);
+
+        const printDoc = printFrame.contentWindow?.document;
+        if (!printDoc) {
+            console.error("Não foi possível acessar o documento do iframe.");
+            document.body.removeChild(printFrame);
+            return;
+        }
+
+        const visibleColumns = table
+            .getAllColumns()
+            .filter((column) => column.getIsVisible());
+        const rows = table.getFilteredRowModel().rows;
+
+        // Mapeamento de cabeçalhos para exibição mais amigável
+        const headerMap: { [key: string]: string } = {
+            nome: "Nome do Estudante",
+            turma: "Turma",
+            totalFaltas: "Total de Faltas",
+            percentualFaltas: "% de Faltas",
+        };
+
+        const tableHtml = `
+            <html>
+            <head>
+                <title>Relatório de Alertas de Frequência</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 14px; }
+                    h1 { font-size: 16px; margin-bottom: 10px; }
+                    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                    th, td { border: 1px solid black; padding: 8px; text-align: center; }
+                    th { background-color: #f2f2f2; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <h1>Relatório de Alertas de Frequência</h1>
+                <table>
+                    <thead>
+                        <tr>
+                            ${visibleColumns
+                .map(
+                    (column) =>
+                        `<th>${headerMap[column.id] || column.id}</th>`
+                )
+                .join("")}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.length > 0
+                ? rows
+                    .map((row) =>
+                        `
+                                <tr>
+                                    ${visibleColumns
+                            .map((column) => {
+                                const cell = row.getVisibleCells().find(
+                                    (c) => c.column.id === column.id
+                                );
+                                return `<td>${cell ? formatCellValue(cell.getValue(), column.id) : ""}</td>`;
+                            })
+                            .join("")}
+                                </tr>
+                            `
+                    )
+                    .join("")
+                : `<tr><td colspan="${visibleColumns.length}" style="text-align: center;">Nenhum aluno encontrado.</td></tr>`
+            }
+                    </tbody>
+                </table>
+            </body>
+            </html>
+        `;
+
+        printDoc.open();
+        printDoc.write(tableHtml);
+        printDoc.close();
+
+        printFrame.contentWindow?.focus();
+        setTimeout(() => {
+            printFrame.contentWindow?.print();
+            document.body.removeChild(printFrame);
+        }, 100);
+    };
 
     return (
         <div className="w-full">
@@ -154,30 +248,36 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
                     }}
                     className="max-w-sm"
                 />
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="ml-auto">
-                            Colunas <ChevronDown className="ml-2 h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        {table
-                            .getAllColumns()
-                            .filter((column) => column.getCanHide())
-                            .map((column) => (
-                                <DropdownMenuCheckboxItem
-                                    key={column.id}
-                                    checked={column.getIsVisible()}
-                                    onCheckedChange={(value) =>
-                                        column.toggleVisibility(!!value)
-                                    }
-                                    className="capitalize"
-                                >
-                                    {column.id}
-                                </DropdownMenuCheckboxItem>
-                            ))}
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                <div className="ml-auto flex items-center gap-2">
+                    <Button variant="outline" onClick={handlePrint}>
+                        <Printer className="mr-2 h-4 w-4" />
+                        Imprimir
+                    </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline">
+                                Colunas <ChevronDown className="ml-2 h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            {table
+                                .getAllColumns()
+                                .filter((column) => column.getCanHide())
+                                .map((column) => (
+                                    <DropdownMenuCheckboxItem
+                                        key={column.id}
+                                        checked={column.getIsVisible()}
+                                        onCheckedChange={(value) =>
+                                            column.toggleVisibility(!!value)
+                                        }
+                                        className="capitalize"
+                                    >
+                                        {column.id}
+                                    </DropdownMenuCheckboxItem>
+                                ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
             </div>
             <div className="rounded-md border">
                 <Table>
