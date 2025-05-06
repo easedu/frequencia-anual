@@ -100,6 +100,66 @@ const validateCep = (cep: string): boolean => {
     return cleanedCep.length === 8;
 };
 
+// Funções para Data de Nascimento
+const formatDataNascimento = (data: string): string => {
+    const digits = data.replace(/\D/g, "");
+    if (digits.length === 0) {
+        return "";
+    } else if (digits.length <= 2) {
+        return digits;
+    } else if (digits.length <= 4) {
+        return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    } else {
+        return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
+    }
+};
+
+const cleanDataNascimento = (data: string): string => {
+    return data.replace(/\D/g, "");
+};
+
+const validateDataNascimento = (data: string): boolean => {
+    const cleanedData = cleanDataNascimento(data);
+    if (cleanedData.length === 0) {
+        return true; // Campo não é obrigatório
+    }
+    if (cleanedData.length !== 8) {
+        return false; // Deve ter 8 dígitos (ddmmaaaa)
+    }
+
+    const day = parseInt(cleanedData.slice(0, 2), 10);
+    const month = parseInt(cleanedData.slice(2, 4), 10);
+    const year = parseInt(cleanedData.slice(4, 8), 10);
+
+    // Verifica formato básico
+    if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900) {
+        return false;
+    }
+
+    // Verifica meses com menos de 31 dias
+    if ([4, 6, 9, 11].includes(month) && day > 30) {
+        return false;
+    }
+
+    // Verifica fevereiro e anos bissextos
+    if (month === 2) {
+        const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        if (day > (isLeapYear ? 29 : 28)) {
+            return false;
+        }
+    }
+
+    // Verifica se a data é anterior à data atual
+    const inputDate = new Date(year, month - 1, day);
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0); // Ignora horário
+    if (inputDate >= currentDate) {
+        return false;
+    }
+
+    return true;
+};
+
 // Função para consultar a API do ViaCEP
 const fetchAddressFromCep = async (cep: string): Promise<Endereco | null> => {
     try {
@@ -136,6 +196,7 @@ export default function CadastrarEstudantePage() {
     const [contatoFiltro, setContatoFiltro] = useState<string>("");
     const [emailFiltro, setEmailFiltro] = useState<string>("");
     const [enderecoFiltro, setEnderecoFiltro] = useState<string>("");
+    const [dataNascimentoFiltro, setDataNascimentoFiltro] = useState<string>("");
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
     const [sortColumn, setSortColumn] = useState<string>("");
@@ -144,6 +205,7 @@ export default function CadastrarEstudantePage() {
         new Set([
             "turma",
             "nome",
+            "dataNascimento",
             "bolsaFamilia",
             "status",
             "contatos",
@@ -166,6 +228,7 @@ export default function CadastrarEstudantePage() {
             console.log("Contém contatos?", "contatos" in students[0]);
             console.log("Contém email?", "email" in students[0]);
             console.log("Contém endereco?", "endereco" in students[0]);
+            console.log("Contém dataNascimento?", "dataNascimento" in students[0]);
         }
     }, [students, loading]);
 
@@ -254,6 +317,9 @@ export default function CadastrarEstudantePage() {
                     .toLowerCase()
                     .includes(enderecoFiltro.toLowerCase())
                 : false);
+        const matchDataNascimento =
+            dataNascimentoFiltro === "" ||
+            (est.dataNascimento?.includes(cleanDataNascimento(dataNascimentoFiltro)) ?? false);
         return (
             matchTurma &&
             matchNome &&
@@ -261,7 +327,8 @@ export default function CadastrarEstudantePage() {
             matchBolsaFamilia &&
             matchContato &&
             matchEmail &&
-            matchEndereco
+            matchEndereco &&
+            matchDataNascimento
         );
     });
 
@@ -291,6 +358,13 @@ export default function CadastrarEstudantePage() {
                 if (sortColumn === "endereco") {
                     const aValue = a.endereco?.rua.toLowerCase() || "";
                     const bValue = b.endereco?.rua.toLowerCase() || "";
+                    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+                    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+                    return 0;
+                }
+                if (sortColumn === "dataNascimento") {
+                    const aValue = a.dataNascimento || "";
+                    const bValue = b.dataNascimento || "";
                     if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
                     if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
                     return 0;
@@ -342,6 +416,12 @@ export default function CadastrarEstudantePage() {
 
         if (editingEstudante.email && !validateEmail(editingEstudante.email)) {
             toast.error("Por favor, insira um e-mail válido.");
+            return;
+        }
+
+        // Validação de data de nascimento
+        if (editingEstudante.dataNascimento && !validateDataNascimento(editingEstudante.dataNascimento)) {
+            toast.error("A data de nascimento é inválida ou está no futuro.");
             return;
         }
 
@@ -399,7 +479,6 @@ export default function CadastrarEstudantePage() {
                 toast.error("O estado é obrigatório quando o CEP está preenchido.");
                 return;
             }
-            // Complemento é opcional, não precisa de validação
         }
 
         const newTurma = editingEstudante.turma.toUpperCase();
@@ -431,6 +510,7 @@ export default function CadastrarEstudantePage() {
                         telefone: cleanTelefone(contato.telefone),
                     })) || [],
             email: editingEstudante.email?.trim() || "",
+            dataNascimento: editingEstudante.dataNascimento?.trim() || "",
         };
 
         // Inclui endereco apenas se o CEP estiver preenchido
@@ -494,6 +574,7 @@ export default function CadastrarEstudantePage() {
                                     bolsaFamilia: "NÃO",
                                     contatos: [{ nome: "", telefone: "" }],
                                     email: "",
+                                    dataNascimento: "",
                                     endereco: {
                                         rua: "",
                                         numero: "",
@@ -597,6 +678,18 @@ export default function CadastrarEstudantePage() {
                             />
                         </div>
                         <div>
+                            <label className="block mb-1 font-semibold">Data de Nascimento</label>
+                            <Input
+                                placeholder="dd/mm/aaaa"
+                                value={formatDataNascimento(dataNascimentoFiltro)}
+                                onChange={(e) => {
+                                    const inputValue = e.target.value;
+                                    const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
+                                    setDataNascimentoFiltro(cleanedValue);
+                                }}
+                            />
+                        </div>
+                        <div>
                             <label className="block mb-1 font-semibold">Colunas visíveis</label>
                             <Select
                                 onValueChange={(value) => {
@@ -615,6 +708,7 @@ export default function CadastrarEstudantePage() {
                                 <SelectContent>
                                     <SelectItem value="turma">Turma</SelectItem>
                                     <SelectItem value="nome">Nome do Estudante</SelectItem>
+                                    <SelectItem value="dataNascimento">Data de Nascimento</SelectItem>
                                     <SelectItem value="bolsaFamilia">Bolsa Família</SelectItem>
                                     <SelectItem value="status">Status</SelectItem>
                                     <SelectItem value="contatos">Contatos</SelectItem>
@@ -648,6 +742,17 @@ export default function CadastrarEstudantePage() {
                                         >
                                             Nome do Estudante{" "}
                                             {sortColumn === "nome" && (
+                                                <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                                            )}
+                                        </TableHead>
+                                    )}
+                                    {visibleColumns.has("dataNascimento") && (
+                                        <TableHead
+                                            onClick={() => handleSort("dataNascimento")}
+                                            className="cursor-pointer font-bold text-center"
+                                        >
+                                            Data de Nascimento{" "}
+                                            {sortColumn === "dataNascimento" && (
                                                 <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
                                             )}
                                         </TableHead>
@@ -732,6 +837,11 @@ export default function CadastrarEstudantePage() {
                                             )}
                                             {visibleColumns.has("nome") && (
                                                 <TableCell className="text-left">{est.nome}</TableCell>
+                                            )}
+                                            {visibleColumns.has("dataNascimento") && (
+                                                <TableCell className="text-center">
+                                                    {est.dataNascimento ? formatDataNascimento(est.dataNascimento) : "NENHUMA"}
+                                                </TableCell>
                                             )}
                                             {visibleColumns.has("bolsaFamilia") && (
                                                 <TableCell className="text-center">
@@ -932,6 +1042,25 @@ export default function CadastrarEstudantePage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                            </div>
+                            <div>
+                                <label className="block mb-1 font-semibold">Data de Nascimento</label>
+                                <Input
+                                    placeholder="dd/mm/aaaa"
+                                    value={
+                                        editingEstudante?.dataNascimento
+                                            ? formatDataNascimento(editingEstudante.dataNascimento)
+                                            : ""
+                                    }
+                                    onChange={(e) => {
+                                        const inputValue = e.target.value;
+                                        const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
+                                        setEditingEstudante({
+                                            ...editingEstudante!,
+                                            dataNascimento: cleanedValue,
+                                        });
+                                    }}
+                                />
                             </div>
                             <div>
                                 <label className="block mb-1 font-semibold">E-mail</label>

@@ -29,6 +29,7 @@ export interface Estudante {
     contatos?: Contato[];
     email?: string;
     endereco?: Endereco;
+    dataNascimento?: string;
 }
 
 export const useStudents = () => {
@@ -71,6 +72,7 @@ export const useStudents = () => {
                         contatos?: Contato[];
                         email?: string;
                         endereco?: Endereco;
+                        dataNascimento?: string;
                     };
                     const fetchedStudent = {
                         estudanteId: s.estudanteId || uuidv4(),
@@ -96,6 +98,7 @@ export const useStudents = () => {
                                 complemento: s.endereco.complemento || "",
                             }
                             : undefined,
+                        dataNascimento: s.dataNascimento || "",
                     };
                     console.log("Estudante processado:", fetchedStudent); // Debug: log de cada estudante
                     return fetchedStudent;
