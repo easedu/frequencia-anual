@@ -62,7 +62,7 @@ export default function Home() {
                 />,
                 <CustomCard
                     key="perfil-estudante"
-                    title="Perfil do Aluno"
+                    title="Perfil do Estudante"
                     icon={UserCheck}
                     href="/perfil-estudante"
                     color="blue"
@@ -81,7 +81,7 @@ export default function Home() {
             return [
                 <CustomCard
                     key="cadastro-estudante"
-                    title="Adicionar Novo Aluno"
+                    title="Cadastro de Estudantes"
                     icon={UserPlus}
                     href="/cadastrar-estudante"
                     color="purple"
@@ -94,6 +94,13 @@ export default function Home() {
                     color="orange"
                 />,
                 <CustomCard
+                    key="controlar-faltas"
+                    title="Monitorar Faltas da UE"
+                    icon={BarChart}
+                    href="/controlar-faltas"
+                    color="teal"
+                />,
+                <CustomCard
                     key="marcar-faltas"
                     title="Registrar Faltas Agora"
                     icon={CheckCircle}
@@ -101,15 +108,8 @@ export default function Home() {
                     color="green"
                 />,
                 <CustomCard
-                    key="controlar-faltas"
-                    title="Monitorar Faltas"
-                    icon={BarChart}
-                    href="/controlar-faltas"
-                    color="teal"
-                />,
-                <CustomCard
                     key="perfil-estudante"
-                    title="Perfil do Aluno"
+                    title="Perfil do Estudante"
                     icon={UserCheck}
                     href="/perfil-estudante"
                     color="blue"
@@ -128,7 +128,7 @@ export default function Home() {
             return [
                 <CustomCard
                     key="cadastro-estudante"
-                    title="Adicionar Novo Aluno"
+                    title="Cadastro de Estudantes"
                     icon={UserPlus}
                     href="/cadastrar-estudante"
                     color="purple"
@@ -141,11 +141,11 @@ export default function Home() {
                     color="orange"
                 />,
                 <CustomCard
-                    key="marcar-faltas"
-                    title="Registrar Faltas Agora"
-                    icon={CheckCircle}
-                    href="/marcar-faltas"
-                    color="green"
+                    key="controlar-faltas"
+                    title="Monitorar Faltas da UE"
+                    icon={BarChart}
+                    href="/controlar-faltas"
+                    color="teal"
                 />,
                 <CustomCard
                     key="gerenciar-usuarios"
@@ -155,15 +155,15 @@ export default function Home() {
                     color="red"
                 />,
                 <CustomCard
-                    key="controlar-faltas"
-                    title="Monitorar Faltas"
-                    icon={BarChart}
-                    href="/controlar-faltas"
-                    color="teal"
+                    key="marcar-faltas"
+                    title="Registrar Faltas Agora"
+                    icon={CheckCircle}
+                    href="/marcar-faltas"
+                    color="green"
                 />,
                 <CustomCard
                     key="perfil-estudante"
-                    title="Perfil do Aluno"
+                    title="Perfil do Estudante"
                     icon={UserCheck}
                     href="/perfil-estudante"
                     color="blue"
