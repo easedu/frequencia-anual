@@ -193,6 +193,7 @@ export default function CadastrarEstudantePage() {
     const [nomeFiltro, setNomeFiltro] = useState<string>("");
     const [statusFiltro, setStatusFiltro] = useState<string>("");
     const [bolsaFamiliaFiltro, setBolsaFamiliaFiltro] = useState<string>("");
+    const [turnoFiltro, setTurnoFiltro] = useState<string>("");
     const [contatoFiltro, setContatoFiltro] = useState<string>("");
     const [emailFiltro, setEmailFiltro] = useState<string>("");
     const [enderecoFiltro, setEnderecoFiltro] = useState<string>("");
@@ -206,6 +207,7 @@ export default function CadastrarEstudantePage() {
             "turma",
             "nome",
             "dataNascimento",
+            "turno",
             "bolsaFamilia",
             "status",
             "contatos",
@@ -229,6 +231,7 @@ export default function CadastrarEstudantePage() {
             console.log("Contém email?", "email" in students[0]);
             console.log("Contém endereco?", "endereco" in students[0]);
             console.log("Contém dataNascimento?", "dataNascimento" in students[0]);
+            console.log("Contém turno?", "turno" in students[0]);
         }
     }, [students, loading]);
 
@@ -286,6 +289,7 @@ export default function CadastrarEstudantePage() {
     const statusList = Array.from(new Set(students.map((est) => est.status))).sort((a, b) =>
         a.localeCompare(b)
     );
+    const turnoList = ["MANHÃ", "TARDE"];
     const bolsaFamiliaOptions = ["SIM", "NÃO"];
 
     const estudantesFiltrados = students.filter((est) => {
@@ -296,6 +300,8 @@ export default function CadastrarEstudantePage() {
             est.nome.toLowerCase().includes(nomeFiltro.toLowerCase());
         const matchStatus =
             statusFiltro === "" || statusFiltro === "all" || est.status === statusFiltro;
+        const matchTurno =
+            turnoFiltro === "" || turnoFiltro === "all" || est.turno === turnoFiltro;
         const matchBolsaFamilia =
             bolsaFamiliaFiltro === "" ||
             bolsaFamiliaFiltro === "all" ||
@@ -324,6 +330,7 @@ export default function CadastrarEstudantePage() {
             matchTurma &&
             matchNome &&
             matchStatus &&
+            matchTurno &&
             matchBolsaFamilia &&
             matchContato &&
             matchEmail &&
@@ -409,8 +416,8 @@ export default function CadastrarEstudantePage() {
     const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!editingEstudante) return;
-        if (!editingEstudante.turma || !editingEstudante.nome || !editingEstudante.status) {
-            toast.error("Por favor, preencha os campos obrigatórios: Turma, Nome e Status.");
+        if (!editingEstudante.turma || !editingEstudante.nome || !editingEstudante.status || !editingEstudante.turno) {
+            toast.error("Por favor, preencha os campos obrigatórios: Turma, Nome, Status e Turno.");
             return;
         }
 
@@ -501,6 +508,7 @@ export default function CadastrarEstudantePage() {
             turma: newTurma,
             nome: newNome,
             status: editingEstudante.status.toUpperCase(),
+            turno: editingEstudante.turno.toUpperCase() as "MANHÃ" | "TARDE",
             bolsaFamilia: editingEstudante.bolsaFamilia,
             contatos:
                 editingEstudante.contatos
@@ -571,6 +579,7 @@ export default function CadastrarEstudantePage() {
                                     turma: "",
                                     nome: "",
                                     status: "ATIVO",
+                                    turno: "MANHÃ",
                                     bolsaFamilia: "NÃO",
                                     contatos: [{ nome: "", telefone: "" }],
                                     email: "",
@@ -654,6 +663,22 @@ export default function CadastrarEstudantePage() {
                             </Select>
                         </div>
                         <div>
+                            <label className="block mb-1 font-semibold">Turno</label>
+                            <Select onValueChange={setTurnoFiltro} value={turnoFiltro}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecione o Turno" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos os turnos</SelectItem>
+                                    {turnoList.map((turno) => (
+                                        <SelectItem key={turno} value={turno}>
+                                            {turno}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
                             <label className="block mb-1 font-semibold">Contato</label>
                             <Input
                                 placeholder="Nome ou telefone do contato"
@@ -709,6 +734,7 @@ export default function CadastrarEstudantePage() {
                                     <SelectItem value="turma">Turma</SelectItem>
                                     <SelectItem value="nome">Nome do Estudante</SelectItem>
                                     <SelectItem value="dataNascimento">Data de Nascimento</SelectItem>
+                                    <SelectItem value="turno">Turno</SelectItem>
                                     <SelectItem value="bolsaFamilia">Bolsa Família</SelectItem>
                                     <SelectItem value="status">Status</SelectItem>
                                     <SelectItem value="contatos">Contatos</SelectItem>
@@ -753,6 +779,17 @@ export default function CadastrarEstudantePage() {
                                         >
                                             Data de Nascimento{" "}
                                             {sortColumn === "dataNascimento" && (
+                                                <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                                            )}
+                                        </TableHead>
+                                    )}
+                                    {visibleColumns.has("turno") && (
+                                        <TableHead
+                                            onClick={() => handleSort("turno")}
+                                            className="cursor-pointer font-bold text-center"
+                                        >
+                                            Turno{" "}
+                                            {sortColumn === "turno" && (
                                                 <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
                                             )}
                                         </TableHead>
@@ -841,6 +878,11 @@ export default function CadastrarEstudantePage() {
                                             {visibleColumns.has("dataNascimento") && (
                                                 <TableCell className="text-center">
                                                     {est.dataNascimento ? formatDataNascimento(est.dataNascimento) : "NENHUMA"}
+                                                </TableCell>
+                                            )}
+                                            {visibleColumns.has("turno") && (
+                                                <TableCell className="text-center">
+                                                    {est.turno}
                                                 </TableCell>
                                             )}
                                             {visibleColumns.has("bolsaFamilia") && (
@@ -1043,24 +1085,46 @@ export default function CadastrarEstudantePage() {
                                     </Select>
                                 </div>
                             </div>
-                            <div>
-                                <label className="block mb-1 font-semibold">Data de Nascimento</label>
-                                <Input
-                                    placeholder="dd/mm/aaaa"
-                                    value={
-                                        editingEstudante?.dataNascimento
-                                            ? formatDataNascimento(editingEstudante.dataNascimento)
-                                            : ""
-                                    }
-                                    onChange={(e) => {
-                                        const inputValue = e.target.value;
-                                        const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
-                                        setEditingEstudante({
-                                            ...editingEstudante!,
-                                            dataNascimento: cleanedValue,
-                                        });
-                                    }}
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block mb-1 font-semibold">Data de Nascimento</label>
+                                    <Input
+                                        placeholder="dd/mm/aaaa"
+                                        value={
+                                            editingEstudante?.dataNascimento
+                                                ? formatDataNascimento(editingEstudante.dataNascimento)
+                                                : ""
+                                        }
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
+                                            setEditingEstudante({
+                                                ...editingEstudante!,
+                                                dataNascimento: cleanedValue,
+                                            });
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block mb-1 font-semibold">Turno</label>
+                                    <Select
+                                        onValueChange={(value) =>
+                                            setEditingEstudante({
+                                                ...editingEstudante!,
+                                                turno: value as "MANHÃ" | "TARDE",
+                                            })
+                                        }
+                                        value={editingEstudante?.turno || "MANHÃ"}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione o Turno" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="MANHÃ">MANHÃ</SelectItem>
+                                            <SelectItem value="TARDE">TARDE</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                             <div>
                                 <label className="block mb-1 font-semibold">E-mail</label>

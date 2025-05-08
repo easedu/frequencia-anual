@@ -25,12 +25,19 @@ export interface Estudante {
     turma: string;
     nome: string;
     status: string;
+    turno: "MANHÃ" | "TARDE";
     bolsaFamilia: "SIM" | "NÃO";
     contatos?: Contato[];
     email?: string;
     endereco?: Endereco;
     dataNascimento?: string;
 }
+
+// Função para determinar o turno com base na turma
+const determinarTurno = (turma: string): "MANHÃ" | "TARDE" => {
+    const primeiroCaractere = turma.trim().charAt(0).toUpperCase();
+    return ["1", "2", "3", "4"].includes(primeiroCaractere) ? "TARDE" : "MANHÃ";
+};
 
 export const useStudents = () => {
     const [students, setStudents] = useState<Estudante[]>([]);
@@ -69,6 +76,7 @@ export const useStudents = () => {
                         turma: string;
                         nome: string;
                         status: string;
+                        turno?: string;
                         contatos?: Contato[];
                         email?: string;
                         endereco?: Endereco;
@@ -79,6 +87,7 @@ export const useStudents = () => {
                         turma: s.turma || "",
                         nome: s.nome || "",
                         status: s.status || "",
+                        turno: s.turno || determinarTurno(s.turma || ""),
                         bolsaFamilia: s.bolsaFamilia || "NÃO",
                         contatos: s.contatos
                             ? s.contatos.map((contato) => ({
