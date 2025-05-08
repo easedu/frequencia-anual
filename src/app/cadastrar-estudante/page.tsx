@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
+import Select, { MultiValue, StylesConfig } from "react-select";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-    Select,
+    Select as ShadcnSelect,
     SelectContent,
     SelectItem,
     SelectTrigger,
@@ -25,10 +29,21 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogFooter,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Edit, Trash2 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from "@/components/ui/form";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useStudents, Estudante } from "@/hooks/useStudents";
 
@@ -48,6 +63,60 @@ interface Endereco {
     cep: string;
     complemento: string;
 }
+
+// Interface para opções do react-select
+interface SelectOption {
+    value: string;
+    label: string;
+}
+
+// Estilização personalizada para react-select
+const customSelectStyles: StylesConfig<SelectOption, true> = {
+    control: (provided) => ({
+        ...provided,
+        borderColor: "hsl(var(--input))",
+        borderRadius: "0.375rem",
+        padding: "0.25rem",
+        backgroundColor: "hsl(var(--background))",
+        "&:hover": {
+            borderColor: "hsl(var(--primary))",
+        },
+    }),
+    menu: (provided) => ({
+        ...provided,
+        backgroundColor: "hsl(var(--background))",
+        border: "1px solid hsl(var(--border))",
+        borderRadius: "0.375rem",
+    }),
+    option: (provided, state) => ({
+        ...provided,
+        backgroundColor: state.isSelected
+            ? "hsl(var(--primary))"
+            : state.isFocused
+                ? "hsl(var(--primary)/0.1)"
+                : "hsl(var(--background))",
+        color: state.isSelected ? "hsl(var(--primary-foreground))" : "hsl(var(--foreground))",
+        "&:hover": {
+            backgroundColor: "hsl(var(--primary)/0.1)",
+        },
+    }),
+    multiValue: (provided) => ({
+        ...provided,
+        backgroundColor: "hsl(var(--primary)/0.1)",
+    }),
+    multiValueLabel: (provided) => ({
+        ...provided,
+        color: "hsl(var(--foreground))",
+    }),
+    multiValueRemove: (provided) => ({
+        ...provided,
+        color: "hsl(var(--foreground))",
+        "&:hover": {
+            backgroundColor: "hsl(var(--destructive))",
+            color: "hsl(var(--destructive-foreground))",
+        },
+    }),
+};
 
 // Funções utilitárias para contatos
 const formatTelefone = (telefone: string): string => {
@@ -121,27 +190,24 @@ const cleanDataNascimento = (data: string): string => {
 const validateDataNascimento = (data: string): boolean => {
     const cleanedData = cleanDataNascimento(data);
     if (cleanedData.length === 0) {
-        return true; // Campo não é obrigatório
+        return true;
     }
     if (cleanedData.length !== 8) {
-        return false; // Deve ter 8 dígitos (ddmmaaaa)
+        return false;
     }
 
     const day = parseInt(cleanedData.slice(0, 2), 10);
     const month = parseInt(cleanedData.slice(2, 4), 10);
     const year = parseInt(cleanedData.slice(4, 8), 10);
 
-    // Verifica formato básico
     if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900) {
         return false;
     }
 
-    // Verifica meses com menos de 31 dias
     if ([4, 6, 9, 11].includes(month) && day > 30) {
         return false;
     }
 
-    // Verifica fevereiro e anos bissextos
     if (month === 2) {
         const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
         if (day > (isLeapYear ? 29 : 28)) {
@@ -149,10 +215,9 @@ const validateDataNascimento = (data: string): boolean => {
         }
     }
 
-    // Verifica se a data é anterior à data atual
     const inputDate = new Date(year, month - 1, day);
     const currentDate = new Date();
-    currentDate.setHours(0, 0, 0, 0); // Ignora horário
+    currentDate.setHours(0, 0, 0, 0);
     if (inputDate >= currentDate) {
         return false;
     }
@@ -186,8 +251,133 @@ const fetchAddressFromCep = async (cep: string): Promise<Endereco | null> => {
     }
 };
 
+// Esquema de validação com zod
+const formSchema = z.object({
+    nome: z.string().min(2, "O nome deve ter pelo menos 2 caracteres").max(100),
+    turma: z.string().min(1, "A turma é obrigatória"),
+    bolsaFamilia: z.enum(["SIM", "NÃO"]),
+    status: z.enum(["ATIVO", "INATIVO"]),
+    dataNascimento: z.string().optional().refine(
+        (val) => !val || validateDataNascimento(val),
+        "Data de nascimento inválida ou no futuro"
+    ),
+    turno: z.enum(["MANHÃ", "TARDE"]),
+    email: z.string().optional().refine((val) => !val || validateEmail(val), "E-mail inválido"),
+    endereco: z
+        .object({
+            cep: z.string().optional(),
+            rua: z.string().optional(),
+            numero: z.string().optional(),
+            bairro: z.string().optional(),
+            cidade: z.string().optional(),
+            estado: z.string().optional(),
+            complemento: z.string().optional(),
+        })
+        .optional()
+        .refine(
+            (data) =>
+                !data?.cep ||
+                (validateCep(data.cep) &&
+                    !!data.rua &&
+                    !!data.numero &&
+                    !!data.bairro &&
+                    !!data.cidade &&
+                    !!data.estado),
+            "Todos os campos de endereço são obrigatórios quando o CEP está preenchido"
+        ),
+    contatos: z
+        .array(
+            z.object({
+                nome: z.string().optional(),
+                telefone: z.string().optional(),
+            })
+        )
+        .optional()
+        .refine(
+            (data) =>
+                !data ||
+                data.every(
+                    (contato) =>
+                        (!contato.nome && !contato.telefone) ||
+                        (contato.nome &&
+                            contato.telefone &&
+                            validateNomeContato(contato.nome) &&
+                            validateTelefone(contato.telefone))
+                ),
+            "Contatos devem ter nome e telefone válidos ou estar vazios"
+        ),
+    deficiencia: z
+        .object({
+            estudanteComDeficiencia: z.boolean(),
+            tipoDeficiencia: z.array(z.string()).optional(),
+            possuiBarreiras: z.boolean().optional(),
+            aee: z.enum(["PAEE", "PAAI"]).optional(),
+            instituicao: z.enum(["INSTITUTO JÔ CLEMENTE", "CLIFAK", "CEJOLE", "CCA"]).optional(),
+            horarioAtendimento: z.enum(["NENHUM", "NO TURNO", "CONTRATURNO"]).optional(),
+            atendimentoSaude: z.array(z.string()).optional(),
+            possuiEstagiario: z.boolean().optional(),
+            nomeEstagiario: z.string().optional(),
+            justificativaEstagiario: z
+                .enum(["MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE", "SEM BARREIRAS"])
+                .optional(),
+            ave: z.boolean().optional(),
+            justificativaAve: z.array(z.string()).optional(),
+        })
+        .optional()
+        .refine(
+            (data) =>
+                !data?.estudanteComDeficiencia ||
+                (data.tipoDeficiencia && data.tipoDeficiencia.length > 0),
+            "Selecione pelo menos um tipo de deficiência quando estudante com deficiência está marcado"
+        )
+        .refine(
+            (data) =>
+                !data?.possuiEstagiario ||
+                (data.nomeEstagiario && data.nomeEstagiario.trim() !== ""),
+            "O nome do estagiário é obrigatório quando possui estagiário"
+        ),
+});
+
 export default function CadastrarEstudantePage() {
     const { students, loading, saveStudents, setStudents } = useStudents();
+
+    // Inicializar o useForm no topo
+    const form = useForm<z.infer<typeof formSchema>>({
+        resolver: zodResolver(formSchema),
+        defaultValues: {
+            nome: "",
+            turma: "",
+            bolsaFamilia: "NÃO",
+            status: "ATIVO",
+            dataNascimento: "",
+            turno: "MANHÃ",
+            email: "",
+            endereco: {
+                cep: "",
+                rua: "",
+                numero: "",
+                bairro: "",
+                cidade: "",
+                estado: "",
+                complemento: "",
+            },
+            contatos: [{ nome: "", telefone: "" }],
+            deficiencia: {
+                estudanteComDeficiencia: false,
+                tipoDeficiencia: [],
+                possuiBarreiras: true,
+                aee: undefined,
+                instituicao: undefined,
+                horarioAtendimento: "NENHUM",
+                atendimentoSaude: [],
+                possuiEstagiario: false,
+                nomeEstagiario: "NÃO NECESSITA",
+                justificativaEstagiario: "SEM BARREIRAS",
+                ave: false,
+                justificativaAve: [],
+            },
+        },
+    });
 
     const [turmaFiltro, setTurmaFiltro] = useState<string>("");
     const [nomeFiltro, setNomeFiltro] = useState<string>("");
@@ -198,6 +388,7 @@ export default function CadastrarEstudantePage() {
     const [emailFiltro, setEmailFiltro] = useState<string>("");
     const [enderecoFiltro, setEnderecoFiltro] = useState<string>("");
     const [dataNascimentoFiltro, setDataNascimentoFiltro] = useState<string>("");
+    const [comDeficienciaFiltro, setComDeficienciaFiltro] = useState<string>("");
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
     const [sortColumn, setSortColumn] = useState<string>("");
@@ -221,6 +412,36 @@ export default function CadastrarEstudantePage() {
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [openModal, setOpenModal] = useState<boolean>(false);
 
+    // Opções para os Selects de múltiplas seleções
+    const tipoDeficienciaOptions: SelectOption[] = [
+        { value: "DI", label: "DI" },
+        { value: "DM", label: "DM" },
+        { value: "TEA", label: "TEA" },
+        { value: "DF", label: "DF" },
+        { value: "SÍNDROME DE DOWN", label: "SÍNDROME DE DOWN" },
+    ];
+
+    const atendimentoSaudeOptions: SelectOption[] = [
+        { value: "NÃO FAZ", label: "NÃO FAZ" },
+        { value: "FONOAUDIOLOGIA", label: "FONOAUDIOLOGIA" },
+        { value: "NEUROLOGIA", label: "NEUROLOGIA" },
+        { value: "TERAPIA OCUPACIONAL", label: "TERAPIA OCUPACIONAL" },
+        { value: "ORTOPEDIA", label: "ORTOPEDIA" },
+        { value: "PSICOLOGIA", label: "PSICOLOGIA" },
+        { value: "FISIOTERAPIA", label: "FISIOTERAPIA" },
+    ];
+
+    const justificativaAveOptions: SelectOption[] = [
+        { value: "HIGIENE", label: "HIGIENE" },
+        { value: "LOCOMOÇÃO", label: "LOCOMOÇÃO" },
+        { value: "ALIMENTAÇÃO", label: "ALIMENTAÇÃO" },
+        { value: "TROCA DE FRALDA", label: "TROCA DE FRALDA" },
+        {
+            value: "SIGNIFICATIVAS DIFICULDADES COGNITIVAS E FUNCIONAIS",
+            label: "SIGNIFICATIVAS DIFICULDADES COGNITIVAS E FUNCIONAIS",
+        },
+    ];
+
     // Debug dos dados
     useEffect(() => {
         if (!loading && students.length > 0) {
@@ -232,55 +453,56 @@ export default function CadastrarEstudantePage() {
             console.log("Contém endereco?", "endereco" in students[0]);
             console.log("Contém dataNascimento?", "dataNascimento" in students[0]);
             console.log("Contém turno?", "turno" in students[0]);
+            console.log("Contém deficiencia?", "deficiencia" in students[0]);
         }
     }, [students, loading]);
 
-    // Efeito para consultar CEP quando o campo CEP tem 8 dígitos
+    // Efeito para consultar CEP
+    const cep = form.watch("endereco.cep");
+
     useEffect(() => {
-        if (editingEstudante?.endereco?.cep) {
-            const cleanedCep = cleanCep(editingEstudante.endereco.cep);
+        if (cep) {
+            const cleanedCep = cleanCep(cep);
             if (cleanedCep.length === 8) {
                 fetchAddressFromCep(cleanedCep).then((address) => {
                     if (address) {
-                        setEditingEstudante((prev) => ({
-                            ...prev!,
-                            endereco: {
-                                ...prev!.endereco!,
-                                rua: address.rua,
-                                bairro: address.bairro,
-                                cidade: address.cidade,
-                                estado: address.estado,
-                                complemento: address.complemento,
-                            },
-                        }));
+                        form.setValue("endereco.rua", address.rua);
+                        form.setValue("endereco.bairro", address.bairro);
+                        form.setValue("endereco.cidade", address.cidade);
+                        form.setValue("endereco.estado", address.estado);
+                        form.setValue("endereco.complemento", address.complemento);
                     } else {
                         toast.error("CEP não encontrado ou inválido.");
                     }
                 });
             }
         }
-    }, [editingEstudante?.endereco?.cep]);
+    }, [form, cep]);
 
-    // Efeito para limpar campos de endereço se CEP for incompleto
+    // Efeito para limpar endereço se CEP incompleto
     useEffect(() => {
-        if (editingEstudante?.endereco?.cep) {
-            const cleanedCep = cleanCep(editingEstudante.endereco.cep);
+        if (cep) {
+            const cleanedCep = cleanCep(cep);
             if (cleanedCep.length > 0 && cleanedCep.length < 8) {
-                setEditingEstudante((prev) => ({
-                    ...prev!,
-                    endereco: {
-                        ...prev!.endereco!,
-                        rua: "",
-                        numero: "",
-                        bairro: "",
-                        cidade: "",
-                        estado: "",
-                        complemento: "",
-                    },
-                }));
+                form.setValue("endereco.rua", "");
+                form.setValue("endereco.numero", "");
+                form.setValue("endereco.bairro", "");
+                form.setValue("endereco.cidade", "");
+                form.setValue("endereco.estado", "");
+                form.setValue("endereco.complemento", "");
             }
         }
-    }, [editingEstudante?.endereco?.cep]);
+    }, [form, cep]);
+
+    // Efeito para ajustar campos dependentes de possuiEstagiario
+    const possuiEstagiario = form.watch("deficiencia.possuiEstagiario");
+
+    useEffect(() => {
+        if (!possuiEstagiario) {
+            form.setValue("deficiencia.nomeEstagiario", "NÃO NECESSITA");
+            form.setValue("deficiencia.justificativaEstagiario", "SEM BARREIRAS");
+        }
+    }, [form, possuiEstagiario]);
 
     // --- Filtragem e Ordenação ---
     const turmas = Array.from(new Set(students.map((est) => est.turma))).sort((a, b) =>
@@ -291,6 +513,7 @@ export default function CadastrarEstudantePage() {
     );
     const turnoList = ["MANHÃ", "TARDE"];
     const bolsaFamiliaOptions = ["SIM", "NÃO"];
+    const comDeficienciaOptions = ["SIM", "NÃO"];
 
     const estudantesFiltrados = students.filter((est) => {
         const matchTurma =
@@ -319,13 +542,19 @@ export default function CadastrarEstudantePage() {
         const matchEndereco =
             enderecoFiltro === "" ||
             (est.endereco
-                ? `${est.endereco.rua} ${est.endereco.numero} ${est.endereco.bairro} ${est.endereco.cidade} ${est.endereco.estado} ${formatCep(est.endereco.cep)} ${est.endereco.complemento}`
+                ? `${est.endereco.rua} ${est.endereco.numero} ${est.endereco.bairro} ${est.endereco.cidade} ${est.endereco.estado} ${est.endereco.cep} ${est.endereco.complemento}`
                     .toLowerCase()
                     .includes(enderecoFiltro.toLowerCase())
                 : false);
         const matchDataNascimento =
             dataNascimentoFiltro === "" ||
             (est.dataNascimento?.includes(cleanDataNascimento(dataNascimentoFiltro)) ?? false);
+        const matchComDeficiencia =
+            comDeficienciaFiltro === "" ||
+            comDeficienciaFiltro === "all" ||
+            (est.deficiencia?.estudanteComDeficiencia
+                ? comDeficienciaFiltro === "SIM"
+                : comDeficienciaFiltro === "NÃO");
         return (
             matchTurma &&
             matchNome &&
@@ -335,7 +564,8 @@ export default function CadastrarEstudantePage() {
             matchContato &&
             matchEmail &&
             matchEndereco &&
-            matchDataNascimento
+            matchDataNascimento &&
+            matchComDeficiencia
         );
     });
 
@@ -351,36 +581,43 @@ export default function CadastrarEstudantePage() {
                         b.contatos && b.contatos.length > 0
                             ? b.contatos[0].nome.toLowerCase()
                             : "";
-                    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
-                    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
-                    return 0;
+                    return sortDirection === "asc"
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
                 }
                 if (sortColumn === "email") {
                     const aValue = a.email?.toLowerCase() || "";
                     const bValue = b.email?.toLowerCase() || "";
-                    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
-                    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
-                    return 0;
+                    return sortDirection === "asc"
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
                 }
                 if (sortColumn === "endereco") {
                     const aValue = a.endereco?.rua.toLowerCase() || "";
                     const bValue = b.endereco?.rua.toLowerCase() || "";
-                    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
-                    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
-                    return 0;
+                    return sortDirection === "asc"
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
                 }
                 if (sortColumn === "dataNascimento") {
                     const aValue = a.dataNascimento || "";
                     const bValue = b.dataNascimento || "";
-                    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
-                    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
-                    return 0;
+                    return sortDirection === "asc"
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
+                }
+                if (sortColumn === "deficiencia") {
+                    const aValue = a.deficiencia?.tipoDeficiencia?.join(", ")?.toLowerCase() || "";
+                    const bValue = b.deficiencia?.tipoDeficiencia?.join(", ")?.toLowerCase() || "";
+                    return sortDirection === "asc"
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
                 }
                 const aValue = (a[sortColumn as keyof Estudante] as string)?.toLowerCase() || "";
                 const bValue = (b[sortColumn as keyof Estudante] as string)?.toLowerCase() || "";
-                if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
-                if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
-                return 0;
+                return sortDirection === "asc"
+                    ? aValue.localeCompare(bValue)
+                    : bValue.localeCompare(aValue);
             });
         }
         return data;
@@ -413,83 +650,11 @@ export default function CadastrarEstudantePage() {
         }
     };
 
-    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
+    const handleFormSubmit = async (data: z.infer<typeof formSchema>) => {
         if (!editingEstudante) return;
-        if (!editingEstudante.turma || !editingEstudante.nome || !editingEstudante.status || !editingEstudante.turno) {
-            toast.error("Por favor, preencha os campos obrigatórios: Turma, Nome, Status e Turno.");
-            return;
-        }
 
-        if (editingEstudante.email && !validateEmail(editingEstudante.email)) {
-            toast.error("Por favor, insira um e-mail válido.");
-            return;
-        }
-
-        // Validação de data de nascimento
-        if (editingEstudante.dataNascimento && !validateDataNascimento(editingEstudante.dataNascimento)) {
-            toast.error("A data de nascimento é inválida ou está no futuro.");
-            return;
-        }
-
-        // Validação de contatos
-        if (editingEstudante.contatos && editingEstudante.contatos.length > 0) {
-            for (const contato of editingEstudante.contatos) {
-                const hasNome = contato.nome.trim().length > 0;
-                const hasTelefone = contato.telefone.trim().length > 0;
-
-                if (hasNome || hasTelefone) {
-                    if (!hasNome) {
-                        toast.error("O nome do contato é obrigatório quando o telefone está preenchido.");
-                        return;
-                    }
-                    if (!hasTelefone) {
-                        toast.error("O telefone do contato é obrigatório quando o nome está preenchido.");
-                        return;
-                    }
-                    if (!validateNomeContato(contato.nome)) {
-                        toast.error("O nome do contato deve ter entre 2 e 100 caracteres.");
-                        return;
-                    }
-                    if (!validateTelefone(contato.telefone)) {
-                        toast.error("O telefone deve ter 10 ou 11 dígitos.");
-                        return;
-                    }
-                }
-            }
-        }
-
-        // Validação de endereço
-        if (editingEstudante.endereco?.cep) {
-            const cleanedCep = cleanCep(editingEstudante.endereco.cep);
-            if (!validateCep(cleanedCep)) {
-                toast.error("O CEP deve ter 8 dígitos.");
-                return;
-            }
-            if (!editingEstudante.endereco.rua) {
-                toast.error("A rua é obrigatória quando o CEP está preenchido.");
-                return;
-            }
-            if (!editingEstudante.endereco.numero) {
-                toast.error("O número é obrigatório quando o CEP está preenchido.");
-                return;
-            }
-            if (!editingEstudante.endereco.bairro) {
-                toast.error("O bairro é obrigatório quando o CEP está preenchido.");
-                return;
-            }
-            if (!editingEstudante.endereco.cidade) {
-                toast.error("A cidade é obrigatória quando o CEP está preenchido.");
-                return;
-            }
-            if (!editingEstudante.endereco.estado) {
-                toast.error("O estado é obrigatório quando o CEP está preenchido.");
-                return;
-            }
-        }
-
-        const newTurma = editingEstudante.turma.toUpperCase();
-        const newNome = editingEstudante.nome.toUpperCase();
+        const newTurma = data.turma.toUpperCase();
+        const newNome = data.nome.toUpperCase();
 
         const duplicateExists = students.some(
             (est, index) =>
@@ -507,34 +672,47 @@ export default function CadastrarEstudantePage() {
             estudanteId: editingEstudante.estudanteId || uuidv4(),
             turma: newTurma,
             nome: newNome,
-            status: editingEstudante.status.toUpperCase(),
-            turno: editingEstudante.turno.toUpperCase() as "MANHÃ" | "TARDE",
-            bolsaFamilia: editingEstudante.bolsaFamilia,
-            contatos:
-                editingEstudante.contatos
-                    ?.filter((contato) => contato.nome.trim() || contato.telefone.trim())
-                    .map((contato) => ({
-                        nome: contato.nome.trim(),
-                        telefone: cleanTelefone(contato.telefone),
-                    })) || [],
-            email: editingEstudante.email?.trim() || "",
-            dataNascimento: editingEstudante.dataNascimento?.trim() || "",
+            status: data.status.toUpperCase() as "ATIVO" | "INATIVO",
+            turno: data.turno.toUpperCase() as "MANHÃ" | "TARDE",
+            bolsaFamilia: data.bolsaFamilia,
+            contatos: data.contatos
+                ?.filter((contato) => contato.nome?.trim() || contato.telefone?.trim())
+                .map((contato) => ({
+                    nome: contato.nome!.trim(),
+                    telefone: cleanTelefone(contato.telefone!),
+                })) || [],
+            email: data.email?.trim() || "",
+            dataNascimento: data.dataNascimento?.trim() || "",
+            deficiencia: data.deficiencia?.estudanteComDeficiencia
+                ? {
+                    estudanteComDeficiencia: data.deficiencia.estudanteComDeficiencia,
+                    tipoDeficiencia: data.deficiencia.tipoDeficiencia || [],
+                    possuiBarreiras: data.deficiencia.possuiBarreiras ?? true,
+                    aee: data.deficiencia.aee,
+                    instituicao: data.deficiencia.instituicao,
+                    horarioAtendimento: data.deficiencia.horarioAtendimento || "NENHUM",
+                    atendimentoSaude: data.deficiencia.atendimentoSaude || [],
+                    possuiEstagiario: data.deficiencia.possuiEstagiario || false,
+                    nomeEstagiario: data.deficiencia.nomeEstagiario || "NÃO NECESSITA",
+                    justificativaEstagiario: data.deficiencia.justificativaEstagiario || "SEM BARREIRAS",
+                    ave: data.deficiencia.ave || false,
+                    justificativaAve: data.deficiencia.justificativaAve || [],
+                }
+                : undefined,
+            endereco: data.endereco?.cep
+                ? {
+                    rua: data.endereco.rua!.trim(),
+                    numero: data.endereco.numero!.trim(),
+                    bairro: data.endereco.bairro!.trim(),
+                    cidade: data.endereco.cidade!.trim(),
+                    estado: data.endereco.estado!.trim(),
+                    cep: cleanCep(data.endereco.cep),
+                    complemento: data.endereco.complemento?.trim() || "",
+                }
+                : undefined,
         };
 
-        // Inclui endereco apenas se o CEP estiver preenchido
-        if (editingEstudante.endereco?.cep) {
-            student.endereco = {
-                rua: editingEstudante.endereco.rua.trim(),
-                numero: editingEstudante.endereco.numero.trim(),
-                bairro: editingEstudante.endereco.bairro.trim(),
-                cidade: editingEstudante.endereco.cidade.trim(),
-                estado: editingEstudante.endereco.estado.trim(),
-                cep: cleanCep(editingEstudante.endereco.cep),
-                complemento: editingEstudante.endereco.complemento?.trim() || "",
-            };
-        }
-
-        console.log("Student object before saving:", student); // Debug: log do objeto student
+        console.log("Student object before saving:", student);
 
         const newStudents = [...students];
         if (editingIndex !== null) {
@@ -554,6 +732,54 @@ export default function CadastrarEstudantePage() {
             toast.error("Erro ao salvar o registro no Firebase.");
         }
     };
+
+    const handleCancel = () => {
+        setEditingEstudante(null);
+        setEditingIndex(null);
+        setOpenModal(false);
+        form.reset();
+    };
+
+    // Preencher o formulário ao editar
+    useEffect(() => {
+        if (editingEstudante) {
+            form.reset({
+                nome: editingEstudante.nome || "",
+                turma: editingEstudante.turma || "",
+                bolsaFamilia: editingEstudante.bolsaFamilia || "NÃO",
+                status: (editingEstudante.status as "ATIVO" | "INATIVO") || "ATIVO",
+                dataNascimento: editingEstudante.dataNascimento || "",
+                turno: editingEstudante.turno || "MANHÃ",
+                email: editingEstudante.email || "",
+                endereco: editingEstudante.endereco || {
+                    cep: "",
+                    rua: "",
+                    numero: "",
+                    bairro: "",
+                    cidade: "",
+                    estado: "",
+                    complemento: "",
+                },
+                contatos: editingEstudante.contatos?.length
+                    ? editingEstudante.contatos
+                    : [{ nome: "", telefone: "" }],
+                deficiencia: editingEstudante.deficiencia || {
+                    estudanteComDeficiencia: false,
+                    tipoDeficiencia: [],
+                    possuiBarreiras: true,
+                    aee: undefined,
+                    instituicao: undefined,
+                    horarioAtendimento: "NENHUM",
+                    atendimentoSaude: [],
+                    possuiEstagiario: false,
+                    nomeEstagiario: "NÃO NECESSITA",
+                    justificativaEstagiario: "SEM BARREIRAS",
+                    ave: false,
+                    justificativaAve: [],
+                },
+            });
+        }
+    }, [editingEstudante, form]);
 
     if (loading) {
         return (
@@ -593,6 +819,20 @@ export default function CadastrarEstudantePage() {
                                         cep: "",
                                         complemento: "",
                                     },
+                                    deficiencia: {
+                                        estudanteComDeficiencia: false,
+                                        tipoDeficiencia: [],
+                                        possuiBarreiras: true,
+                                        aee: undefined,
+                                        instituicao: undefined,
+                                        horarioAtendimento: "NENHUM",
+                                        atendimentoSaude: [],
+                                        possuiEstagiario: false,
+                                        nomeEstagiario: "NÃO NECESSITA",
+                                        justificativaEstagiario: "SEM BARREIRAS",
+                                        ave: false,
+                                        justificativaAve: [],
+                                    },
                                 });
                                 setEditingIndex(null);
                                 setOpenModal(true);
@@ -605,7 +845,7 @@ export default function CadastrarEstudantePage() {
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                         <div>
                             <label className="block mb-1 font-semibold">Turma</label>
-                            <Select onValueChange={setTurmaFiltro} value={turmaFiltro}>
+                            <ShadcnSelect onValueChange={setTurmaFiltro} value={turmaFiltro}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione a Turma" />
                                 </SelectTrigger>
@@ -617,7 +857,7 @@ export default function CadastrarEstudantePage() {
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
-                            </Select>
+                            </ShadcnSelect>
                         </div>
                         <div>
                             <label className="block mb-1 font-semibold">Nome</label>
@@ -629,7 +869,7 @@ export default function CadastrarEstudantePage() {
                         </div>
                         <div>
                             <label className="block mb-1 font-semibold">Bolsa Família</label>
-                            <Select
+                            <ShadcnSelect
                                 onValueChange={setBolsaFamiliaFiltro}
                                 value={bolsaFamiliaFiltro}
                             >
@@ -644,11 +884,11 @@ export default function CadastrarEstudantePage() {
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
-                            </Select>
+                            </ShadcnSelect>
                         </div>
                         <div>
                             <label className="block mb-1 font-semibold">Status</label>
-                            <Select onValueChange={setStatusFiltro} value={statusFiltro}>
+                            <ShadcnSelect onValueChange={setStatusFiltro} value={statusFiltro}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione o Status" />
                                 </SelectTrigger>
@@ -660,11 +900,11 @@ export default function CadastrarEstudantePage() {
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
-                            </Select>
+                            </ShadcnSelect>
                         </div>
                         <div>
                             <label className="block mb-1 font-semibold">Turno</label>
-                            <Select onValueChange={setTurnoFiltro} value={turnoFiltro}>
+                            <ShadcnSelect onValueChange={setTurnoFiltro} value={turnoFiltro}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione o Turno" />
                                 </SelectTrigger>
@@ -676,7 +916,7 @@ export default function CadastrarEstudantePage() {
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
-                            </Select>
+                            </ShadcnSelect>
                         </div>
                         <div>
                             <label className="block mb-1 font-semibold">Contato</label>
@@ -715,8 +955,27 @@ export default function CadastrarEstudantePage() {
                             />
                         </div>
                         <div>
+                            <label className="block mb-1 font-semibold">Com Deficiência</label>
+                            <ShadcnSelect
+                                onValueChange={setComDeficienciaFiltro}
+                                value={comDeficienciaFiltro}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecione" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos</SelectItem>
+                                    {comDeficienciaOptions.map((option) => (
+                                        <SelectItem key={option} value={option}>
+                                            {option}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </ShadcnSelect>
+                        </div>
+                        <div>
                             <label className="block mb-1 font-semibold">Colunas visíveis</label>
-                            <Select
+                            <ShadcnSelect
                                 onValueChange={(value) => {
                                     const newColumns = new Set(visibleColumns);
                                     if (newColumns.has(value)) {
@@ -740,9 +999,10 @@ export default function CadastrarEstudantePage() {
                                     <SelectItem value="contatos">Contatos</SelectItem>
                                     <SelectItem value="email">E-mail</SelectItem>
                                     <SelectItem value="endereco">Endereço</SelectItem>
+                                    <SelectItem value="deficiencia">Deficiência</SelectItem>
                                     <SelectItem value="actions">Ações</SelectItem>
                                 </SelectContent>
-                            </Select>
+                            </ShadcnSelect>
                         </div>
                     </div>
 
@@ -849,6 +1109,17 @@ export default function CadastrarEstudantePage() {
                                             )}
                                         </TableHead>
                                     )}
+                                    {visibleColumns.has("deficiencia") && (
+                                        <TableHead
+                                            onClick={() => handleSort("deficiencia")}
+                                            className="cursor-pointer font-bold text-center"
+                                        >
+                                            Deficiência{" "}
+                                            {sortColumn === "deficiencia" && (
+                                                <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                                            )}
+                                        </TableHead>
+                                    )}
                                     {visibleColumns.has("actions") && (
                                         <TableHead className="font-bold text-center">Ações</TableHead>
                                     )}
@@ -866,7 +1137,7 @@ export default function CadastrarEstudantePage() {
                                     </TableRow>
                                 ) : (
                                     currentRecords.map((est: Estudante, index: number) => (
-                                        <TableRow key={index}>
+                                        <TableRow key={est.estudanteId || index}>
                                             {visibleColumns.has("turma") && (
                                                 <TableCell className="text-center">
                                                     {est.turma}
@@ -877,7 +1148,9 @@ export default function CadastrarEstudantePage() {
                                             )}
                                             {visibleColumns.has("dataNascimento") && (
                                                 <TableCell className="text-center">
-                                                    {est.dataNascimento ? formatDataNascimento(est.dataNascimento) : "NENHUMA"}
+                                                    {est.dataNascimento
+                                                        ? formatDataNascimento(est.dataNascimento)
+                                                        : "NENHUMA"}
                                                 </TableCell>
                                             )}
                                             {visibleColumns.has("turno") && (
@@ -917,9 +1190,18 @@ export default function CadastrarEstudantePage() {
                                             {visibleColumns.has("endereco") && (
                                                 <TableCell className="text-center">
                                                     {est.endereco
-                                                        ? `${est.endereco.rua}, ${est.endereco.numero}, ${est.endereco.complemento ? `${est.endereco.complemento}, ` : ""}${est.endereco.bairro}, ${est.endereco.cidade}-${est.endereco.estado}, ${formatCep(
-                                                            est.endereco.cep
-                                                        )}`
+                                                        ? `${est.endereco.rua}, ${est.endereco.numero}, ${est.endereco.complemento
+                                                            ? `${est.endereco.complemento}, `
+                                                            : ""
+                                                        }${est.endereco.bairro}, ${est.endereco.cidade}-${est.endereco.estado
+                                                        }, ${formatCep(est.endereco.cep)}`
+                                                        : "NENHUM"}
+                                                </TableCell>
+                                            )}
+                                            {visibleColumns.has("deficiencia") && (
+                                                <TableCell className="text-center">
+                                                    {est.deficiencia?.estudanteComDeficiencia
+                                                        ? `${est.deficiencia.tipoDeficiencia?.join(", ") || "NENHUM"}`
                                                         : "NENHUM"}
                                                 </TableCell>
                                             )}
@@ -933,18 +1215,10 @@ export default function CadastrarEstudantePage() {
                                                                     item.turma === est.turma &&
                                                                     item.nome === est.nome &&
                                                                     item.status === est.status &&
-                                                                    item.bolsaFamilia ===
-                                                                    est.bolsaFamilia &&
-                                                                    item.estudanteId ===
-                                                                    est.estudanteId
+                                                                    item.bolsaFamilia === est.bolsaFamilia &&
+                                                                    item.estudanteId === est.estudanteId
                                                             );
-                                                            const contatos = est.contatos?.length
-                                                                ? est.contatos
-                                                                : [{ nome: "", telefone: "" }];
-                                                            setEditingEstudante({
-                                                                ...est,
-                                                                contatos,
-                                                            });
+                                                            setEditingEstudante(est);
                                                             setEditingIndex(globalIndex);
                                                             setOpenModal(true);
                                                         }}
@@ -962,7 +1236,7 @@ export default function CadastrarEstudantePage() {
                         <div className="flex flex-col md:flex-row items-center justify-between mt-4 gap-2">
                             <div className="flex items-center space-x-2">
                                 <label className="font-semibold">Registros por página:</label>
-                                <Select
+                                <ShadcnSelect
                                     onValueChange={handleRecordsPerPageChange}
                                     value={recordsPerPage.toString()}
                                 >
@@ -975,11 +1249,9 @@ export default function CadastrarEstudantePage() {
                                         <SelectItem value="20">20</SelectItem>
                                         <SelectItem value="50">50</SelectItem>
                                     </SelectContent>
-                                </Select>
+                                </ShadcnSelect>
                             </div>
-                            <p className="text-sm text-gray-700">
-                                Total de registros: {totalRecords}
-                            </p>
+                            <p className="text-sm text-gray-700">Total de registros: {totalRecords}</p>
                             {totalRecords > recordsPerPage && (
                                 <div className="flex items-center space-x-2">
                                     <Button
@@ -1008,335 +1280,865 @@ export default function CadastrarEstudantePage() {
                 </div>
 
                 <Dialog open={openModal} onOpenChange={setOpenModal}>
-                    <DialogContent>
+                    <DialogContent className="max-h-[80vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>
                                 {editingIndex !== null ? "Editar Estudante" : "Adicionar Estudante"}
                             </DialogTitle>
                         </DialogHeader>
-                        <form onSubmit={handleFormSubmit} className="space-y-4 mt-4">
-                            <div>
-                                <label className="block mb-1 font-semibold">Nome</label>
-                                <Input
-                                    placeholder="Digite o nome"
-                                    value={editingEstudante?.nome || ""}
-                                    onChange={(e) =>
-                                        setEditingEstudante({
-                                            ...editingEstudante!,
-                                            nome: e.target.value,
-                                        })
-                                    }
-                                    required
-                                />
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <div>
-                                    <label className="block mb-1 font-semibold">Turma</label>
-                                    <Input
-                                        placeholder="Digite a turma"
-                                        value={editingEstudante?.turma || ""}
-                                        onChange={(e) =>
-                                            setEditingEstudante({
-                                                ...editingEstudante!,
-                                                turma: e.target.value,
-                                            })
-                                        }
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1 font-semibold">Bolsa Família</label>
-                                    <Select
-                                        onValueChange={(value) =>
-                                            setEditingEstudante({
-                                                ...editingEstudante!,
-                                                bolsaFamilia: value as "SIM" | "NÃO",
-                                            })
-                                        }
-                                        value={editingEstudante?.bolsaFamilia || "NÃO"}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Selecione" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="SIM">SIM</SelectItem>
-                                            <SelectItem value="NÃO">NÃO</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div>
-                                    <label className="block mb-1 font-semibold">Status</label>
-                                    <Select
-                                        onValueChange={(value) =>
-                                            setEditingEstudante({
-                                                ...editingEstudante!,
-                                                status: value,
-                                            })
-                                        }
-                                        value={editingEstudante?.status || "ATIVO"}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Selecione o Status" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="ATIVO">ATIVO</SelectItem>
-                                            <SelectItem value="INATIVO">INATIVO</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block mb-1 font-semibold">Data de Nascimento</label>
-                                    <Input
-                                        placeholder="dd/mm/aaaa"
-                                        value={
-                                            editingEstudante?.dataNascimento
-                                                ? formatDataNascimento(editingEstudante.dataNascimento)
-                                                : ""
-                                        }
-                                        onChange={(e) => {
-                                            const inputValue = e.target.value;
-                                            const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
-                                            setEditingEstudante({
-                                                ...editingEstudante!,
-                                                dataNascimento: cleanedValue,
-                                            });
-                                        }}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1 font-semibold">Turno</label>
-                                    <Select
-                                        onValueChange={(value) =>
-                                            setEditingEstudante({
-                                                ...editingEstudante!,
-                                                turno: value as "MANHÃ" | "TARDE",
-                                            })
-                                        }
-                                        value={editingEstudante?.turno || "MANHÃ"}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Selecione o Turno" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="MANHÃ">MANHÃ</SelectItem>
-                                            <SelectItem value="TARDE">TARDE</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block mb-1 font-semibold">E-mail</label>
-                                <Input
-                                    placeholder="Digite o e-mail"
-                                    value={editingEstudante?.email || ""}
-                                    onChange={(e) =>
-                                        setEditingEstudante({
-                                            ...editingEstudante!,
-                                            email: e.target.value,
-                                        })
-                                    }
-                                />
-                            </div>
-                            <div>
-                                <label className="block mb-1 font-semibold">Endereço</label>
-                                <div className="space-y-2">
-                                    <Input
-                                        placeholder="CEP (xxxxx-xxx)"
-                                        value={
-                                            editingEstudante?.endereco?.cep
-                                                ? formatCep(editingEstudante.endereco.cep)
-                                                : ""
-                                        }
-                                        onChange={(e) => {
-                                            const inputValue = e.target.value;
-                                            const cleanedValue = cleanCep(inputValue).slice(0, 8);
-                                            setEditingEstudante({
-                                                ...editingEstudante!,
-                                                endereco: {
-                                                    ...editingEstudante!.endereco!,
-                                                    cep: cleanedValue,
-                                                },
-                                            });
-                                        }}
-                                    />
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                                        <div className="md:col-span-3">
-                                            <Input
-                                                placeholder="Rua"
-                                                value={editingEstudante?.endereco?.rua || ""}
-                                                onChange={(e) =>
-                                                    setEditingEstudante({
-                                                        ...editingEstudante!,
-                                                        endereco: {
-                                                            ...editingEstudante!.endereco!,
-                                                            rua: e.target.value,
-                                                        },
-                                                    })
-                                                }
+                        <Form {...form}>
+                            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6 mt-4">
+                                <p className="text-sm text-gray-500" id="form-desc">
+                                    Campos com <span className="text-red-500">*</span> são obrigatórios.
+                                </p>
+                                <Tabs defaultValue="pessoais" className="w-full">
+                                    <TabsList className="grid w-full grid-cols-4">
+                                        <TabsTrigger value="pessoais">Pessoais</TabsTrigger>
+                                        <TabsTrigger value="endereco">Endereço</TabsTrigger>
+                                        <TabsTrigger value="contatos">Contatos</TabsTrigger>
+                                        <TabsTrigger value="deficiencia">Deficiência</TabsTrigger>
+                                    </TabsList>
+
+                                    {/* Aba: Informações Pessoais */}
+                                    <TabsContent value="pessoais" className="mt-4">
+                                        <div className="space-y-4">
+                                            <FormField
+                                                control={form.control}
+                                                name="nome"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel htmlFor="nome">
+                                                            Nome <span className="text-red-500">*</span>
+                                                        </FormLabel>
+                                                        <FormControl>
+                                                            <Input
+                                                                id="nome"
+                                                                placeholder="Digite o nome"
+                                                                {...field}
+                                                                aria-describedby="form-desc"
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <FormField
+                                                    control={form.control}
+                                                    name="turma"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel htmlFor="turma">
+                                                                Turma <span className="text-red-500">*</span>
+                                                            </FormLabel>
+                                                            <FormControl>
+                                                                <Input
+                                                                    id="turma"
+                                                                    placeholder="Digite a turma"
+                                                                    {...field}
+                                                                    aria-describedby="form-desc"
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                                <FormField
+                                                    control={form.control}
+                                                    name="bolsaFamilia"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel htmlFor="bolsaFamilia">
+                                                                Bolsa Família <span className="text-red-500">*</span>
+                                                            </FormLabel>
+                                                            <FormControl>
+                                                                <ShadcnSelect
+                                                                    onValueChange={field.onChange}
+                                                                    value={field.value}
+                                                                >
+                                                                    <SelectTrigger id="bolsaFamilia">
+                                                                        <SelectValue placeholder="Selecione" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="SIM">SIM</SelectItem>
+                                                                        <SelectItem value="NÃO">NÃO</SelectItem>
+                                                                    </SelectContent>
+                                                                </ShadcnSelect>
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                                <FormField
+                                                    control={form.control}
+                                                    name="status"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel htmlFor="status">
+                                                                Status <span className="text-red-500">*</span>
+                                                            </FormLabel>
+                                                            <FormControl>
+                                                                <ShadcnSelect
+                                                                    onValueChange={field.onChange}
+                                                                    value={field.value}
+                                                                >
+                                                                    <SelectTrigger id="status">
+                                                                        <SelectValue placeholder="Selecione o Status" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="ATIVO">ATIVO</SelectItem>
+                                                                        <SelectItem value="INATIVO">INATIVO</SelectItem>
+                                                                    </SelectContent>
+                                                                </ShadcnSelect>
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <FormField
+                                                    control={form.control}
+                                                    name="dataNascimento"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel htmlFor="dataNascimento">
+                                                                Data de Nascimento
+                                                            </FormLabel>
+                                                            <FormControl>
+                                                                <Input
+                                                                    id="dataNascimento"
+                                                                    placeholder="dd/mm/aaaa"
+                                                                    value={field.value ? formatDataNascimento(field.value) : ""}
+                                                                    onChange={(e) => {
+                                                                        const inputValue = e.target.value;
+                                                                        const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
+                                                                        field.onChange(cleanedValue);
+                                                                    }}
+                                                                    aria-describedby="form-desc"
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                                <FormField
+                                                    control={form.control}
+                                                    name="turno"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel htmlFor="turno">
+                                                                Turno <span className="text-red-500">*</span>
+                                                            </FormLabel>
+                                                            <FormControl>
+                                                                <ShadcnSelect
+                                                                    onValueChange={field.onChange}
+                                                                    value={field.value}
+                                                                >
+                                                                    <SelectTrigger id="turno">
+                                                                        <SelectValue placeholder="Selecione o Turno" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="MANHÃ">MANHÃ</SelectItem>
+                                                                        <SelectItem value="TARDE">TARDE</SelectItem>
+                                                                    </SelectContent>
+                                                                </ShadcnSelect>
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </div>
+                                            <FormField
+                                                control={form.control}
+                                                name="email"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel htmlFor="email">E-mail</FormLabel>
+                                                        <FormControl>
+                                                            <Input
+                                                                id="email"
+                                                                placeholder="Digite o e-mail"
+                                                                {...field}
+                                                                aria-describedby="form-desc"
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
                                             />
                                         </div>
-                                        <div className="md:col-span-1">
-                                            <Input
-                                                placeholder="Número"
-                                                value={editingEstudante?.endereco?.numero || ""}
-                                                onChange={(e) =>
-                                                    setEditingEstudante({
-                                                        ...editingEstudante!,
-                                                        endereco: {
-                                                            ...editingEstudante!.endereco!,
-                                                            numero: e.target.value,
-                                                        },
-                                                    })
-                                                }
+                                    </TabsContent>
+
+                                    {/* Aba: Endereço */}
+                                    <TabsContent value="endereco" className="mt-4">
+                                        <div className="space-y-4">
+                                            <h3 className="text-lg font-semibold mb-4">Endereço</h3>
+                                            <FormField
+                                                control={form.control}
+                                                name="endereco.cep"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel htmlFor="cep">CEP (xxxxx-xxx)</FormLabel>
+                                                        <FormControl>
+                                                            <Input
+                                                                id="cep"
+                                                                placeholder="CEP (xxxxx-xxx)"
+                                                                value={field.value ? formatCep(field.value) : ""}
+                                                                onChange={(e) => {
+                                                                    const inputValue = e.target.value;
+                                                                    const cleanedValue = cleanCep(inputValue).slice(0, 8);
+                                                                    field.onChange(cleanedValue);
+                                                                }}
+                                                                aria-describedby="form-desc"
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
                                             />
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                                <FormField
+                                                    control={form.control}
+                                                    name="endereco.rua"
+                                                    render={({ field }) => (
+                                                        <FormItem className="md:col-span-3">
+                                                            <FormLabel htmlFor="rua">Rua</FormLabel>
+                                                            <FormControl>
+                                                                <Input
+                                                                    id="rua"
+                                                                    placeholder="Rua"
+                                                                    {...field}
+                                                                    aria-describedby="form-desc"
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                                <FormField
+                                                    control={form.control}
+                                                    name="endereco.numero"
+                                                    render={({ field }) => (
+                                                        <FormItem className="md:col-span-1">
+                                                            <FormLabel htmlFor="numero">Número</FormLabel>
+                                                            <FormControl>
+                                                                <Input
+                                                                    id="numero"
+                                                                    placeholder="Número"
+                                                                    {...field}
+                                                                    aria-describedby="form-desc"
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <FormField
+                                                    control={form.control}
+                                                    name="endereco.complemento"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel htmlFor="complemento">Complemento</FormLabel>
+                                                            <FormControl>
+                                                                <Input
+                                                                    id="complemento"
+                                                                    placeholder="Complemento"
+                                                                    {...field}
+                                                                    aria-describedby="form-desc"
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                                <FormField
+                                                    control={form.control}
+                                                    name="endereco.bairro"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel htmlFor="bairro">Bairro</FormLabel>
+                                                            <FormControl>
+                                                                <Input
+                                                                    id="bairro"
+                                                                    placeholder="Bairro"
+                                                                    {...field}
+                                                                    aria-describedby="form-desc"
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                                <FormField
+                                                    control={form.control}
+                                                    name="endereco.cidade"
+                                                    render={({ field }) => (
+                                                        <FormItem className="md:col-span-3">
+                                                            <FormLabel htmlFor="cidade">Cidade</FormLabel>
+                                                            <FormControl>
+                                                                <Input
+                                                                    id="cidade"
+                                                                    placeholder="Cidade"
+                                                                    {...field}
+                                                                    aria-describedby="form-desc"
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                                <FormField
+                                                    control={form.control}
+                                                    name="endereco.estado"
+                                                    render={({ field }) => (
+                                                        <FormItem className="md:col-span-1">
+                                                            <FormLabel htmlFor="estado">Estado</FormLabel>
+                                                            <FormControl>
+                                                                <Input
+                                                                    id="estado"
+                                                                    placeholder="Estado"
+                                                                    {...field}
+                                                                    aria-describedby="form-desc"
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        <Input
-                                            placeholder="Complemento"
-                                            value={editingEstudante?.endereco?.complemento || ""}
-                                            onChange={(e) =>
-                                                setEditingEstudante({
-                                                    ...editingEstudante!,
-                                                    endereco: {
-                                                        ...editingEstudante!.endereco!,
-                                                        complemento: e.target.value,
-                                                    },
-                                                })
-                                            }
-                                        />
-                                        <Input
-                                            placeholder="Bairro"
-                                            value={editingEstudante?.endereco?.bairro || ""}
-                                            onChange={(e) =>
-                                                setEditingEstudante({
-                                                    ...editingEstudante!,
-                                                    endereco: {
-                                                        ...editingEstudante!.endereco!,
-                                                        bairro: e.target.value,
-                                                    },
-                                                })
-                                            }
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                                        <div className="md:col-span-3">
-                                            <Input
-                                                placeholder="Cidade"
-                                                value={editingEstudante?.endereco?.cidade || ""}
-                                                onChange={(e) =>
-                                                    setEditingEstudante({
-                                                        ...editingEstudante!,
-                                                        endereco: {
-                                                            ...editingEstudante!.endereco!,
-                                                            cidade: e.target.value,
-                                                        },
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                        <div className="md:col-span-1">
-                                            <Input
-                                                placeholder="Estado"
-                                                value={editingEstudante?.endereco?.estado || ""}
-                                                onChange={(e) =>
-                                                    setEditingEstudante({
-                                                        ...editingEstudante!,
-                                                        endereco: {
-                                                            ...editingEstudante!.endereco!,
-                                                            estado: e.target.value,
-                                                        },
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block mb-1 font-semibold">Contatos</label>
-                                {editingEstudante?.contatos?.map((contato: Contato, index: number) => (
-                                    <div
-                                        key={index}
-                                        className="flex items-center gap-2 mb-2 p-2 border rounded"
-                                    >
-                                        <div className="flex-1">
-                                            <Input
-                                                placeholder="Nome do contato"
-                                                value={contato.nome}
-                                                onChange={(e) => {
-                                                    const newContatos = [
-                                                        ...(editingEstudante.contatos || []),
-                                                    ];
-                                                    newContatos[index] = {
-                                                        ...newContatos[index],
-                                                        nome: e.target.value,
-                                                    };
-                                                    setEditingEstudante({
-                                                        ...editingEstudante!,
-                                                        contatos: newContatos,
-                                                    });
+                                    </TabsContent>
+
+                                    {/* Aba: Contatos */}
+                                    <TabsContent value="contatos" className="mt-4">
+                                        <div className="space-y-4">
+                                            <h3 className="text-lg font-semibold mb-4">Contatos</h3>
+                                            {form.watch("contatos")?.map((_, index) => (
+                                                <div
+                                                    key={index}
+                                                    className="flex items-center gap-2 mb-2 p-2 border rounded"
+                                                >
+                                                    <div className="flex-1 space-y-2">
+                                                        <FormField
+                                                            control={form.control}
+                                                            name={`contatos.${index}.nome`}
+                                                            render={({ field }) => (
+                                                                <FormItem>
+                                                                    <FormLabel htmlFor={`contato-nome-${index}`}>
+                                                                        Nome do contato
+                                                                    </FormLabel>
+                                                                    <FormControl>
+                                                                        <Input
+                                                                            id={`contato-nome-${index}`}
+                                                                            placeholder="Nome do contato"
+                                                                            {...field}
+                                                                            aria-describedby="form-desc"
+                                                                        />
+                                                                    </FormControl>
+                                                                    <FormMessage />
+                                                                </FormItem>
+                                                            )}
+                                                        />
+                                                        <FormField
+                                                            control={form.control}
+                                                            name={`contatos.${index}.telefone`}
+                                                            render={({ field }) => (
+                                                                <FormItem>
+                                                                    <FormLabel htmlFor={`contato-telefone-${index}`}>
+                                                                        Telefone
+                                                                    </FormLabel>
+                                                                    <FormControl>
+                                                                        <Input
+                                                                            id={`contato-telefone-${index}`}
+                                                                            placeholder="(xx) xxxxx-xxxx"
+                                                                            value={field.value ? formatTelefone(field.value) : ""}
+                                                                            onChange={(e) => {
+                                                                                const inputValue = e.target.value;
+                                                                                const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
+                                                                                field.onChange(cleanedValue);
+                                                                            }}
+                                                                            aria-describedby="form-desc"
+                                                                        />
+                                                                    </FormControl>
+                                                                    <FormMessage />
+                                                                </FormItem>
+                                                            )}
+                                                        />
+                                                    </div>
+                                                    <Trash2
+                                                        className="h-5 w-5 text-red-500 cursor-pointer"
+                                                        onClick={() => {
+                                                            const newContatos = form
+                                                                .getValues("contatos")
+                                                                ?.filter((_, i) => i !== index);
+                                                            form.setValue("contatos", newContatos || []);
+                                                        }}
+                                                        aria-label="Remover contato"
+                                                    />
+                                                </div>
+                                            ))}
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => {
+                                                    const currentContatos = form.getValues("contatos") || [];
+                                                    form.setValue("contatos", [
+                                                        ...currentContatos,
+                                                        { nome: "", telefone: "" },
+                                                    ]);
                                                 }}
-                                            />
-                                            <Input
-                                                placeholder="(xx) xxxxx-xxxx"
-                                                value={formatTelefone(contato.telefone)}
-                                                onChange={(e) => {
-                                                    const inputValue = e.target.value;
-                                                    const cleanedValue = cleanTelefone(inputValue).slice(
-                                                        0,
-                                                        11
-                                                    );
-                                                    const newContatos = [
-                                                        ...(editingEstudante.contatos || []),
-                                                    ];
-                                                    newContatos[index] = {
-                                                        ...newContatos[index],
-                                                        telefone: cleanedValue,
-                                                    };
-                                                    setEditingEstudante({
-                                                        ...editingEstudante!,
-                                                        contatos: newContatos,
-                                                    });
-                                                }}
-                                            />
+                                                aria-label="Adicionar novo contato"
+                                            >
+                                                + Adicionar Contato
+                                            </Button>
                                         </div>
-                                        <Trash2
-                                            className="h-5 w-5 text-red-500 cursor-pointer"
-                                            onClick={() => {
-                                                const newContatos = editingEstudante.contatos!.filter(
-                                                    (_, i) => i !== index
-                                                );
-                                                setEditingEstudante({
-                                                    ...editingEstudante!,
-                                                    contatos: newContatos,
-                                                });
-                                            }}
-                                        />
-                                    </div>
-                                ))}
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => {
-                                        setEditingEstudante({
-                                            ...editingEstudante!,
-                                            contatos: [
-                                                ...(editingEstudante?.contatos || []),
-                                                { nome: "", telefone: "" },
-                                            ],
-                                        });
-                                    }}
-                                >
-                                    + Adicionar Contato
-                                </Button>
-                            </div>
-                            <Button type="submit" className="w-full">
-                                Salvar
-                            </Button>
-                        </form>
+                                    </TabsContent>
+
+                                    {/* Aba: Deficiência */}
+                                    <TabsContent value="deficiencia" className="mt-4">
+                                        <div className="space-y-6">
+                                            <h3 className="text-lg font-semibold mb-4">Deficiência</h3>
+                                            <FormField
+                                                control={form.control}
+                                                name="deficiencia.estudanteComDeficiencia"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel
+                                                            className="flex items-center space-x-2"
+                                                            htmlFor="estudanteComDeficiencia"
+                                                        >
+                                                            <FormControl>
+                                                                <Checkbox
+                                                                    id="estudanteComDeficiencia"
+                                                                    checked={field.value}
+                                                                    onCheckedChange={(checked) => {
+                                                                        field.onChange(!!checked);
+                                                                        if (!checked) {
+                                                                            form.setValue("deficiencia", {
+                                                                                estudanteComDeficiencia: false,
+                                                                                tipoDeficiencia: [],
+                                                                                possuiBarreiras: true,
+                                                                                aee: undefined,
+                                                                                instituicao: undefined,
+                                                                                horarioAtendimento: "NENHUM",
+                                                                                atendimentoSaude: [],
+                                                                                possuiEstagiario: false,
+                                                                                nomeEstagiario: "NÃO NECESSITA",
+                                                                                justificativaEstagiario: "SEM BARREIRAS",
+                                                                                ave: false,
+                                                                                justificativaAve: [],
+                                                                            });
+                                                                        }
+                                                                    }}
+                                                                    aria-label="Indica se o estudante possui deficiência"
+                                                                />
+                                                            </FormControl>
+                                                            <span>Estudante com Deficiência</span>
+                                                        </FormLabel>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            {form.watch("deficiencia.estudanteComDeficiencia") && (
+                                                <div className="space-y-6 p-4 border rounded bg-gray-50 transition-all duration-300">
+                                                    <p className="text-sm text-gray-500" id="deficiencia-desc">
+                                                        Campos com <span className="text-red-500">*</span> são
+                                                        obrigatórios.
+                                                    </p>
+
+                                                    {/* Subseção: Informações Gerais */}
+                                                    <div className="border-b pb-2">
+                                                        <h4 className="text-lg font-semibold mb-4">
+                                                            Informações Gerais
+                                                        </h4>
+                                                        <div className="space-y-4">
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.tipoDeficiencia"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel htmlFor="tipoDeficiencia">
+                                                                            Tipo de Deficiência{" "}
+                                                                            <span className="text-red-500">*</span>
+                                                                        </FormLabel>
+                                                                        <FormControl>
+                                                                            <Select
+                                                                                isMulti
+                                                                                options={tipoDeficienciaOptions}
+                                                                                value={tipoDeficienciaOptions.filter(
+                                                                                    (option) =>
+                                                                                        field.value?.includes(option.value)
+                                                                                )}
+                                                                                onChange={(
+                                                                                    selectedOptions: MultiValue<SelectOption>
+                                                                                ) => {
+                                                                                    const newTipos = selectedOptions.map(
+                                                                                        (option) => option.value
+                                                                                    );
+                                                                                    field.onChange(newTipos);
+                                                                                }}
+                                                                                styles={customSelectStyles}
+                                                                                placeholder="Selecione os tipos"
+                                                                                inputId="tipoDeficiencia"
+                                                                                aria-describedby="deficiencia-desc"
+                                                                            />
+                                                                        </FormControl>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.possuiBarreiras"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel
+                                                                            className="flex items-center space-x-2"
+                                                                            htmlFor="possuiBarreiras"
+                                                                        >
+                                                                            <FormControl>
+                                                                                <Checkbox
+                                                                                    id="possuiBarreiras"
+                                                                                    checked={field.value}
+                                                                                    onCheckedChange={field.onChange}
+                                                                                />
+                                                                            </FormControl>
+                                                                            <span>Possui Barreiras</span>
+                                                                        </FormLabel>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Subseção: Atendimento Educacional */}
+                                                    <div className="border-b pb-2">
+                                                        <h4 className="text-lg font-semibold mb-4">
+                                                            Atendimento Educacional
+                                                        </h4>
+                                                        <div className="space-y-4">
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.aee"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel htmlFor="aee">A. E. E.</FormLabel>
+                                                                        <FormControl>
+                                                                            <ShadcnSelect
+                                                                                onValueChange={field.onChange}
+                                                                                value={field.value}
+                                                                            >
+                                                                                <SelectTrigger id="aee">
+                                                                                    <SelectValue placeholder="Selecione" />
+                                                                                </SelectTrigger>
+                                                                                <SelectContent>
+                                                                                    <SelectItem value="PAEE">
+                                                                                        PAEE
+                                                                                    </SelectItem>
+                                                                                    <SelectItem value="PAAI">
+                                                                                        PAAI
+                                                                                    </SelectItem>
+                                                                                </SelectContent>
+                                                                            </ShadcnSelect>
+                                                                        </FormControl>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.instituicao"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel htmlFor="instituicao">
+                                                                            Instituição
+                                                                        </FormLabel>
+                                                                        <FormControl>
+                                                                            <ShadcnSelect
+                                                                                onValueChange={field.onChange}
+                                                                                value={field.value}
+                                                                            >
+                                                                                <SelectTrigger id="instituicao">
+                                                                                    <SelectValue placeholder="Selecione" />
+                                                                                </SelectTrigger>
+                                                                                <SelectContent>
+                                                                                    <SelectItem value="INSTITUTO JÔ CLEMENTE">
+                                                                                        INSTITUTO JÔ CLEMENTE
+                                                                                    </SelectItem>
+                                                                                    <SelectItem value="CLIFAK">
+                                                                                        CLIFAK
+                                                                                    </SelectItem>
+                                                                                    <SelectItem value="CEJOLE">
+                                                                                        CEJOLE
+                                                                                    </SelectItem>
+                                                                                    <SelectItem value="CCA">CCA</SelectItem>
+                                                                                </SelectContent>
+                                                                            </ShadcnSelect>
+                                                                        </FormControl>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.horarioAtendimento"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel htmlFor="horarioAtendimento">
+                                                                            Horário de Atendimento
+                                                                        </FormLabel>
+                                                                        <FormControl>
+                                                                            <ShadcnSelect
+                                                                                onValueChange={field.onChange}
+                                                                                value={field.value}
+                                                                            >
+                                                                                <SelectTrigger id="horarioAtendimento">
+                                                                                    <SelectValue placeholder="Selecione" />
+                                                                                </SelectTrigger>
+                                                                                <SelectContent>
+                                                                                    <SelectItem value="NENHUM">
+                                                                                        NENHUM
+                                                                                    </SelectItem>
+                                                                                    <SelectItem value="NO TURNO">
+                                                                                        NO TURNO
+                                                                                    </SelectItem>
+                                                                                    <SelectItem value="CONTRATURNO">
+                                                                                        CONTRATURNO
+                                                                                    </SelectItem>
+                                                                                </SelectContent>
+                                                                            </ShadcnSelect>
+                                                                        </FormControl>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Subseção: Apoio e Estágio */}
+                                                    <div className="border-b pb-2">
+                                                        <h4 className="text-lg font-semibold mb-4">
+                                                            Apoio e Estágio
+                                                        </h4>
+                                                        <div className="space-y-4">
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.atendimentoSaude"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel htmlFor="atendimentoSaude">
+                                                                            Atendimento de Saúde
+                                                                        </FormLabel>
+                                                                        <FormControl>
+                                                                            <Select
+                                                                                isMulti
+                                                                                options={atendimentoSaudeOptions}
+                                                                                value={atendimentoSaudeOptions.filter(
+                                                                                    (option) =>
+                                                                                        field.value?.includes(option.value)
+                                                                                )}
+                                                                                onChange={(
+                                                                                    selectedOptions: MultiValue<SelectOption>
+                                                                                ) => {
+                                                                                    const newTipos = selectedOptions.map(
+                                                                                        (option) => option.value
+                                                                                    );
+                                                                                    field.onChange(newTipos);
+                                                                                }}
+                                                                                styles={customSelectStyles}
+                                                                                placeholder="Selecione os atendimentos"
+                                                                                inputId="atendimentoSaude"
+                                                                                aria-describedby="deficiencia-desc"
+                                                                            />
+                                                                        </FormControl>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.possuiEstagiario"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel
+                                                                            className="flex items-center space-x-2"
+                                                                            htmlFor="possuiEstagiario"
+                                                                        >
+                                                                            <FormControl>
+                                                                                <Checkbox
+                                                                                    id="possuiEstagiario"
+                                                                                    checked={field.value}
+                                                                                    onCheckedChange={(checked) => {
+                                                                                        field.onChange(!!checked);
+                                                                                        if (!checked) {
+                                                                                            form.setValue(
+                                                                                                "deficiencia.nomeEstagiario", "NÃO NECESSITA"
+                                                                                            );
+                                                                                            form.setValue(
+                                                                                                "deficiencia.justificativaEstagiario",
+                                                                                                "SEM BARREIRAS"
+                                                                                            );
+                                                                                        } else {
+                                                                                            form.setValue(
+                                                                                                "deficiencia.nomeEstagiario",
+                                                                                                ""
+                                                                                            );
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                            </FormControl>
+                                                                            <span>Possui Estagiário(a)</span>
+                                                                        </FormLabel>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                            {form.watch("deficiencia.possuiEstagiario") && (
+                                                                <div className="mt-2 space-y-2 bg-gray-50 p-2 rounded transition-all duration-300">
+                                                                    <FormField
+                                                                        control={form.control}
+                                                                        name="deficiencia.nomeEstagiario"
+                                                                        render={({ field }) => (
+                                                                            <FormItem>
+                                                                                <FormLabel htmlFor="nomeEstagiario">
+                                                                                    Nome do(a) Estagiário(a)
+                                                                                </FormLabel>
+                                                                                <FormControl>
+                                                                                    <Input
+                                                                                        id="nomeEstagiario"
+                                                                                        placeholder="Nome do(a) Estagiário(a)"
+                                                                                        {...field}
+                                                                                        aria-describedby="deficiencia-desc"
+                                                                                    />
+                                                                                </FormControl>
+                                                                                <FormMessage />
+                                                                            </FormItem>
+                                                                        )}
+                                                                    />
+                                                                    <FormField
+                                                                        control={form.control}
+                                                                        name="deficiencia.justificativaEstagiario"
+                                                                        render={({ field }) => (
+                                                                            <FormItem>
+                                                                                <FormLabel htmlFor="justificativaEstagiario">
+                                                                                    Justificativa
+                                                                                </FormLabel>
+                                                                                <FormControl>
+                                                                                    <ShadcnSelect
+                                                                                        onValueChange={field.onChange}
+                                                                                        value={field.value}
+                                                                                    >
+                                                                                        <SelectTrigger id="justificativaEstagiario">
+                                                                                            <SelectValue placeholder="Selecione a Justificativa" />
+                                                                                        </SelectTrigger>
+                                                                                        <SelectContent>
+                                                                                            <SelectItem value="MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE">
+                                                                                                MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE
+                                                                                            </SelectItem>
+                                                                                            <SelectItem value="SEM BARREIRAS">
+                                                                                                SEM BARREIRAS
+                                                                                            </SelectItem>
+                                                                                        </SelectContent>
+                                                                                    </ShadcnSelect>
+                                                                                </FormControl>
+                                                                                <FormMessage />
+                                                                            </FormItem>
+                                                                        )}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Subseção: AVE */}
+                                                    <div>
+                                                        <h4 className="text-lg font-semibold mb-4">AVE</h4>
+                                                        <div className="space-y-4">
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.ave"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel
+                                                                            className="flex items-center space-x-2"
+                                                                            htmlFor="ave"
+                                                                        >
+                                                                            <FormControl>
+                                                                                <Checkbox
+                                                                                    id="ave"
+                                                                                    checked={field.value}
+                                                                                    onCheckedChange={field.onChange}
+                                                                                />
+                                                                            </FormControl>
+                                                                            <span>AVE</span>
+                                                                        </FormLabel>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                            {form.watch("deficiencia.ave") && (
+                                                                <div className="mt-2 space-y-2 bg-gray-50 p-2 rounded transition-all duration-300">
+                                                                    <FormField
+                                                                        control={form.control}
+                                                                        name="deficiencia.justificativaAve"
+                                                                        render={({ field }) => (
+                                                                            <FormItem>
+                                                                                <FormLabel htmlFor="justificativaAve">
+                                                                                    Justificativa
+                                                                                </FormLabel>
+                                                                                <FormControl>
+                                                                                    <Select
+                                                                                        isMulti
+                                                                                        options={justificativaAveOptions}
+                                                                                        value={justificativaAveOptions.filter(
+                                                                                            (option) =>
+                                                                                                field.value?.includes(
+                                                                                                    option.value
+                                                                                                )
+                                                                                        )}
+                                                                                        onChange={(
+                                                                                            selectedOptions: MultiValue<SelectOption>
+                                                                                        ) => {
+                                                                                            const newJustificativas =
+                                                                                                selectedOptions.map(
+                                                                                                    (option) => option.value
+                                                                                                );
+                                                                                            field.onChange(newJustificativas);
+                                                                                        }}
+                                                                                        styles={customSelectStyles}
+                                                                                        placeholder="Selecione as justificativas"
+                                                                                        inputId="justificativaAve"
+                                                                                        aria-describedby="deficiencia-desc"
+                                                                                    />
+                                                                                </FormControl>
+                                                                                <FormMessage />
+                                                                            </FormItem>
+                                                                        )}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </TabsContent>
+                                </Tabs>
+
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={handleCancel}>
+                                        Cancelar
+                                    </Button>
+                                    <Button type="submit">Salvar</Button>
+                                </DialogFooter>
+                            </form>
+                        </Form>
                     </DialogContent>
                 </Dialog>
             </div>

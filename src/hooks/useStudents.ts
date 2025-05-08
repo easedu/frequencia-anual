@@ -20,6 +20,21 @@ export interface Endereco {
     complemento: string;
 }
 
+export interface Deficiencia {
+    estudanteComDeficiencia: boolean;
+    tipoDeficiencia?: string[]; // DI, DM, TEA, DF, SÍNDROME DE DOWN
+    possuiBarreiras?: boolean;
+    aee?: "PAEE" | "PAAI";
+    instituicao?: "INSTITUTO JÔ CLEMENTE" | "CLIFAK" | "CEJOLE" | "CCA";
+    horarioAtendimento?: "NENHUM" | "NO TURNO" | "CONTRATURNO";
+    atendimentoSaude?: string[]; // NÃO FAZ, FONOAUDIOLOGIA, NEUROLOGIA, etc.
+    possuiEstagiario?: boolean;
+    nomeEstagiario?: string;
+    justificativaEstagiario?: "MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE" | "SEM BARREIRAS";
+    ave?: boolean;
+    justificativaAve?: string[]; // HIGIENE, LOCOMOÇÃO, ALIMENTAÇÃO, etc.
+}
+
 export interface Estudante {
     estudanteId: string;
     turma: string;
@@ -31,6 +46,7 @@ export interface Estudante {
     email?: string;
     endereco?: Endereco;
     dataNascimento?: string;
+    deficiencia?: Deficiencia;
 }
 
 // Função para determinar o turno com base na turma
@@ -67,8 +83,7 @@ export const useStudents = () => {
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                console.log("Dados brutos do Firebase:", data); // Debug: log dos dados brutos
-                // Garante que cada estudante possua todos os campos necessários
+                console.log("Dados brutos do Firebase:", data);
                 const fetchedStudents: Estudante[] = (data.estudantes || []).map((student: unknown) => {
                     const s = student as {
                         estudanteId?: string;
@@ -81,6 +96,7 @@ export const useStudents = () => {
                         email?: string;
                         endereco?: Endereco;
                         dataNascimento?: string;
+                        deficiencia?: Deficiencia;
                     };
                     const fetchedStudent = {
                         estudanteId: s.estudanteId || uuidv4(),
@@ -108,12 +124,41 @@ export const useStudents = () => {
                             }
                             : undefined,
                         dataNascimento: s.dataNascimento || "",
+                        deficiencia: s.deficiencia
+                            ? {
+                                estudanteComDeficiencia: s.deficiencia.estudanteComDeficiencia || false,
+                                tipoDeficiencia: s.deficiencia.tipoDeficiencia || [],
+                                possuiBarreiras: s.deficiencia.possuiBarreiras ?? true,
+                                aee: s.deficiencia.aee || undefined,
+                                instituicao: s.deficiencia.instituicao || undefined,
+                                horarioAtendimento: s.deficiencia.horarioAtendimento || "NENHUM",
+                                atendimentoSaude: s.deficiencia.atendimentoSaude || [],
+                                possuiEstagiario: s.deficiencia.possuiEstagiario || false,
+                                nomeEstagiario: s.deficiencia.nomeEstagiario || "NÃO NECESSITA",
+                                justificativaEstagiario: s.deficiencia.justificativaEstagiario || "SEM BARREIRAS",
+                                ave: s.deficiencia.ave || false,
+                                justificativaAve: s.deficiencia.justificativaAve || [],
+                            }
+                            : {
+                                estudanteComDeficiencia: false,
+                                tipoDeficiencia: [],
+                                possuiBarreiras: true,
+                                aee: undefined,
+                                instituicao: undefined,
+                                horarioAtendimento: "NENHUM",
+                                atendimentoSaude: [],
+                                possuiEstagiario: false,
+                                nomeEstagiario: "NÃO NECESSITA",
+                                justificativaEstagiario: "SEM BARREIRAS",
+                                ave: false,
+                                justificativaAve: [],
+                            },
                     };
-                    console.log("Estudante processado:", fetchedStudent); // Debug: log de cada estudante
+                    console.log("Estudante processado:", fetchedStudent);
                     return fetchedStudent;
                 });
                 setStudents(fetchedStudents);
-                console.log("Lista final de estudantes:", fetchedStudents); // Debug: log da lista final
+                console.log("Lista final de estudantes:", fetchedStudents);
             } else {
                 console.log("Documento não existe no Firebase, inicializando vazio.");
                 setStudents([]);
@@ -129,9 +174,8 @@ export const useStudents = () => {
     // Função para salvar os estudantes no Firebase
     const saveStudents = async (newStudents: Estudante[]) => {
         try {
-            // Limpa os dados removendo campos undefined
             const cleanedStudents = newStudents.map((student) => removeUndefined(student));
-            console.log("Dados limpos a serem salvos no Firebase:", cleanedStudents); // Debug
+            console.log("Dados limpos a serem salvos no Firebase:", cleanedStudents);
             const docRef = doc(db, "2025", "lista_de_estudantes");
             await setDoc(docRef, { estudantes: cleanedStudents }, { merge: false });
             setStudents(newStudents);
@@ -139,7 +183,7 @@ export const useStudents = () => {
         } catch (err) {
             console.error("Erro ao salvar no Firebase:", err);
             setError(err as Error);
-            throw err; // Propaga o erro para o chamador
+            throw err;
         }
     };
 
