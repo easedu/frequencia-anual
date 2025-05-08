@@ -65,7 +65,13 @@ export default function UserManagementPage() {
                     status: data.status,
                 };
             });
-            setUsers(userList);
+            // Ordena usuários: ativos primeiro, desabilitados por último
+            const sortedUsers = userList.sort((a, b) => {
+                if (a.status === "ativo" && b.status === "desabilitado") return -1;
+                if (a.status === "desabilitado" && b.status === "ativo") return 1;
+                return 0;
+            });
+            setUsers(sortedUsers);
             setError("");
         } catch (err) {
             console.error("Erro ao carregar usuários:", err);
@@ -114,7 +120,6 @@ export default function UserManagementPage() {
         return "";
     };
 
-    // Funções para verificar cada requisito individualmente
     const hasMinLength = password.length >= 8;
     const hasLowercase = /(?=.*[a-z])/.test(password);
     const hasUppercase = /(?=.*[A-Z])/.test(password);
@@ -185,11 +190,7 @@ export default function UserManagementPage() {
                 status: "desabilitado",
             });
             toast.success("Usuário desabilitado!");
-            setUsers((prevUsers) =>
-                prevUsers.map((user) =>
-                    user.id === userId ? { ...user, status: "desabilitado" } : user
-                )
-            );
+            await fetchUsers(); // Re-carrega e re-ordena a lista
         } catch (err) {
             console.error("Erro ao desabilitar usuário:", err);
             toast.error("Erro ao desabilitar usuário.");
