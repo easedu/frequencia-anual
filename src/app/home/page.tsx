@@ -61,6 +61,13 @@ export default function Home() {
                     color="green"
                 />,
                 <CustomCard
+                    key="controlar-faltas"
+                    title="Monitorar Faltas da UE"
+                    icon={BarChart}
+                    href="/controlar-faltas"
+                    color="teal"
+                />,
+                <CustomCard
                     key="perfil-estudante"
                     title="Perfil do Estudante"
                     icon={UserCheck}
@@ -68,11 +75,11 @@ export default function Home() {
                     color="blue"
                 />,
                 <CustomCard
-                    key="relatorio-bolsa-familia"
-                    title="Relatório Bolsa Família"
-                    icon={CalendarX}
-                    href="/relatorio-bolsa-familia"
-                    color="blue"
+                    key="cadastro-estudante"
+                    title="Cadastro de Estudantes"
+                    icon={UserPlus}
+                    href="/cadastrar-estudante"
+                    color="purple"
                 />,
             ];
         }
