@@ -1,7 +1,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Student } from "../app/types";
-import { formatAddress, formatPhoneNumber } from "../app/utils";
+import { formatAddress, formatPhoneNumber, formatDataNascimento } from "../app/utils";
 
 interface StudentInfoCardProps {
     student: Student;
@@ -30,6 +30,14 @@ export default function StudentInfoCard({ student }: StudentInfoCardProps) {
                     <div>
                         <Label>Status</Label>
                         <p className="text-lg font-semibold">{student.status}</p>
+                    </div>
+                    <div>
+                        <Label>Turno</Label>
+                        <p className="text-lg font-semibold">{student.turno}</p>
+                    </div>
+                    <div>
+                        <Label>Data de Nascimento</Label>
+                        <p className="text-lg font-semibold">{student.dataNascimento ? formatDataNascimento(student.dataNascimento) : "Nenhum"}</p>
                     </div>
                     <div>
                         <Label>E-mail</Label>

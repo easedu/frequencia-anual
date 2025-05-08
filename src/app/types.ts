@@ -19,6 +19,8 @@ export interface Student {
     turma: string;
     status: string;
     bolsaFamilia: string;
+    turno: "MANHÃ" | "TARDE";
+    dataNascimento?: string;
     contatos?: Contato[];
     email?: string;
     endereco?: Endereco;

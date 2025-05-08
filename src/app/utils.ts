@@ -56,6 +56,14 @@ export function formatAddress(endereco?: Endereco): string {
     return parts.length > 0 ? parts.join(', ') : 'Nenhum';
 }
 
+export function formatDataNascimento(data: string): string {
+    const digits = data.replace(/\D/g, "");
+    if (digits.length === 0) return "Nenhum";
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
+}
+
 export function parseDateToFirebase(dateStr: string): string | null {
     const [day, month, year] = dateStr.split('/').map(Number);
     if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || month < 1 || month > 12 || day > 31) return null;
