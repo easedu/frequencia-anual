@@ -243,7 +243,7 @@ const fetchAddressFromCep = async (cep: string): Promise<Endereco | null> => {
             cidade: data.localidade || "",
             estado: data.uf || "",
             cep: cep,
-            complemento: data.complemento || "",
+            complemento: "",
         };
     } catch (error) {
         console.error("Erro ao consultar ViaCEP:", error);
@@ -407,6 +407,7 @@ export default function CadastrarEstudantePage() {
             "actions",
         ])
     );
+    const [cepChangedManually, setCepChangedManually] = useState<boolean>(false);
 
     const [editingEstudante, setEditingEstudante] = useState<Estudante | null>(null);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -461,7 +462,7 @@ export default function CadastrarEstudantePage() {
     const cep = form.watch("endereco.cep");
 
     useEffect(() => {
-        if (cep) {
+        if (cep && cepChangedManually) {
             const cleanedCep = cleanCep(cep);
             if (cleanedCep.length === 8) {
                 fetchAddressFromCep(cleanedCep).then((address) => {
@@ -477,11 +478,11 @@ export default function CadastrarEstudantePage() {
                 });
             }
         }
-    }, [form, cep]);
+    }, [form, cep, cepChangedManually]);
 
     // Efeito para limpar endereço se CEP incompleto
     useEffect(() => {
-        if (cep) {
+        if (cep && cepChangedManually) {
             const cleanedCep = cleanCep(cep);
             if (cleanedCep.length > 0 && cleanedCep.length < 8) {
                 form.setValue("endereco.rua", "");
@@ -492,7 +493,7 @@ export default function CadastrarEstudantePage() {
                 form.setValue("endereco.complemento", "");
             }
         }
-    }, [form, cep]);
+    }, [form, cep, cepChangedManually]);
 
     // Efeito para ajustar campos dependentes de possuiEstagiario
     const possuiEstagiario = form.watch("deficiencia.possuiEstagiario");
@@ -737,12 +738,15 @@ export default function CadastrarEstudantePage() {
         setEditingEstudante(null);
         setEditingIndex(null);
         setOpenModal(false);
+        setCepChangedManually(false);
         form.reset();
     };
 
     // Preencher o formulário ao editar
     useEffect(() => {
         if (editingEstudante) {
+            console.log("Preenchendo formulário com editingEstudante:", editingEstudante);
+            setCepChangedManually(false);
             form.reset({
                 nome: editingEstudante.nome || "",
                 turma: editingEstudante.turma || "",
@@ -751,14 +755,14 @@ export default function CadastrarEstudantePage() {
                 dataNascimento: editingEstudante.dataNascimento || "",
                 turno: editingEstudante.turno || "MANHÃ",
                 email: editingEstudante.email || "",
-                endereco: editingEstudante.endereco || {
-                    cep: "",
-                    rua: "",
-                    numero: "",
-                    bairro: "",
-                    cidade: "",
-                    estado: "",
-                    complemento: "",
+                endereco: {
+                    cep: editingEstudante.endereco?.cep || "",
+                    rua: editingEstudante.endereco?.rua || "",
+                    numero: editingEstudante.endereco?.numero || "",
+                    bairro: editingEstudante.endereco?.bairro || "",
+                    cidade: editingEstudante.endereco?.cidade || "",
+                    estado: editingEstudante.endereco?.estado || "",
+                    complemento: editingEstudante.endereco?.complemento || "",
                 },
                 contatos: editingEstudante.contatos?.length
                     ? editingEstudante.contatos
@@ -836,6 +840,7 @@ export default function CadastrarEstudantePage() {
                                 });
                                 setEditingIndex(null);
                                 setOpenModal(true);
+                                setCepChangedManually(false);
                             }}
                         >
                             + Novo Estudante
@@ -1489,6 +1494,7 @@ export default function CadastrarEstudantePage() {
                                                                     const inputValue = e.target.value;
                                                                     const cleanedValue = cleanCep(inputValue).slice(0, 8);
                                                                     field.onChange(cleanedValue);
+                                                                    setCepChangedManually(true);
                                                                 }}
                                                                 aria-describedby="form-desc"
                                                             />
@@ -1978,7 +1984,8 @@ export default function CadastrarEstudantePage() {
                                                                                         field.onChange(!!checked);
                                                                                         if (!checked) {
                                                                                             form.setValue(
-                                                                                                "deficiencia.nomeEstagiario", "NÃO NECESSITA"
+                                                                                                "deficiencia.nomeEstagiario",
+                                                                                                "NÃO NECESSITA"
                                                                                             );
                                                                                             form.setValue(
                                                                                                 "deficiencia.justificativaEstagiario",
