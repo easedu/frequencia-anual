@@ -243,7 +243,7 @@ const fetchAddressFromCep = async (cep: string): Promise<Endereco | null> => {
             cidade: data.localidade || "",
             estado: data.uf || "",
             cep: cep,
-            complemento: "",
+            complemento: data.complemento || "",
         };
     } catch (error) {
         console.error("Erro ao consultar ViaCEP:", error);
@@ -321,6 +321,7 @@ const formSchema = z.object({
                 .enum(["MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE", "SEM BARREIRAS"])
                 .optional(),
             ave: z.boolean().optional(),
+            nomeAve: z.string().optional(),
             justificativaAve: z.array(z.string()).optional(),
         })
         .optional()
@@ -335,6 +336,12 @@ const formSchema = z.object({
                 !data?.possuiEstagiario ||
                 (data.nomeEstagiario && data.nomeEstagiario.trim() !== ""),
             "O nome do estagiário é obrigatório quando possui estagiário"
+        )
+        .refine(
+            (data) =>
+                !data?.ave ||
+                (data.nomeAve && data.nomeAve.trim().length >= 2),
+            "O nome do(a) AVE é obrigatório e deve ter pelo menos 2 caracteres quando possui AVE"
         ),
 });
 
@@ -374,6 +381,7 @@ export default function CadastrarEstudantePage() {
                 nomeEstagiario: "NÃO NECESSITA",
                 justificativaEstagiario: "SEM BARREIRAS",
                 ave: false,
+                nomeAve: "",
                 justificativaAve: [],
             },
         },
@@ -697,6 +705,7 @@ export default function CadastrarEstudantePage() {
                     nomeEstagiario: data.deficiencia.nomeEstagiario || "NÃO NECESSITA",
                     justificativaEstagiario: data.deficiencia.justificativaEstagiario || "SEM BARREIRAS",
                     ave: data.deficiencia.ave || false,
+                    nomeAve: data.deficiencia.nomeAve || "",
                     justificativaAve: data.deficiencia.justificativaAve || [],
                 }
                 : undefined,
@@ -779,6 +788,7 @@ export default function CadastrarEstudantePage() {
                     nomeEstagiario: "NÃO NECESSITA",
                     justificativaEstagiario: "SEM BARREIRAS",
                     ave: false,
+                    nomeAve: "",
                     justificativaAve: [],
                 },
             });
@@ -835,6 +845,7 @@ export default function CadastrarEstudantePage() {
                                         nomeEstagiario: "NÃO NECESSITA",
                                         justificativaEstagiario: "SEM BARREIRAS",
                                         ave: false,
+                                        nomeAve: "",
                                         justificativaAve: [],
                                     },
                                 });
@@ -1737,6 +1748,7 @@ export default function CadastrarEstudantePage() {
                                                                                 nomeEstagiario: "NÃO NECESSITA",
                                                                                 justificativaEstagiario: "SEM BARREIRAS",
                                                                                 ave: false,
+                                                                                nomeAve: "",
                                                                                 justificativaAve: [],
                                                                             });
                                                                         }
@@ -2080,10 +2092,17 @@ export default function CadastrarEstudantePage() {
                                                                                 <Checkbox
                                                                                     id="ave"
                                                                                     checked={field.value}
-                                                                                    onCheckedChange={field.onChange}
+                                                                                    onCheckedChange={(checked) => {
+                                                                                        field.onChange(!!checked);
+                                                                                        if (!checked) {
+                                                                                            form.setValue("deficiencia.nomeAve", "");
+                                                                                            form.setValue("deficiencia.justificativaAve", []);
+                                                                                        }
+                                                                                    }}
+                                                                                    aria-label="Indica se o estudante possui AVE"
                                                                                 />
                                                                             </FormControl>
-                                                                            <span>AVE</span>
+                                                                            <span>Possui AVE</span>
                                                                         </FormLabel>
                                                                         <FormMessage />
                                                                     </FormItem>
@@ -2091,6 +2110,26 @@ export default function CadastrarEstudantePage() {
                                                             />
                                                             {form.watch("deficiencia.ave") && (
                                                                 <div className="mt-2 space-y-2 bg-gray-50 p-2 rounded transition-all duration-300">
+                                                                    <FormField
+                                                                        control={form.control}
+                                                                        name="deficiencia.nomeAve"
+                                                                        render={({ field }) => (
+                                                                            <FormItem>
+                                                                                <FormLabel htmlFor="nomeAve">
+                                                                                    Nome do(a) AVE
+                                                                                </FormLabel>
+                                                                                <FormControl>
+                                                                                    <Input
+                                                                                        id="nomeAve"
+                                                                                        placeholder="Nome do(a) AVE"
+                                                                                        {...field}
+                                                                                        aria-describedby="deficiencia-desc"
+                                                                                    />
+                                                                                </FormControl>
+                                                                                <FormMessage />
+                                                                            </FormItem>
+                                                                        )}
+                                                                    />
                                                                     <FormField
                                                                         control={form.control}
                                                                         name="deficiencia.justificativaAve"
