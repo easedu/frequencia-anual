@@ -692,9 +692,7 @@ export default function StudentProfilePage() {
                         <FrequencyNoJustifiedCard studentRecordWithoutJustified={studentRecordWithoutJustified} />
                     </div>
                     <RegisteredAbsencesCard absences={absences} atestados={atestados} bimesterDates={bimesterDates} />
-                    {userRole === "admin" && (
-                        <>
-                            <RegisterAtestadoCard
+                    <RegisterAtestadoCard
                                 atestadoStartDate={atestadoStartDate}
                                 atestadoDays={atestadoDays}
                                 atestadoDescription={atestadoDescription}
@@ -715,8 +713,6 @@ export default function StudentProfilePage() {
                                 setEditingAtestado={setEditingAtestado}
                                 onDeleteAtestado={handleDeleteAtestado}
                             />
-                        </>
-                    )}
                     <RegisterInteractionCard
                         interactionType={interactionType}
                         interactionDate={interactionDate}
