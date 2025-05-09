@@ -48,7 +48,6 @@ interface StudentFormProps {
 
 export function StudentForm({
     form,
-    editingEstudante,
     handleFormSubmit,
     handleCancel,
     cepChangedManually,
