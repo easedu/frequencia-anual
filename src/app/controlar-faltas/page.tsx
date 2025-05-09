@@ -24,7 +24,7 @@ export default function DashboardPage() {
     const [endDate, setEndDate] = useState<string>("");
     const [useToday, setUseToday] = useState<boolean>(true);
     const [useCustom, setUseCustom] = useState<boolean>(false);
-    const [excludeJustified, setExcludeJustified] = useState<boolean>(false);
+    const [excludeJustified, setExcludeJustified] = useState<boolean>(true);
     const [selectedTurma, setSelectedTurma] = useState<string>("");
     const [selectedStudent, setSelectedStudent] = useState<string>("");
 

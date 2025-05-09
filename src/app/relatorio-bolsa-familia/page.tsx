@@ -62,7 +62,7 @@ export default function RelatorioFaltasPage() {
     );
     const [showAbsences, setShowAbsences] = useState<boolean>(false);
     const [showFrequency, setShowFrequency] = useState<boolean>(true);
-    const [excludeJustified, setExcludeJustified] = useState<boolean>(false); // Novo estado para controlar exclusão de faltas justificadas
+    const [excludeJustified, setExcludeJustified] = useState<boolean>(true); // Novo estado para controlar exclusão de faltas justificadas
     const [diasLetivos, setDiasLetivos] = useState<{ [key: number]: number }>({});
 
     const parseDate = (dateStr: string): Date | null => {
