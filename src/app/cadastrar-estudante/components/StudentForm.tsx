@@ -698,6 +698,7 @@ export function StudentForm({
                                                                         CEJOLE
                                                                     </SelectItem>
                                                                     <SelectItem value="CCA">CCA</SelectItem>
+                                                                    <SelectItem value="NENHUM">NENHUM</SelectItem>
                                                                 </SelectContent>
                                                             </ShadcnSelect>
                                                         </FormControl>
