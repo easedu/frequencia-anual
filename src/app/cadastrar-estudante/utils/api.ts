@@ -17,7 +17,7 @@ export const fetchAddressFromCep = async (cep: string): Promise<Endereco | null>
             cidade: data.localidade || "",
             estado: data.uf || "",
             cep: cep,
-            complemento: data.complemento || "",
+            complemento: "",
         };
     } catch (error) {
         console.error("Erro ao consultar ViaCEP:", error);

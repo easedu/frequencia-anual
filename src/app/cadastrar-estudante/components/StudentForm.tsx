@@ -48,6 +48,7 @@ interface StudentFormProps {
 
 export function StudentForm({
     form,
+    editingEstudante,
     handleFormSubmit,
     handleCancel,
     cepChangedManually,
@@ -125,6 +126,7 @@ export function StudentForm({
                                                 id="nome"
                                                 placeholder="Digite o nome"
                                                 {...field}
+                                                autoComplete="off"
                                                 aria-describedby="form-desc"
                                             />
                                         </FormControl>
@@ -146,6 +148,7 @@ export function StudentForm({
                                                     id="turma"
                                                     placeholder="Digite a turma"
                                                     {...field}
+                                                    autoComplete="off"
                                                     aria-describedby="form-desc"
                                                 />
                                             </FormControl>
@@ -225,6 +228,7 @@ export function StudentForm({
                                                         const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
                                                         field.onChange(cleanedValue);
                                                     }}
+                                                    autoComplete="off"
                                                     aria-describedby="form-desc"
                                                 />
                                             </FormControl>
@@ -270,6 +274,7 @@ export function StudentForm({
                                                 id="email"
                                                 placeholder="Digite o e-mail"
                                                 {...field}
+                                                autoComplete="off"
                                                 aria-describedby="form-desc"
                                             />
                                         </FormControl>
@@ -300,6 +305,7 @@ export function StudentForm({
                                                     field.onChange(cleanedValue);
                                                     setCepChangedManually(true);
                                                 }}
+                                                autoComplete="off"
                                                 aria-describedby="form-desc"
                                             />
                                         </FormControl>
@@ -319,6 +325,7 @@ export function StudentForm({
                                                     id="rua"
                                                     placeholder="Rua"
                                                     {...field}
+                                                    autoComplete="off"
                                                     aria-describedby="form-desc"
                                                 />
                                             </FormControl>
@@ -337,6 +344,7 @@ export function StudentForm({
                                                     id="numero"
                                                     placeholder="Número"
                                                     {...field}
+                                                    autoComplete="off"
                                                     aria-describedby="form-desc"
                                                 />
                                             </FormControl>
@@ -357,6 +365,7 @@ export function StudentForm({
                                                     id="complemento"
                                                     placeholder="Complemento"
                                                     {...field}
+                                                    autoComplete="off"
                                                     aria-describedby="form-desc"
                                                 />
                                             </FormControl>
@@ -375,6 +384,7 @@ export function StudentForm({
                                                     id="bairro"
                                                     placeholder="Bairro"
                                                     {...field}
+                                                    autoComplete="off"
                                                     aria-describedby="form-desc"
                                                 />
                                             </FormControl>
@@ -383,18 +393,19 @@ export function StudentForm({
                                     )}
                                 />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <FormField
                                     control={form.control}
                                     name="endereco.cidade"
                                     render={({ field }) => (
-                                        <FormItem className="md:col-span-3">
+                                        <FormItem>
                                             <FormLabel htmlFor="cidade">Cidade</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     id="cidade"
                                                     placeholder="Cidade"
                                                     {...field}
+                                                    autoComplete="off"
                                                     aria-describedby="form-desc"
                                                 />
                                             </FormControl>
@@ -406,13 +417,14 @@ export function StudentForm({
                                     control={form.control}
                                     name="endereco.estado"
                                     render={({ field }) => (
-                                        <FormItem className="md:col-span-1">
+                                        <FormItem>
                                             <FormLabel htmlFor="estado">Estado</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     id="estado"
                                                     placeholder="Estado"
                                                     {...field}
+                                                    autoComplete="off"
                                                     aria-describedby="form-desc"
                                                 />
                                             </FormControl>
@@ -430,7 +442,7 @@ export function StudentForm({
                             {form.watch("contatos")?.map((_, index) => (
                                 <div
                                     key={index}
-                                    className="flex items-center gap-2 mb-2 p-2 border rounded"
+                                    className="flex items-center gap-2 mb-2 p-2 danego border rounded"
                                 >
                                     <div className="flex-1 space-y-2">
                                         <FormField
@@ -446,6 +458,7 @@ export function StudentForm({
                                                             id={`contato-nome-${index}`}
                                                             placeholder="Nome do contato"
                                                             {...field}
+                                                            autoComplete="off"
                                                             aria-describedby="form-desc"
                                                         />
                                                     </FormControl>
@@ -471,6 +484,7 @@ export function StudentForm({
                                                                 const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
                                                                 field.onChange(cleanedValue);
                                                             }}
+                                                            autoComplete="off"
                                                             aria-describedby="form-desc"
                                                         />
                                                     </FormControl>
@@ -821,6 +835,7 @@ export function StudentForm({
                                                                         id="nomeEstagiario"
                                                                         placeholder="Nome do(a) Estagiário(a)"
                                                                         {...field}
+                                                                        autoComplete="off"
                                                                         aria-describedby="deficiencia-desc"
                                                                     />
                                                                 </FormControl>
@@ -910,6 +925,7 @@ export function StudentForm({
                                                                         id="nomeAve"
                                                                         placeholder="Nome do(a) AVE"
                                                                         {...field}
+                                                                        autoComplete="off"
                                                                         aria-describedby="deficiencia-desc"
                                                                     />
                                                                 </FormControl>
