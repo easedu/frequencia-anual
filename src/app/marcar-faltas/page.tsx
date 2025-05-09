@@ -69,7 +69,7 @@ function convertToISO(dateStr: string): string {
 }
 
 // Função para extrair as datas válidas (isChecked === true) do ano letivo
-function getValidDates(academicYearData: AcademicYearData | null): string[] {
+function getValidDates(academicYearData: AcademicYearData | null, role: Role | null): string[] {
     if (!academicYearData) return [];
 
     const validDates: string[] = [];
@@ -92,6 +92,12 @@ function getValidDates(academicYearData: AcademicYearData | null): string[] {
         (d) => d.timestamp <= todayTimestamp
     );
 
+    // Para perfil "user", retorna apenas os últimos 5 dias letivos
+    if (role === "user") {
+        return filteredDates.slice(-5).map((d) => d.date);
+    }
+
+    // Para outros perfis, retorna todas as datas válidas
     return filteredDates.map((d) => d.date);
 }
 
@@ -152,7 +158,7 @@ export default function MarcarFaltasPage() {
                 }
             });
             setIsValidDay(valid);
-            setErrorMessage(valid ? "" : "O dia atual não está disponível para marcação de faltas.");
+            setErrorMessage(valid ? "" : "O dia selecionado não está disponível para marcação de faltas.");
         }
     }, [academicYearData, selectedDate]);
 
@@ -356,25 +362,21 @@ export default function MarcarFaltasPage() {
                     <CardTitle>Marcação de Faltas</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {/* Renderiza a Data Atual de acordo com o perfil do usuário */}
+                    {/* Renderiza o seletor de data para todos os perfis */}
                     <div className="mb-4 flex items-center gap-2">
-                        <span className="font-bold">Data Atual: </span>
-                        {role === "user" ? (
-                            <span>{selectedDate}</span>
-                        ) : (
-                            <Select onValueChange={setSelectedDate} value={selectedDate}>
-                                <SelectTrigger className="w-48">
-                                    <SelectValue placeholder="Selecione a data" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {getValidDates(academicYearData).map((date) => (
-                                        <SelectItem key={date} value={date}>
-                                            {date}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
+                        <span className="font-bold">Selecione a Data:</span>
+                        <Select onValueChange={setSelectedDate} value={selectedDate}>
+                            <SelectTrigger className="w-48">
+                                <SelectValue placeholder="Selecione a data" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {getValidDates(academicYearData, role).map((date) => (
+                                    <SelectItem key={date} value={date}>
+                                        {date}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     {/* Seleção da Turma */}
