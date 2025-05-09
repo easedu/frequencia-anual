@@ -35,7 +35,7 @@ export default function StudentProfilePage() {
     const [interactionDate, setInteractionDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
     const [interactionDescription, setInteractionDescription] = useState<string>("");
     const [interactionSensitive, setInteractionSensitive] = useState<boolean>(false);
-    const [atestadoStartDate, setAtestadoStartDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
+    const [atestadoStartDate, setAtestadoStartDate] = useState<string>(""); // Alterado para string vazia
     const [atestadoDays, setAtestadoDays] = useState<string>("");
     const [atestadoDescription, setAtestadoDescription] = useState<string>("");
     const [editingAtestado, setEditingAtestado] = useState<Atestado | null>(null);
@@ -60,7 +60,7 @@ export default function StudentProfilePage() {
             setAtestadoDescription(editingAtestado.description);
         } else {
             // Reset fields when not editing
-            setAtestadoStartDate(new Date().toLocaleDateString("pt-BR"));
+            setAtestadoStartDate("");
             setAtestadoDays("");
             setAtestadoDescription("");
         }
@@ -413,7 +413,7 @@ export default function StudentProfilePage() {
                 }
             }
 
-            setAtestadoStartDate(new Date().toLocaleDateString("pt-BR"));
+            setAtestadoStartDate("");
             setAtestadoDays("");
             setAtestadoDescription("");
             await fetchStudentData(selectedStudentId);
@@ -487,7 +487,7 @@ export default function StudentProfilePage() {
             }
 
             setEditingAtestado(null);
-            setAtestadoStartDate(new Date().toLocaleDateString("pt-BR"));
+            setAtestadoStartDate("");
             setAtestadoDays("");
             setAtestadoDescription("");
             await fetchStudentData(selectedStudentId);

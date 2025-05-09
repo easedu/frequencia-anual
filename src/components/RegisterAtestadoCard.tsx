@@ -18,7 +18,7 @@ interface RegisterAtestadoCardProps {
     setEditingAtestado: (value: Atestado | null) => void;
     onAddAtestado: () => Promise<void>;
     onEditAtestado: () => Promise<void>;
-    id?: string; // Added optional id prop
+    id?: string;
 }
 
 export default function RegisterAtestadoCard({
@@ -85,7 +85,7 @@ export default function RegisterAtestadoCard({
                         variant="outline"
                         onClick={() => {
                             setEditingAtestado(null);
-                            setAtestadoStartDate(new Date().toLocaleDateString("pt-BR"));
+                            setAtestadoStartDate("");
                             setAtestadoDays("");
                             setAtestadoDescription("");
                         }}
