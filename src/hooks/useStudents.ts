@@ -25,7 +25,7 @@ export interface Deficiencia {
     tipoDeficiencia?: string[]; // DI, DM, TEA, DF, SÍNDROME DE DOWN
     possuiBarreiras?: boolean;
     aee?: "PAEE" | "PAAI";
-    instituicao?: "INSTITUTO JÔ CLEMENTE" | "CLIFAK" | "CEJOLE" | "CCA";
+    instituicao?: "INSTITUTO JÔ CLEMENTE" | "CLIFAK" | "CEJOLE" | "CCA" | "NENHUM";
     horarioAtendimento?: "NENHUM" | "NO TURNO" | "CONTRATURNO";
     atendimentoSaude?: string[]; // NÃO FAZ, FONOAUDIOLOGIA, NEUROLOGIA, etc.
     possuiEstagiario?: boolean;

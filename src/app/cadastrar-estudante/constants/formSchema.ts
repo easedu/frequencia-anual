@@ -61,7 +61,7 @@ export const formSchema = z.object({
             tipoDeficiencia: z.array(z.string()).optional(),
             possuiBarreiras: z.boolean().optional(),
             aee: z.enum(["PAEE", "PAAI"]).optional(),
-            instituicao: z.enum(["INSTITUTO JÔ CLEMENTE", "CLIFAK", "CEJOLE", "CCA"]).optional(),
+            instituicao: z.enum(["INSTITUTO JÔ CLEMENTE", "CLIFAK", "CEJOLE", "CCA", "NENHUM"]).optional(),
             horarioAtendimento: z.enum(["NENHUM", "NO TURNO", "CONTRATURNO"]).optional(),
             atendimentoSaude: z.array(z.string()).optional(),
             possuiEstagiario: z.boolean().optional(),

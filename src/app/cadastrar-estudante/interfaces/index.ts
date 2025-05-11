@@ -18,7 +18,7 @@ export interface Deficiencia {
     tipoDeficiencia?: string[];
     possuiBarreiras?: boolean;
     aee?: "PAEE" | "PAAI";
-    instituicao?: "INSTITUTO JÔ CLEMENTE" | "CLIFAK" | "CEJOLE" | "CCA";
+    instituicao?: "INSTITUTO JÔ CLEMENTE" | "CLIFAK" | "CEJOLE" | "CCA" | "NENHUM";
     horarioAtendimento?: "NENHUM" | "NO TURNO" | "CONTRATURNO";
     atendimentoSaude?: string[];
     possuiEstagiario?: boolean;
