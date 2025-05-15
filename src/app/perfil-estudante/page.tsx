@@ -35,7 +35,7 @@ export default function StudentProfilePage() {
     const [interactionDate, setInteractionDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
     const [interactionDescription, setInteractionDescription] = useState<string>("");
     const [interactionSensitive, setInteractionSensitive] = useState<boolean>(false);
-    const [atestadoStartDate, setAtestadoStartDate] = useState<string>(""); // Alterado para string vazia
+    const [atestadoStartDate, setAtestadoStartDate] = useState<string>("");
     const [atestadoDays, setAtestadoDays] = useState<string>("");
     const [atestadoDescription, setAtestadoDescription] = useState<string>("");
     const [editingAtestado, setEditingAtestado] = useState<Atestado | null>(null);
@@ -59,7 +59,6 @@ export default function StudentProfilePage() {
             setAtestadoDays(editingAtestado.days.toString());
             setAtestadoDescription(editingAtestado.description);
         } else {
-            // Reset fields when not editing
             setAtestadoStartDate("");
             setAtestadoDays("");
             setAtestadoDescription("");
@@ -558,7 +557,7 @@ export default function StudentProfilePage() {
         .sort((a, b) => a.nome.localeCompare(b.nome));
 
     const handlePrintReport = () => {
-        if (!student || !studentRecord) return;
+        if (!student || !studentRecordWithoutJustified) return;
 
         const order = [
             'Contato telefônico',
@@ -596,8 +595,8 @@ export default function StudentProfilePage() {
         <p><strong>Nome:</strong> ${student.nome}</p>
         <p><strong>Ano:</strong> ${student.turma}</p>
       </div>
-      <p><strong>Frequência atual:</strong> ${studentRecord.percentualFrequenciaAteHoje}%</p>
-      <p><strong>Faltas:</strong> ${studentRecord.totalFaltasAteHoje}</p>
+      <p><strong>Frequência atual:</strong> ${studentRecordWithoutJustified.percentualFrequenciaAteHoje}%</p>
+      <p><strong>Faltas:</strong> ${studentRecordWithoutJustified.totalFaltasAteHoje}</p>
       <h2 style="text-align: center; font-weight: bold; text-decoration: underline;">Providências da escola</h2>
       ${Object.entries(sortedInteractions).map(([type, entries]) => `
         <h3 style="text-align: justify; font-size: 12px;">${type}: </h3>
@@ -693,26 +692,26 @@ export default function StudentProfilePage() {
                     </div>
                     <RegisteredAbsencesCard absences={absences} atestados={atestados} bimesterDates={bimesterDates} />
                     <RegisterAtestadoCard
-                                atestadoStartDate={atestadoStartDate}
-                                atestadoDays={atestadoDays}
-                                atestadoDescription={atestadoDescription}
-                                editingAtestado={editingAtestado}
-                                setAtestadoStartDate={setAtestadoStartDate}
-                                setAtestadoDays={setAtestadoDays}
-                                setAtestadoDescription={setAtestadoDescription}
-                                setEditingAtestado={setEditingAtestado}
-                                onAddAtestado={handleAddAtestado}
-                                onEditAtestado={handleEditAtestado}
-                                id="atestado-card"
-                            />
-                            <AtestadoHistoryCard
-                                atestados={atestados}
-                                userRole={userRole}
-                                showDeleteAtestadoDialog={showDeleteAtestadoDialog}
-                                setShowDeleteAtestadoDialog={setShowDeleteAtestadoDialog}
-                                setEditingAtestado={setEditingAtestado}
-                                onDeleteAtestado={handleDeleteAtestado}
-                            />
+                        atestadoStartDate={atestadoStartDate}
+                        atestadoDays={atestadoDays}
+                        atestadoDescription={atestadoDescription}
+                        editingAtestado={editingAtestado}
+                        setAtestadoStartDate={setAtestadoStartDate}
+                        setAtestadoDays={setAtestadoDays}
+                        setAtestadoDescription={setAtestadoDescription}
+                        setEditingAtestado={setEditingAtestado}
+                        onAddAtestado={handleAddAtestado}
+                        onEditAtestado={handleEditAtestado}
+                        id="atestado-card"
+                    />
+                    <AtestadoHistoryCard
+                        atestados={atestados}
+                        userRole={userRole}
+                        showDeleteAtestadoDialog={showDeleteAtestadoDialog}
+                        setShowDeleteAtestadoDialog={setShowDeleteAtestadoDialog}
+                        setEditingAtestado={setEditingAtestado}
+                        onDeleteAtestado={handleDeleteAtestado}
+                    />
                     <RegisterInteractionCard
                         interactionType={interactionType}
                         interactionDate={interactionDate}
