@@ -157,4 +157,36 @@ export const calculateDiasLetivos = async (start: string, end: string): Promise<
         console.error("Erro ao calcular dias letivos:", error);
         return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
     }
+}
+
+export async function getDiasLetivosNoPeriodo(startDate: Date, endDate: Date): Promise<string[]> {
+    try {
+        const docRef = doc(db, "2025", "ano_letivo");
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+            return [];
+        }
+
+        const anoData = docSnap.data() as AnoLetivoData;
+        const diasLetivos: string[] = [];
+        const bimesters: (keyof AnoLetivoData)[] = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
+
+        for (const bimesterKey of bimesters) {
+            if (anoData[bimesterKey]?.dates) {
+                const bimesterDates = anoData[bimesterKey].dates.filter((d: BimesterDate) => {
+                    if (!d.isChecked) return false;
+
+                    const date = parseDate(d.date);
+                    return date && date >= startDate && date <= endDate;
+                });
+
+                diasLetivos.push(...bimesterDates.map(d => d.date));
+            }
+        }
+
+        return diasLetivos;
+    } catch (error) {
+        console.error("Erro ao obter dias letivos no período:", error);
+        return [];
+    }
 };

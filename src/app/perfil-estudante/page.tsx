@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
-import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where, deleteField } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where, deleteField, writeBatch } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { headerImageBase64 } from "@/assets/headerImage";
 import SearchByNameCard from "../../components/SearchByNameCard";
@@ -17,7 +17,7 @@ import AtestadoHistoryCard from "../../components/AtestadoHistoryCard";
 import RegisterInteractionCard from "../../components/RegisterInteractionCard";
 import InteractionHistoryCard from "../../components/InteractionHistoryCard";
 import { Student, StudentRecord, FamilyInteraction, Atestado, AbsenceRecord, BimesterDates, AnoLetivoData } from "../types";
-import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate } from "../utils";
+import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate, getDiasLetivosNoPeriodo } from "../utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -394,23 +394,56 @@ export default function StudentProfilePage() {
             const atestadoRef = await addDoc(collection(db, "2025", "atestados", selectedStudentId), atestadoData);
             const atestadoId = atestadoRef.id;
 
-            // Update absences within the atestado period
-            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
-            for (const doc of absenceSnapshot.docs) {
-                const absence = doc.data();
-                const absenceDate = parseDate(formatFirebaseDate(absence.data));
-                if (
-                    absence.estudanteId === selectedStudentId &&
-                    absenceDate &&
-                    absenceDate >= startDate &&
-                    absenceDate <= endDate
-                ) {
-                    await updateDoc(doc.ref, {
+            // Obter os dias letivos no período do atestado
+            const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
+
+            // Obter as faltas já existentes para o aluno
+            const faltasSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const faltasExistentes = new Map();
+
+            faltasSnapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.estudanteId === selectedStudentId) {
+                    const dataFormatada = formatFirebaseDate(data.data);
+                    faltasExistentes.set(dataFormatada, {
+                        id: doc.id,
+                        justified: data.justified || false,
+                        atestadoId: data.atestadoId
+                    });
+                }
+            });
+
+            // Criar ou atualizar registros de faltas para os dias letivos
+            const batch = writeBatch(db);
+            const controleColRef = collection(db, "2025", "faltas", "controle");
+
+            for (const dataLetiva of diasLetivos) {
+                const dataFirebase = parseDateToFirebase(dataLetiva);
+                if (!dataFirebase) continue;
+
+                const faltaExistente = faltasExistentes.get(dataLetiva);
+
+                if (faltaExistente) {
+                    // Atualizar falta existente
+                    const faltaRef = doc(db, "2025", "faltas", "controle", faltaExistente.id);
+                    batch.update(faltaRef, {
                         justified: true,
-                        atestadoId,
+                        atestadoId
+                    });
+                } else {
+                    // Criar nova falta justificada
+                    const newFaltaRef = doc(controleColRef);
+                    batch.set(newFaltaRef, {
+                        estudanteId: selectedStudentId,
+                        data: dataFirebase,
+                        turma: student?.turma || "",
+                        justified: true,
+                        atestadoId
                     });
                 }
             }
+
+            await batch.commit();
 
             setAtestadoStartDate("");
             setAtestadoDays("");
@@ -454,9 +487,12 @@ export default function StudentProfilePage() {
 
             // Reset absences previously justified by this atestado
             const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const batch = writeBatch(db);
+
+            // Primeiro, remover as justificativas das faltas anteriores
             for (const doc of absenceSnapshot.docs) {
                 if (doc.data().atestadoId === editingAtestado.id) {
-                    await updateDoc(doc.ref, {
+                    batch.update(doc.ref, {
                         justified: false,
                         atestadoId: deleteField(),
                     });
@@ -469,21 +505,51 @@ export default function StudentProfilePage() {
             const endDate = new Date(startDate);
             endDate.setDate(startDate.getDate() + days - 1);
 
-            for (const doc of absenceSnapshot.docs) {
-                const absence = doc.data();
-                const absenceDate = parseDate(formatFirebaseDate(absence.data));
-                if (
-                    absence.estudanteId === selectedStudentId &&
-                    absenceDate &&
-                    absenceDate >= startDate &&
-                    absenceDate <= endDate
-                ) {
-                    await updateDoc(doc.ref, {
+            // Obter os dias letivos no período do atestado atualizado
+            const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
+
+            // Mapear as faltas existentes
+            const faltasExistentes = new Map();
+            absenceSnapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.estudanteId === selectedStudentId) {
+                    const dataFormatada = formatFirebaseDate(data.data);
+                    faltasExistentes.set(dataFormatada, {
+                        id: doc.id,
+                        ref: doc.ref
+                    });
+                }
+            });
+
+            // Criar ou atualizar registros de faltas para os dias letivos no novo período
+            const controleColRef = collection(db, "2025", "faltas", "controle");
+
+            for (const dataLetiva of diasLetivos) {
+                const dataFirebase = parseDateToFirebase(dataLetiva);
+                if (!dataFirebase) continue;
+
+                const faltaExistente = faltasExistentes.get(dataLetiva);
+
+                if (faltaExistente) {
+                    // Atualizar falta existente
+                    batch.update(faltaExistente.ref, {
                         justified: true,
-                        atestadoId: editingAtestado.id,
+                        atestadoId: editingAtestado.id
+                    });
+                } else {
+                    // Criar nova falta justificada
+                    const newFaltaRef = doc(controleColRef);
+                    batch.set(newFaltaRef, {
+                        estudanteId: selectedStudentId,
+                        data: dataFirebase,
+                        turma: student?.turma || "",
+                        justified: true,
+                        atestadoId: editingAtestado.id
                     });
                 }
             }
+
+            await batch.commit();
 
             setEditingAtestado(null);
             setAtestadoStartDate("");
@@ -505,15 +571,18 @@ export default function StudentProfilePage() {
 
             // Reset absences justified by this atestado
             const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const batch = writeBatch(db);
+
             for (const doc of absenceSnapshot.docs) {
                 if (doc.data().atestadoId === atestadoId) {
-                    await updateDoc(doc.ref, {
+                    batch.update(doc.ref, {
                         justified: false,
                         atestadoId: deleteField(),
                     });
                 }
             }
 
+            await batch.commit();
             await fetchStudentData(selectedStudentId);
             toast.success("Atestado excluído com sucesso!");
         } catch (error) {
