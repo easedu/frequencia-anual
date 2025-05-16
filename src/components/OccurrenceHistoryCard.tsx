@@ -35,8 +35,6 @@ interface OccurrenceHistoryCardProps {
 
 export default function OccurrenceHistoryCard({
     occurrences,
-    student,
-    studentRecord,
     userRole,
     showDeleteDialog,
     setShowDeleteDialog,
