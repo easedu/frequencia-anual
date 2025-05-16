@@ -93,3 +93,11 @@ export interface AnoLetivoData {
 export interface BimesterDates {
     [key: number]: { start: string; end: string };
 }
+
+export interface Occurrence {
+    id: string;
+    date: string;
+    description: string;
+    createdBy: string;
+    sensitive: boolean;
+}

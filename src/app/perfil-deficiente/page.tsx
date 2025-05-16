@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useStudents } from "@/hooks/useStudents";
 import {
     Card,
@@ -32,7 +32,35 @@ import {
     Legend,
 } from "recharts";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Estudante } from "@/interfaces";
+import { Pencil, Trash, X } from "lucide-react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Toaster, toast } from "sonner";
+import { db } from "@/firebase.config";
+import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, where } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { formatDateInput, parseDateToFirebase, formatFirebaseDate } from "../utils";
+
+// Interface de Ocorrência
+interface Ocorrencia {
+    id: string;
+    date: string;
+    description: string;
+    createdBy: string;
+    sensitive: boolean;
+}
 
 interface ChartData {
     name: string;
@@ -90,6 +118,248 @@ export default function DashboardDeficiencia() {
     const [sortEstagiario, setSortEstagiario] = useState<"asc" | "desc" | null>(null);
     const [sortAve, setSortAve] = useState<"asc" | "desc" | null>(null);
 
+    // Estados para Ocorrências
+    const [selectedStudent, setSelectedStudent] = useState<Estudante | null>(null);
+    const [occurrenceDate, setOccurrenceDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
+    const [occurrenceDescription, setOccurrenceDescription] = useState<string>("");
+    const [occurrenceSensitive, setOccurrenceSensitive] = useState<boolean>(false);
+    const [editingOccurrence, setEditingOccurrence] = useState<Ocorrencia | null>(null);
+    const [occurrences, setOccurrences] = useState<Ocorrencia[]>([]);
+    const [showDeleteOccurrenceDialog, setShowDeleteOccurrenceDialog] = useState<string | null>(null);
+    const [userRole, setUserRole] = useState<string | null>(null);
+    const [filtroTabelaOcorrencias, setFiltroTabelaOcorrencias] = useState<string>("");
+    const [isOccurrenceSectionVisible, setIsOccurrenceSectionVisible] = useState<boolean>(false);
+
+    const auth = getAuth();
+
+    // Verificar se há um ID de estudante na URL para abrir os cards de ocorrência automaticamente
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const urlParams = new URLSearchParams(window.location.search);
+            const studentId = urlParams.get('studentId');
+
+            if (studentId && students.length > 0) {
+                const foundStudent = students.find(s => s.estudanteId === studentId);
+                if (foundStudent) {
+                    setSelectedStudent(foundStudent);
+                    setIsOccurrenceSectionVisible(true);
+
+                    // Usar setTimeout para garantir que os elementos foram renderizados
+                    setTimeout(() => {
+                        document.getElementById("occurrence-section")?.scrollIntoView({ behavior: "smooth" });
+                    }, 500);
+                }
+            }
+        }
+    }, [students]);
+
+    // Buscar o perfil do usuário atual para definir permissões
+    useEffect(() => {
+        const fetchUserRole = async () => {
+            try {
+                const user = auth.currentUser;
+                if (!user || !user.email) {
+                    setUserRole("user");
+                    return;
+                }
+                const q = query(collection(db, "users"), where("email", "==", user.email));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                    const userDoc = querySnapshot.docs[0];
+                    const userData = userDoc.data();
+                    setUserRole(userData.perfil || "user");
+                } else {
+                    setUserRole("user");
+                }
+            } catch (error) {
+                console.error("Erro ao carregar perfil do usuário:", error);
+                setUserRole("user");
+            }
+        };
+
+        fetchUserRole();
+    }, [auth]);
+
+    // Resetar formulário de ocorrência quando mudar o aluno selecionado
+    useEffect(() => {
+        if (!selectedStudent) {
+            setOccurrenceDate(new Date().toLocaleDateString("pt-BR"));
+            setOccurrenceDescription("");
+            setOccurrenceSensitive(false);
+            setEditingOccurrence(null);
+            setOccurrences([]);
+            setIsOccurrenceSectionVisible(false);
+        } else {
+            fetchOccurrencesForStudent(selectedStudent.estudanteId);
+            setIsOccurrenceSectionVisible(true);
+        }
+    }, [selectedStudent]);
+
+    // Sincronizar campos do formulário com ocorrência sendo editada
+    useEffect(() => {
+        if (editingOccurrence) {
+            setOccurrenceDate(editingOccurrence.date);
+            setOccurrenceDescription(editingOccurrence.description);
+            setOccurrenceSensitive(editingOccurrence.sensitive || false);
+        } else {
+            setOccurrenceDate(new Date().toLocaleDateString("pt-BR"));
+            setOccurrenceDescription("");
+            setOccurrenceSensitive(false);
+        }
+    }, [editingOccurrence]);
+
+    // Buscar ocorrências para o estudante selecionado
+    const fetchOccurrencesForStudent = async (studentId: string) => {
+        try {
+            const occurrencesSnapshot = await getDocs(collection(db, "2025", "occurrences", studentId));
+            const occurrencesData: Ocorrencia[] = occurrencesSnapshot.docs.map(doc => ({
+                id: doc.id,
+                date: formatFirebaseDate(doc.data().date as string),
+                description: doc.data().description as string,
+                createdBy: doc.data().createdBy as string || "Não informado",
+                sensitive: doc.data().sensitive as boolean || false,
+            })).sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
+
+            setOccurrences(occurrencesData);
+        } catch (error) {
+            console.error("Erro ao buscar ocorrências:", error);
+            toast.error("Erro ao carregar ocorrências");
+        }
+    };
+
+    // Adicionar uma nova ocorrência
+    const handleAddOccurrence = async () => {
+        if (!selectedStudent || !occurrenceDate || !occurrenceDescription) {
+            toast.error("Selecione um aluno e preencha todos os campos");
+            return;
+        }
+
+        const formattedDate = parseDateToFirebase(occurrenceDate);
+        if (!formattedDate) {
+            toast.error("Data inválida. Use o formato DD/MM/YYYY");
+            return;
+        }
+
+        try {
+            const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
+
+            const occurrenceData = {
+                date: formattedDate,
+                description: occurrenceDescription,
+                createdBy: currentUser,
+                sensitive: occurrenceSensitive,
+            };
+
+            await addDoc(collection(db, "2025", "occurrences", selectedStudent.estudanteId), occurrenceData);
+
+            setOccurrenceDate(new Date().toLocaleDateString("pt-BR"));
+            setOccurrenceDescription("");
+            setOccurrenceSensitive(false);
+
+            await fetchOccurrencesForStudent(selectedStudent.estudanteId);
+            toast.success("Ocorrência registrada com sucesso!");
+
+            // Scroll para o card de ocorrências
+            document.getElementById("occurrence-card")?.scrollIntoView({ behavior: "smooth" });
+
+        } catch (error) {
+            console.error("Erro ao adicionar ocorrência:", error);
+            toast.error("Erro ao cadastrar ocorrência");
+        }
+    };
+
+    // Editar uma ocorrência existente
+    const handleEditOccurrence = async () => {
+        if (!selectedStudent || !editingOccurrence || !occurrenceDate || !occurrenceDescription) {
+            toast.error("Preencha todos os campos para editar a ocorrência");
+            return;
+        }
+
+        const formattedDate = parseDateToFirebase(occurrenceDate);
+        if (!formattedDate) {
+            toast.error("Data inválida. Use o formato DD/MM/YYYY");
+            return;
+        }
+
+        try {
+            const occurrenceRef = doc(db, "2025", "occurrences", selectedStudent.estudanteId, editingOccurrence.id);
+
+            await updateDoc(occurrenceRef, {
+                date: formattedDate,
+                description: occurrenceDescription,
+                sensitive: occurrenceSensitive,
+                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
+            });
+
+            setEditingOccurrence(null);
+            setOccurrenceDate(new Date().toLocaleDateString("pt-BR"));
+            setOccurrenceDescription("");
+            setOccurrenceSensitive(false);
+
+            await fetchOccurrencesForStudent(selectedStudent.estudanteId);
+            toast.success("Ocorrência atualizada com sucesso!");
+
+        } catch (error) {
+            console.error("Erro ao atualizar ocorrência:", error);
+            toast.error("Erro ao atualizar ocorrência");
+        }
+    };
+
+    // Excluir uma ocorrência
+    const handleDeleteOccurrence = async (occurrenceId: string) => {
+        if (!selectedStudent) return;
+
+        try {
+            const occurrenceRef = doc(db, "2025", "occurrences", selectedStudent.estudanteId, occurrenceId);
+            await deleteDoc(occurrenceRef);
+
+            await fetchOccurrencesForStudent(selectedStudent.estudanteId);
+            toast.success("Ocorrência excluída com sucesso!");
+
+        } catch (error) {
+            console.error("Erro ao excluir ocorrência:", error);
+            toast.error("Erro ao excluir ocorrência");
+        } finally {
+            setShowDeleteOccurrenceDialog(null);
+        }
+    };
+
+    // Selecionar estudante para registro de ocorrências
+    const handleSelectStudentForOccurrence = (student: Estudante) => {
+        // Se o mesmo estudante for selecionado novamente, alternar a visibilidade
+        if (selectedStudent?.estudanteId === student.estudanteId) {
+            setSelectedStudent(null);
+            setIsOccurrenceSectionVisible(false);
+        } else {
+            setSelectedStudent(student);
+            setIsOccurrenceSectionVisible(true);
+
+            // Atualizar URL com o ID do estudante selecionado para permitir compartilhar
+            if (typeof window !== 'undefined') {
+                const url = new URL(window.location.href);
+                url.searchParams.set('studentId', student.estudanteId);
+                window.history.pushState({}, '', url.toString());
+            }
+
+            // Usar setTimeout para garantir que os elementos foram renderizados
+            setTimeout(() => {
+                document.getElementById("occurrence-section")?.scrollIntoView({ behavior: "smooth" });
+            }, 100);
+        }
+    };
+
+    // Tratar mudança no checkbox de sensibilidade
+    const handleSensitiveChange = (checked: boolean | string) => {
+        const isChecked = typeof checked === "boolean" ? checked : checked === "true";
+        setOccurrenceSensitive(isChecked);
+    };
+
+    // Clicar em uma turma para filtrar
+    const handleTurmaClick = (turma: string) => {
+        setFiltroTurma(filtroTurma === turma ? null : turma);
+    };
+
+    // Filtrar estudantes com base nos filtros selecionados
     const filteredStudents = useMemo(() => {
         return students.filter((student) => {
             const def = student.deficiencia;
@@ -120,6 +390,7 @@ export default function DashboardDeficiencia() {
         filtroTurma,
     ]);
 
+    // Filtrar estagiários para a tabela
     const filteredEstagiarios = useMemo(() => {
         let result = filteredStudents.filter((s) => s.deficiencia?.possuiEstagiario);
         if (filtroTabelaEstagiario) {
@@ -144,6 +415,7 @@ export default function DashboardDeficiencia() {
         });
     }, [filteredStudents, filtroTabelaEstagiario, sortEstagiario]);
 
+    // Filtrar AVEs para a tabela
     const filteredAves = useMemo(() => {
         let result = filteredStudents.filter((s) => s.deficiencia?.ave);
         if (filtroTabelaAve) {
@@ -168,6 +440,7 @@ export default function DashboardDeficiencia() {
         });
     }, [filteredStudents, filtroTabelaAve, sortAve]);
 
+    // Filtrar estudantes para a tabela de detalhes
     const filteredEstudantesDetalhes = useMemo(() => {
         let result = filteredStudents;
         if (filtroTabelaEstudantes) {
@@ -193,6 +466,18 @@ export default function DashboardDeficiencia() {
         }
         return result;
     }, [filteredStudents, filtroTabelaEstudantes]);
+
+    // Filtrar ocorrências para a tabela
+    const filteredOccurrences = useMemo(() => {
+        if (!filtroTabelaOcorrencias) return occurrences;
+
+        const lowerFilter = filtroTabelaOcorrencias.toLowerCase();
+        return occurrences.filter(occurrence =>
+            occurrence.date.toLowerCase().includes(lowerFilter) ||
+            occurrence.description.toLowerCase().includes(lowerFilter) ||
+            occurrence.createdBy.toLowerCase().includes(lowerFilter)
+        );
+    }, [occurrences, filtroTabelaOcorrencias]);
 
     // Processar dados por turma
     const turmasData = useMemo(() => {
@@ -244,38 +529,17 @@ export default function DashboardDeficiencia() {
     ).length;
     const totalSemAve = totalComDeficiencia - totalComAve;
 
-    // Logs para depuração
-    console.log("Tipos de Deficiência:", tiposDeficienciaData);
-    console.log("AEE:", aeeData);
-    console.log("Instituições:", instituicaoData);
-    console.log("Horário:", horarioData);
-    console.log("Estagiário:", estagiarioData);
-    console.log("AVE:", aveData);
-    console.log("Turmas Data:", turmasData);
-    console.log("Filtro Turma:", filtroTurma);
-    console.log("Totais:", {
-        totalComDeficiencia,
-        totalComBarreiras,
-        totalSemBarreiras,
-        totalComEstagiario,
-        totalSemEstagiario,
-        totalComAve,
-        totalSemAve,
-    });
-
-    const handleTurmaClick = (turma: string) => {
-        setFiltroTurma(filtroTurma === turma ? null : turma);
-    };
-
     if (loading) return <div>Carregando...</div>;
     if (error) return <div>Erro: {error.message}</div>;
 
     return (
         <div className="p-6">
+            <Toaster />
             <h1 className="text-2xl font-bold mb-4">
                 Dashboard de Estudantes com Deficiência
             </h1>
 
+            {/* Card de Filtros */}
             <Card className="mb-6">
                 <CardHeader>
                     <CardTitle>Filtros</CardTitle>
@@ -398,6 +662,7 @@ export default function DashboardDeficiencia() {
                 </CardContent>
             </Card>
 
+            {/* Cards de Big Numbers */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
                 <Card>
                     <CardHeader>
@@ -499,6 +764,7 @@ export default function DashboardDeficiencia() {
                 </Card>
             </div>
 
+            {/* Card de Turmas */}
             <Card className="mb-6">
                 <CardHeader>
                     <CardTitle>Visão por Turmas</CardTitle>
@@ -553,6 +819,7 @@ export default function DashboardDeficiencia() {
                 </CardContent>
             </Card>
 
+            {/* Cards de Gráficos */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <Card>
                     <CardHeader>
@@ -742,7 +1009,9 @@ export default function DashboardDeficiencia() {
                 </Card>
             </div>
 
-            <div className="grid grid-cols-1 gap-4">
+            {/* Tabelas de dados */}
+            <div className="grid grid-cols-1 gap-4 mb-6">
+                {/* Tabela de Estagiários */}
                 <Card>
                     <CardHeader>
                         <CardTitle>Estagiários</CardTitle>
@@ -788,6 +1057,8 @@ export default function DashboardDeficiencia() {
                         </Table>
                     </CardContent>
                 </Card>
+
+                {/* Tabela de AVEs */}
                 <Card>
                     <CardHeader>
                         <CardTitle>AVEs</CardTitle>
@@ -830,6 +1101,8 @@ export default function DashboardDeficiencia() {
                         </Table>
                     </CardContent>
                 </Card>
+
+                {/* Tabela de Detalhes dos Estudantes */}
                 <Card>
                     <CardHeader>
                         <CardTitle>Detalhes dos Estudantes</CardTitle>
@@ -858,11 +1131,15 @@ export default function DashboardDeficiencia() {
                                         <TableHead>Nome do AVE</TableHead>
                                         <TableHead>Justificativa do AVE</TableHead>
                                         <TableHead>Possui Barreiras</TableHead>
+                                        <TableHead>Ações</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filteredEstudantesDetalhes.map((student) => (
-                                        <TableRow key={student.estudanteId}>
+                                        <TableRow
+                                            key={student.estudanteId}
+                                            className={selectedStudent?.estudanteId === student.estudanteId ? "bg-slate-100" : ""}
+                                        >
                                             <TableCell>{student.turma}</TableCell>
                                             <TableCell>{student.nome}</TableCell>
                                             <TableCell>
@@ -892,6 +1169,15 @@ export default function DashboardDeficiencia() {
                                             <TableCell>
                                                 {student.deficiencia?.possuiBarreiras ? "Sim" : "Não"}
                                             </TableCell>
+                                            <TableCell>
+                                                <Button
+                                                    variant={selectedStudent?.estudanteId === student.estudanteId ? "default" : "ghost"}
+                                                    size="sm"
+                                                    onClick={() => handleSelectStudentForOccurrence(student)}
+                                                >
+                                                    Ocorrências
+                                                </Button>
+                                            </TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -900,6 +1186,184 @@ export default function DashboardDeficiencia() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Seção de Ocorrências - Visível apenas quando um estudante está selecionado */}
+            {isOccurrenceSectionVisible && selectedStudent && (
+                <div id="occurrence-section" className="mt-8 mb-6 border-t border-gray-200 pt-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-bold">
+                            Gerenciamento de Ocorrências - {selectedStudent.nome}
+                        </h2>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                setSelectedStudent(null);
+                                setIsOccurrenceSectionVisible(false);
+
+                                // Remover o parâmetro da URL
+                                if (typeof window !== 'undefined') {
+                                    const url = new URL(window.location.href);
+                                    url.searchParams.delete('studentId');
+                                    window.history.pushState({}, '', url.toString());
+                                }
+                            }}
+                        >
+                            <X className="h-4 w-4 mr-1" /> Fechar
+                        </Button>
+                    </div>
+
+                    {/* Card para Cadastrar Ocorrência */}
+                    <Card id="register-occurrence-card" className="mb-6">
+                        <CardHeader>
+                            <CardTitle>{editingOccurrence ? "Editar Ocorrência" : "Cadastrar Ocorrência"}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="occurrence-date">Data</Label>
+                                    <Input
+                                        id="occurrence-date"
+                                        value={occurrenceDate}
+                                        onChange={(e) => setOccurrenceDate(formatDateInput(e.target.value))}
+                                        placeholder="dd/mm/aaaa"
+                                        maxLength={10}
+                                    />
+                                </div>
+                            </div>
+                            <div className="mt-4">
+                                <Label htmlFor="occurrence-description">Descrição</Label>
+                                <Textarea
+                                    id="occurrence-description"
+                                    value={occurrenceDescription}
+                                    onChange={(e) => setOccurrenceDescription(e.target.value)}
+                                    placeholder="Descreva a ocorrência"
+                                    rows={4}
+                                />
+                            </div>
+                            {userRole === "admin" && (
+                                <div className="mt-4">
+                                    <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id="occurrence-sensitive"
+                                            checked={occurrenceSensitive}
+                                            onCheckedChange={handleSensitiveChange}
+                                        />
+                                        <Label htmlFor="occurrence-sensitive">Marcar como sensível</Label>
+                                    </div>
+                                </div>
+                            )}
+                            <div className="mt-4 flex gap-2">
+                                <Button onClick={editingOccurrence ? handleEditOccurrence : handleAddOccurrence}>
+                                    {editingOccurrence ? "Salvar Alterações" : "Adicionar Ocorrência"}
+                                </Button>
+                                {editingOccurrence && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            setEditingOccurrence(null);
+                                            setOccurrenceDate(new Date().toLocaleDateString("pt-BR"));
+                                            setOccurrenceDescription("");
+                                            setOccurrenceSensitive(false);
+                                        }}
+                                    >
+                                        Cancelar
+                                    </Button>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Card de Histórico de Ocorrências */}
+                    <Card id="occurrence-card" className="mb-6">
+                        <CardHeader className="flex flex-row justify-between items-center">
+                            <CardTitle>Histórico de Ocorrências</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <Input
+                                placeholder="Pesquisar em qualquer coluna"
+                                value={filtroTabelaOcorrencias}
+                                onChange={(e) => setFiltroTabelaOcorrencias(e.target.value)}
+                                className="mb-4"
+                            />
+                            {filteredOccurrences.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Data</TableHead>
+                                                <TableHead>Descrição</TableHead>
+                                                <TableHead>Criado por</TableHead>
+                                                {userRole === "admin" && <TableHead className="w-[100px] text-right">Ações</TableHead>}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {filteredOccurrences.map((occurrence) => (
+                                                <TableRow
+                                                    key={occurrence.id}
+                                                    className={occurrence.sensitive ? "bg-red-50" : ""}
+                                                >
+                                                    <TableCell>{occurrence.date}</TableCell>
+                                                    <TableCell>
+                                                        {occurrence.description}
+                                                        {occurrence.sensitive && (
+                                                            <span className="ml-2 inline-block bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                                                Sensível
+                                                            </span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>{occurrence.createdBy}</TableCell>
+                                                    {userRole === "admin" && (
+                                                        <TableCell className="text-right">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => {
+                                                                    setEditingOccurrence(occurrence);
+                                                                    document.getElementById("register-occurrence-card")?.scrollIntoView({ behavior: "smooth" });
+                                                                }}
+                                                            >
+                                                                <Pencil className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => setShowDeleteOccurrenceDialog(occurrence.id)}
+                                                            >
+                                                                <Trash className="h-4 w-4 text-red-500" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    )}
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">Nenhuma ocorrência registrada para este estudante.</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* AlertDialog para confirmar a exclusão de ocorrência */}
+            <AlertDialog open={!!showDeleteOccurrenceDialog} onOpenChange={() => setShowDeleteOccurrenceDialog(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Tem certeza de que deseja excluir esta ocorrência? Esta ação não pode ser desfeita.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => showDeleteOccurrenceDialog && handleDeleteOccurrence(showDeleteOccurrenceDialog)}>
+                            Excluir
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
