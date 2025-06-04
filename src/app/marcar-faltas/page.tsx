@@ -227,11 +227,19 @@ export default function MarcarFaltasPage() {
 
     // Memoriza a lista de turmas para evitar cálculos desnecessários
     const turmas = useMemo(() => {
-        return Array.from(new Set(students.map((est: Estudante) => est.turma)));
+        return Array.from(
+            new Set(
+                students
+                    .filter((est: Estudante) => est.status === "ATIVO") // Filtra por status ATIVO
+                    .map((est: Estudante) => est.turma)
+            )
+        );
     }, [students]);
 
     const filteredStudents = useMemo(() => {
-        return students.filter((est: Estudante) => est.turma === selectedClass);
+        return students.filter(
+            (est: Estudante) => est.status === "ATIVO" && est.turma === selectedClass // Filtra por status ATIVO e turma selecionada
+        );
     }, [students, selectedClass]);
 
     // Calcula se houve mudanças em relação ao estado inicial
@@ -407,7 +415,7 @@ export default function MarcarFaltasPage() {
                     {isValidDay && selectedClass ? (
                         <div className="space-y-2">
                             {filteredStudents.length === 0 ? (
-                                <p>Não há alunos cadastrados para esta turma.</p>
+                                <p>Não há alunos cadastrados para esta turma com status "ATIVO".</p>
                             ) : (
                                 filteredStudents
                                     .sort((a, b) => a.nome.localeCompare(b.nome)) // Ordena por nome
