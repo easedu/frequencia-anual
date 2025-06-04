@@ -415,7 +415,7 @@ export default function MarcarFaltasPage() {
                     {isValidDay && selectedClass ? (
                         <div className="space-y-2">
                             {filteredStudents.length === 0 ? (
-                                <p>Não há alunos cadastrados para esta turma com status "ATIVO".</p>
+                                <p>Não há alunos cadastrados para esta turma com status &quot;ATIVO&quot;.</p>
                             ) : (
                                 filteredStudents
                                     .sort((a, b) => a.nome.localeCompare(b.nome)) // Ordena por nome
