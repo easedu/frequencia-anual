@@ -15,9 +15,6 @@ interface StudentRecord {
     percentualFrequencia: number;
 }
 
-// Tipo estendido que inclui informações de deficiência - agora usando a interface do componente
-interface StudentRecordWithDisability extends EnhancedStudentRecord { }
-
 interface AlertsCardProps {
     data: StudentRecord[];
     students?: Estudante[]; // Lista de estudantes com informações completas
@@ -25,7 +22,7 @@ interface AlertsCardProps {
 
 export default function AlertsCard({ data, students = [] }: AlertsCardProps) {
     // Função para enriquecer os dados de frequência com informações de deficiência
-    const enrichDataWithDisability = (frequencyData: StudentRecord[]): StudentRecordWithDisability[] => {
+    const enrichDataWithDisability = (frequencyData: StudentRecord[]): EnhancedStudentRecord[] => {
         return frequencyData.map(student => {
             const studentInfo = students.find(s => s.estudanteId === student.estudanteId);
 
@@ -41,7 +38,7 @@ export default function AlertsCard({ data, students = [] }: AlertsCardProps) {
     const filterAndEnrichStudents = (
         frequencyData: StudentRecord[],
         targetRange: { min: number; max?: number }
-    ): StudentRecordWithDisability[] => {
+    ): EnhancedStudentRecord[] => {
         // Primeiro filtra por range de frequência, depois enriquece com dados de deficiência
         const studentsInRange = frequencyData.filter(s => {
             if (targetRange.max !== undefined) {
