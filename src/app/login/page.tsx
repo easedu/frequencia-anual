@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 import { getFriendlyErrorMessage } from "@/utils/errorMessages";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, Lock, Eye, EyeOff, GraduationCap, Users, Calendar, BarChart3 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Mail, Lock, Eye, EyeOff, GraduationCap } from "lucide-react";
 
 export default function Login() {
     const [email, setEmail] = useState("");
@@ -40,29 +40,6 @@ export default function Login() {
             setLoading(false);
         }
     }
-
-    const features = [
-        {
-            icon: Users,
-            title: "Gestão de Estudantes",
-            description: "Acompanhe perfis e dados acadêmicos"
-        },
-        {
-            icon: Calendar,
-            title: "Controle de Frequência",
-            description: "Monitore faltas e justificativas"
-        },
-        {
-            icon: BarChart3,
-            title: "Relatórios Detalhados",
-            description: "Análises e estatísticas completas"
-        },
-        {
-            icon: GraduationCap,
-            title: "Avaliações",
-            description: "Acompanhe o desempenho escolar"
-        }
-    ];
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-700 relative overflow-hidden">
