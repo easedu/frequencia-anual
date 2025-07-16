@@ -9,7 +9,7 @@ import { z } from "zod";
 import { formSchema } from "./constants/formSchema";
 import { Estudante } from "./interfaces";
 import { cleanTelefone, cleanCep, formatTelefone, cleanDataNascimento } from "./utils/formatters";
-import { useStudents } from "@/hooks/useStudents"; // Usando o useStudents original
+import { useStudents } from "@/hooks/useStudents";
 import { StudentFilters } from "./components/StudentFilters";
 import { StudentTable } from "./components/StudentTable";
 import { StudentPagination } from "./components/StudentPagination";
@@ -26,6 +26,7 @@ export default function CadastrarEstudantePage() {
         defaultValues: {
             nome: "",
             turma: "",
+            matricula: "",
             bolsaFamilia: "NÃO",
             status: "ATIVO",
             dataNascimento: "",
@@ -69,6 +70,7 @@ export default function CadastrarEstudantePage() {
     const [enderecoFiltro, setEnderecoFiltro] = useState<string>("");
     const [dataNascimentoFiltro, setDataNascimentoFiltro] = useState<string>("");
     const [comDeficienciaFiltro, setComDeficienciaFiltro] = useState<string>("");
+    const [matriculaFiltro, setMatriculaFiltro] = useState<string>("");
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
     const [sortColumn, setSortColumn] = useState<string>("");
@@ -77,6 +79,7 @@ export default function CadastrarEstudantePage() {
         new Set([
             "turma",
             "nome",
+            "matricula",
             "dataNascimento",
             "turno",
             "bolsaFamilia",
@@ -99,6 +102,7 @@ export default function CadastrarEstudantePage() {
             form.reset({
                 nome: editingEstudante.nome || "",
                 turma: editingEstudante.turma || "",
+                matricula: editingEstudante.matricula || "",
                 bolsaFamilia: editingEstudante.bolsaFamilia || "NÃO",
                 status: (editingEstudante.status as "ATIVO" | "INATIVO") || "ATIVO",
                 dataNascimento: editingEstudante.dataNascimento || "",
@@ -146,6 +150,8 @@ export default function CadastrarEstudantePage() {
             console.log("Contém dataNascimento?", "dataNascimento" in students[0]);
             console.log("Contém turno?", "turno" in students[0]);
             console.log("Contém deficiencia?", "deficiencia" in students[0]);
+            console.log("Contém matricula?", "matricula" in students[0]);
+            console.log("Contém provaSaoPaulo?", "provaSaoPaulo" in students[0]);
         }
         if (error) {
             console.error("Erro no hook useStudents:", error);
@@ -195,6 +201,7 @@ export default function CadastrarEstudantePage() {
             estudanteId: editingEstudante.estudanteId || uuidv4(),
             turma: newTurma,
             nome: newNome,
+            matricula: data.matricula?.trim() || "",
             status: data.status.toUpperCase(),
             turno: data.turno.toUpperCase() as "MANHÃ" | "TARDE",
             bolsaFamilia: data.bolsaFamilia,
@@ -234,6 +241,8 @@ export default function CadastrarEstudantePage() {
                     complemento: data.endereco.complemento?.trim() || "",
                 }
                 : undefined,
+            // Preservar dados existentes da Prova São Paulo
+            provaSaoPaulo: editingEstudante.provaSaoPaulo || [],
         };
 
         console.log("Student object before saving:", student);
@@ -271,6 +280,9 @@ export default function CadastrarEstudantePage() {
         const matchNome =
             nomeFiltro === "" ||
             est.nome.toLowerCase().includes(nomeFiltro.toLowerCase());
+        const matchMatricula =
+            matriculaFiltro === "" ||
+            (est.matricula?.toLowerCase().includes(matriculaFiltro.toLowerCase()) ?? false);
         const matchStatus =
             statusFiltro === "" || statusFiltro === "all" || est.status === statusFiltro;
         const matchTurno =
@@ -308,6 +320,7 @@ export default function CadastrarEstudantePage() {
         return (
             matchTurma &&
             matchNome &&
+            matchMatricula &&
             matchStatus &&
             matchTurno &&
             matchBolsaFamilia &&
@@ -342,6 +355,13 @@ export default function CadastrarEstudantePage() {
                         ? aValue.localeCompare(bValue)
                         : bValue.localeCompare(aValue);
                 }
+                if (sortColumn === "matricula") {
+                    const aValue = a.matricula?.toLowerCase() || "";
+                    const bValue = b.matricula?.toLowerCase() || "";
+                    return sortDirection === "asc"
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
+                }
                 if (sortColumn === "endereco") {
                     const aValue = a.endereco?.rua.toLowerCase() || "";
                     const bValue = b.endereco?.rua.toLowerCase() || "";
@@ -358,7 +378,7 @@ export default function CadastrarEstudantePage() {
                 }
                 if (sortColumn === "deficiencia") {
                     const aValue = a.deficiencia?.tipoDeficiencia?.join(", ")?.toLowerCase() || "";
-                    const bValue = a.deficiencia?.tipoDeficiencia?.join(", ")?.toLowerCase() || "";
+                    const bValue = b.deficiencia?.tipoDeficiencia?.join(", ")?.toLowerCase() || "";
                     return sortDirection === "asc"
                         ? aValue.localeCompare(bValue)
                         : bValue.localeCompare(aValue);
@@ -408,6 +428,7 @@ export default function CadastrarEstudantePage() {
                                     estudanteId: "",
                                     turma: "",
                                     nome: "",
+                                    matricula: "",
                                     status: "ATIVO",
                                     turno: "MANHÃ",
                                     bolsaFamilia: "NÃO",
@@ -438,6 +459,7 @@ export default function CadastrarEstudantePage() {
                                         nomeAve: "",
                                         justificativaAve: [],
                                     },
+                                    provaSaoPaulo: [],
                                 });
                                 setEditingIndex(null);
                                 setOpenModal(true);
@@ -454,6 +476,8 @@ export default function CadastrarEstudantePage() {
                         setTurmaFiltro={setTurmaFiltro}
                         nomeFiltro={nomeFiltro}
                         setNomeFiltro={setNomeFiltro}
+                        matriculaFiltro={matriculaFiltro}
+                        setMatriculaFiltro={setMatriculaFiltro}
                         statusFiltro={statusFiltro}
                         setStatusFiltro={setStatusFiltro}
                         bolsaFamiliaFiltro={bolsaFamiliaFiltro}

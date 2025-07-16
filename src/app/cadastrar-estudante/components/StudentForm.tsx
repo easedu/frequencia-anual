@@ -12,7 +12,7 @@ import {
     justificativaAveOptions,
 } from "../constants/selectOptions";
 import { customSelectStyles } from "../constants/selectStyles";
-import { formatTelefone, cleanTelefone, formatCep, cleanCep, formatDataNascimento, cleanDataNascimento } from "../utils/formatters";
+import { formatTelefone, cleanTelefone, cleanCep, formatDataNascimento, cleanDataNascimento } from "../utils/formatters";
 import { fetchAddressFromCep } from "../utils/api";
 import { SelectOption, Estudante } from "../interfaces";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,6 @@ export function StudentForm({
     handleFormSubmit,
     handleCancel,
     cepChangedManually,
-    setCepChangedManually,
 }: StudentFormProps) {
     const cep = form.watch("endereco.cep");
     const possuiEstagiario = form.watch("deficiencia.possuiEstagiario");
@@ -157,6 +156,27 @@ export function StudentForm({
                                 />
                                 <FormField
                                     control={form.control}
+                                    name="matricula"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel htmlFor="matricula">
+                                                Matrícula
+                                            </FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    id="matricula"
+                                                    placeholder="Número da matrícula"
+                                                    {...field}
+                                                    autoComplete="off"
+                                                    aria-describedby="form-desc"
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
                                     name="bolsaFamilia"
                                     render={({ field }) => (
                                         <FormItem>
@@ -181,6 +201,8 @@ export function StudentForm({
                                         </FormItem>
                                     )}
                                 />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <FormField
                                     control={form.control}
                                     name="status"
@@ -200,6 +222,32 @@ export function StudentForm({
                                                     <SelectContent>
                                                         <SelectItem value="ATIVO">ATIVO</SelectItem>
                                                         <SelectItem value="INATIVO">INATIVO</SelectItem>
+                                                    </SelectContent>
+                                                </ShadcnSelect>
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="turno"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel htmlFor="turno">
+                                                Turno <span className="text-red-500">*</span>
+                                            </FormLabel>
+                                            <FormControl>
+                                                <ShadcnSelect
+                                                    onValueChange={field.onChange}
+                                                    value={field.value}
+                                                >
+                                                    <SelectTrigger id="turno">
+                                                        <SelectValue placeholder="Selecione o Turno" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="MANHÃ">MANHÃ</SelectItem>
+                                                        <SelectItem value="TARDE">TARDE</SelectItem>
                                                     </SelectContent>
                                                 </ShadcnSelect>
                                             </FormControl>
@@ -237,211 +285,34 @@ export function StudentForm({
                                 />
                                 <FormField
                                     control={form.control}
-                                    name="turno"
+                                    name="email"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel htmlFor="turno">
-                                                Turno <span className="text-red-500">*</span>
-                                            </FormLabel>
+                                            <FormLabel htmlFor="email">E-mail</FormLabel>
                                             <FormControl>
-                                                <ShadcnSelect
-                                                    onValueChange={field.onChange}
-                                                    value={field.value}
-                                                >
-                                                    <SelectTrigger id="turno">
-                                                        <SelectValue placeholder="Selecione o Turno" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="MANHÃ">MANHÃ</SelectItem>
-                                                        <SelectItem value="TARDE">TARDE</SelectItem>
-                                                    </SelectContent>
-                                                </ShadcnSelect>
+                                                <Input
+                                                    id="email"
+                                                    placeholder="Digite o e-mail"
+                                                    {...field}
+                                                    autoComplete="off"
+                                                    aria-describedby="form-desc"
+                                                />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
                                 />
                             </div>
-                            <FormField
-                                control={form.control}
-                                name="email"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel htmlFor="email">E-mail</FormLabel>
-                                        <FormControl>
-                                            <Input
-                                                id="email"
-                                                placeholder="Digite o e-mail"
-                                                {...field}
-                                                autoComplete="off"
-                                                aria-describedby="form-desc"
-                                            />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
                         </div>
                     </TabsContent>
 
                     <TabsContent value="endereco" className="mt-4">
                         <div className="space-y-4">
-                            <h3 className="text-lg font-semibold mb-4">Endereço</h3>
-                            <FormField
-                                control={form.control}
-                                name="endereco.cep"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel htmlFor="cep">CEP (xxxxx-xxx)</FormLabel>
-                                        <FormControl>
-                                            <Input
-                                                id="cep"
-                                                placeholder="CEP (xxxxx-xxx)"
-                                                value={field.value ? formatCep(field.value) : ""}
-                                                onChange={(e) => {
-                                                    const inputValue = e.target.value;
-                                                    const cleanedValue = cleanCep(inputValue).slice(0, 8);
-                                                    field.onChange(cleanedValue);
-                                                    setCepChangedManually(true);
-                                                }}
-                                                autoComplete="off"
-                                                aria-describedby="form-desc"
-                                            />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                                <FormField
-                                    control={form.control}
-                                    name="endereco.rua"
-                                    render={({ field }) => (
-                                        <FormItem className="md:col-span-3">
-                                            <FormLabel htmlFor="rua">Rua</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    id="rua"
-                                                    placeholder="Rua"
-                                                    {...field}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <FormField
-                                    control={form.control}
-                                    name="endereco.numero"
-                                    render={({ field }) => (
-                                        <FormItem className="md:col-span-1">
-                                            <FormLabel htmlFor="numero">Número</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    id="numero"
-                                                    placeholder="Número"
-                                                    {...field}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <FormField
-                                    control={form.control}
-                                    name="endereco.complemento"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="complemento">Complemento</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    id="complemento"
-                                                    placeholder="Complemento"
-                                                    {...field}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <FormField
-                                    control={form.control}
-                                    name="endereco.bairro"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="bairro">Bairro</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    id="bairro"
-                                                    placeholder="Bairro"
-                                                    {...field}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <FormField
-                                    control={form.control}
-                                    name="endereco.cidade"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="cidade">Cidade</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    id="cidade"
-                                                    placeholder="Cidade"
-                                                    {...field}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <FormField
-                                    control={form.control}
-                                    name="endereco.estado"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="estado">Estado</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    id="estado"
-                                                    placeholder="Estado"
-                                                    {...field}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </div>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="contatos" className="mt-4">
-                        <div className="space-y-4">
                             <h3 className="text-lg font-semibold mb-4">Contatos</h3>
                             {form.watch("contatos")?.map((_, index) => (
                                 <div
                                     key={index}
-                                    className="flex items-center gap-2 mb-2 p-2 danego border rounded"
+                                    className="flex items-center gap-2 mb-2 p-2 border rounded"
                                 >
                                     <div className="flex-1 space-y-2">
                                         <FormField

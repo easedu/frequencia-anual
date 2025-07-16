@@ -62,6 +62,17 @@ export function StudentTable({
                                 )}
                             </TableHead>
                         )}
+                        {visibleColumns.has("matricula") && (
+                            <TableHead
+                                onClick={() => handleSort("matricula")}
+                                className="cursor-pointer font-bold text-center"
+                            >
+                                Matrícula{" "}
+                                {sortColumn === "matricula" && (
+                                    <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                                )}
+                            </TableHead>
+                        )}
                         {visibleColumns.has("dataNascimento") && (
                             <TableHead
                                 onClick={() => handleSort("dataNascimento")}
@@ -150,6 +161,17 @@ export function StudentTable({
                                 )}
                             </TableHead>
                         )}
+                        {visibleColumns.has("provaSaoPaulo") && (
+                            <TableHead
+                                onClick={() => handleSort("provaSaoPaulo")}
+                                className="cursor-pointer font-bold text-center"
+                            >
+                                Prova São Paulo{" "}
+                                {sortColumn === "provaSaoPaulo" && (
+                                    <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                                )}
+                            </TableHead>
+                        )}
                         {visibleColumns.has("actions") && (
                             <TableHead className="font-bold text-center">Ações</TableHead>
                         )}
@@ -175,6 +197,11 @@ export function StudentTable({
                                 )}
                                 {visibleColumns.has("nome") && (
                                     <TableCell className="text-left">{est.nome}</TableCell>
+                                )}
+                                {visibleColumns.has("matricula") && (
+                                    <TableCell className="text-center">
+                                        {est.matricula || "NÃO INFORMADA"}
+                                    </TableCell>
                                 )}
                                 {visibleColumns.has("dataNascimento") && (
                                     <TableCell className="text-center">
@@ -232,6 +259,17 @@ export function StudentTable({
                                     <TableCell className="text-center">
                                         {est.deficiencia?.estudanteComDeficiencia
                                             ? `${est.deficiencia.tipoDeficiencia?.join(", ") || "NENHUM"}`
+                                            : "NENHUM"}
+                                    </TableCell>
+                                )}
+                                {visibleColumns.has("provaSaoPaulo") && (
+                                    <TableCell className="text-center">
+                                        {est.provaSaoPaulo && est.provaSaoPaulo.length > 0
+                                            ? est.provaSaoPaulo
+                                                .map((prova) =>
+                                                    `${prova.edicao}: ${prova.mediaAluno} (${prova.nivelProficiencia})`
+                                                )
+                                                .join(" | ")
                                             : "NENHUM"}
                                     </TableCell>
                                 )}

@@ -16,6 +16,7 @@ import RegisterAtestadoCard from "../../components/RegisterAtestadoCard";
 import AtestadoHistoryCard from "../../components/AtestadoHistoryCard";
 import RegisterInteractionCard from "../../components/RegisterInteractionCard";
 import InteractionHistoryCard from "../../components/InteractionHistoryCard";
+import ProvaSaoPauloCard from "../../components/ProvaSaoPauloCard";
 import { Student, StudentRecord, FamilyInteraction, Atestado, AbsenceRecord, BimesterDates, AnoLetivoData } from "../types";
 import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate, getDiasLetivosNoPeriodo } from "../utils";
 import { Card, CardContent } from "@/components/ui/card";
@@ -105,6 +106,7 @@ export default function StudentProfilePage() {
                     .map(student => ({
                         ...student,
                         contatos: student.contatos || [],
+                        provaSaoPaulo: student.provaSaoPaulo || [], // Garantir que o array existe
                     }));
                 setAllStudents(activeStudents.sort((a, b) => a.nome.localeCompare(b.nome)));
             }
@@ -808,6 +810,7 @@ export default function StudentProfilePage() {
                         onDeleteInteraction={handleDeleteInteraction}
                         onPrintReport={handlePrintReport}
                     />
+                    {userRole === "admin" && <ProvaSaoPauloCard student={student} />}
                 </>
             )}
         </div>

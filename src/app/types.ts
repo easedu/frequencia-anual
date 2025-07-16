@@ -13,6 +13,34 @@ export interface Endereco {
     complemento: string;
 }
 
+// Interface para dados da Prova São Paulo
+export interface ProvaSaoPaulo {
+    matricula?: string;
+    edicao: string;
+    mediaAluno: number;
+    nivelProficiencia: string;
+    anoEscolar: string;
+    disciplina?: string;
+    dataImportacao: string;
+}
+
+// Interface para dados de deficiência
+export interface Deficiencia {
+    estudanteComDeficiencia: boolean;
+    tipoDeficiencia?: string[];
+    possuiBarreiras?: boolean;
+    aee?: "PAEE" | "PAAI";
+    instituicao?: "INSTITUTO JÔ CLEMENTE" | "CLIFAK" | "CEJOLE" | "CCA" | "NENHUM";
+    horarioAtendimento?: "NENHUM" | "NO TURNO" | "CONTRATURNO";
+    atendimentoSaude?: string[];
+    possuiEstagiario?: boolean;
+    nomeEstagiario?: string;
+    justificativaEstagiario?: "MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE" | "SEM BARREIRAS";
+    ave?: boolean;
+    nomeAve?: string;
+    justificativaAve?: string[];
+}
+
 export interface Student {
     estudanteId: string;
     nome: string;
@@ -20,10 +48,13 @@ export interface Student {
     status: string;
     bolsaFamilia: string;
     turno: "MANHÃ" | "TARDE";
+    matricula?: string; // Novo campo
     dataNascimento?: string;
     contatos?: Contato[];
     email?: string;
     endereco?: Endereco;
+    deficiencia?: Deficiencia; // Novo campo
+    provaSaoPaulo?: ProvaSaoPaulo[]; // Novo campo
 }
 
 export interface StudentRecord {

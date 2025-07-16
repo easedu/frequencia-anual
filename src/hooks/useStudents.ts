@@ -32,8 +32,19 @@ export interface Deficiencia {
     nomeEstagiario?: string;
     justificativaEstagiario?: "MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE" | "SEM BARREIRAS";
     ave?: boolean;
-    nomeAve?: string; // Novo campo adicionado
+    nomeAve?: string;
     justificativaAve?: string[]; // HIGIENE, LOCOMOÇÃO, ALIMENTAÇÃO, etc.
+}
+
+// Interface para dados da Prova São Paulo
+export interface ProvaSaoPaulo {
+    matricula?: string;
+    edicao: string;
+    mediaAluno: number;
+    nivelProficiencia: string;
+    anoEscolar: string;
+    disciplina?: string; // Ex: Língua Portuguesa, Matemática
+    dataImportacao: string; // Data de quando foi importado
 }
 
 export interface Estudante {
@@ -43,11 +54,13 @@ export interface Estudante {
     status: string;
     turno: "MANHÃ" | "TARDE";
     bolsaFamilia: "SIM" | "NÃO";
+    matricula?: string; // Matrícula do aluno
     contatos?: Contato[];
     email?: string;
     endereco?: Endereco;
     dataNascimento?: string;
     deficiencia?: Deficiencia;
+    provaSaoPaulo?: ProvaSaoPaulo[]; // Array de dados da Prova São Paulo
 }
 
 // Função para determinar o turno com base na turma
@@ -93,11 +106,13 @@ export const useStudents = () => {
                         nome: string;
                         status: string;
                         turno?: string;
+                        matricula?: string;
                         contatos?: Contato[];
                         email?: string;
                         endereco?: Endereco;
                         dataNascimento?: string;
                         deficiencia?: Deficiencia;
+                        provaSaoPaulo?: ProvaSaoPaulo[];
                     };
                     const fetchedStudent = {
                         estudanteId: s.estudanteId || uuidv4(),
@@ -106,6 +121,7 @@ export const useStudents = () => {
                         status: s.status || "",
                         turno: s.turno || determinarTurno(s.turma || ""),
                         bolsaFamilia: s.bolsaFamilia || "NÃO",
+                        matricula: s.matricula || "",
                         contatos: s.contatos
                             ? s.contatos.map((contato) => ({
                                 nome: contato.nome || "",
@@ -156,6 +172,17 @@ export const useStudents = () => {
                                 nomeAve: "",
                                 justificativaAve: [],
                             },
+                        provaSaoPaulo: s.provaSaoPaulo
+                            ? s.provaSaoPaulo.map((prova) => ({
+                                matricula: prova.matricula || "",
+                                edicao: prova.edicao || "",
+                                mediaAluno: prova.mediaAluno || 0,
+                                nivelProficiencia: prova.nivelProficiencia || "",
+                                anoEscolar: prova.anoEscolar || "",
+                                disciplina: prova.disciplina || "",
+                                dataImportacao: prova.dataImportacao || "",
+                            }))
+                            : [],
                     };
                     console.log("Estudante processado:", fetchedStudent);
                     return fetchedStudent;

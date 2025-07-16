@@ -4,6 +4,7 @@ import { validateTelefone, validateNomeContato, validateEmail, validateCep, vali
 export const formSchema = z.object({
     nome: z.string().min(2, "O nome deve ter pelo menos 2 caracteres").max(100),
     turma: z.string().min(1, "A turma é obrigatória"),
+    matricula: z.string().optional(),
     bolsaFamilia: z.enum(["SIM", "NÃO"]),
     status: z.enum(["ATIVO", "INATIVO"]),
     dataNascimento: z.string().optional().refine(

@@ -29,6 +29,17 @@ export interface Deficiencia {
     justificativaAve?: string[];
 }
 
+// Nova interface para dados da Prova São Paulo
+export interface ProvaSaoPaulo {
+    matricula?: string;
+    edicao: string;
+    mediaAluno: number;
+    nivelProficiencia: string;
+    anoEscolar: string;
+    disciplina?: string; // Ex: Língua Portuguesa, Matemática
+    dataImportacao: string; // Data de quando foi importado
+}
+
 export interface Estudante {
     estudanteId: string;
     turma: string;
@@ -41,9 +52,37 @@ export interface Estudante {
     endereco?: Endereco;
     dataNascimento?: string;
     deficiencia?: Deficiencia;
+    // Novo campo para dados da Prova São Paulo
+    provaSaoPaulo?: ProvaSaoPaulo[];
+    matricula?: string; // Matrícula do aluno
 }
 
 export interface SelectOption {
     value: string;
     label: string;
+}
+
+// Interface para dados do CSV da Prova São Paulo
+export interface CsvProvaSaoPaulo {
+    nome: string;
+    matricula?: string;
+    edicao: string;
+    media: string | number;
+    nivelProficiencia: string;
+    anoEscolar: string;
+    disciplina?: string;
+}
+
+// Interface para resultado do processamento do CSV
+export interface ProcessamentoCsv {
+    totalLinhas: number;
+    alunosEncontrados: number;
+    alunosNaoEncontrados: number;
+    alunosAtualizados: number;
+    erros: string[];
+    detalhes: {
+        encontrados: { nome: string; estudanteId: string }[];
+        naoEncontrados: string[];
+        duplicatas: string[];
+    };
 }

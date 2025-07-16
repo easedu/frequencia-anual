@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase.config";
 import { v4 as uuidv4 } from "uuid";
-import { Estudante, Contato, Endereco, Deficiencia } from "../interfaces";
+import { Estudante, Contato, Endereco, Deficiencia, ProvaSaoPaulo } from "../interfaces";
 
 // Função para determinar o turno com base na turma
 const determinarTurno = (turma: string): "MANHÃ" | "TARDE" => {
@@ -54,6 +54,8 @@ export const useStudents = () => {
                         endereco?: Endereco;
                         dataNascimento?: string;
                         deficiencia?: Deficiencia;
+                        matricula?: string;
+                        provaSaoPaulo?: ProvaSaoPaulo[];
                     };
                     const fetchedStudent = {
                         estudanteId: s.estudanteId || uuidv4(),
@@ -62,6 +64,7 @@ export const useStudents = () => {
                         status: s.status || "",
                         turno: s.turno || determinarTurno(s.turma || ""),
                         bolsaFamilia: s.bolsaFamilia || "NÃO",
+                        matricula: s.matricula || "",
                         contatos: s.contatos
                             ? s.contatos.map((contato) => ({
                                 nome: contato.nome || "",
@@ -112,6 +115,17 @@ export const useStudents = () => {
                                 nomeAve: "",
                                 justificativaAve: [],
                             },
+                        provaSaoPaulo: s.provaSaoPaulo
+                            ? s.provaSaoPaulo.map((prova) => ({
+                                matricula: prova.matricula || "",
+                                edicao: prova.edicao || "",
+                                mediaAluno: prova.mediaAluno || 0,
+                                nivelProficiencia: prova.nivelProficiencia || "",
+                                anoEscolar: prova.anoEscolar || "",
+                                disciplina: prova.disciplina || "",
+                                dataImportacao: prova.dataImportacao || "",
+                            }))
+                            : [],
                     };
                     console.log("Estudante processado:", fetchedStudent);
                     return fetchedStudent;

@@ -17,6 +17,8 @@ interface StudentFiltersProps {
     setTurmaFiltro: (value: string) => void;
     nomeFiltro: string;
     setNomeFiltro: (value: string) => void;
+    matriculaFiltro: string;
+    setMatriculaFiltro: (value: string) => void;
     statusFiltro: string;
     setStatusFiltro: (value: string) => void;
     bolsaFamiliaFiltro: string;
@@ -43,6 +45,8 @@ export function StudentFilters({
     setTurmaFiltro,
     nomeFiltro,
     setNomeFiltro,
+    matriculaFiltro,
+    setMatriculaFiltro,
     statusFiltro,
     setStatusFiltro,
     bolsaFamiliaFiltro,
@@ -96,6 +100,14 @@ export function StudentFilters({
                     placeholder="Nome do estudante"
                     value={nomeFiltro}
                     onChange={(e) => setNomeFiltro(e.target.value)}
+                />
+            </div>
+            <div>
+                <label className="block mb-1 font-semibold">Matrícula</label>
+                <Input
+                    placeholder="Número da matrícula"
+                    value={matriculaFiltro}
+                    onChange={(e) => setMatriculaFiltro(e.target.value)}
                 />
             </div>
             <div>
@@ -223,6 +235,7 @@ export function StudentFilters({
                     <SelectContent>
                         <SelectItem value="turma">Turma</SelectItem>
                         <SelectItem value="nome">Nome do Estudante</SelectItem>
+                        <SelectItem value="matricula">Matrícula</SelectItem>
                         <SelectItem value="dataNascimento">Data de Nascimento</SelectItem>
                         <SelectItem value="turno">Turno</SelectItem>
                         <SelectItem value="bolsaFamilia">Bolsa Família</SelectItem>
@@ -231,6 +244,7 @@ export function StudentFilters({
                         <SelectItem value="email">E-mail</SelectItem>
                         <SelectItem value="endereco">Endereço</SelectItem>
                         <SelectItem value="deficiencia">Deficiência</SelectItem>
+                        <SelectItem value="provaSaoPaulo">Prova São Paulo</SelectItem>
                         <SelectItem value="actions">Ações</SelectItem>
                     </SelectContent>
                 </ShadcnSelect>
