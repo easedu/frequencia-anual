@@ -20,6 +20,10 @@ export default function StudentInfoCard({ student }: StudentInfoCardProps) {
                         <p className="text-lg font-semibold">{student.nome}</p>
                     </div>
                     <div>
+                        <Label>Matrícula</Label>
+                        <p className="text-lg font-semibold">{student.matricula || "Não informado"}</p>
+                    </div>
+                    <div>
                         <Label>Turma</Label>
                         <p className="text-lg font-semibold">{student.turma}</p>
                     </div>
