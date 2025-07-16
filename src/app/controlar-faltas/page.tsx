@@ -11,6 +11,7 @@ import FrequencyTableCard from "@/components/cards/FrequencyTableCard";
 import StudentAbsencesCard from "@/components/cards/StudentAbsencesCard";
 import DuplicateAbsencesCard from "@/components/cards/DuplicateAbsencesCard";
 import { useAttendanceData } from "@/hooks/useAttendanceData";
+import { useStudents } from "@/hooks/useStudents";
 import dynamic from "next/dynamic";
 
 const DayOfWeekDistributionCard = dynamic(() => import("@/components/cards/DayOfWeekDistributionCard"), {
@@ -45,6 +46,9 @@ export default function DashboardPage() {
         excludeJustified,
         selectedStudent,
     });
+
+    // Adicionar hook para dados dos estudantes
+    const { students } = useStudents();
 
     // Synchronize parent state with computed filter state, avoiding unnecessary updates
     useEffect(() => {
@@ -97,7 +101,8 @@ export default function DashboardPage() {
             <KPIsCard data={data} totalDiasLetivos={totalDiasLetivos} />
             <ComparativeChartsCard data={data} />
             <TemporalAnalysisCard data={data} />
-            <AlertsCard data={data} />
+            {/* Passar dados dos estudantes para o AlertsCard */}
+            <AlertsCard data={data} students={students} />
             <FrequencyTableCard data={data} />
             <StudentAbsencesCard
                 data={data}

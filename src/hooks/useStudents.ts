@@ -138,7 +138,7 @@ export const useStudents = () => {
                                 nomeEstagiario: s.deficiencia.nomeEstagiario || "NÃO NECESSITA",
                                 justificativaEstagiario: s.deficiencia.justificativaEstagiario || "SEM BARREIRAS",
                                 ave: s.deficiencia.ave || false,
-                                nomeAve: s.deficiencia.nomeAve || "", // Novo campo incluído
+                                nomeAve: s.deficiencia.nomeAve || "",
                                 justificativaAve: s.deficiencia.justificativaAve || [],
                             }
                             : {
@@ -153,7 +153,7 @@ export const useStudents = () => {
                                 nomeEstagiario: "NÃO NECESSITA",
                                 justificativaEstagiario: "SEM BARREIRAS",
                                 ave: false,
-                                nomeAve: "", // Novo campo incluído
+                                nomeAve: "",
                                 justificativaAve: [],
                             },
                     };

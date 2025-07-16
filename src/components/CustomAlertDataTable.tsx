@@ -13,7 +13,7 @@ import {
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronDown, Printer } from "lucide-react";
+import { ArrowUpDown, ChevronDown, Printer, Heart } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,9 +31,16 @@ import {
     DropdownMenuContent,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-// Define a interface para o aluno
-export interface StudentRecord {
+// Define a interface estendida para o aluno com informações de deficiência
+export interface EnhancedStudentRecord {
     turma: string;
     nome: string;
     faltasB1: number;
@@ -43,10 +50,12 @@ export interface StudentRecord {
     totalFaltas: number;
     percentualFaltas: number;
     percentualFrequencia: number;
+    temDeficiencia?: boolean;
+    tipoDeficiencia?: string[];
 }
 
 // Definição das colunas do Data Table
-export const columns: ColumnDef<StudentRecord>[] = [
+export const columns: ColumnDef<EnhancedStudentRecord>[] = [
     {
         accessorKey: "nome",
         header: ({ column }) => (
@@ -58,6 +67,52 @@ export const columns: ColumnDef<StudentRecord>[] = [
                 Nome <ArrowUpDown className="h-4 w-4" />
             </Button>
         ),
+        cell: ({ row }) => {
+            const nome = row.getValue("nome") as string;
+            const temDeficiencia = row.original.temDeficiencia;
+            const tipoDeficiencia = row.original.tipoDeficiencia || [];
+
+            return (
+                <div className="flex items-center gap-2">
+                    <span
+                        className={temDeficiencia ? 'text-blue-800 font-medium' : ''}
+                    >
+                        {nome}
+                    </span>
+                    {temDeficiencia && (
+                        <div className="flex items-center gap-1">
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Heart
+                                            size={14}
+                                            className="text-blue-600"
+                                            fill="currentColor"
+                                        />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Estudante com deficiência</p>
+                                        {tipoDeficiencia.length > 0 && (
+                                            <p className="text-xs">
+                                                Tipos: {tipoDeficiencia.join(', ')}
+                                            </p>
+                                        )}
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                            {tipoDeficiencia.length > 0 && (
+                                <Badge
+                                    variant="secondary"
+                                    className="text-xs bg-blue-100 text-blue-800 hover:bg-blue-200"
+                                >
+                                    PCD
+                                </Badge>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        },
     },
     {
         accessorKey: "turma",
@@ -97,17 +152,29 @@ export const columns: ColumnDef<StudentRecord>[] = [
                 % de Faltas <ArrowUpDown className="h-4 w-4" />
             </Button>
         ),
-        cell: ({ row }) => (
-            <div className="text-center">
-                {row.getValue("percentualFaltas")}%
-            </div>
-        ),
+        cell: ({ row }) => {
+            const percentual = row.getValue("percentualFaltas") as number;
+            return (
+                <div className="text-center">
+                    <span
+                        className={`font-medium ${percentual >= 25
+                                ? 'text-red-600'
+                                : percentual >= 20
+                                    ? 'text-orange-600'
+                                    : 'text-green-600'
+                            }`}
+                    >
+                        {percentual}%
+                    </span>
+                </div>
+            );
+        },
     },
 ];
 
 // Definição das props do componente
 interface AlertDataTableProps {
-    data: StudentRecord[];
+    data: EnhancedStudentRecord[];
 }
 
 export function AlertDataTable({ data }: AlertDataTableProps) {
@@ -140,9 +207,13 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
     });
 
     // Função para formatar o valor da célula para impressão
-    const formatCellValue = (value: unknown, columnId: string): string => {
+    const formatCellValue = (value: unknown, columnId: string, row?: EnhancedStudentRecord): string => {
         if (columnId === "percentualFaltas") {
             return `${value}%`;
+        }
+        if (columnId === "nome" && row?.temDeficiencia) {
+            const tipos = row.tipoDeficiencia?.length ? ` (PCD: ${row.tipoDeficiencia.join(', ')})` : ' (PCD)';
+            return `${value}${tipos}`;
         }
         return value?.toString() || "";
     };
@@ -183,10 +254,15 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
                     table { width: 100%; border-collapse: collapse; font-size: 12px; }
                     th, td { border: 1px solid black; padding: 8px; text-align: center; }
                     th { background-color: #f2f2f2; font-weight: bold; }
+                    .pcd-row { background-color: #eff6ff; }
+                    .pcd-name { color: #1e40af; font-weight: bold; }
                 </style>
             </head>
             <body>
                 <h1>Relatório de Alertas de Frequência</h1>
+                <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                    ♥ Indica estudantes com deficiência (PCD)
+                </p>
                 <table>
                     <thead>
                         <tr>
@@ -201,20 +277,23 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
                     <tbody>
                         ${rows.length > 0
                 ? rows
-                    .map((row) =>
-                        `
-                                <tr>
+                    .map((row) => {
+                        const temDeficiencia = row.original.temDeficiencia;
+                        return `
+                                <tr${temDeficiencia ? ' class="pcd-row"' : ''}>
                                     ${visibleColumns
-                            .map((column) => {
-                                const cell = row.getVisibleCells().find(
-                                    (c) => c.column.id === column.id
-                                );
-                                return `<td>${cell ? formatCellValue(cell.getValue(), column.id) : ""}</td>`;
-                            })
-                            .join("")}
+                                .map((column) => {
+                                    const cell = row.getVisibleCells().find(
+                                        (c) => c.column.id === column.id
+                                    );
+                                    const value = cell ? formatCellValue(cell.getValue(), column.id, row.original) : "";
+                                    const cellClass = column.id === "nome" && temDeficiencia ? ' class="pcd-name"' : '';
+                                    return `<td${cellClass}>${value}</td>`;
+                                })
+                                .join("")}
                                 </tr>
-                            `
-                    )
+                            `;
+                    })
                     .join("")
                 : `<tr><td colspan="${visibleColumns.length}" style="text-align: center;">Nenhum aluno encontrado.</td></tr>`
             }
@@ -303,6 +382,7 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
                                 <TableRow
                                     key={row.id}
                                     data-state={row.getIsSelected() && "selected"}
+                                    className={row.original.temDeficiencia ? "bg-blue-50 hover:bg-blue-100" : ""}
                                 >
                                     {row.getVisibleCells().map((cell) => (
                                         <TableCell key={cell.id}>
@@ -355,6 +435,11 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
                     <div className="text-sm text-muted-foreground">
                         Total de registros: {table.getFilteredRowModel().rows.length}
                     </div>
+                    {data.some(s => s.temDeficiencia) && (
+                        <div className="text-xs text-blue-600 mt-1">
+                            ♥ {data.filter(s => s.temDeficiencia).length} estudante(s) com deficiência
+                        </div>
+                    )}
                 </div>
 
                 {/* Botões de paginação com exibição da página atual */}
