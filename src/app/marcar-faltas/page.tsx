@@ -15,6 +15,8 @@ import { db, auth } from "@/firebase.config";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
     Dialog,
     DialogContent,
@@ -31,6 +33,18 @@ import {
 } from "@/components/ui/select";
 import { toast, Toaster } from "sonner";
 import { useStudents, Estudante } from "@/hooks/useStudents";
+import {
+    Calendar,
+    Users,
+    UserCheck,
+    UserX,
+    Save,
+    AlertCircle,
+    School,
+    CheckCircle2,
+    Clock,
+    User
+} from "lucide-react";
 
 // Constantes para coleções e documentos
 const ACADEMIC_YEAR = "2025";
@@ -212,11 +226,11 @@ export default function MarcarFaltasPage() {
                     const data = docSnap.data();
                     const studentId = data.estudanteId;
                     newExistingAbsences[studentId] = true;
-                    newExistingAbsenceDocs[studentId] = docSnap.id; // Armazena o ID do documento existente
+                    newExistingAbsenceDocs[studentId] = docSnap.id;
                 });
                 setExistingAbsences(newExistingAbsences);
                 setExistingAbsenceDocs(newExistingAbsenceDocs);
-                setMarkedAbsences(newExistingAbsences); // Inicializa com o estado atual
+                setMarkedAbsences(newExistingAbsences);
             } catch (error) {
                 console.error("Erro ao carregar faltas existentes:", error);
             }
@@ -230,7 +244,7 @@ export default function MarcarFaltasPage() {
         return Array.from(
             new Set(
                 students
-                    .filter((est: Estudante) => est.status === "ATIVO") // Filtra por status ATIVO
+                    .filter((est: Estudante) => est.status === "ATIVO")
                     .map((est: Estudante) => est.turma)
             )
         );
@@ -238,7 +252,7 @@ export default function MarcarFaltasPage() {
 
     const filteredStudents = useMemo(() => {
         return students.filter(
-            (est: Estudante) => est.status === "ATIVO" && est.turma === selectedClass // Filtra por status ATIVO e turma selecionada
+            (est: Estudante) => est.status === "ATIVO" && est.turma === selectedClass
         );
     }, [students, selectedClass]);
 
@@ -258,6 +272,11 @@ export default function MarcarFaltasPage() {
 
     // Determina se o botão de salvar deve ficar habilitado
     const canSave = role === "user" ? hasSelection : hasChanges;
+
+    // Conta estatísticas
+    const totalStudents = filteredStudents.length;
+    const presentStudents = filteredStudents.filter(est => !markedAbsences[est.estudanteId]).length;
+    const absentStudents = filteredStudents.filter(est => markedAbsences[est.estudanteId]).length;
 
     // Alterna ausência do aluno (respeitando restrições de perfil)
     const handleCheckboxChange = (studentId: string) => {
@@ -325,7 +344,6 @@ export default function MarcarFaltasPage() {
                             batch.delete(docRef);
                         }
                     }
-                    // Se já existe e está marcada, não faz nada (evita duplicata)
                 });
             }
 
@@ -355,142 +373,357 @@ export default function MarcarFaltasPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <p>Carregando dados...</p>
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600 font-medium">Carregando dados...</p>
+                </div>
             </div>
         );
     }
 
     return (
-        <div>
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
             <Toaster />
 
-            <Card className="mx-auto max-w-3xl relative">
-                <CardHeader>
-                    <CardTitle>Marcação de Faltas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {/* Renderiza o seletor de data para todos os perfis */}
-                    <div className="mb-4 flex items-center gap-2">
-                        <span className="font-bold">Selecione a Data:</span>
-                        <Select onValueChange={setSelectedDate} value={selectedDate}>
-                            <SelectTrigger className="w-48">
-                                <SelectValue placeholder="Selecione a data" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {getValidDates(academicYearData, role).map((date) => (
-                                    <SelectItem key={date} value={date}>
-                                        {date}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Seleção da Turma */}
-                    <div className="mb-4 flex items-center gap-2">
-                        <span className="font-bold">Selecione a Turma:</span>
-                        <Select onValueChange={setSelectedClass} value={selectedClass}>
-                            <SelectTrigger className="w-48">
-                                <SelectValue placeholder="Selecione a turma" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {turmas
-                                    .sort((a, b) => a.localeCompare(b)) // Ordena turmas alfabeticamente
-                                    .map((turma) => (
-                                        <SelectItem key={turma} value={turma}>
-                                            {turma}
-                                        </SelectItem>
-                                    ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {errorMessage && (
-                        <div className="mb-4 p-4 bg-red-100 text-red-800 rounded">
-                            {errorMessage}
-                        </div>
-                    )}
-
-                    {isValidDay && selectedClass ? (
-                        <div className="space-y-2">
-                            {filteredStudents.length === 0 ? (
-                                <p>Não há alunos cadastrados para esta turma com status &quot;ATIVO&quot;.</p>
-                            ) : (
-                                filteredStudents
-                                    .sort((a, b) => a.nome.localeCompare(b.nome)) // Ordena por nome
-                                    .map((est: Estudante) => {
-                                        const isLocked = role === "user" && existingAbsences[est.estudanteId];
-                                        return (
-                                            <div
-                                                key={est.estudanteId}
-                                                className={`flex items-center gap-2 p-2 rounded hover:bg-gray-50 ${!isLocked ? "cursor-pointer" : "cursor-default"
-                                                    }`}
-                                                onClick={!isLocked ? () => handleCheckboxChange(est.estudanteId) : undefined}
-                                            >
-                                                <Checkbox
-                                                    checked={!!markedAbsences[est.estudanteId]}
-                                                    disabled={isLocked}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (!isLocked) handleCheckboxChange(est.estudanteId);
-                                                    }}
-                                                    className="text-black"
-                                                />
-                                                <span>{est.nome}</span>
-                                            </div>
-                                        );
-                                    })
-                            )}
-                        </div>
-                    ) : (
-                        !errorMessage && <p>Selecione uma turma para marcar faltas.</p>
-                    )}
-                </CardContent>
-
-                {/* Botão de salvar com feedback de loading */}
-                <div className="sticky bottom-4 flex justify-end pr-4">
-                    <Button
-                        variant="secondary"
-                        onClick={() => setOpenDialog(true)}
-                        disabled={!canSave || isSaving}
-                        className={`px-4 py-2 rounded ${canSave && !isSaving ? "bg-black text-white" : "opacity-50"}`}
-                    >
-                        {isSaving ? "Salvando..." : "Salvar"}
-                    </Button>
+            <div className="max-w-4xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="text-center">
+                    <h1 className="text-3xl font-bold text-gray-800 mb-2">Marcação de Faltas</h1>
+                    <p className="text-gray-600">Gerencie a presença dos estudantes</p>
                 </div>
-            </Card>
 
+                {/* Controles */}
+                <Card className="shadow-lg border-0">
+                    <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-t-lg">
+                        <CardTitle className="text-lg flex items-center space-x-2">
+                            <School className="w-5 h-5" />
+                            <span>Controles de Marcação</span>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Seletor de Data */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
+                                    <Calendar className="w-4 h-4 text-blue-600" />
+                                    <span>Data da Aula</span>
+                                </Label>
+                                <Select onValueChange={setSelectedDate} value={selectedDate}>
+                                    <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors">
+                                        <SelectValue placeholder="Selecione a data" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                        {getValidDates(academicYearData, role).map((date) => (
+                                            <SelectItem key={date} value={date} className="py-2 text-sm">
+                                                <div className="flex items-center space-x-2">
+                                                    <Calendar className="w-3 h-3 text-gray-500" />
+                                                    <span>{date}</span>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Seletor de Turma */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
+                                    <Users className="w-4 h-4 text-blue-600" />
+                                    <span>Turma</span>
+                                </Label>
+                                <Select onValueChange={setSelectedClass} value={selectedClass}>
+                                    <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors">
+                                        <SelectValue placeholder="Selecione a turma" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                        {turmas
+                                            .sort((a, b) => a.localeCompare(b))
+                                            .map((turma) => (
+                                                <SelectItem key={turma} value={turma} className="py-2 text-sm">
+                                                    <div className="flex items-center space-x-2">
+                                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                        <span>{turma}</span>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+
+                    </CardContent>
+                </Card>
+
+                {/* Mensagem de Erro */}
+                {errorMessage && (
+                    <Card className="border-red-200 bg-red-50">
+                        <CardContent className="p-4">
+                            <div className="flex items-center space-x-2 text-red-700">
+                                <AlertCircle className="w-5 h-5" />
+                                <p className="font-medium">{errorMessage}</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Estatísticas Compactas */}
+                {isValidDay && selectedClass && filteredStudents.length > 0 && (
+                    <Card className="shadow-lg border-0">
+                        <CardContent className="p-4">
+                            <div className="flex items-center justify-center space-x-8">
+                                <div className="text-center">
+                                    <div className="flex items-center justify-center space-x-2 mb-1">
+                                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                            <Users className="w-4 h-4 text-blue-600" />
+                                        </div>
+                                        <span className="text-xl font-bold text-gray-800">{totalStudents}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600">Total</p>
+                                </div>
+
+                                <div className="text-center">
+                                    <div className="flex items-center justify-center space-x-2 mb-1">
+                                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                            <UserCheck className="w-4 h-4 text-green-600" />
+                                        </div>
+                                        <span className="text-xl font-bold text-gray-800">{presentStudents}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600">Presentes</p>
+                                </div>
+
+                                <div className="text-center">
+                                    <div className="flex items-center justify-center space-x-2 mb-1">
+                                        <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                            <UserX className="w-4 h-4 text-red-600" />
+                                        </div>
+                                        <span className="text-xl font-bold text-gray-800">{absentStudents}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600">Ausentes</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Estatísticas */}
+                {isValidDay && selectedClass && filteredStudents.length > 0 && (
+                    <div className="grid grid-cols-3 gap-4">
+                        <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+                            <CardContent className="p-4 text-center">
+                                <div className="flex items-center justify-center space-x-2 mb-2">
+                                    <Users className="w-5 h-5" />
+                                    <span className="text-2xl font-bold">{totalStudents}</span>
+                                </div>
+                                <p className="text-sm text-blue-100">Total de Alunos</p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+                            <CardContent className="p-4 text-center">
+                                <div className="flex items-center justify-center space-x-2 mb-2">
+                                    <UserCheck className="w-5 h-5" />
+                                    <span className="text-2xl font-bold">{presentStudents}</span>
+                                </div>
+                                <p className="text-sm text-green-100">Presentes</p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white">
+                            <CardContent className="p-4 text-center">
+                                <div className="flex items-center justify-center space-x-2 mb-2">
+                                    <UserX className="w-5 h-5" />
+                                    <span className="text-2xl font-bold">{absentStudents}</span>
+                                </div>
+                                <p className="text-sm text-red-100">Ausentes</p>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
+
+                {/* Lista de Alunos */}
+                {isValidDay && selectedClass && (
+                    <Card className="shadow-lg border-0">
+                        <CardHeader className="bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-t-lg">
+                            <CardTitle className="text-lg flex items-center space-x-2">
+                                <User className="w-5 h-5" />
+                                <span>Lista de Presença - {selectedClass}</span>
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-6">
+                            {filteredStudents.length === 0 ? (
+                                <div className="text-center py-8 text-gray-500">
+                                    <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                                    <p className="text-sm font-medium text-gray-600 mb-1">Nenhum aluno encontrado</p>
+                                    <p className="text-xs text-gray-500">Não há alunos cadastrados para esta turma com status &quot;ATIVO&quot;</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {filteredStudents
+                                        .sort((a, b) => a.nome.localeCompare(b.nome))
+                                        .map((est: Estudante) => {
+                                            const isLocked = role === "user" && existingAbsences[est.estudanteId];
+                                            const isAbsent = markedAbsences[est.estudanteId];
+
+                                            return (
+                                                <div
+                                                    key={est.estudanteId}
+                                                    className={`
+                                                        flex items-center justify-between p-4 rounded-lg border-2 transition-all duration-200
+                                                        ${isAbsent
+                                                            ? 'bg-red-50 border-red-200 hover:bg-red-100'
+                                                            : 'bg-green-50 border-green-200 hover:bg-green-100'
+                                                        }
+                                                        ${!isLocked ? 'cursor-pointer' : 'cursor-default opacity-75'}
+                                                    `}
+                                                    onClick={!isLocked ? () => handleCheckboxChange(est.estudanteId) : undefined}
+                                                >
+                                                    <div className="flex items-center space-x-3">
+                                                        <Checkbox
+                                                            checked={isAbsent}
+                                                            disabled={isLocked}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (!isLocked) handleCheckboxChange(est.estudanteId);
+                                                            }}
+                                                            className="h-5 w-5"
+                                                        />
+                                                        <div>
+                                                            <p className="font-medium text-gray-900">{est.nome}</p>
+                                                            {isLocked && (
+                                                                <p className="text-xs text-gray-500 flex items-center space-x-1">
+                                                                    <Clock className="w-3 h-3" />
+                                                                    <span>Já registrado</span>
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        {isAbsent ? (
+                                                            <Badge variant="destructive" className="text-xs">
+                                                                <UserX className="w-3 h-3 mr-1" />
+                                                                Ausente
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">
+                                                                <CheckCircle2 className="w-3 h-3 mr-1" />
+                                                                Presente
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Botão de Salvar */}
+                {isValidDay && selectedClass && filteredStudents.length > 0 && (
+                    <div className="flex justify-end">
+                        <Button
+                            onClick={() => setOpenDialog(true)}
+                            disabled={!canSave || isSaving}
+                            className={`
+                                px-6 py-3 text-white font-medium rounded-lg transition-all duration-200
+                                ${canSave && !isSaving
+                                    ? 'bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl'
+                                    : 'bg-gray-400 cursor-not-allowed'
+                                }
+                            `}
+                        >
+                            {isSaving ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                    Salvando...
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="w-4 h-4 mr-2" />
+                                    Salvar Faltas
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                )}
+            </div>
+
+            {/* Dialog de Confirmação */}
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                <DialogContent>
+                <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Confirmar Marcação de Faltas</DialogTitle>
-                        <DialogDescription>
-                            Revise os alunos selecionados antes de confirmar.
+                        <DialogTitle className="flex items-center space-x-2 text-blue-600">
+                            <Save className="w-5 h-5" />
+                            <span>Confirmar Marcação de Faltas</span>
+                        </DialogTitle>
+                        <DialogDescription className="text-gray-600">
+                            Revise os dados antes de confirmar a marcação.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="mb-4">
-                        <p>
-                            <span className="font-bold">Data:</span> {selectedDate}
-                        </p>
-                        <p className="mt-2">
-                            <span className="font-bold">Turma:</span> {selectedClass}
-                        </p>
-                        <p className="mt-2 font-bold">Alunos faltantes:</p>
-                        <ul className="list-disc ml-6">
-                            {filteredStudents
-                                .filter((est: Estudante) => markedAbsences[est.estudanteId])
-                                .map((est: Estudante) => (
-                                    <li key={est.estudanteId}>{est.nome}</li>
-                                ))}
-                        </ul>
+
+                    <div className="space-y-4">
+                        <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                            <div className="flex items-center space-x-2">
+                                <Calendar className="w-4 h-4 text-blue-600" />
+                                <span className="font-medium">Data:</span>
+                                <span>{selectedDate}</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <Users className="w-4 h-4 text-blue-600" />
+                                <span className="font-medium">Turma:</span>
+                                <span>{selectedClass}</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <p className="font-medium text-gray-700 mb-2 flex items-center space-x-2">
+                                <UserX className="w-4 h-4 text-red-600" />
+                                <span>Alunos Ausentes ({absentStudents}):</span>
+                            </p>
+                            {absentStudents > 0 ? (
+                                <ul className="space-y-1 max-h-32 overflow-y-auto">
+                                    {filteredStudents
+                                        .filter((est: Estudante) => markedAbsences[est.estudanteId])
+                                        .map((est: Estudante) => (
+                                            <li key={est.estudanteId} className="text-sm text-gray-600 flex items-center space-x-2">
+                                                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                                <span>{est.nome}</span>
+                                            </li>
+                                        ))}
+                                </ul>
+                            ) : (
+                                <p className="text-sm text-gray-500 italic">Nenhum aluno ausente</p>
+                            )}
+                        </div>
                     </div>
-                    <div className="flex justify-end space-x-2">
-                        <Button variant="outline" onClick={() => setOpenDialog(false)}>
+
+                    <div className="flex justify-end space-x-2 pt-4">
+                        <Button
+                            variant="outline"
+                            onClick={() => setOpenDialog(false)}
+                            className="border-gray-300 hover:bg-gray-50"
+                        >
                             Cancelar
                         </Button>
-                        <Button onClick={handleSaveAbsences} disabled={isSaving}>
-                            Confirmar
+                        <Button
+                            onClick={handleSaveAbsences}
+                            disabled={isSaving}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                            {isSaving ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                    Salvando...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                                    Confirmar
+                                </>
+                            )}
                         </Button>
                     </div>
                 </DialogContent>

@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Users, Plus } from "lucide-react";
 
 import { formSchema } from "./constants/formSchema";
 import { Estudante } from "./interfaces";
@@ -408,68 +409,106 @@ export default function CadastrarEstudantePage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <Skeleton className="h-10 w-3/4" />
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+                <div className="flex items-center justify-center min-h-screen">
+                    <div className="space-y-6 w-full max-w-lg mx-auto p-8">
+                        <div className="flex items-center justify-center space-x-3">
+                            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse"></div>
+                            <div className="text-xl font-semibold text-slate-600 dark:text-slate-300">
+                                Carregando estudantes...
+                            </div>
+                        </div>
+                        <div className="space-y-4">
+                            <Skeleton className="h-16 w-full rounded-2xl" />
+                            <Skeleton className="h-12 w-4/5 rounded-xl" />
+                            <Skeleton className="h-12 w-3/5 rounded-xl" />
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
             <Toaster />
-            <div className="container mx-auto p-4 max-w-7xl">
-                <div className="mt-8 bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-                    <div className="flex flex-col md:flex-row items-center justify-between mb-4">
-                        <h2 className="text-2xl font-bold">Cadastro de Estudantes</h2>
-                        <Button
-                            variant="default"
-                            onClick={() => {
-                                setEditingEstudante({
-                                    estudanteId: "",
-                                    turma: "",
-                                    nome: "",
-                                    matricula: "",
-                                    status: "ATIVO",
-                                    turno: "MANHÃ",
-                                    bolsaFamilia: "NÃO",
-                                    contatos: [{ nome: "", telefone: "" }],
-                                    email: "",
-                                    dataNascimento: "",
-                                    endereco: {
-                                        rua: "",
-                                        numero: "",
-                                        bairro: "",
-                                        cidade: "",
-                                        estado: "",
-                                        cep: "",
-                                        complemento: "",
-                                    },
-                                    deficiencia: {
-                                        estudanteComDeficiencia: false,
-                                        tipoDeficiencia: [],
-                                        possuiBarreiras: true,
-                                        aee: undefined,
-                                        instituicao: undefined,
-                                        horarioAtendimento: "NENHUM",
-                                        atendimentoSaude: [],
-                                        possuiEstagiario: false,
-                                        nomeEstagiario: "NÃO NECESSITA",
-                                        justificativaEstagiario: "SEM BARREIRAS",
-                                        ave: false,
-                                        nomeAve: "",
-                                        justificativaAve: [],
-                                    },
-                                    provaSaoPaulo: [],
-                                });
-                                setEditingIndex(null);
-                                setOpenModal(true);
-                                setCepChangedManually(false);
-                            }}
-                        >
-                            + Novo Estudante
-                        </Button>
-                    </div>
 
+            {/* Main Content */}
+            <div className="container mx-auto p-6 max-w-[1400px]">
+                {/* Header Card */}
+                <div className="mb-8 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 dark:border-slate-700/20 overflow-hidden">
+                    <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-8">
+                        <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
+                            <div className="flex items-center space-x-4">
+                                <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-sm">
+                                    <Users className="w-8 h-8 text-white" />
+                                </div>
+                                <div>
+                                    <h1 className="text-3xl font-bold text-white">
+                                        Gerenciamento de Estudantes
+                                    </h1>
+                                    <p className="text-blue-100 mt-2 text-lg">
+                                        {students.length} estudantes cadastrados • {totalRecords} resultados
+                                    </p>
+                                </div>
+                            </div>
+
+                            <Button
+                                size="lg"
+                                className="bg-white/20 hover:bg-white/30 text-white border-white/30 hover:border-white/40 backdrop-blur-sm transition-all duration-300 shadow-lg hover:shadow-xl px-8 py-6 text-lg rounded-2xl"
+                                onClick={() => {
+                                    setEditingEstudante({
+                                        estudanteId: "",
+                                        turma: "",
+                                        nome: "",
+                                        matricula: "",
+                                        status: "ATIVO",
+                                        turno: "MANHÃ",
+                                        bolsaFamilia: "NÃO",
+                                        contatos: [{ nome: "", telefone: "" }],
+                                        email: "",
+                                        dataNascimento: "",
+                                        endereco: {
+                                            rua: "",
+                                            numero: "",
+                                            bairro: "",
+                                            cidade: "",
+                                            estado: "",
+                                            cep: "",
+                                            complemento: "",
+                                        },
+                                        deficiencia: {
+                                            estudanteComDeficiencia: false,
+                                            tipoDeficiencia: [],
+                                            possuiBarreiras: true,
+                                            aee: undefined,
+                                            instituicao: undefined,
+                                            horarioAtendimento: "NENHUM",
+                                            atendimentoSaude: [],
+                                            possuiEstagiario: false,
+                                            nomeEstagiario: "NÃO NECESSITA",
+                                            justificativaEstagiario: "SEM BARREIRAS",
+                                            ave: false,
+                                            nomeAve: "",
+                                            justificativaAve: [],
+                                        },
+                                        provaSaoPaulo: [],
+                                    });
+                                    setEditingIndex(null);
+                                    setOpenModal(true);
+                                    setCepChangedManually(false);
+                                }}
+                            >
+                                <Plus className="w-6 h-6 mr-3" />
+                                Novo Estudante
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Content Grid */}
+                <div className="space-y-8">
+                    {/*  Filters */}
                     <StudentFilters
                         students={students}
                         turmaFiltro={turmaFiltro}
@@ -498,6 +537,7 @@ export default function CadastrarEstudantePage() {
                         setVisibleColumns={setVisibleColumns}
                     />
 
+                    {/*  Table */}
                     <StudentTable
                         currentRecords={currentRecords}
                         visibleColumns={visibleColumns}
@@ -510,6 +550,7 @@ export default function CadastrarEstudantePage() {
                         students={students}
                     />
 
+                    {/*  Pagination */}
                     {totalRecords > 0 && (
                         <StudentPagination
                             currentPage={currentPage}
@@ -521,19 +562,20 @@ export default function CadastrarEstudantePage() {
                         />
                     )}
                 </div>
-
-                <StudentDialog
-                    openModal={openModal}
-                    setOpenModal={setOpenModal}
-                    form={form}
-                    editingIndex={editingIndex}
-                    editingEstudante={editingEstudante}
-                    handleFormSubmit={handleFormSubmit}
-                    handleCancel={handleCancel}
-                    cepChangedManually={cepChangedManually}
-                    setCepChangedManually={setCepChangedManually}
-                />
             </div>
+
+            {/*  Dialog Modal */}
+            <StudentDialog
+                openModal={openModal}
+                setOpenModal={setOpenModal}
+                form={form}
+                editingIndex={editingIndex}
+                editingEstudante={editingEstudante}
+                handleFormSubmit={handleFormSubmit}
+                handleCancel={handleCancel}
+                cepChangedManually={cepChangedManually}
+                setCepChangedManually={setCepChangedManually}
+            />
         </div>
     );
 }

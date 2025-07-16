@@ -1,41 +1,24 @@
-"use client";
+import React, { useEffect } from 'react';
+import { UseFormReturn } from 'react-hook-form';
+import { z } from 'zod';
+import Select, { MultiValue } from 'react-select';
+import { Trash2, Plus, User, Home, Phone, Heart, Save, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select as ShadcnSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { formSchema } from '../constants/formSchema';
+import { tipoDeficienciaOptions, atendimentoSaudeOptions, justificativaAveOptions } from '../constants/selectOptions';
+import { customSelectStyles } from '../constants/selectStyles';
+import { formatTelefone, cleanTelefone, cleanCep, formatDataNascimento, cleanDataNascimento } from '../utils/formatters';
+import { fetchAddressFromCep } from '../utils/api';
+import { SelectOption, Estudante } from '../interfaces';
+import { toast } from 'sonner';
 
-import { UseFormReturn } from "react-hook-form";
-import { z } from "zod";
-import Select, { MultiValue } from "react-select";
-import { Trash2 } from "lucide-react";
-
-import { formSchema } from "../constants/formSchema";
-import {
-    tipoDeficienciaOptions,
-    atendimentoSaudeOptions,
-    justificativaAveOptions,
-} from "../constants/selectOptions";
-import { customSelectStyles } from "../constants/selectStyles";
-import { formatTelefone, cleanTelefone, cleanCep, formatDataNascimento, cleanDataNascimento } from "../utils/formatters";
-import { fetchAddressFromCep } from "../utils/api";
-import { SelectOption, Estudante } from "../interfaces";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-    Select as ShadcnSelect,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Checkbox } from "@/components/ui/checkbox";
-import { useEffect } from "react";
-import { toast } from "sonner";
 
 interface StudentFormProps {
     form: UseFormReturn<z.infer<typeof formSchema>>;
@@ -44,6 +27,7 @@ interface StudentFormProps {
     handleCancel: () => void;
     cepChangedManually: boolean;
     setCepChangedManually: (value: boolean) => void;
+    isEditing: boolean;
 }
 
 export function StudentForm({
@@ -51,6 +35,8 @@ export function StudentForm({
     handleFormSubmit,
     handleCancel,
     cepChangedManually,
+    setCepChangedManually,
+    isEditing,
 }: StudentFormProps) {
     const cep = form.watch("endereco.cep");
     const possuiEstagiario = form.watch("deficiencia.possuiEstagiario");
@@ -66,6 +52,7 @@ export function StudentForm({
                         form.setValue("endereco.cidade", address.cidade);
                         form.setValue("endereco.estado", address.estado);
                         form.setValue("endereco.complemento", address.complemento);
+                        toast.success("Endereço preenchido automaticamente!");
                     } else {
                         toast.error("CEP não encontrado ou inválido.");
                     }
@@ -95,648 +82,729 @@ export function StudentForm({
         }
     }, [form, possuiEstagiario]);
 
+    const ModernFormField = ({
+        children,
+        title,
+        description,
+        icon: Icon,
+        required = false
+    }: {
+        children: React.ReactNode;
+        title: string;
+        description?: string;
+        icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+        required?: boolean;
+    }) => (
+        <div className="space-y-4">
+            <div className="flex items-center space-x-3">
+                {Icon && (
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                        <Icon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                )}
+                <div>
+                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center">
+                        {title}
+                        {required && <span className="text-red-500 ml-1">*</span>}
+                    </h3>
+                    {description && (
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                            {description}
+                        </p>
+                    )}
+                </div>
+            </div>
+            <div className="bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
+                {children}
+            </div>
+        </div>
+    );
+
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6 mt-4">
-                <p className="text-sm text-gray-500" id="form-desc">
-                    Campos com <span className="text-red-500">*</span> são obrigatórios.
-                </p>
+            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
+                <div className="text-center bg-blue-50/50 dark:bg-blue-900/20 rounded-2xl p-4 border border-blue-200/50 dark:border-blue-800/50">
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                        Campos marcados com <span className="text-red-500 font-bold">*</span> são obrigatórios
+                    </p>
+                </div>
+
                 <Tabs defaultValue="pessoais" className="w-full">
-                    <TabsList className="grid w-full grid-cols-4">
-                        <TabsTrigger value="pessoais">Pessoais</TabsTrigger>
-                        <TabsTrigger value="endereco">Endereço</TabsTrigger>
-                        <TabsTrigger value="contatos">Contatos</TabsTrigger>
-                        <TabsTrigger value="deficiencia">Deficiência</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-4 bg-slate-100/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-1 border border-slate-200/50 dark:border-slate-600/50">
+                        <TabsTrigger value="pessoais" className="rounded-xl font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
+                            <User className="w-4 h-4 mr-2" />
+                            Pessoais
+                        </TabsTrigger>
+                        <TabsTrigger value="endereco" className="rounded-xl font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
+                            <Home className="w-4 h-4 mr-2" />
+                            Endereço
+                        </TabsTrigger>
+                        <TabsTrigger value="contatos" className="rounded-xl font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
+                            <Phone className="w-4 h-4 mr-2" />
+                            Contatos
+                        </TabsTrigger>
+                        <TabsTrigger value="deficiencia" className="rounded-xl font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
+                            <Heart className="w-4 h-4 mr-2" />
+                            Deficiência
+                        </TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="pessoais" className="mt-4">
-                        <div className="space-y-4">
-                            <FormField
-                                control={form.control}
-                                name="nome"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel htmlFor="nome">
-                                            Nome <span className="text-red-500">*</span>
-                                        </FormLabel>
-                                        <FormControl>
-                                            <Input
-                                                id="nome"
-                                                placeholder="Digite o nome"
-                                                {...field}
-                                                autoComplete="off"
-                                                aria-describedby="form-desc"
-                                            />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <TabsContent value="pessoais" className="mt-8">
+                        <ModernFormField
+                            title="Informações Pessoais"
+                            description="Dados básicos do estudante"
+                            icon={User}
+                            required
+                        >
+                            <div className="space-y-6">
                                 <FormField
                                     control={form.control}
-                                    name="turma"
+                                    name="nome"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel htmlFor="turma">
-                                                Turma <span className="text-red-500">*</span>
+                                            <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                Nome Completo <span className="text-red-500">*</span>
                                             </FormLabel>
                                             <FormControl>
                                                 <Input
-                                                    id="turma"
-                                                    placeholder="Digite a turma"
                                                     {...field}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
+                                                    placeholder="Digite o nome completo do estudante"
+                                                    className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                 />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
                                 />
-                                <FormField
-                                    control={form.control}
-                                    name="matricula"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="matricula">
-                                                Matrícula
-                                            </FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    id="matricula"
-                                                    placeholder="Número da matrícula"
-                                                    {...field}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <FormField
-                                    control={form.control}
-                                    name="bolsaFamilia"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="bolsaFamilia">
-                                                Bolsa Família <span className="text-red-500">*</span>
-                                            </FormLabel>
-                                            <FormControl>
-                                                <ShadcnSelect
-                                                    onValueChange={field.onChange}
-                                                    value={field.value}
-                                                >
-                                                    <SelectTrigger id="bolsaFamilia">
-                                                        <SelectValue placeholder="Selecione" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="SIM">SIM</SelectItem>
-                                                        <SelectItem value="NÃO">NÃO</SelectItem>
-                                                    </SelectContent>
-                                                </ShadcnSelect>
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <FormField
-                                    control={form.control}
-                                    name="status"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="status">
-                                                Status <span className="text-red-500">*</span>
-                                            </FormLabel>
-                                            <FormControl>
-                                                <ShadcnSelect
-                                                    onValueChange={field.onChange}
-                                                    value={field.value}
-                                                >
-                                                    <SelectTrigger id="status">
-                                                        <SelectValue placeholder="Selecione o Status" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="ATIVO">ATIVO</SelectItem>
-                                                        <SelectItem value="INATIVO">INATIVO</SelectItem>
-                                                    </SelectContent>
-                                                </ShadcnSelect>
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <FormField
-                                    control={form.control}
-                                    name="turno"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="turno">
-                                                Turno <span className="text-red-500">*</span>
-                                            </FormLabel>
-                                            <FormControl>
-                                                <ShadcnSelect
-                                                    onValueChange={field.onChange}
-                                                    value={field.value}
-                                                >
-                                                    <SelectTrigger id="turno">
-                                                        <SelectValue placeholder="Selecione o Turno" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="MANHÃ">MANHÃ</SelectItem>
-                                                        <SelectItem value="TARDE">TARDE</SelectItem>
-                                                    </SelectContent>
-                                                </ShadcnSelect>
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <FormField
-                                    control={form.control}
-                                    name="dataNascimento"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="dataNascimento">
-                                                Data de Nascimento
-                                            </FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    id="dataNascimento"
-                                                    placeholder="dd/mm/aaaa"
-                                                    value={field.value ? formatDataNascimento(field.value) : ""}
-                                                    onChange={(e) => {
-                                                        const inputValue = e.target.value;
-                                                        const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
-                                                        field.onChange(cleanedValue);
-                                                    }}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <FormField
-                                    control={form.control}
-                                    name="email"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel htmlFor="email">E-mail</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    id="email"
-                                                    placeholder="Digite o e-mail"
-                                                    {...field}
-                                                    autoComplete="off"
-                                                    aria-describedby="form-desc"
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </div>
-                        </div>
-                    </TabsContent>
 
-                    <TabsContent value="endereco" className="mt-4">
-                        <div className="space-y-4">
-                            <h3 className="text-lg font-semibold mb-4">Contatos</h3>
-                            {form.watch("contatos")?.map((_, index) => (
-                                <div
-                                    key={index}
-                                    className="flex items-center gap-2 mb-2 p-2 border rounded"
-                                >
-                                    <div className="flex-1 space-y-2">
-                                        <FormField
-                                            control={form.control}
-                                            name={`contatos.${index}.nome`}
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel htmlFor={`contato-nome-${index}`}>
-                                                        Nome do contato
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            id={`contato-nome-${index}`}
-                                                            placeholder="Nome do contato"
-                                                            {...field}
-                                                            autoComplete="off"
-                                                            aria-describedby="form-desc"
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name={`contatos.${index}.telefone`}
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel htmlFor={`contato-telefone-${index}`}>
-                                                        Telefone
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            id={`contato-telefone-${index}`}
-                                                            placeholder="(xx) xxxxx-xxxx"
-                                                            value={field.value ? formatTelefone(field.value) : ""}
-                                                            onChange={(e) => {
-                                                                const inputValue = e.target.value;
-                                                                const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
-                                                                field.onChange(cleanedValue);
-                                                            }}
-                                                            autoComplete="off"
-                                                            aria-describedby="form-desc"
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
-                                    <Trash2
-                                        className="h-5 w-5 text-red-500 cursor-pointer"
-                                        onClick={() => {
-                                            const newContatos = form
-                                                .getValues("contatos")
-                                                ?.filter((_, i) => i !== index);
-                                            form.setValue("contatos", newContatos || []);
-                                        }}
-                                        aria-label="Remover contato"
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <FormField
+                                        control={form.control}
+                                        name="turma"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Turma <span className="text-red-500">*</span>
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="Ex: 1ºA, 2ºB"
+                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="matricula"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Matrícula
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="Número da matrícula"
+                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="bolsaFamilia"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Bolsa Família <span className="text-red-500">*</span>
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <ShadcnSelect onValueChange={field.onChange} value={field.value}>
+                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                            <SelectValue placeholder="Selecione" />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                                                            <SelectItem value="SIM">SIM</SelectItem>
+                                                            <SelectItem value="NÃO">NÃO</SelectItem>
+                                                        </SelectContent>
+                                                    </ShadcnSelect>
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
                                     />
                                 </div>
-                            ))}
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => {
-                                    const currentContatos = form.getValues("contatos") || [];
-                                    form.setValue("contatos", [
-                                        ...currentContatos,
-                                        { nome: "", telefone: "" },
-                                    ]);
-                                }}
-                                aria-label="Adicionar novo contato"
-                            >
-                                + Adicionar Contato
-                            </Button>
-                        </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <FormField
+                                        control={form.control}
+                                        name="status"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Status <span className="text-red-500">*</span>
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <ShadcnSelect onValueChange={field.onChange} value={field.value}>
+                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                            <SelectValue placeholder="Selecione o Status" />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                                                            <SelectItem value="ATIVO">ATIVO</SelectItem>
+                                                            <SelectItem value="INATIVO">INATIVO</SelectItem>
+                                                        </SelectContent>
+                                                    </ShadcnSelect>
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="turno"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Turno <span className="text-red-500">*</span>
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <ShadcnSelect onValueChange={field.onChange} value={field.value}>
+                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                            <SelectValue placeholder="Selecione o Turno" />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                                                            <SelectItem value="MANHÃ">MANHÃ</SelectItem>
+                                                            <SelectItem value="TARDE">TARDE</SelectItem>
+                                                        </SelectContent>
+                                                    </ShadcnSelect>
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <FormField
+                                        control={form.control}
+                                        name="dataNascimento"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Data de Nascimento
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        placeholder="dd/mm/aaaa"
+                                                        value={field.value ? formatDataNascimento(field.value) : ""}
+                                                        onChange={(e) => {
+                                                            const inputValue = e.target.value;
+                                                            const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
+                                                            field.onChange(cleanedValue);
+                                                        }}
+                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="email"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    E-mail
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        type="email"
+                                                        placeholder="email@exemplo.com"
+                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                            </div>
+                        </ModernFormField>
                     </TabsContent>
 
-                    <TabsContent value="deficiencia" className="mt-4">
-                        <div className="space-y-6">
-                            <h3 className="text-lg font-semibold mb-4">Deficiência</h3>
-                            <FormField
-                                control={form.control}
-                                name="deficiencia.estudanteComDeficiencia"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel
-                                            className="flex items-center space-x-2"
-                                            htmlFor="estudanteComDeficiencia"
-                                        >
+                    <TabsContent value="endereco" className="mt-8">
+                        <ModernFormField
+                            title="Endereço Residencial"
+                            description="Informações de localização do estudante"
+                            icon={Home}
+                        >
+                            <div className="space-y-6">
+                                <FormField
+                                    control={form.control}
+                                    name="endereco.cep"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                CEP
+                                            </FormLabel>
                                             <FormControl>
-                                                <Checkbox
-                                                    id="estudanteComDeficiencia"
-                                                    checked={field.value}
-                                                    onCheckedChange={(checked) => {
-                                                        field.onChange(!!checked);
-                                                        if (!checked) {
-                                                            form.setValue("deficiencia", {
-                                                                estudanteComDeficiencia: false,
-                                                                tipoDeficiencia: [],
-                                                                possuiBarreiras: true,
-                                                                aee: undefined,
-                                                                instituicao: undefined,
-                                                                horarioAtendimento: "NENHUM",
-                                                                atendimentoSaude: [],
-                                                                possuiEstagiario: false,
-                                                                nomeEstagiario: "NÃO NECESSITA",
-                                                                justificativaEstagiario: "SEM BARREIRAS",
-                                                                ave: false,
-                                                                nomeAve: "",
-                                                                justificativaAve: [],
-                                                            });
-                                                        }
+                                                <Input
+                                                    {...field}
+                                                    placeholder="00000-000"
+                                                    onChange={(e) => {
+                                                        field.onChange(e);
+                                                        setCepChangedManually(true);
                                                     }}
-                                                    aria-label="Indica se o estudante possui deficiência"
+                                                    className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                 />
                                             </FormControl>
-                                            <span>Estudante com Deficiência</span>
-                                        </FormLabel>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            {form.watch("deficiencia.estudanteComDeficiencia") && (
-                                <div className="space-y-6 p-4 border rounded bg-gray-50 transition-all duration-300">
-                                    <p className="text-sm text-gray-500" id="deficiencia-desc">
-                                        Campos com <span className="text-red-500">*</span> são
-                                        obrigatórios.
-                                    </p>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
 
-                                    <div className="border-b pb-2">
-                                        <h4 className="text-lg font-semibold mb-4">
-                                            Informações Gerais
-                                        </h4>
-                                        <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                    <div className="md:col-span-2">
+                                        <FormField
+                                            control={form.control}
+                                            name="endereco.rua"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                        Rua/Logradouro
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            {...field}
+                                                            placeholder="Nome da rua"
+                                                            className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
+                                    <FormField
+                                        control={form.control}
+                                        name="endereco.numero"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Número
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="123"
+                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="endereco.complemento"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Complemento
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="Apto, bloco..."
+                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <FormField
+                                        control={form.control}
+                                        name="endereco.bairro"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Bairro
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="Nome do bairro"
+                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="endereco.cidade"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Cidade
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="Nome da cidade"
+                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="endereco.estado"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    Estado
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="SP"
+                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                            </div>
+                        </ModernFormField>
+                    </TabsContent>
+
+                    <TabsContent value="contatos" className="mt-8">
+                        <ModernFormField
+                            title="Contatos de Emergência"
+                            description="Números de telefone para contato"
+                            icon={Phone}
+                        >
+                            <div className="space-y-6">
+                                {form.watch("contatos")?.map((_, index) => (
+                                    <div key={index} className="bg-white/60 dark:bg-slate-700/60 rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+                                                Contato {index + 1}
+                                            </h4>
+                                            {index > 0 && (
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        const newContatos = form.getValues("contatos")?.filter((_, i) => i !== index);
+                                                        form.setValue("contatos", newContatos || []);
+                                                    }}
+                                                    className="text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl p-2"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <FormField
                                                 control={form.control}
-                                                name="deficiencia.tipoDeficiencia"
+                                                name={`contatos.${index}.nome`}
                                                 render={({ field }) => (
                                                     <FormItem>
-                                                        <FormLabel htmlFor="tipoDeficiencia">
-                                                            Tipo de Deficiência{" "}
-                                                            <span className="text-red-500">*</span>
+                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                            Nome do Contato
                                                         </FormLabel>
                                                         <FormControl>
-                                                            <Select
-                                                                isMulti
-                                                                options={tipoDeficienciaOptions}
-                                                                value={tipoDeficienciaOptions.filter(
-                                                                    (option) =>
-                                                                        field.value?.includes(option.value)
-                                                                )}
-                                                                onChange={(
-                                                                    selectedOptions: MultiValue<SelectOption>
-                                                                ) => {
-                                                                    const newTipos = selectedOptions.map(
-                                                                        (option) => option.value
-                                                                    );
-                                                                    field.onChange(newTipos);
-                                                                }}
-                                                                styles={customSelectStyles}
-                                                                placeholder="Selecione os tipos"
-                                                                inputId="tipoDeficiencia"
-                                                                aria-describedby="deficiencia-desc"
+                                                            <Input
+                                                                {...field}
+                                                                placeholder="Nome completo"
+                                                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                             />
                                                         </FormControl>
                                                         <FormMessage />
                                                     </FormItem>
                                                 )}
                                             />
-                                            <FormField
-                                                control={form.control}
-                                                name="deficiencia.possuiBarreiras"
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel
-                                                            className="flex items-center space-x-2"
-                                                            htmlFor="possuiBarreiras"
-                                                        >
-                                                            <FormControl>
-                                                                <Checkbox
-                                                                    id="possuiBarreiras"
-                                                                    checked={field.value}
-                                                                    onCheckedChange={field.onChange}
-                                                                />
-                                                            </FormControl>
-                                                            <span>Possui Barreiras</span>
-                                                        </FormLabel>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-                                        </div>
-                                    </div>
 
-                                    <div className="border-b pb-2">
-                                        <h4 className="text-lg font-semibold mb-4">
-                                            Atendimento Educacional
-                                        </h4>
-                                        <div className="space-y-4">
                                             <FormField
                                                 control={form.control}
-                                                name="deficiencia.aee"
+                                                name={`contatos.${index}.telefone`}
                                                 render={({ field }) => (
                                                     <FormItem>
-                                                        <FormLabel htmlFor="aee">A. E. E.</FormLabel>
-                                                        <FormControl>
-                                                            <ShadcnSelect
-                                                                onValueChange={field.onChange}
-                                                                value={field.value}
-                                                            >
-                                                                <SelectTrigger id="aee">
-                                                                    <SelectValue placeholder="Selecione" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="PAEE">
-                                                                        PAEE
-                                                                    </SelectItem>
-                                                                    <SelectItem value="PAAI">
-                                                                        PAAI
-                                                                    </SelectItem>
-                                                                </SelectContent>
-                                                            </ShadcnSelect>
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-                                            <FormField
-                                                control={form.control}
-                                                name="deficiencia.instituicao"
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel htmlFor="instituicao">
-                                                            Instituição
+                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                            Telefone
                                                         </FormLabel>
                                                         <FormControl>
-                                                            <ShadcnSelect
-                                                                onValueChange={field.onChange}
-                                                                value={field.value}
-                                                            >
-                                                                <SelectTrigger id="instituicao">
-                                                                    <SelectValue placeholder="Selecione" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="INSTITUTO JÔ CLEMENTE">
-                                                                        INSTITUTO JÔ CLEMENTE
-                                                                    </SelectItem>
-                                                                    <SelectItem value="CLIFAK">
-                                                                        CLIFAK
-                                                                    </SelectItem>
-                                                                    <SelectItem value="CEJOLE">
-                                                                        CEJOLE
-                                                                    </SelectItem>
-                                                                    <SelectItem value="CCA">CCA</SelectItem>
-                                                                    <SelectItem value="NENHUM">NENHUM</SelectItem>
-                                                                </SelectContent>
-                                                            </ShadcnSelect>
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-                                            <FormField
-                                                control={form.control}
-                                                name="deficiencia.horarioAtendimento"
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel htmlFor="horarioAtendimento">
-                                                            Horário de Atendimento
-                                                        </FormLabel>
-                                                        <FormControl>
-                                                            <ShadcnSelect
-                                                                onValueChange={field.onChange}
-                                                                value={field.value}
-                                                            >
-                                                                <SelectTrigger id="horarioAtendimento">
-                                                                    <SelectValue placeholder="Selecione" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="NENHUM">
-                                                                        NENHUM
-                                                                    </SelectItem>
-                                                                    <SelectItem value="NO TURNO">
-                                                                        NO TURNO
-                                                                    </SelectItem>
-                                                                    <SelectItem value="CONTRATURNO">
-                                                                        CONTRATURNO
-                                                                    </SelectItem>
-                                                                </SelectContent>
-                                                            </ShadcnSelect>
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="border-b pb-2">
-                                        <h4 className="text-lg font-semibold mb-4">
-                                            Apoio e Estágio
-                                        </h4>
-                                        <div className="space-y-4">
-                                            <FormField
-                                                control={form.control}
-                                                name="deficiencia.atendimentoSaude"
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel htmlFor="atendimentoSaude">
-                                                            Atendimento de Saúde
-                                                        </FormLabel>
-                                                        <FormControl>
-                                                            <Select
-                                                                isMulti
-                                                                options={atendimentoSaudeOptions}
-                                                                value={atendimentoSaudeOptions.filter(
-                                                                    (option) =>
-                                                                        field.value?.includes(option.value)
-                                                                )}
-                                                                onChange={(
-                                                                    selectedOptions: MultiValue<SelectOption>
-                                                                ) => {
-                                                                    const newTipos = selectedOptions.map(
-                                                                        (option) => option.value
-                                                                    );
-                                                                    field.onChange(newTipos);
+                                                            <Input
+                                                                placeholder="(11) 99999-9999"
+                                                                value={field.value ? formatTelefone(field.value) : ""}
+                                                                onChange={(e) => {
+                                                                    const inputValue = e.target.value;
+                                                                    const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
+                                                                    field.onChange(cleanedValue);
                                                                 }}
-                                                                styles={customSelectStyles}
-                                                                placeholder="Selecione os atendimentos"
-                                                                inputId="atendimentoSaude"
-                                                                aria-describedby="deficiencia-desc"
+                                                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                             />
                                                         </FormControl>
                                                         <FormMessage />
                                                     </FormItem>
                                                 )}
                                             />
-                                            <FormField
-                                                control={form.control}
-                                                name="deficiencia.possuiEstagiario"
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel
-                                                            className="flex items-center space-x-2"
-                                                            htmlFor="possuiEstagiario"
-                                                        >
+                                        </div>
+                                    </div>
+                                ))}
+
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        const currentContatos = form.getValues("contatos") || [];
+                                        form.setValue("contatos", [...currentContatos, { nome: "", telefone: "" }]);
+                                    }}
+                                    className="w-full h-12 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all duration-200"
+                                >
+                                    <Plus className="w-5 h-5 mr-2" />
+                                    Adicionar Novo Contato
+                                </Button>
+                            </div>
+                        </ModernFormField>
+                    </TabsContent>
+
+                    <TabsContent value="deficiencia" className="mt-8">
+                        <ModernFormField
+                            title="Informações sobre Deficiência"
+                            description="Dados de acessibilidade e necessidades especiais"
+                            icon={Heart}
+                        >
+                            <div className="space-y-6">
+                                <FormField
+                                    control={form.control}
+                                    name="deficiencia.estudanteComDeficiencia"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <div className="flex items-center space-x-3 p-4 bg-amber-50/50 dark:bg-amber-900/20 rounded-xl border border-amber-200/50 dark:border-amber-800/50">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={(checked) => {
+                                                            field.onChange(!!checked);
+                                                            if (!checked) {
+                                                                form.setValue("deficiencia", {
+                                                                    estudanteComDeficiencia: false,
+                                                                    tipoDeficiencia: [],
+                                                                    possuiBarreiras: true,
+                                                                    aee: undefined,
+                                                                    instituicao: undefined,
+                                                                    horarioAtendimento: "NENHUM",
+                                                                    atendimentoSaude: [],
+                                                                    possuiEstagiario: false,
+                                                                    nomeEstagiario: "NÃO NECESSITA",
+                                                                    justificativaEstagiario: "SEM BARREIRAS",
+                                                                    ave: false,
+                                                                    nomeAve: "",
+                                                                    justificativaAve: [],
+                                                                });
+                                                            }
+                                                        }}
+                                                        className="w-5 h-5"
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="text-lg font-semibold text-amber-800 dark:text-amber-200 cursor-pointer">
+                                                    Estudante com Deficiência
+                                                </FormLabel>
+                                            </div>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                {form.watch("deficiencia.estudanteComDeficiencia") && (
+                                    <div className="space-y-8 animate-in slide-in-from-top-4 duration-300">
+                                        {/* Informações Gerais */}
+                                        <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-2 border-slate-200/50 dark:border-slate-600/50 rounded-2xl overflow-hidden">
+                                            <CardHeader className="bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 pb-4">
+                                                <CardTitle className="text-lg font-semibold text-purple-800 dark:text-purple-200">
+                                                    Informações Gerais
+                                                </CardTitle>
+                                                <CardDescription className="text-purple-600 dark:text-purple-300">
+                                                    Tipo de deficiência e características
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="p-6 space-y-6">
+                                                <FormField
+                                                    control={form.control}
+                                                    name="deficiencia.tipoDeficiencia"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                Tipo de Deficiência <span className="text-red-500">*</span>
+                                                            </FormLabel>
                                                             <FormControl>
-                                                                <Checkbox
-                                                                    id="possuiEstagiario"
-                                                                    checked={field.value}
-                                                                    onCheckedChange={(checked) => {
-                                                                        field.onChange(!!checked);
-                                                                        if (!checked) {
-                                                                            form.setValue(
-                                                                                "deficiencia.nomeEstagiario",
-                                                                                "NÃO NECESSITA"
-                                                                            );
-                                                                            form.setValue(
-                                                                                "deficiencia.justificativaEstagiario",
-                                                                                "SEM BARREIRAS"
-                                                                            );
-                                                                        } else {
-                                                                            form.setValue(
-                                                                                "deficiencia.nomeEstagiario",
-                                                                                ""
-                                                                            );
-                                                                        }
-                                                                    }}
-                                                                />
+                                                                <div className="relative">
+                                                                    <Select
+                                                                        isMulti
+                                                                        options={tipoDeficienciaOptions}
+                                                                        value={tipoDeficienciaOptions.filter(
+                                                                            (option) => field.value?.includes(option.value)
+                                                                        )}
+                                                                        onChange={(selectedOptions: MultiValue<SelectOption>) => {
+                                                                            const newTipos = selectedOptions.map((option) => option.value);
+                                                                            field.onChange(newTipos);
+                                                                        }}
+                                                                        styles={{
+                                                                            ...customSelectStyles,
+                                                                            control: (provided) => ({
+                                                                                ...provided,
+                                                                                minHeight: '48px',
+                                                                                borderRadius: '12px',
+                                                                                border: '2px solid rgb(226 232 240 / 0.5)',
+                                                                                backgroundColor: 'rgb(255 255 255 / 0.8)',
+                                                                                '&:hover': {
+                                                                                    borderColor: 'rgb(59 130 246)',
+                                                                                },
+                                                                            }),
+                                                                        }}
+                                                                        placeholder="Selecione os tipos de deficiência"
+                                                                    />
+                                                                </div>
                                                             </FormControl>
-                                                            <span>Possui Estagiário(a)</span>
-                                                        </FormLabel>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-                                            {form.watch("deficiencia.possuiEstagiario") && (
-                                                <div className="mt-2 space-y-2 bg-gray-50 p-2 rounded transition-all duration-300">
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+
+                                                <FormField
+                                                    control={form.control}
+                                                    name="deficiencia.possuiBarreiras"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <div className="flex items-center space-x-3 p-4 bg-blue-50/50 dark:bg-blue-900/20 rounded-xl border border-blue-200/50 dark:border-blue-800/50">
+                                                                <FormControl>
+                                                                    <Checkbox
+                                                                        checked={field.value}
+                                                                        onCheckedChange={field.onChange}
+                                                                        className="w-5 h-5"
+                                                                    />
+                                                                </FormControl>
+                                                                <FormLabel className="text-base font-semibold text-blue-800 dark:text-blue-200 cursor-pointer">
+                                                                    Possui Barreiras
+                                                                </FormLabel>
+                                                            </div>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </CardContent>
+                                        </Card>
+
+                                        {/* Atendimento Educacional */}
+                                        <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-2 border-slate-200/50 dark:border-slate-600/50 rounded-2xl overflow-hidden">
+                                            <CardHeader className="bg-gradient-to-r from-green-100 to-teal-100 dark:from-green-900/30 dark:to-teal-900/30 pb-4">
+                                                <CardTitle className="text-lg font-semibold text-green-800 dark:text-green-200">
+                                                    Atendimento Educacional
+                                                </CardTitle>
+                                                <CardDescription className="text-green-600 dark:text-green-300">
+                                                    Informações sobre apoio educacional
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="p-6 space-y-6">
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                     <FormField
                                                         control={form.control}
-                                                        name="deficiencia.nomeEstagiario"
+                                                        name="deficiencia.aee"
                                                         render={({ field }) => (
                                                             <FormItem>
-                                                                <FormLabel htmlFor="nomeEstagiario">
-                                                                    Nome do(a) Estagiário(a)
+                                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                    A.E.E.
                                                                 </FormLabel>
                                                                 <FormControl>
-                                                                    <Input
-                                                                        id="nomeEstagiario"
-                                                                        placeholder="Nome do(a) Estagiário(a)"
-                                                                        {...field}
-                                                                        autoComplete="off"
-                                                                        aria-describedby="deficiencia-desc"
-                                                                    />
+                                                                    <ShadcnSelect onValueChange={field.onChange} value={field.value}>
+                                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                                            <SelectValue placeholder="Selecione" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                                                                            <SelectItem value="PAEE">PAEE</SelectItem>
+                                                                            <SelectItem value="PAAI">PAAI</SelectItem>
+                                                                        </SelectContent>
+                                                                    </ShadcnSelect>
                                                                 </FormControl>
                                                                 <FormMessage />
                                                             </FormItem>
                                                         )}
                                                     />
+
                                                     <FormField
                                                         control={form.control}
-                                                        name="deficiencia.justificativaEstagiario"
+                                                        name="deficiencia.instituicao"
                                                         render={({ field }) => (
                                                             <FormItem>
-                                                                <FormLabel htmlFor="justificativaEstagiario">
-                                                                    Justificativa
+                                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                    Instituição
                                                                 </FormLabel>
                                                                 <FormControl>
-                                                                    <ShadcnSelect
-                                                                        onValueChange={field.onChange}
-                                                                        value={field.value}
-                                                                    >
-                                                                        <SelectTrigger id="justificativaEstagiario">
-                                                                            <SelectValue placeholder="Selecione a Justificativa" />
+                                                                    <ShadcnSelect onValueChange={field.onChange} value={field.value}>
+                                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                                            <SelectValue placeholder="Selecione" />
                                                                         </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE">
-                                                                                MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE
-                                                                            </SelectItem>
-                                                                            <SelectItem value="SEM BARREIRAS">
-                                                                                SEM BARREIRAS
-                                                                            </SelectItem>
+                                                                        <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                                                                            <SelectItem value="INSTITUTO JÔ CLEMENTE">INSTITUTO JÔ CLEMENTE</SelectItem>
+                                                                            <SelectItem value="CLIFAK">CLIFAK</SelectItem>
+                                                                            <SelectItem value="CEJOLE">CEJOLE</SelectItem>
+                                                                            <SelectItem value="CCA">CCA</SelectItem>
+                                                                            <SelectItem value="NENHUM">NENHUM</SelectItem>
+                                                                        </SelectContent>
+                                                                    </ShadcnSelect>
+                                                                </FormControl>
+                                                                <FormMessage />
+                                                            </FormItem>
+                                                        )}
+                                                    />
+
+                                                    <FormField
+                                                        control={form.control}
+                                                        name="deficiencia.horarioAtendimento"
+                                                        render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                    Horário de Atendimento
+                                                                </FormLabel>
+                                                                <FormControl>
+                                                                    <ShadcnSelect onValueChange={field.onChange} value={field.value}>
+                                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                                            <SelectValue placeholder="Selecione" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                                                                            <SelectItem value="NENHUM">NENHUM</SelectItem>
+                                                                            <SelectItem value="NO TURNO">NO TURNO</SelectItem>
+                                                                            <SelectItem value="CONTRATURNO">CONTRATURNO</SelectItem>
                                                                         </SelectContent>
                                                                     </ShadcnSelect>
                                                                 </FormControl>
@@ -745,117 +813,262 @@ export function StudentForm({
                                                         )}
                                                     />
                                                 </div>
-                                            )}
-                                        </div>
-                                    </div>
 
-                                    <div>
-                                        <h4 className="text-lg font-semibold mb-4">AVE</h4>
-                                        <div className="space-y-4">
-                                            <FormField
-                                                control={form.control}
-                                                name="deficiencia.ave"
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel
-                                                            className="flex items-center space-x-2"
-                                                            htmlFor="ave"
-                                                        >
+                                                <FormField
+                                                    control={form.control}
+                                                    name="deficiencia.atendimentoSaude"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                Atendimento de Saúde
+                                                            </FormLabel>
                                                             <FormControl>
-                                                                <Checkbox
-                                                                    id="ave"
-                                                                    checked={field.value}
-                                                                    onCheckedChange={(checked) => {
-                                                                        field.onChange(!!checked);
-                                                                        if (!checked) {
-                                                                            form.setValue("deficiencia.nomeAve", "");
-                                                                            form.setValue("deficiencia.justificativaAve", []);
-                                                                        }
+                                                                <Select
+                                                                    isMulti
+                                                                    options={atendimentoSaudeOptions}
+                                                                    value={atendimentoSaudeOptions.filter(
+                                                                        (option) => field.value?.includes(option.value)
+                                                                    )}
+                                                                    onChange={(selectedOptions: MultiValue<SelectOption>) => {
+                                                                        const newTipos = selectedOptions.map((option) => option.value);
+                                                                        field.onChange(newTipos);
                                                                     }}
-                                                                    aria-label="Indica se o estudante possui AVE"
+                                                                    styles={{
+                                                                        ...customSelectStyles,
+                                                                        control: (provided) => ({
+                                                                            ...provided,
+                                                                            minHeight: '48px',
+                                                                            borderRadius: '12px',
+                                                                            border: '2px solid rgb(226 232 240 / 0.5)',
+                                                                            backgroundColor: 'rgb(255 255 255 / 0.8)',
+                                                                            '&:hover': {
+                                                                                borderColor: 'rgb(59 130 246)',
+                                                                            },
+                                                                        }),
+                                                                    }}
+                                                                    placeholder="Selecione os atendimentos de saúde"
                                                                 />
                                                             </FormControl>
-                                                            <span>Possui AVE</span>
-                                                        </FormLabel>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-                                            {form.watch("deficiencia.ave") && (
-                                                <div className="mt-2 space-y-2 bg-gray-50 p-2 rounded transition-all duration-300">
-                                                    <FormField
-                                                        control={form.control}
-                                                        name="deficiencia.nomeAve"
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel htmlFor="nomeAve">
-                                                                    Nome do(a) AVE
-                                                                </FormLabel>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </CardContent>
+                                        </Card>
+
+                                        {/* Apoio e Estágio */}
+                                        <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-2 border-slate-200/50 dark:border-slate-600/50 rounded-2xl overflow-hidden">
+                                            <CardHeader className="bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900/30 dark:to-red-900/30 pb-4">
+                                                <CardTitle className="text-lg font-semibold text-orange-800 dark:text-orange-200">
+                                                    Apoio e Estágio
+                                                </CardTitle>
+                                                <CardDescription className="text-orange-600 dark:text-orange-300">
+                                                    Informações sobre estagiários e AVE
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="p-6 space-y-6">
+                                                <FormField
+                                                    control={form.control}
+                                                    name="deficiencia.possuiEstagiario"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <div className="flex items-center space-x-3 p-4 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-xl border border-indigo-200/50 dark:border-indigo-800/50">
                                                                 <FormControl>
-                                                                    <Input
-                                                                        id="nomeAve"
-                                                                        placeholder="Nome do(a) AVE"
-                                                                        {...field}
-                                                                        autoComplete="off"
-                                                                        aria-describedby="deficiencia-desc"
-                                                                    />
-                                                                </FormControl>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                    <FormField
-                                                        control={form.control}
-                                                        name="deficiencia.justificativaAve"
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel htmlFor="justificativaAve">
-                                                                    Justificativa
-                                                                </FormLabel>
-                                                                <FormControl>
-                                                                    <Select
-                                                                        isMulti
-                                                                        options={justificativaAveOptions}
-                                                                        value={justificativaAveOptions.filter(
-                                                                            (option) =>
-                                                                                field.value?.includes(
-                                                                                    option.value
-                                                                                )
-                                                                        )}
-                                                                        onChange={(
-                                                                            selectedOptions: MultiValue<SelectOption>
-                                                                        ) => {
-                                                                            const newJustificativas =
-                                                                                selectedOptions.map(
-                                                                                    (option) => option.value
-                                                                                );
-                                                                            field.onChange(newJustificativas);
+                                                                    <Checkbox
+                                                                        checked={field.value}
+                                                                        onCheckedChange={(checked) => {
+                                                                            field.onChange(!!checked);
+                                                                            if (!checked) {
+                                                                                form.setValue("deficiencia.nomeEstagiario", "NÃO NECESSITA");
+                                                                                form.setValue("deficiencia.justificativaEstagiario", "SEM BARREIRAS");
+                                                                            } else {
+                                                                                form.setValue("deficiencia.nomeEstagiario", "");
+                                                                            }
                                                                         }}
-                                                                        styles={customSelectStyles}
-                                                                        placeholder="Selecione as justificativas"
-                                                                        inputId="justificativaAve"
-                                                                        aria-describedby="deficiencia-desc"
+                                                                        className="w-5 h-5"
                                                                     />
                                                                 </FormControl>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                </div>
-                                            )}
-                                        </div>
+                                                                <FormLabel className="text-base font-semibold text-indigo-800 dark:text-indigo-200 cursor-pointer">
+                                                                    Possui Estagiário(a)
+                                                                </FormLabel>
+                                                            </div>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+
+                                                {form.watch("deficiencia.possuiEstagiario") && (
+                                                    <div className="space-y-4 p-4 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-xl border border-indigo-200/30 dark:border-indigo-800/30 animate-in slide-in-from-top-2 duration-200">
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.nomeEstagiario"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                            Nome do(a) Estagiário(a)
+                                                                        </FormLabel>
+                                                                        <FormControl>
+                                                                            <Input
+                                                                                {...field}
+                                                                                placeholder="Nome completo do estagiário"
+                                                                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                                            />
+                                                                        </FormControl>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.justificativaEstagiario"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                            Justificativa
+                                                                        </FormLabel>
+                                                                        <FormControl>
+                                                                            <ShadcnSelect onValueChange={field.onChange} value={field.value}>
+                                                                                <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                                                    <SelectValue placeholder="Selecione a justificativa" />
+                                                                                </SelectTrigger>
+                                                                                <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                                                                                    <SelectItem value="MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE">MEDIAÇÃO E APOIO NAS ATIVIDADES DA UE</SelectItem>
+                                                                                    <SelectItem value="SEM BARREIRAS">SEM BARREIRAS</SelectItem>
+                                                                                </SelectContent>
+                                                                            </ShadcnSelect>
+                                                                        </FormControl>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <Separator className="my-6" />
+
+                                                <FormField
+                                                    control={form.control}
+                                                    name="deficiencia.ave"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <div className="flex items-center space-x-3 p-4 bg-pink-50/50 dark:bg-pink-900/20 rounded-xl border border-pink-200/50 dark:border-pink-800/50">
+                                                                <FormControl>
+                                                                    <Checkbox
+                                                                        checked={field.value}
+                                                                        onCheckedChange={(checked) => {
+                                                                            field.onChange(!!checked);
+                                                                            if (!checked) {
+                                                                                form.setValue("deficiencia.nomeAve", "");
+                                                                                form.setValue("deficiencia.justificativaAve", []);
+                                                                            }
+                                                                        }}
+                                                                        className="w-5 h-5"
+                                                                    />
+                                                                </FormControl>
+                                                                <FormLabel className="text-base font-semibold text-pink-800 dark:text-pink-200 cursor-pointer">
+                                                                    Possui AVE
+                                                                </FormLabel>
+                                                            </div>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+
+                                                {form.watch("deficiencia.ave") && (
+                                                    <div className="space-y-4 p-4 bg-pink-50/30 dark:bg-pink-900/10 rounded-xl border border-pink-200/30 dark:border-pink-800/30 animate-in slide-in-from-top-2 duration-200">
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.nomeAve"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                            Nome do(a) AVE
+                                                                        </FormLabel>
+                                                                        <FormControl>
+                                                                            <Input
+                                                                                {...field}
+                                                                                placeholder="Nome completo do AVE"
+                                                                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                                            />
+                                                                        </FormControl>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+
+                                                            <FormField
+                                                                control={form.control}
+                                                                name="deficiencia.justificativaAve"
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                            Justificativa
+                                                                        </FormLabel>
+                                                                        <FormControl>
+                                                                            <Select
+                                                                                isMulti
+                                                                                options={justificativaAveOptions}
+                                                                                value={justificativaAveOptions.filter(
+                                                                                    (option) => field.value?.includes(option.value)
+                                                                                )}
+                                                                                onChange={(selectedOptions: MultiValue<SelectOption>) => {
+                                                                                    const newJustificativas = selectedOptions.map((option) => option.value);
+                                                                                    field.onChange(newJustificativas);
+                                                                                }}
+                                                                                styles={{
+                                                                                    ...customSelectStyles,
+                                                                                    control: (provided) => ({
+                                                                                        ...provided,
+                                                                                        minHeight: '48px',
+                                                                                        borderRadius: '12px',
+                                                                                        border: '2px solid rgb(226 232 240 / 0.5)',
+                                                                                        backgroundColor: 'rgb(255 255 255 / 0.8)',
+                                                                                        '&:hover': {
+                                                                                            borderColor: 'rgb(59 130 246)',
+                                                                                        },
+                                                                                    }),
+                                                                                }}
+                                                                                placeholder="Selecione as justificativas"
+                                                                            />
+                                                                        </FormControl>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
                                     </div>
-                                </div>
-                            )}
-                        </div>
+                                )}
+                            </div>
+                        </ModernFormField>
                     </TabsContent>
                 </Tabs>
 
-                <div className="flex justify-end space-x-2">
-                    <Button type="button" variant="outline" onClick={handleCancel}>
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t border-slate-200/50 dark:border-slate-600/50">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleCancel}
+                        className="h-12 px-8 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all duration-200"
+                    >
+                        <X className="w-5 h-5 mr-2" />
                         Cancelar
                     </Button>
-                    <Button type="submit">Salvar</Button>
+                    <Button
+                        type="submit"
+                        className="h-12 px-8 text-base rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+                    >
+                        <Save className="w-5 h-5 mr-2" />
+                        {isEditing ? 'Atualizar' : 'Salvar'} Estudante
+                    </Button>
                 </div>
             </form>
         </Form>

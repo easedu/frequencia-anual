@@ -1293,7 +1293,7 @@ export default function DashboardDeficiencia() {
                                             <TableRow>
                                                 <TableHead>Data</TableHead>
                                                 <TableHead>Descrição</TableHead>
-                                                <TableHead>Criado por</TableHead>
+                                                <TableHead>Adicionado por</TableHead>
                                                 {userRole === "admin" && <TableHead className="w-[100px] text-right">Ações</TableHead>}
                                             </TableRow>
                                         </TableHeader>
