@@ -280,7 +280,7 @@ export default function Home() {
                                         Olá, {userName.split(' ')[0]}! 👋
                                     </h1>
                                     <p className="text-slate-600 dark:text-slate-400 mb-2">
-                                        Bem-vindo de volta ao Habib Control
+                                        Bem-vinda(o) de volta ao Habib Control
                                     </p>
                                     <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                                         <Clock className="w-4 h-4" />
