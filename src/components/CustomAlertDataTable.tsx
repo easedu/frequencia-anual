@@ -13,7 +13,16 @@ import {
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronDown, Printer, Heart } from "lucide-react";
+import {
+    ArrowUpDown,
+    ChevronDown,
+    Printer,
+    Heart,
+    Search,
+    Filter,
+    Users,
+    AlertTriangle
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +48,6 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Define a interface estendida para o aluno com informações de deficiência
 export interface EnhancedStudentRecord {
     turma: string;
     nome: string;
@@ -54,7 +62,20 @@ export interface EnhancedStudentRecord {
     tipoDeficiencia?: string[];
 }
 
-// Definição das colunas do Data Table
+// Função para determinar a cor do status baseado no percentual
+const getStatusColor = (percentual: number) => {
+    if (percentual >= 25) return "text-red-600 bg-red-50";
+    if (percentual >= 20) return "text-orange-600 bg-orange-50";
+    return "text-green-600 bg-green-50";
+};
+
+// Função para obter o ícone de status
+const getStatusIcon = (percentual: number) => {
+    if (percentual >= 25) return <AlertTriangle className="h-3 w-3" />;
+    if (percentual >= 20) return <AlertTriangle className="h-3 w-3" />;
+    return null;
+};
+
 export const columns: ColumnDef<EnhancedStudentRecord>[] = [
     {
         accessorKey: "nome",
@@ -62,9 +83,9 @@ export const columns: ColumnDef<EnhancedStudentRecord>[] = [
             <Button
                 variant="ghost"
                 onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                className="flex items-center gap-1"
+                className="h-8 px-2 text-xs font-medium hover:bg-gray-100"
             >
-                Nome <ArrowUpDown className="h-4 w-4" />
+                Nome <ArrowUpDown className="ml-1 h-3 w-3" />
             </Button>
         ),
         cell: ({ row }) => {
@@ -73,41 +94,38 @@ export const columns: ColumnDef<EnhancedStudentRecord>[] = [
             const tipoDeficiencia = row.original.tipoDeficiencia || [];
 
             return (
-                <div className="flex items-center gap-2">
-                    <span
-                        className={temDeficiencia ? 'text-blue-800 font-medium' : ''}
-                    >
-                        {nome}
-                    </span>
+                <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex-1 min-w-0">
+                        <div className={`text-sm font-medium truncate ${temDeficiencia ? 'text-blue-700' : 'text-gray-900'
+                            }`}>
+                            {nome}
+                        </div>
+                    </div>
                     {temDeficiencia && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                             <TooltipProvider>
                                 <Tooltip>
-                                    <TooltipTrigger>
-                                        <Heart
-                                            size={14}
-                                            className="text-blue-600"
-                                            fill="currentColor"
-                                        />
+                                    <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-1">
+                                            <Heart className="h-3 w-3 text-blue-600 fill-current" />
+                                            <Badge
+                                                variant="secondary"
+                                                className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 border-blue-200"
+                                            >
+                                                PCD
+                                            </Badge>
+                                        </div>
                                     </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Estudante com deficiência</p>
+                                    <TooltipContent side="top" className="max-w-48">
+                                        <p className="text-xs font-medium">Estudante com deficiência</p>
                                         {tipoDeficiencia.length > 0 && (
-                                            <p className="text-xs">
-                                                Tipos: {tipoDeficiencia.join(', ')}
+                                            <p className="text-xs text-gray-600 mt-1">
+                                                {tipoDeficiencia.join(', ')}
                                             </p>
                                         )}
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>
-                            {tipoDeficiencia.length > 0 && (
-                                <Badge
-                                    variant="secondary"
-                                    className="text-xs bg-blue-100 text-blue-800 hover:bg-blue-200"
-                                >
-                                    PCD
-                                </Badge>
-                            )}
                         </div>
                     )}
                 </div>
@@ -120,10 +138,15 @@ export const columns: ColumnDef<EnhancedStudentRecord>[] = [
             <Button
                 variant="ghost"
                 onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                className="flex items-center gap-1"
+                className="h-8 px-2 text-xs font-medium hover:bg-gray-100"
             >
-                Turma <ArrowUpDown className="h-4 w-4" />
+                Turma <ArrowUpDown className="ml-1 h-3 w-3" />
             </Button>
+        ),
+        cell: ({ row }) => (
+            <Badge variant="outline" className="text-xs font-mono">
+                {row.getValue("turma")}
+            </Badge>
         ),
     },
     {
@@ -132,13 +155,15 @@ export const columns: ColumnDef<EnhancedStudentRecord>[] = [
             <Button
                 variant="ghost"
                 onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                className="flex items-center gap-1"
+                className="h-8 px-2 text-xs font-medium hover:bg-gray-100"
             >
-                Total de Faltas <ArrowUpDown className="h-4 w-4" />
+                Faltas <ArrowUpDown className="ml-1 h-3 w-3" />
             </Button>
         ),
         cell: ({ row }) => (
-            <div className="text-center">{row.getValue("totalFaltas")}</div>
+            <div className="text-center text-sm font-medium">
+                {row.getValue("totalFaltas")}
+            </div>
         ),
     },
     {
@@ -147,42 +172,39 @@ export const columns: ColumnDef<EnhancedStudentRecord>[] = [
             <Button
                 variant="ghost"
                 onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                className="flex items-center gap-1"
+                className="h-8 px-2 text-xs font-medium hover:bg-gray-100"
             >
-                % de Faltas <ArrowUpDown className="h-4 w-4" />
+                % Faltas <ArrowUpDown className="ml-1 h-3 w-3" />
             </Button>
         ),
         cell: ({ row }) => {
             const percentual = row.getValue("percentualFaltas") as number;
+            const statusColor = getStatusColor(percentual);
+            const statusIcon = getStatusIcon(percentual);
+
             return (
-                <div className="text-center">
-                    <span
-                        className={`font-medium ${percentual >= 25
-                                ? 'text-red-600'
-                                : percentual >= 20
-                                    ? 'text-orange-600'
-                                    : 'text-green-600'
-                            }`}
+                <div className="flex items-center justify-center gap-1">
+                    {statusIcon}
+                    <Badge
+                        variant="secondary"
+                        className={`text-xs font-medium px-2 py-1 ${statusColor}`}
                     >
                         {percentual}%
-                    </span>
+                    </Badge>
                 </div>
             );
         },
     },
 ];
 
-// Definição das props do componente
 interface AlertDataTableProps {
     data: EnhancedStudentRecord[];
 }
 
 export function AlertDataTable({ data }: AlertDataTableProps) {
     const [sorting, setSorting] = React.useState<SortingState>([]);
-    const [columnFilters, setColumnFilters] =
-        React.useState<ColumnFiltersState>([]);
-    const [columnVisibility, setColumnVisibility] =
-        React.useState<VisibilityState>({});
+    const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
+    const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
     const [rowSelection, setRowSelection] = React.useState({});
     const [globalFilter, setGlobalFilter] = React.useState("");
 
@@ -206,7 +228,6 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
         },
     });
 
-    // Função para formatar o valor da célula para impressão
     const formatCellValue = (value: unknown, columnId: string, row?: EnhancedStudentRecord): string => {
         if (columnId === "percentualFaltas") {
             return `${value}%`;
@@ -218,7 +239,6 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
         return value?.toString() || "";
     };
 
-    // Função para imprimir a tabela
     const handlePrint = () => {
         const printFrame = document.createElement('iframe');
         printFrame.style.display = 'none';
@@ -231,12 +251,9 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
             return;
         }
 
-        const visibleColumns = table
-            .getAllColumns()
-            .filter((column) => column.getIsVisible());
+        const visibleColumns = table.getAllColumns().filter((column) => column.getIsVisible());
         const rows = table.getFilteredRowModel().rows;
 
-        // Mapeamento de cabeçalhos para exibição mais amigável
         const headerMap: { [key: string]: string } = {
             nome: "Nome do Estudante",
             turma: "Turma",
@@ -252,10 +269,12 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
                     body { font-family: Arial, sans-serif; padding: 14px; }
                     h1 { font-size: 16px; margin-bottom: 10px; }
                     table { width: 100%; border-collapse: collapse; font-size: 12px; }
-                    th, td { border: 1px solid black; padding: 8px; text-align: center; }
-                    th { background-color: #f2f2f2; font-weight: bold; }
+                    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+                    th { background-color: #f8f9fa; font-weight: bold; }
                     .pcd-row { background-color: #eff6ff; }
                     .pcd-name { color: #1e40af; font-weight: bold; }
+                    .critical { background-color: #fef2f2; }
+                    .warning { background-color: #fffbeb; }
                 </style>
             </head>
             <body>
@@ -266,37 +285,25 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
                 <table>
                     <thead>
                         <tr>
-                            ${visibleColumns
-                .map(
-                    (column) =>
-                        `<th>${headerMap[column.id] || column.id}</th>`
-                )
-                .join("")}
+                            ${visibleColumns.map(column => `<th>${headerMap[column.id] || column.id}</th>`).join("")}
                         </tr>
                     </thead>
                     <tbody>
-                        ${rows.length > 0
-                ? rows
-                    .map((row) => {
-                        const temDeficiencia = row.original.temDeficiencia;
-                        return `
-                                <tr${temDeficiencia ? ' class="pcd-row"' : ''}>
-                                    ${visibleColumns
-                                .map((column) => {
-                                    const cell = row.getVisibleCells().find(
-                                        (c) => c.column.id === column.id
-                                    );
-                                    const value = cell ? formatCellValue(cell.getValue(), column.id, row.original) : "";
-                                    const cellClass = column.id === "nome" && temDeficiencia ? ' class="pcd-name"' : '';
-                                    return `<td${cellClass}>${value}</td>`;
-                                })
-                                .join("")}
+                        ${rows.length > 0 ? rows.map(row => {
+            const temDeficiencia = row.original.temDeficiencia;
+            const percentual = row.original.percentualFaltas;
+            const statusClass = percentual >= 25 ? ' critical' : percentual >= 20 ? ' warning' : '';
+            return `
+                                <tr${temDeficiencia ? ' class="pcd-row"' : ''}${statusClass}>
+                                    ${visibleColumns.map(column => {
+                const cell = row.getVisibleCells().find(c => c.column.id === column.id);
+                const value = cell ? formatCellValue(cell.getValue(), column.id, row.original) : "";
+                const cellClass = column.id === "nome" && temDeficiencia ? ' class="pcd-name"' : '';
+                return `<td${cellClass}>${value}</td>`;
+            }).join("")}
                                 </tr>
                             `;
-                    })
-                    .join("")
-                : `<tr><td colspan="${visibleColumns.length}" style="text-align: center;">Nenhum aluno encontrado.</td></tr>`
-            }
+        }).join("") : `<tr><td colspan="${visibleColumns.length}" style="text-align: center;">Nenhum aluno encontrado.</td></tr>`}
                     </tbody>
                 </table>
             </body>
@@ -314,63 +321,103 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
         }, 100);
     };
 
+    const pcdCount = data.filter(s => s.temDeficiencia).length;
+    const criticalCount = data.filter(s => s.percentualFaltas >= 25).length;
+    const warningCount = data.filter(s => s.percentualFaltas >= 20 && s.percentualFaltas < 25).length;
+
     return (
-        <div className="w-full">
-            <div className="flex items-center py-4">
-                {/* Filtro global: busca em todas as colunas */}
-                <Input
-                    placeholder="Filtrar..."
-                    value={globalFilter}
-                    onChange={(event) => {
-                        setGlobalFilter(event.target.value);
-                        table.setGlobalFilter(event.target.value);
-                    }}
-                    className="max-w-sm"
-                />
-                <div className="ml-auto flex items-center gap-2">
-                    <Button variant="outline" onClick={handlePrint}>
-                        <Printer className="mr-2 h-4 w-4" />
-                        Imprimir
-                    </Button>
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline">
-                                Colunas <ChevronDown className="ml-2 h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            {table
-                                .getAllColumns()
-                                .filter((column) => column.getCanHide())
-                                .map((column) => (
-                                    <DropdownMenuCheckboxItem
-                                        key={column.id}
-                                        checked={column.getIsVisible()}
-                                        onCheckedChange={(value) =>
-                                            column.toggleVisibility(!!value)
-                                        }
-                                        className="capitalize"
-                                    >
-                                        {column.id}
-                                    </DropdownMenuCheckboxItem>
-                                ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+        <div className="w-full space-y-3">
+            {/* Header compacto com estatísticas */}
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <div className="relative">
+                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                        <Input
+                            placeholder="Buscar estudantes..."
+                            value={globalFilter}
+                            onChange={(event) => {
+                                setGlobalFilter(event.target.value);
+                                table.setGlobalFilter(event.target.value);
+                            }}
+                            className="pl-8 h-9 w-64 text-sm"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3 text-xs">
+                        <div className="flex items-center gap-1">
+                            <Users className="h-3 w-3 text-gray-500" />
+                            <span className="font-medium">{data.length}</span>
+                        </div>
+                        {pcdCount > 0 && (
+                            <div className="flex items-center gap-1">
+                                <Heart className="h-3 w-3 text-blue-600 fill-current" />
+                                <span className="font-medium text-blue-600">{pcdCount}</span>
+                            </div>
+                        )}
+                        {criticalCount > 0 && (
+                            <div className="flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3 text-red-600" />
+                                <span className="font-medium text-red-600">{criticalCount}</span>
+                            </div>
+                        )}
+                        {warningCount > 0 && (
+                            <div className="flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3 text-orange-600" />
+                                <span className="font-medium text-orange-600">{warningCount}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handlePrint}
+                            className="h-8 px-3 text-xs"
+                        >
+                            <Printer className="h-3 w-3 mr-1" />
+                            Imprimir
+                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-8 px-3 text-xs">
+                                    <Filter className="h-3 w-3 mr-1" />
+                                    Colunas
+                                    <ChevronDown className="ml-1 h-3 w-3" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                                {table.getAllColumns()
+                                    .filter((column) => column.getCanHide())
+                                    .map((column) => (
+                                        <DropdownMenuCheckboxItem
+                                            key={column.id}
+                                            checked={column.getIsVisible()}
+                                            onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                                            className="text-xs"
+                                        >
+                                            {column.id}
+                                        </DropdownMenuCheckboxItem>
+                                    ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
                 </div>
             </div>
-            <div className="rounded-md border">
+
+            {/* Tabela compacta */}
+            <div className="rounded-lg border border-gray-200 overflow-hidden">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id}>
+                            <TableRow key={headerGroup.id} className="bg-gray-50/50">
                                 {headerGroup.headers.map((header) => (
-                                    <TableHead key={header.id}>
+                                    <TableHead key={header.id} className="py-2 px-3 text-xs font-medium">
                                         {header.isPlaceholder
                                             ? null
-                                            : flexRender(
-                                                header.column.columnDef.header,
-                                                header.getContext()
-                                            )}
+                                            : flexRender(header.column.columnDef.header, header.getContext())}
                                     </TableHead>
                                 ))}
                             </TableRow>
@@ -382,25 +429,23 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
                                 <TableRow
                                     key={row.id}
                                     data-state={row.getIsSelected() && "selected"}
-                                    className={row.original.temDeficiencia ? "bg-blue-50 hover:bg-blue-100" : ""}
+                                    className={`
+                                        ${row.original.temDeficiencia ? "bg-blue-50/50 hover:bg-blue-50" : "hover:bg-gray-50"}
+                                        ${row.original.percentualFaltas >= 25 ? "border-l-4 border-l-red-500" : ""}
+                                        ${row.original.percentualFaltas >= 20 && row.original.percentualFaltas < 25 ? "border-l-4 border-l-orange-500" : ""}
+                                    `}
                                 >
                                     {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(
-                                                cell.column.columnDef.cell,
-                                                cell.getContext()
-                                            )}
+                                        <TableCell key={cell.id} className="py-2 px-3 text-sm">
+                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                         </TableCell>
                                     ))}
                                 </TableRow>
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell
-                                    colSpan={columns.length}
-                                    className="h-24 text-center"
-                                >
-                                    Nenhum resultado.
+                                <TableCell colSpan={columns.length} className="h-16 text-center text-sm text-gray-500">
+                                    Nenhum resultado encontrado.
                                 </TableCell>
                             </TableRow>
                         )}
@@ -408,59 +453,49 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
                 </Table>
             </div>
 
-            {/* Paginação e controle de quantidade de registros por página */}
-            <div className="flex items-center justify-between py-4">
-                {/* Seleção de registros por página */}
-                <div className="flex items-center space-x-2">
-                    <label htmlFor="pageSize" className="text-sm text-muted-foreground">
-                        Registros por página:
-                    </label>
-                    <select
-                        id="pageSize"
-                        onChange={(e) => table.setPageSize(Number(e.target.value))}
-                        className="rounded border p-1 text-sm"
-                        defaultValue={10}
-                    >
-                        <option value={10}>10</option>
-                        <option value={20}>20</option>
-                        <option value={50}>50</option>
-                        <option value={100}>100</option>
-                        <option value={500}>500</option>
-                        <option value={1000}>1000</option>
-                    </select>
-                </div>
-
-                {/* Informações de total de registros */}
-                <div className="flex flex-col items-center">
-                    <div className="text-sm text-muted-foreground">
-                        Total de registros: {table.getFilteredRowModel().rows.length}
+            {/* Footer compacto com paginação */}
+            <div className="flex items-center justify-between text-xs text-gray-600">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <span>Mostrar:</span>
+                        <select
+                            onChange={(e) => table.setPageSize(Number(e.target.value))}
+                            className="rounded border px-2 py-1 text-xs"
+                            defaultValue={10}
+                        >
+                            <option value={10}>10</option>
+                            <option value={20}>20</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                        </select>
                     </div>
-                    {data.some(s => s.temDeficiencia) && (
-                        <div className="text-xs text-blue-600 mt-1">
-                            ♥ {data.filter(s => s.temDeficiencia).length} estudante(s) com deficiência
-                        </div>
-                    )}
+                    <div>
+                        Exibindo {table.getRowModel().rows.length} de {table.getFilteredRowModel().rows.length} registros
+                    </div>
                 </div>
 
-                {/* Botões de paginação com exibição da página atual */}
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2">
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={() => table.previousPage()}
                         disabled={!table.getCanPreviousPage()}
+                        className="h-7 px-2 text-xs"
                     >
                         Anterior
                     </Button>
-                    <div className="text-sm">
-                        Página {table.getState().pagination.pageIndex + 1} de{" "}
-                        {table.getPageCount()}
+                    <div className="flex items-center gap-1">
+                        <span>Página</span>
+                        <span className="font-medium">{table.getState().pagination.pageIndex + 1}</span>
+                        <span>de</span>
+                        <span className="font-medium">{table.getPageCount()}</span>
                     </div>
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={() => table.nextPage()}
                         disabled={!table.getCanNextPage()}
+                        className="h-7 px-2 text-xs"
                     >
                         Próximo
                     </Button>

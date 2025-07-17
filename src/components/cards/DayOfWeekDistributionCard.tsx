@@ -1,10 +1,24 @@
 import { useState, useEffect, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { BarChart, Bar, CartesianGrid, XAxis, Cell } from "recharts";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import { BarChart, Bar, CartesianGrid, XAxis, Cell, ResponsiveContainer } from "recharts";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/firebase.config";
 import { parseDate, getBimesterByDate, formatFirebaseDate } from "@/utils/attendanceUtils";
+import {
+    Calendar,
+    TrendingUp,
+    Users,
+    AlertTriangle,
+    ArrowUp,
+    ArrowDown,
+    BarChart3,
+    Grid3X3,
+    RefreshCw,
+    LucideIcon
+} from "lucide-react";
 
 interface StudentRecord {
     estudanteId: string;
@@ -45,6 +59,106 @@ interface DayOfWeekDistributionCardProps {
     excludeJustified: boolean;
 }
 
+// Componente para métricas do dashboard
+const MetricCard = ({
+    icon: Icon,
+    title,
+    value,
+    subtitle,
+    color = "blue",
+    trend
+}: {
+    icon: LucideIcon;
+    title: string;
+    value: string | number;
+    subtitle?: string;
+    color?: "blue" | "red" | "green" | "purple";
+    trend?: "up" | "down";
+}) => {
+    const colorClasses = {
+        blue: "from-blue-500 to-blue-600 text-blue-600 bg-blue-50",
+        red: "from-red-500 to-red-600 text-red-600 bg-red-50",
+        green: "from-green-500 to-green-600 text-green-600 bg-green-50",
+        purple: "from-purple-500 to-purple-600 text-purple-600 bg-purple-50"
+    };
+
+    return (
+        <Card className="relative overflow-hidden border-0 shadow-sm">
+            <div className={`absolute inset-0 bg-gradient-to-br ${colorClasses[color].split(' ')[0]} ${colorClasses[color].split(' ')[1]} opacity-5`} />
+            <CardContent className="p-4 relative">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${colorClasses[color].split(' ')[2]} ${colorClasses[color].split(' ')[3]}`}>
+                            <Icon className="h-4 w-4" />
+                        </div>
+                        <div>
+                            <p className="text-xs font-medium text-gray-600">{title}</p>
+                            <div className="flex items-center gap-2">
+                                <p className="text-xl font-bold text-gray-900">{value}</p>
+                                {trend && (
+                                    <div className={`flex items-center ${trend === 'up' ? 'text-red-500' : 'text-green-500'}`}>
+                                        {trend === 'up' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                                    </div>
+                                )}
+                            </div>
+                            {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+                        </div>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
+
+// Componente para mini grid de turmas
+const TurmaGrid = ({
+    turmaData,
+    selectedTurma,
+    onTurmaSelect
+}: {
+    turmaData: [string, DayOfWeekData[]][];
+    selectedTurma: string | null;
+    onTurmaSelect: (turma: string) => void;
+}) => {
+    return (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-11 gap-2">
+            {turmaData.map(([turma, days]) => {
+                const maxAbsences = Math.max(...days.map(d => d.absences));
+                const maxDay = days.find(d => d.absences === maxAbsences)?.day || "N/A";
+                const isSelected = selectedTurma === turma;
+
+                return (
+                    <Button
+                        key={turma}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => onTurmaSelect(turma)}
+                        className={`h-auto p-3 flex flex-col items-center gap-1 transition-all duration-200 ${isSelected
+                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg scale-105'
+                            : 'hover:bg-blue-50 hover:border-blue-200'
+                            }`}
+                    >
+                        <Badge
+                            variant={isSelected ? "secondary" : "outline"}
+                            className={`text-xs font-mono ${isSelected ? 'bg-white/20 text-white border-white/30' : ''}`}
+                        >
+                            {turma}
+                        </Badge>
+                        <div className="text-center">
+                            <div className={`text-lg font-bold ${isSelected ? 'text-white' : 'text-gray-900'}`}>
+                                {maxAbsences}
+                            </div>
+                            <div className={`text-xs ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
+                                {maxDay}
+                            </div>
+                        </div>
+                    </Button>
+                );
+            })}
+        </div>
+    );
+};
+
 export default function DayOfWeekDistributionCard({
     data,
     startDate,
@@ -53,6 +167,9 @@ export default function DayOfWeekDistributionCard({
     bimesterDates,
     excludeJustified,
 }: DayOfWeekDistributionCardProps) {
+    const [loading, setLoading] = useState(true);
+    const [viewMode, setViewMode] = useState<'chart' | 'grid'>('chart');
+
     const uniqueTurmas = useMemo(
         () =>
             Array.from(new Set(data.map((item) => item.turma))).sort((a, b) => {
@@ -65,7 +182,10 @@ export default function DayOfWeekDistributionCard({
         [data]
     );
 
-    const [dayStats, setDayStats] = useState<{ overall: DayOfWeekData[]; byTurma: Record<string, DayOfWeekData[]> }>({
+    const [dayStats, setDayStats] = useState<{
+        overall: DayOfWeekData[];
+        byTurma: Record<string, DayOfWeekData[]>
+    }>({
         overall: [],
         byTurma: {},
     });
@@ -73,6 +193,7 @@ export default function DayOfWeekDistributionCard({
 
     const dayOfWeekStats = useMemo(() => {
         const fetchDayOfWeekData = async () => {
+            setLoading(true);
             try {
                 const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
                 const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map((doc) => ({
@@ -123,6 +244,8 @@ export default function DayOfWeekDistributionCard({
             } catch (error) {
                 console.error("Erro ao calcular faltas por dia da semana:", error);
                 return { overall: [], byTurma: {} };
+            } finally {
+                setLoading(false);
             }
         };
         return fetchDayOfWeekData();
@@ -138,113 +261,278 @@ export default function DayOfWeekDistributionCard({
         setSelectedTurmaDay((prev) => (prev === turma ? null : turma));
     };
 
+    // Métricas calculadas
+    const metrics = useMemo(() => {
+        const dataToUse = selectedTurmaDay ? dayStats.byTurma[selectedTurmaDay] || [] : dayStats.overall;
+        const totalAbsences = dataToUse.reduce((sum, day) => sum + day.absences, 0);
+        const maxAbsences = Math.max(...dataToUse.map(d => d.absences), 0);
+        const maxDay = dataToUse.find(d => d.absences === maxAbsences)?.day || "N/A";
+        const avgAbsences = dataToUse.length > 0 ? (totalAbsences / dataToUse.length).toFixed(1) : "0";
+
+        // Determinar se segunda-feira tem mais faltas (tendência comum)
+        const mondayAbsences = dataToUse.find(d => d.day === "Seg")?.absences || 0;
+        const isMonday = maxDay === "Seg";
+
+        return {
+            total: totalAbsences,
+            max: maxAbsences,
+            maxDay,
+            average: avgAbsences,
+            isMonday,
+            mondayAbsences
+        };
+    }, [dayStats, selectedTurmaDay]);
+
     const chartData = useMemo(() => {
         const dataToUse = selectedTurmaDay ? dayStats.byTurma[selectedTurmaDay] || [] : dayStats.overall;
-        const uniqueAbsences = Array.from(new Set(dataToUse.map((item) => item.absences))).sort((a, b) => b - a);
-        const blueShades = ["#1E3A8A", "#3B82F6", "#60A5FA", "#93C5FD", "#BFDBFE", "#D1E9FF", "#E0F2FE"];
-        const absenceToColorMap: Record<number, string> = {};
-        uniqueAbsences.forEach((absences, index) => {
-            absenceToColorMap[absences] = blueShades[index] || blueShades[blueShades.length - 1];
-        });
-        const maxAbsences = Math.max(...dataToUse.map((d) => d.absences), 0);
-        return dataToUse.map((item) => ({
+
+        // Gradiente moderno para as barras
+        const colors = [
+            "#ef4444", // Dom - vermelho
+            "#3b82f6", // Seg - azul
+            "#10b981", // Ter - verde
+            "#f59e0b", // Qua - amarelo
+            "#8b5cf6", // Qui - roxo
+            "#06b6d4", // Sex - ciano
+            "#f97316"  // Sáb - laranja
+        ];
+
+        const maxAbsences = Math.max(...dataToUse.map(d => d.absences), 0);
+
+        return dataToUse.map((item, index) => ({
             day: item.day,
             absences: item.absences,
-            fill: absenceToColorMap[item.absences] || "#1E3A8A",
+            fill: colors[index],
             isMax: item.absences === maxAbsences,
+            percentage: maxAbsences > 0 ? ((item.absences / maxAbsences) * 100).toFixed(1) : "0"
         }));
     }, [dayStats, selectedTurmaDay]);
 
     const dayChartConfig = {
-        absences: { label: "Faltas", color: "#000000" },
-        dom: { label: "Dom", color: "#1E3A8A" },
-        seg: { label: "Seg", color: "#3B82F6" },
-        ter: { label: "Ter", color: "#60A5FA" },
-        qua: { label: "Qua", color: "#93C5FD" },
-        qui: { label: "Qui", color: "#BFDBFE" },
-        sex: { label: "Sex", color: "#3B82F6" },
-        sab: { label: "Sáb", color: "#1E3A8A" },
+        absences: { label: "Faltas", color: "#3b82f6" }
     };
 
-    const DayOfWeekGrid = () => {
-        const turmas = Object.entries(dayStats.byTurma);
+    if (loading) {
         return (
-            <div className="grid grid-cols-2 md:grid-cols-11 gap-4 p-1" role="grid" aria-label="Dia com Mais Faltas por Turma">
-                {turmas.length > 0 ? (
-                    turmas.map(([turma, days]) => {
-                        const maxAbsences = Math.max(...days.map((d) => d.absences));
-                        const maxDay = days.find((d) => d.absences === maxAbsences)?.day || "N/A";
-                        return (
-                            <Card
-                                key={turma}
-                                className={`p-2 cursor-pointer ${selectedTurmaDay === turma ? "border-2 border-blue-500 bg-blue-50" : ""}`}
-                                onClick={() => handleTurmaClick(turma)}
-                                role="gridcell"
-                                aria-label={`Turma ${turma}`}
-                            >
-                                <CardHeader className="p-1">
-                                    <CardTitle className="text-sm">{turma}</CardTitle>
-                                </CardHeader>
-                                <CardContent className="p-1">
-                                    <p className="text-lg font-bold">
-                                        {maxAbsences} ({maxDay})
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        );
-                    })
-                ) : (
-                    <p className="text-sm text-muted-foreground">Nenhuma turma disponível.</p>
-                )}
-            </div>
+            <Card className="border-0 shadow-lg">
+                <CardContent className="p-6">
+                    <div className="flex items-center justify-center gap-2 text-gray-500">
+                        <RefreshCw className="h-5 w-5 animate-spin" />
+                        <span>Carregando dados...</span>
+                    </div>
+                </CardContent>
+            </Card>
         );
-    };
+    }
 
     return (
-        <Card role="region" aria-label="Distribuição de Faltas por Dia da Semana">
-            <CardHeader>
-                <CardTitle>Distribuição de Faltas por Dia da Semana</CardTitle>
-                <CardDescription>{selectedTurmaDay ? `Turma ${selectedTurmaDay}` : "Visão Geral da Escola"} - 2025</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {dayStats.overall.length > 0 && chartData.length > 0 ? (
-                    <>
-                        <ChartContainer config={dayChartConfig} className="max-h-[250px] w-full">
-                            <BarChart accessibilityLayer data={chartData}>
-                                <CartesianGrid vertical={false} />
-                                <XAxis
-                                    dataKey="day"
-                                    tickLine={false}
-                                    tickMargin={10}
-                                    axisLine={false}
-                                    tickFormatter={(value) => value}
-                                />
-                                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-                                <Bar dataKey="absences" strokeWidth={2} radius={8}>
-                                    {chartData.map((entry, index) => (
-                                        <Cell
-                                            key={`cell-${index}`}
-                                            fill={entry.fill}
-                                            stroke={entry.isMax ? entry.fill : undefined}
-                                            strokeDasharray={entry.isMax ? "4" : undefined}
-                                            strokeDashoffset={entry.isMax ? "4" : undefined}
-                                            fillOpacity={entry.isMax ? 0.8 : 1}
-                                        />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ChartContainer>
-                        <div className="mt-4">
-                            <h3 className="text-xl font-semibold mb-2">Dia com Mais Faltas por Turma</h3>
-                            <DayOfWeekGrid />
+        <div className="space-y-4">
+            {/* Header com título e controles */}
+            <Card className="border-0 shadow-lg bg-gradient-to-r from-blue-50 to-indigo-50">
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-100 rounded-lg">
+                                <Calendar className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-lg font-semibold text-gray-900">
+                                    Distribuição por Dia da Semana
+                                </CardTitle>
+                                <CardDescription className="text-sm text-gray-600">
+                                    {selectedTurmaDay ? `Turma ${selectedTurmaDay}` : "Visão Geral da Escola"} • 2025
+                                </CardDescription>
+                            </div>
                         </div>
-                    </>
-                ) : (
-                    <p className="text-sm text-muted-foreground">
-                        Nenhum dado disponível. Verifique os filtros, as datas, os períodos dos bimestres ou a conexão com o banco de dados.
-                    </p>
-                )}
-            </CardContent>
-        </Card>
+
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant={viewMode === 'chart' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setViewMode('chart')}
+                            >
+                                <BarChart3 className="h-4 w-4 mr-2" />
+                                Gráfico
+                            </Button>
+                            <Button
+                                variant={viewMode === 'grid' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setViewMode('grid')}
+                            >
+                                <Grid3X3 className="h-4 w-4 mr-2" />
+                                Grid
+                            </Button>
+                        </div>
+                    </div>
+                </CardHeader>
+            </Card>
+
+            {/* Métricas Dashboard */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <MetricCard
+                    icon={TrendingUp}
+                    title="Total de Faltas"
+                    value={metrics.total}
+                    color="blue"
+                />
+                <MetricCard
+                    icon={AlertTriangle}
+                    title="Pior Dia"
+                    value={metrics.maxDay}
+                    subtitle={`${metrics.max} faltas`}
+                    color="red"
+                    trend={metrics.isMonday ? "up" : undefined}
+                />
+                <MetricCard
+                    icon={BarChart3}
+                    title="Média Diária"
+                    value={metrics.average}
+                    subtitle="faltas/dia"
+                    color="purple"
+                />
+                <MetricCard
+                    icon={Users}
+                    title="Segunda-feira"
+                    value={metrics.mondayAbsences}
+                    subtitle={metrics.isMonday ? "Dia crítico" : "Normal"}
+                    color={metrics.isMonday ? "red" : "green"}
+                />
+            </div>
+
+            {dayStats.overall.length > 0 && chartData.length > 0 ? (
+                <>
+                    {viewMode === 'chart' ? (
+                        /* Gráfico Principal */
+                        <Card className="border-0 shadow-lg overflow-hidden">
+                            <CardContent className="p-6">
+                                <ChartContainer config={dayChartConfig} className="h-64 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                            <XAxis
+                                                dataKey="day"
+                                                axisLine={false}
+                                                tickLine={false}
+                                                tick={{ fontSize: 12, fill: '#64748b' }}
+                                                tickMargin={10}
+                                            />
+                                            <ChartTooltip
+                                                content={({ active, payload, label }) => {
+                                                    if (active && payload && payload.length) {
+                                                        const data = payload[0].payload;
+                                                        return (
+                                                            <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                                                                <p className="font-medium text-gray-900">{label}</p>
+                                                                <p className="text-sm text-gray-600">
+                                                                    <span className="font-medium">{data.absences}</span> faltas
+                                                                </p>
+                                                                <p className="text-xs text-gray-500">
+                                                                    {data.percentage}% do pico
+                                                                </p>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                }}
+                                            />
+                                            <Bar
+                                                dataKey="absences"
+                                                radius={[4, 4, 0, 0]}
+                                                className="drop-shadow-sm"
+                                            >
+                                                {chartData.map((entry, index) => (
+                                                    <Cell
+                                                        key={`cell-${index}`}
+                                                        fill={entry.fill}
+                                                        stroke={entry.isMax ? "#1f2937" : "transparent"}
+                                                        strokeWidth={entry.isMax ? 2 : 0}
+                                                        className={entry.isMax ? "drop-shadow-lg" : ""}
+                                                    />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </ChartContainer>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        /* Visualização em Grid */
+                        <Card className="border-0 shadow-lg">
+                            <CardContent className="p-6">
+                                <div className="grid grid-cols-7 gap-4">
+                                    {chartData.map((day) => (
+                                        <div
+                                            key={day.day}
+                                            className={`relative p-4 rounded-xl text-center transition-all duration-300 hover:scale-105 ${day.isMax
+                                                ? 'bg-gradient-to-br from-red-500 to-red-600 text-white shadow-lg'
+                                                : 'bg-gradient-to-br from-gray-100 to-gray-200 text-gray-700 hover:from-blue-100 hover:to-blue-200'
+                                                }`}
+                                        >
+                                            <div className="text-xs font-medium opacity-80 mb-1">
+                                                {day.day}
+                                            </div>
+                                            <div className="text-2xl font-bold mb-1">
+                                                {day.absences}
+                                            </div>
+                                            <div className="text-xs opacity-70">
+                                                {day.percentage}%
+                                            </div>
+                                            {day.isMax && (
+                                                <div className="absolute -top-1 -right-1">
+                                                    <AlertTriangle className="h-4 w-4 text-yellow-300" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Seleção de Turmas */}
+                    <Card className="border-0 shadow-lg">
+                        <CardHeader className="pb-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Users className="h-5 w-5 text-gray-600" />
+                                    <CardTitle className="text-lg">Análise por Turma</CardTitle>
+                                </div>
+                                {selectedTurmaDay && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setSelectedTurmaDay(null)}
+                                    >
+                                        Ver Geral
+                                    </Button>
+                                )}
+                            </div>
+                            <CardDescription>
+                                Clique em uma turma para ver detalhes específicos
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <TurmaGrid
+                                turmaData={Object.entries(dayStats.byTurma)}
+                                selectedTurma={selectedTurmaDay}
+                                onTurmaSelect={handleTurmaClick}
+                            />
+                        </CardContent>
+                    </Card>
+                </>
+            ) : (
+                <Card className="border-0 shadow-lg">
+                    <CardContent className="p-8">
+                        <div className="text-center text-gray-500">
+                            <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                            <h3 className="text-lg font-medium mb-2">Nenhum dado disponível</h3>
+                            <p className="text-sm">
+                                Verifique os filtros, datas, períodos dos bimestres ou a conexão com o banco de dados.
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+        </div>
     );
 }
