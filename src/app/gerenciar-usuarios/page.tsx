@@ -25,7 +25,21 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { toast, Toaster } from "sonner";
-import { Eye, EyeOff } from "lucide-react";
+import {
+    Eye,
+    EyeOff,
+    Users,
+    UserPlus,
+    Edit,
+    UserX,
+    RotateCcw,
+    Shield,
+    ShieldCheck,
+    ShieldAlert,
+    CheckCircle2,
+    XCircle,
+    Badge
+} from "lucide-react";
 
 interface UserProfile {
     id: string;
@@ -197,56 +211,171 @@ export default function UserManagementPage() {
         }
     };
 
+    const getPerfilIcon = (perfil: string) => {
+        switch (perfil) {
+            case "super-user":
+                return <ShieldCheck className="w-4 h-4 text-purple-600" />;
+            case "admin":
+                return <Shield className="w-4 h-4 text-blue-600" />;
+            default:
+                return <ShieldAlert className="w-4 h-4 text-gray-600" />;
+        }
+    };
+
+    const getPerfilBadge = (perfil: string) => {
+        const baseClasses = "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium";
+        switch (perfil) {
+            case "super-user":
+                return `${baseClasses} bg-purple-100 text-purple-800`;
+            case "admin":
+                return `${baseClasses} bg-blue-100 text-blue-800`;
+            default:
+                return `${baseClasses} bg-gray-100 text-gray-800`;
+        }
+    };
+
+    const getStatusBadge = (status: string) => {
+        const baseClasses = "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium";
+        return status === "ativo"
+            ? `${baseClasses} bg-green-100 text-green-800`
+            : `${baseClasses} bg-red-100 text-red-800`;
+    };
+
+    const activeUsers = users.filter(user => user.status === "ativo").length;
+    const totalUsers = users.length;
+
     return (
-        <div className="min-h-screen p-4">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
             <Toaster />
-            <div className="max-w-7xl mx-auto">
-                <header className="flex flex-col sm:flex-row items-center justify-between mb-6">
-                    <h1 className="text-3xl font-bold mb-4 sm:mb-0">Gerenciamento de Usuários</h1>
-                    <div className="flex items-center gap-4">
-                        <Button variant="default" onClick={openCreateDialog}>
+
+            <div className="container mx-auto p-6 max-w-7xl">
+                {/* Header moderno */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-50 rounded-lg">
+                                    <Users className="w-6 h-6 text-blue-600" />
+                                </div>
+                                <div>
+                                    <h1 className="text-3xl font-bold text-slate-800">Gerenciamento de Usuários</h1>
+                                    <p className="text-slate-600 mt-1">Administre usuários e permissões do sistema</p>
+                                </div>
+                            </div>
+
+                            {/* Stats integrado */}
+                            <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
+                                <div className="p-2 bg-green-50 rounded-lg">
+                                    <Badge className="w-5 h-5 text-green-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm text-slate-600">Usuários Ativos</p>
+                                    <p className="text-2xl font-bold text-green-600">{activeUsers} / {totalUsers}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <Button
+                            onClick={openCreateDialog}
+                            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 
+                                     text-white rounded-lg hover:from-blue-700 hover:to-blue-800 
+                                     transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                        >
+                            <UserPlus className="w-4 h-4" />
                             Novo Usuário
                         </Button>
                     </div>
-                </header>
+                </div>
 
-                <Card className="mb-6">
-                    <CardHeader>
-                        <CardTitle>Lista de Usuários</CardTitle>
+                {/* Card da tabela */}
+                <Card className="bg-white shadow-sm border border-slate-200 overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
+                        <CardTitle className="flex items-center gap-2 text-slate-800">
+                            <Users className="w-5 h-5" />
+                            Lista de Usuários
+                        </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="p-0">
                         {loadingUsers ? (
-                            <p>Carregando usuários...</p>
+                            <div className="p-8 text-center">
+                                <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                                <p className="text-slate-600">Carregando usuários...</p>
+                            </div>
                         ) : error ? (
-                            <p className="text-red-500">{error}</p>
+                            <div className="p-8 text-center">
+                                <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                                <p className="text-red-600">{error}</p>
+                            </div>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                    <thead className="bg-gray-100 dark:bg-gray-800">
+                                <table className="w-full">
+                                    <thead className="bg-slate-50 border-b border-slate-200">
                                         <tr>
-                                            <th className="px-4 py-2 text-left text-sm font-semibold">Nome</th>
-                                            <th className="px-4 py-2 text-left text-sm font-semibold">Email</th>
-                                            <th className="px-4 py-2 text-left text-sm font-semibold">Perfil</th>
-                                            <th className="px-4 py-2 text-left text-sm font-semibold">Status</th>
-                                            <th className="px-4 py-2 text-left text-sm font-semibold">Ações</th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-slate-800">Nome</th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-slate-800">Email</th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-slate-800">Perfil</th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-slate-800">Status</th>
+                                            <th className="px-6 py-4 text-center text-sm font-semibold text-slate-800">Ações</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-white dark:bg-gray-900">
-                                        {users.map((user, idx) => (
-                                            <tr key={user.id} className={idx % 2 === 0 ? "bg-gray-50 dark:bg-gray-800" : ""}>
-                                                <td className="px-4 py-2">{user.nome}</td>
-                                                <td className="px-4 py-2">{user.email}</td>
-                                                <td className="px-4 py-2">{user.perfil}</td>
-                                                <td className="px-4 py-2">{user.status}</td>
-                                                <td className="px-4 py-2 space-x-2">
-                                                    <Button variant="outline" onClick={() => openEditDialog(user)}>
-                                                        Editar
-                                                    </Button>
-                                                    {user.status !== "desabilitado" && (
-                                                        <Button variant="outline" onClick={() => handleDisableUser(user.id)}>
-                                                            Desabilitar
+                                    <tbody className="divide-y divide-slate-200">
+                                        {users.map((user) => (
+                                            <tr
+                                                key={user.id}
+                                                className={`hover:bg-slate-50 transition-colors ${user.status === "desabilitado" ? "opacity-60" : ""
+                                                    }`}
+                                            >
+                                                <td className="px-6 py-4">
+                                                    <div className="font-medium text-slate-900">{user.nome}</div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="text-slate-600">{user.email}</div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={getPerfilBadge(user.perfil)}>
+                                                        {getPerfilIcon(user.perfil)}
+                                                        {user.perfil === "super-user" ? "Super Usuário" :
+                                                            user.perfil === "admin" ? "Administrador" : "Usuário"}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={getStatusBadge(user.status)}>
+                                                        {user.status === "ativo" ? (
+                                                            <>
+                                                                <CheckCircle2 className="w-3 h-3" />
+                                                                Ativo
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <XCircle className="w-3 h-3" />
+                                                                Desabilitado
+                                                            </>
+                                                        )}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => openEditDialog(user)}
+                                                            className="flex items-center gap-1 hover:bg-blue-50 hover:border-blue-300"
+                                                        >
+                                                            <Edit className="w-3 h-3" />
+                                                            Editar
                                                         </Button>
-                                                    )}
+                                                        {user.status !== "desabilitado" && (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => handleDisableUser(user.id)}
+                                                                className="flex items-center gap-1 hover:bg-red-50 hover:border-red-300"
+                                                            >
+                                                                <UserX className="w-3 h-3" />
+                                                                Desabilitar
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -257,133 +386,179 @@ export default function UserManagementPage() {
                     </CardContent>
                 </Card>
 
+                {/* Dialog moderno */}
                 <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                    <DialogContent>
+                    <DialogContent className="max-w-lg">
                         <DialogHeader>
-                            <DialogTitle>{editingUser ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
+                            <DialogTitle className="flex items-center gap-2 text-xl">
+                                {editingUser ? (
+                                    <>
+                                        <Edit className="w-5 h-5 text-blue-600" />
+                                        Editar Usuário
+                                    </>
+                                ) : (
+                                    <>
+                                        <UserPlus className="w-5 h-5 text-green-600" />
+                                        Novo Usuário
+                                    </>
+                                )}
+                            </DialogTitle>
                         </DialogHeader>
-                        <div className="space-y-4 mt-4">
-                            <div>
-                                <label className="block text-sm font-bold mb-1">Nome</label>
+
+                        <div className="space-y-6 mt-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-700">Nome Completo</label>
                                 <Input
                                     type="text"
-                                    placeholder="Digite o nome"
+                                    placeholder="Digite o nome completo"
                                     value={nome}
                                     onChange={(e) => setNome(e.target.value)}
+                                    className="focus:ring-2 focus:ring-blue-500 border-slate-300"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-sm font-bold mb-1">Email</label>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-700">Email</label>
                                 <Input
                                     type="email"
                                     placeholder="Digite o email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     disabled={!!editingUser}
+                                    className="focus:ring-2 focus:ring-blue-500 border-slate-300"
                                 />
                             </div>
+
                             {!editingUser && (
                                 <>
-                                    <div className="relative">
-                                        <label className="block text-sm font-bold mb-1">Senha</label>
-                                        <Input
-                                            type={showPassword ? "text" : "password"}
-                                            placeholder="Digite a senha inicial"
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                        />
-                                        <button
-                                            type="button"
-                                            className="absolute right-2 top-9"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                        >
-                                            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                                        </button>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Senha</label>
+                                        <div className="relative">
+                                            <Input
+                                                type={showPassword ? "text" : "password"}
+                                                placeholder="Digite a senha inicial"
+                                                value={password}
+                                                onChange={(e) => setPassword(e.target.value)}
+                                                className="focus:ring-2 focus:ring-blue-500 border-slate-300 pr-10"
+                                            />
+                                            <button
+                                                type="button"
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                            >
+                                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="relative">
-                                        <label className="block text-sm font-bold mb-1">Confirmar Senha</label>
-                                        <Input
-                                            type={showPassword ? "text" : "password"}
-                                            placeholder="Confirme a senha"
-                                            value={confirmPassword}
-                                            onChange={(e) => setConfirmPassword(e.target.value)}
-                                        />
-                                        <button
-                                            type="button"
-                                            className="absolute right-2 top-9"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                        >
-                                            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                                        </button>
+
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Confirmar Senha</label>
+                                        <div className="relative">
+                                            <Input
+                                                type={showPassword ? "text" : "password"}
+                                                placeholder="Confirme a senha"
+                                                value={confirmPassword}
+                                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                                className="focus:ring-2 focus:ring-blue-500 border-slate-300 pr-10"
+                                            />
+                                            <button
+                                                type="button"
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                            >
+                                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="text-sm">
-                                        <p className="text-gray-600">A senha deve ter:</p>
-                                        <ul className="list-disc ml-5 space-y-1">
-                                            <li className={hasMinLength ? "text-green-600" : "text-red-600"}>
+
+                                    <div className="bg-slate-50 rounded-lg p-4">
+                                        <p className="text-sm font-medium text-slate-700 mb-3">Requisitos da senha:</p>
+                                        <div className="space-y-2">
+                                            <div className={`flex items-center gap-2 text-xs ${hasMinLength ? "text-green-600" : "text-slate-500"}`}>
+                                                <CheckCircle2 className={`w-3 h-3 ${hasMinLength ? "text-green-600" : "text-slate-400"}`} />
                                                 No mínimo 8 caracteres
-                                            </li>
-                                            <li className={hasUppercase ? "text-green-600" : "text-red-600"}>
+                                            </div>
+                                            <div className={`flex items-center gap-2 text-xs ${hasUppercase ? "text-green-600" : "text-slate-500"}`}>
+                                                <CheckCircle2 className={`w-3 h-3 ${hasUppercase ? "text-green-600" : "text-slate-400"}`} />
                                                 Letras maiúsculas (A-Z)
-                                            </li>
-                                            <li className={hasLowercase ? "text-green-600" : "text-red-600"}>
+                                            </div>
+                                            <div className={`flex items-center gap-2 text-xs ${hasLowercase ? "text-green-600" : "text-slate-500"}`}>
+                                                <CheckCircle2 className={`w-3 h-3 ${hasLowercase ? "text-green-600" : "text-slate-400"}`} />
                                                 Letras minúsculas (a-z)
-                                            </li>
-                                            <li className={hasNumber ? "text-green-600" : "text-red-600"}>
+                                            </div>
+                                            <div className={`flex items-center gap-2 text-xs ${hasNumber ? "text-green-600" : "text-slate-500"}`}>
+                                                <CheckCircle2 className={`w-3 h-3 ${hasNumber ? "text-green-600" : "text-slate-400"}`} />
                                                 Números (0-9)
-                                            </li>
-                                            <li className={hasSpecialChar ? "text-green-600" : "text-red-600"}>
+                                            </div>
+                                            <div className={`flex items-center gap-2 text-xs ${hasSpecialChar ? "text-green-600" : "text-slate-500"}`}>
+                                                <CheckCircle2 className={`w-3 h-3 ${hasSpecialChar ? "text-green-600" : "text-slate-400"}`} />
                                                 Caracteres especiais (@$!%*?&)
-                                            </li>
-                                        </ul>
+                                            </div>
+                                        </div>
                                     </div>
                                 </>
                             )}
-                            <div>
-                                <label className="block text-sm font-bold mb-1">Perfil</label>
-                                <Select
-                                    onValueChange={(val) => setPerfil(val as "admin" | "super-user" | "user")}
-                                    value={perfil}
-                                >
-                                    <SelectTrigger className="w-48">
-                                        <SelectValue placeholder="Selecione o perfil" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="admin">Administrador</SelectItem>
-                                        <SelectItem value="super-user">Super Usuário</SelectItem>
-                                        <SelectItem value="user">Usuário</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold mb-1">Status</label>
-                                <Select
-                                    onValueChange={(val) => setStatus(val as "ativo" | "desabilitado")}
-                                    value={status}
-                                >
-                                    <SelectTrigger className="w-48">
-                                        <SelectValue placeholder="Selecione o status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="ativo">Ativo</SelectItem>
-                                        <SelectItem value="desabilitado">Desabilitado</SelectItem>
-                                    </SelectContent>
-                                </Select>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Perfil</label>
+                                    <Select
+                                        onValueChange={(val) => setPerfil(val as "admin" | "super-user" | "user")}
+                                        value={perfil}
+                                    >
+                                        <SelectTrigger className="focus:ring-2 focus:ring-blue-500 border-slate-300">
+                                            <SelectValue placeholder="Selecione o perfil" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="admin">Administrador</SelectItem>
+                                            <SelectItem value="super-user">Super Usuário</SelectItem>
+                                            <SelectItem value="user">Usuário</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Status</label>
+                                    <Select
+                                        onValueChange={(val) => setStatus(val as "ativo" | "desabilitado")}
+                                        value={status}
+                                    >
+                                        <SelectTrigger className="focus:ring-2 focus:ring-blue-500 border-slate-300">
+                                            <SelectValue placeholder="Selecione o status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ativo">Ativo</SelectItem>
+                                            <SelectItem value="desabilitado">Desabilitado</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </div>
-                        <div className="flex justify-end space-x-2 mt-6">
+
+                        <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-slate-200">
                             {editingUser && (
                                 <Button
                                     variant="outline"
                                     onClick={handleResetPassword}
                                     disabled={resettingPassword}
+                                    className="flex items-center gap-2"
                                 >
+                                    <RotateCcw className={`w-4 h-4 ${resettingPassword ? "animate-spin" : ""}`} />
                                     {resettingPassword ? "Enviando..." : "Redefinir Senha"}
                                 </Button>
                             )}
-                            <Button variant="outline" onClick={() => setOpenDialog(false)}>
+                            <Button
+                                variant="outline"
+                                onClick={() => setOpenDialog(false)}
+                                className="px-6"
+                            >
                                 Cancelar
                             </Button>
-                            <Button onClick={handleSaveUser} disabled={saving}>
+                            <Button
+                                onClick={handleSaveUser}
+                                disabled={saving}
+                                className="px-6 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
+                            >
                                 {saving ? "Salvando..." : "Salvar"}
                             </Button>
                         </div>
