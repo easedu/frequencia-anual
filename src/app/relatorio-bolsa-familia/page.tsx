@@ -10,6 +10,22 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { collection, getDocs, getDoc, doc, DocumentSnapshot, DocumentData } from "firebase/firestore";
 import { db } from "@/firebase.config";
+import {
+    FileText,
+    Search,
+    Filter,
+    Calendar,
+    Users,
+    TrendingDown,
+    Printer,
+    Eye,
+    EyeOff,
+    CheckCircle2,
+    XCircle,
+    AlertTriangle,
+    ChevronLeft,
+    ChevronRight
+} from "lucide-react";
 
 interface Estudante {
     estudanteId: string;
@@ -24,7 +40,7 @@ interface AbsenceRecord {
     turma: string;
     data: string;
     docId: string;
-    justified: boolean; // Novo campo para indicar se a falta é justificada
+    justified: boolean;
 }
 
 interface AnoLetivoData {
@@ -62,7 +78,7 @@ export default function RelatorioFaltasPage() {
     );
     const [showAbsences, setShowAbsences] = useState<boolean>(false);
     const [showFrequency, setShowFrequency] = useState<boolean>(true);
-    const [excludeJustified, setExcludeJustified] = useState<boolean>(true); // Novo estado para controlar exclusão de faltas justificadas
+    const [excludeJustified, setExcludeJustified] = useState<boolean>(true);
     const [diasLetivos, setDiasLetivos] = useState<{ [key: number]: number }>({});
 
     const parseDate = (dateStr: string): Date | null => {
@@ -132,7 +148,7 @@ export default function RelatorioFaltasPage() {
                     turma: doc.data().turma,
                     data: doc.data().data,
                     docId: doc.id,
-                    justified: doc.data().justified || false, // Recupera o campo justified
+                    justified: doc.data().justified || false,
                 }));
                 setAbsenceRecords(records);
             } catch (error) {
@@ -167,7 +183,7 @@ export default function RelatorioFaltasPage() {
             return (
                 record.estudanteId === estudanteId &&
                 recordDate.getMonth() === monthIndex &&
-                (!excludeJustified || !record.justified) // Exclui faltas justificadas se excludeJustified for true
+                (!excludeJustified || !record.justified)
             );
         }).length;
     };
@@ -301,94 +317,197 @@ export default function RelatorioFaltasPage() {
         }, 100);
     };
 
+    // Estatísticas para o header
+    const lowFrequencyStudents = filteredStudents.filter(student => hasLowFrequency(student.estudanteId)).length;
+    const selectedMonthsCount = selectedMonths.size;
+
     if (loadingStudents || loadingAbsences) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="w-full max-w-7xl p-4">
-                    <Skeleton className="h-10 w-full mb-4" />
-                    <Skeleton className="h-64 w-full" />
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+                <div className="container mx-auto p-6 max-w-7xl">
+                    <div className="space-y-6">
+                        <Skeleton className="h-32 w-full rounded-xl" />
+                        <Skeleton className="h-48 w-full rounded-xl" />
+                        <Skeleton className="h-96 w-full rounded-xl" />
+                    </div>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen">
-            <div className="container mx-auto p-4 max-w-7xl">
-                <Card className="mb-6">
-                    <CardHeader>
-                        <CardTitle>Filtros de Meses</CardTitle>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+            <div className="container mx-auto p-6 max-w-7xl">
+                {/* Header unificado */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-50 rounded-lg">
+                                    <FileText className="w-6 h-6 text-blue-600" />
+                                </div>
+                                <div>
+                                    <h1 className="text-3xl font-bold text-slate-800">Relatório de Faltas</h1>
+                                    <p className="text-slate-600 mt-1">Análise de frequência dos estudantes</p>
+                                </div>
+                            </div>
+
+                            {/* Stats integrado */}
+                            <div className="flex items-center gap-6 pl-6 border-l border-slate-200">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-green-50 rounded-lg">
+                                        <Users className="w-5 h-5 text-green-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-slate-600">Total de Estudantes</p>
+                                        <p className="text-xl font-bold text-green-600">{totalRecords}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-red-50 rounded-lg">
+                                        <TrendingDown className="w-5 h-5 text-red-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-slate-600">Frequência Baixa</p>
+                                        <p className="text-xl font-bold text-red-600">{lowFrequencyStudents}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-purple-50 rounded-lg">
+                                        <Calendar className="w-5 h-5 text-purple-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-slate-600">Meses Selecionados</p>
+                                        <p className="text-xl font-bold text-purple-600">{selectedMonthsCount}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <Button
+                            onClick={handlePrint}
+                            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 
+                                     text-white rounded-lg hover:from-blue-700 hover:to-blue-800 
+                                     transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                        >
+                            <Printer className="w-4 h-4" />
+                            Imprimir Relatório
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Card de Filtros */}
+                <Card className="bg-white shadow-sm border border-slate-200 mb-6">
+                    <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
+                        <CardTitle className="flex items-center gap-2 text-slate-800">
+                            <Filter className="w-5 h-5" />
+                            Filtros de Meses
+                        </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {months.map((month) => (
-                                <div key={month} className="flex items-center space-x-2">
+                    <CardContent className="p-6">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                            {months.map((month, index) => (
+                                <div key={month} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50 transition-colors">
                                     <Checkbox
                                         id={month}
                                         checked={selectedMonths.has(month)}
                                         onCheckedChange={() => handleMonthChange(month)}
+                                        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                     />
-                                    <label htmlFor={month} className="text-sm">{month}</label>
+                                    <label htmlFor={month} className="text-sm font-medium cursor-pointer flex-1">
+                                        <div>{month}</div>
+                                        <div className="text-xs text-slate-500">{diasLetivos[index] || 0} dias</div>
+                                    </label>
                                 </div>
                             ))}
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader>
-                        <div className="flex justify-between items-center">
-                            <CardTitle>Relatório de Faltas</CardTitle>
-                            <Button size="sm" onClick={handlePrint}>
-                                Imprimir Relatório
-                            </Button>
-                        </div>
+                {/* Card Principal */}
+                <Card className="bg-white shadow-sm border border-slate-200 overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
+                        <CardTitle className="flex items-center gap-2 text-slate-800">
+                            <FileText className="w-5 h-5" />
+                            Dados de Frequência
+                        </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className="mb-4 flex items-center space-x-4">
-                            <Input
-                                placeholder="Buscar por turma ou nome..."
-                                value={searchFilter}
-                                onChange={(e) => setSearchFilter(e.target.value)}
-                                className="flex-1"
-                            />
-                            <div className="flex items-center space-x-2">
-                                <Checkbox
-                                    id="showAbsences"
-                                    checked={showAbsences}
-                                    onCheckedChange={(checked) => setShowAbsences(checked as boolean)}
+                    <CardContent className="p-6">
+                        {/* Controles */}
+                        <div className="flex flex-col lg:flex-row gap-4 mb-6">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                                <Input
+                                    placeholder="Buscar por turma ou nome do estudante..."
+                                    value={searchFilter}
+                                    onChange={(e) => setSearchFilter(e.target.value)}
+                                    className="pl-10 focus:ring-2 focus:ring-blue-500 border-slate-300"
                                 />
-                                <label htmlFor="showAbsences" className="text-sm">Faltas</label>
                             </div>
-                            <div className="flex items-center space-x-2">
-                                <Checkbox
-                                    id="showFrequency"
-                                    checked={showFrequency}
-                                    onCheckedChange={(checked) => setShowFrequency(checked as boolean)}
-                                />
-                                <label htmlFor="showFrequency" className="text-sm">Frequência</label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                                <Checkbox
-                                    id="excludeJustified"
-                                    checked={excludeJustified}
-                                    onCheckedChange={(checked) => setExcludeJustified(checked as boolean)}
-                                />
-                                <label htmlFor="excludeJustified" className="text-sm">Excluir Justificadas</label>
+
+                            <div className="flex flex-wrap items-center gap-4">
+                                <div className="flex items-center space-x-2 bg-slate-50 px-3 py-2 rounded-lg">
+                                    <Checkbox
+                                        id="showAbsences"
+                                        checked={showAbsences}
+                                        onCheckedChange={(checked) => setShowAbsences(checked as boolean)}
+                                        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                    />
+                                    <label htmlFor="showAbsences" className="text-sm font-medium cursor-pointer flex items-center gap-1">
+                                        {showAbsences ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                                        Faltas
+                                    </label>
+                                </div>
+
+                                <div className="flex items-center space-x-2 bg-slate-50 px-3 py-2 rounded-lg">
+                                    <Checkbox
+                                        id="showFrequency"
+                                        checked={showFrequency}
+                                        onCheckedChange={(checked) => setShowFrequency(checked as boolean)}
+                                        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                    />
+                                    <label htmlFor="showFrequency" className="text-sm font-medium cursor-pointer flex items-center gap-1">
+                                        {showFrequency ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                                        Frequência
+                                    </label>
+                                </div>
+
+                                <div className="flex items-center space-x-2 bg-slate-50 px-3 py-2 rounded-lg">
+                                    <Checkbox
+                                        id="excludeJustified"
+                                        checked={excludeJustified}
+                                        onCheckedChange={(checked) => setExcludeJustified(checked as boolean)}
+                                        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                    />
+                                    <label htmlFor="excludeJustified" className="text-sm font-medium cursor-pointer flex items-center gap-1">
+                                        {excludeJustified ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                                        Excluir Justificadas
+                                    </label>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="rounded-md border">
+                        {/* Tabela */}
+                        <div className="rounded-lg border border-slate-200 overflow-hidden">
                             <Table>
-                                <TableHeader>
+                                <TableHeader className="bg-slate-50">
                                     <TableRow>
-                                        <TableHead className="font-bold text-center">Turma</TableHead>
-                                        <TableHead className="font-bold">Nome do Estudante</TableHead>
-                                        {months.map((month) => (
+                                        <TableHead className="font-semibold text-slate-800 text-center border-r border-slate-200">Turma</TableHead>
+                                        <TableHead className="font-semibold text-slate-800 border-r border-slate-200">Nome do Estudante</TableHead>
+                                        {months.map((month, index) => (
                                             selectedMonths.has(month) && (
-                                                <TableHead key={month} className="font-bold text-center">
-                                                    {month} ({diasLetivos[months.indexOf(month)] || 0} dias)
-                                                    {(showAbsences && showFrequency) ? <><br />Faltas | %</> : showAbsences ? <><br />Faltas</> : <><br />%</>}
+                                                <TableHead key={month} className="font-semibold text-slate-800 text-center border-r border-slate-200 last:border-r-0">
+                                                    <div className="space-y-1">
+                                                        <div>{month}</div>
+                                                        <div className="text-xs font-normal text-slate-600">
+                                                            ({diasLetivos[index] || 0} dias)
+                                                        </div>
+                                                        <div className="text-xs font-normal text-slate-600">
+                                                            {(showAbsences && showFrequency) ? "Faltas | %" : showAbsences ? "Faltas" : "%"}
+                                                        </div>
+                                                    </div>
                                                 </TableHead>
                                             )
                                         ))}
@@ -397,28 +516,52 @@ export default function RelatorioFaltasPage() {
                                 <TableBody>
                                     {currentRecords.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={2 + selectedMonths.size} className="text-center py-10">
-                                                Nenhum estudante encontrado com os filtros aplicados.
+                                            <TableCell colSpan={2 + selectedMonths.size} className="text-center py-12">
+                                                <div className="flex flex-col items-center gap-3">
+                                                    <AlertTriangle className="w-12 h-12 text-slate-400" />
+                                                    <p className="text-slate-600">Nenhum estudante encontrado com os filtros aplicados.</p>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ) : (
                                         currentRecords.map(student => (
-                                            <TableRow key={student.estudanteId} className={hasLowFrequency(student.estudanteId) ? 'text-red-500 font-bold' : ''}>
-                                                <TableCell className="text-center">{student.turma}</TableCell>
-                                                <TableCell>{student.nome}</TableCell>
+                                            <TableRow
+                                                key={student.estudanteId}
+                                                className={`hover:bg-slate-50 transition-colors ${hasLowFrequency(student.estudanteId) ? 'bg-red-50 border-red-200' : ''
+                                                    }`}
+                                            >
+                                                <TableCell className="text-center font-medium border-r border-slate-200">
+                                                    {student.turma}
+                                                </TableCell>
+                                                <TableCell className={`border-r border-slate-200 ${hasLowFrequency(student.estudanteId) ? 'text-red-700 font-semibold' : ''
+                                                    }`}>
+                                                    {student.nome}
+                                                </TableCell>
                                                 {months.map((month, index) => (
                                                     selectedMonths.has(month) && (
-                                                        <TableCell key={month} className="text-center">
+                                                        <TableCell key={month} className="text-center border-r border-slate-200 last:border-r-0">
                                                             {showAbsences && showFrequency ? (
-                                                                <div className="flex justify-center items-center">
-                                                                    <span className="w-12 text-right">{getAbsencesByMonth(student.estudanteId, index)}</span>
-                                                                    <span className="mx-1">|</span>
-                                                                    <span className="w-12 text-left">{getPercentageByMonth(student.estudanteId, index)}</span>
+                                                                <div className="flex justify-center items-center gap-2">
+                                                                    <span className={`w-8 text-right font-medium ${hasLowFrequency(student.estudanteId) ? 'text-red-600' : 'text-slate-700'
+                                                                        }`}>
+                                                                        {getAbsencesByMonth(student.estudanteId, index)}
+                                                                    </span>
+                                                                    <span className="text-slate-400">|</span>
+                                                                    <span className={`w-12 text-left font-medium ${hasLowFrequency(student.estudanteId) ? 'text-red-600' : 'text-slate-700'
+                                                                        }`}>
+                                                                        {getPercentageByMonth(student.estudanteId, index)}
+                                                                    </span>
                                                                 </div>
                                                             ) : showAbsences ? (
-                                                                getAbsencesByMonth(student.estudanteId, index)
+                                                                <span className={`font-medium ${hasLowFrequency(student.estudanteId) ? 'text-red-600' : 'text-slate-700'
+                                                                    }`}>
+                                                                    {getAbsencesByMonth(student.estudanteId, index)}
+                                                                </span>
                                                             ) : (
-                                                                getPercentageByMonth(student.estudanteId, index)
+                                                                <span className={`font-medium ${hasLowFrequency(student.estudanteId) ? 'text-red-600' : 'text-slate-700'
+                                                                    }`}>
+                                                                    {getPercentageByMonth(student.estudanteId, index)}
+                                                                </span>
                                                             )}
                                                         </TableCell>
                                                     )
@@ -430,15 +573,16 @@ export default function RelatorioFaltasPage() {
                             </Table>
                         </div>
 
+                        {/* Paginação */}
                         {totalRecords > 0 && (
-                            <div className="flex flex-col md:flex-row items-center justify-between mt-4 gap-2">
-                                <div className="flex items-center space-x-2">
-                                    <label className="font-semibold">Registros por página:</label>
+                            <div className="flex flex-col md:flex-row items-center justify-between mt-6 gap-4 pt-6 border-t border-slate-200">
+                                <div className="flex items-center gap-3">
+                                    <label className="text-sm font-medium text-slate-700">Registros por página:</label>
                                     <Select
                                         onValueChange={handleRecordsPerPageChange}
                                         value={recordsPerPage.toString()}
                                     >
-                                        <SelectTrigger className="w-20">
+                                        <SelectTrigger className="w-20 focus:ring-2 focus:ring-blue-500 border-slate-300">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -450,30 +594,34 @@ export default function RelatorioFaltasPage() {
                                     </Select>
                                 </div>
 
-                                <p className="text-sm text-gray-700">
-                                    Total de registros: {totalRecords}
-                                </p>
+                                <div className="text-sm text-slate-600 bg-slate-50 px-4 py-2 rounded-lg">
+                                    <span className="font-medium">Total:</span> {totalRecords} estudantes
+                                </div>
 
                                 {totalRecords > recordsPerPage && (
-                                    <div className="flex items-center space-x-2">
+                                    <div className="flex items-center gap-2">
                                         <Button
                                             variant="outline"
                                             size="sm"
                                             onClick={() => handlePageChange(currentPage - 1)}
                                             disabled={currentPage === 1}
+                                            className="flex items-center gap-1"
                                         >
+                                            <ChevronLeft className="w-3 h-3" />
                                             Anterior
                                         </Button>
-                                        <span className="text-sm">
+                                        <div className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-50 rounded-lg">
                                             Página {currentPage} de {totalPages}
-                                        </span>
+                                        </div>
                                         <Button
                                             variant="outline"
                                             size="sm"
                                             onClick={() => handlePageChange(currentPage + 1)}
                                             disabled={currentPage === totalPages}
+                                            className="flex items-center gap-1"
                                         >
                                             Próxima
+                                            <ChevronRight className="w-3 h-3" />
                                         </Button>
                                     </div>
                                 )}
