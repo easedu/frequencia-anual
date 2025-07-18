@@ -639,8 +639,8 @@ export default function StudentProfilePage() {
             'Carta registrada',
             'Conselho tutelar',
             'Desligamento',
-            'Necessário acompanhamento da família',
             'Justificativa da família',
+            'Necessário acompanhamento da família',
             'Observações'
         ] as const;
 

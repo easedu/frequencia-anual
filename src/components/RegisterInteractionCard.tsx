@@ -80,8 +80,8 @@ export default function RegisterInteractionCard({
         'Carta registrada',
         'Conselho tutelar',
         'Desligamento',
-        'Necessário acompanhamento da família',
         'Justificativa da família',
+        'Necessário acompanhamento da família',
         'Observações'
     ];
 
