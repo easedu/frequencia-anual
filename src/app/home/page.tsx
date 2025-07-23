@@ -7,7 +7,7 @@ import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
 
 // Define os tipos possíveis para o perfil do usuário
-type Role = "admin" | "super-user" | "user";
+type Role = "admin" | "super-user" | "user" | "user-pcd";
 
 interface CardInfo {
     key: string;
@@ -128,6 +128,13 @@ export default function Home() {
                     color: "from-purple-500 to-purple-600",
                     icon: Zap
                 };
+            case "user-pcd":
+                return {
+                    title: "Usuário PcD",
+                    description: "Acesso ao módulo de acessibilidade",
+                    color: "from-pink-500 to-pink-600",
+                    icon: Heart
+                };
             default:
                 return {
                     title: "Usuário",
@@ -152,6 +159,20 @@ export default function Home() {
     }
 
     const getAllCards = (): CardInfo[] => {
+        // Usuário PcD tem acesso apenas ao módulo específico para PcD
+        if (role === "user-pcd") {
+            return [
+                {
+                    key: "perfil-deficiente",
+                    title: "Módulo de Acessibilidade",
+                    icon: Accessibility,
+                    href: "/perfil-deficiente",
+                    color: "pink",
+                    description: "Sistema especializado para estudantes com deficiência"
+                },
+            ];
+        }
+
         if (role === "user") {
             return [
                 {
@@ -313,7 +334,7 @@ export default function Home() {
                     title: "Perfil Estudante PCD",
                     icon: Accessibility,
                     href: "/perfil-deficiente",
-                    color: "blue",
+                    color: "pink",
                     description: "Acompanhe estudantes com deficiência"
                 },
             ];
@@ -365,6 +386,12 @@ export default function Home() {
                 hover: "hover:from-indigo-600 hover:to-purple-700",
                 icon: "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400",
                 border: "border-indigo-200 dark:border-indigo-800"
+            },
+            pink: {
+                gradient: "from-pink-500 to-rose-600",
+                hover: "hover:from-pink-600 hover:to-rose-700",
+                icon: "bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400",
+                border: "border-pink-200 dark:border-pink-800"
             }
         };
         return colorMap[color] || colorMap.blue;
@@ -394,7 +421,10 @@ export default function Home() {
                                         Olá, {userName.split(' ')[0]}! 👋
                                     </h1>
                                     <p className="text-slate-600 dark:text-slate-400 mb-2">
-                                        Bem-vindo de volta ao Habib Control
+                                        {role === "user-pcd"
+                                            ? "Bem-vindo ao módulo de acessibilidade"
+                                            : "Bem-vindo de volta ao Habib Control"
+                                        }
                                     </p>
                                     <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                                         <Clock className="w-4 h-4" />
@@ -416,8 +446,33 @@ export default function Home() {
                     </div>
                 </div>
 
-                {/* Seção de favoritos */}
-                {favorites.length > 0 && (
+                {/* Seção específica para usuário PcD */}
+                {role === "user-pcd" && (
+                    <div className="mb-8">
+                        <div className="bg-gradient-to-r from-pink-100 to-rose-100 dark:from-pink-900/20 dark:to-rose-900/20 rounded-2xl p-6 border border-pink-200 dark:border-pink-800">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-2 bg-pink-500 rounded-xl">
+                                    <Accessibility className="w-6 h-6 text-white" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-pink-800 dark:text-pink-200">
+                                        Módulo de Acessibilidade
+                                    </h2>
+                                    <p className="text-pink-600 dark:text-pink-300">
+                                        Sistema especializado para acompanhamento de estudantes com deficiência
+                                    </p>
+                                </div>
+                            </div>
+                            <p className="text-sm text-pink-700 dark:text-pink-300 leading-relaxed">
+                                Este ambiente foi desenvolvido especialmente para profissionais que trabalham com estudantes com deficiência,
+                                oferecendo ferramentas específicas para o acompanhamento personalizado e inclusivo.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Seção de favoritos (apenas se não for user-pcd ou se houver favoritos) */}
+                {favorites.length > 0 && role !== "user-pcd" && (
                     <div className="mb-8">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
@@ -502,16 +557,23 @@ export default function Home() {
                     <div className="mb-6">
                         <div className="flex items-center gap-3 mb-6">
                             <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
-                                <Grid3X3 className="w-5 h-5 text-white" />
+                                {role === "user-pcd" ? <Accessibility className="w-5 h-5 text-white" /> : <Grid3X3 className="w-5 h-5 text-white" />}
                             </div>
                             <div>
                                 <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">
-                                    {favorites.length > 0 ? 'Outros Módulos' : 'Módulos do Sistema'}
+                                    {role === "user-pcd"
+                                        ? 'Acesso Especializado'
+                                        : favorites.length > 0
+                                            ? 'Outros Módulos'
+                                            : 'Módulos do Sistema'
+                                    }
                                 </h2>
                                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                                    {favorites.length > 0
-                                        ? 'Explore outros módulos disponíveis'
-                                        : 'Acesse as funcionalidades disponíveis para seu perfil'
+                                    {role === "user-pcd"
+                                        ? 'Seu módulo específico para acompanhamento de estudantes PcD'
+                                        : favorites.length > 0
+                                            ? 'Explore outros módulos disponíveis'
+                                            : 'Acesse as funcionalidades disponíveis para seu perfil'
                                     }
                                 </p>
                             </div>
@@ -551,22 +613,24 @@ export default function Home() {
                                     </p>
                                 </div>
 
-                                {/* Botão de favoritar */}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleFavorite(card.key);
-                                    }}
-                                    className={`absolute bottom-3 right-3 p-2 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 ${isFavorite
-                                        ? 'bg-yellow-100 dark:bg-yellow-900/30 hover:bg-yellow-200 dark:hover:bg-yellow-900/50'
-                                        : 'bg-slate-100 dark:bg-slate-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/30'
-                                        }`}
-                                >
-                                    <Star className={`w-4 h-4 transition-colors ${isFavorite
-                                        ? 'text-yellow-500 fill-current'
-                                        : 'text-slate-600 dark:text-slate-400 hover:text-yellow-500'
-                                        }`} />
-                                </button>
+                                {/* Botão de favoritar (não aparece para user-pcd pois só tem 1 módulo) */}
+                                {role !== "user-pcd" && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleFavorite(card.key);
+                                        }}
+                                        className={`absolute bottom-3 right-3 p-2 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 ${isFavorite
+                                            ? 'bg-yellow-100 dark:bg-yellow-900/30 hover:bg-yellow-200 dark:hover:bg-yellow-900/50'
+                                            : 'bg-slate-100 dark:bg-slate-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/30'
+                                            }`}
+                                    >
+                                        <Star className={`w-4 h-4 transition-colors ${isFavorite
+                                            ? 'text-yellow-500 fill-current'
+                                            : 'text-slate-600 dark:text-slate-400 hover:text-yellow-500'
+                                            }`} />
+                                    </button>
+                                )}
                             </div>
                         );
                     })}

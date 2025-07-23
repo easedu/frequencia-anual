@@ -38,14 +38,15 @@ import {
     ShieldAlert,
     CheckCircle2,
     XCircle,
-    Badge
+    Badge,
+    Heart
 } from "lucide-react";
 
 interface UserProfile {
     id: string;
     nome: string;
     email: string;
-    perfil: "admin" | "user" | "super-user";
+    perfil: "admin" | "user" | "super-user" | "user-pcd";
     status: "ativo" | "desabilitado";
 }
 
@@ -60,7 +61,7 @@ export default function UserManagementPage() {
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
-    const [perfil, setPerfil] = useState<"admin" | "super-user" | "user">("user");
+    const [perfil, setPerfil] = useState<"admin" | "super-user" | "user" | "user-pcd">("user");
     const [status, setStatus] = useState<"ativo" | "desabilitado">("ativo");
     const [saving, setSaving] = useState<boolean>(false);
     const [resettingPassword, setResettingPassword] = useState<boolean>(false);
@@ -217,6 +218,8 @@ export default function UserManagementPage() {
                 return <ShieldCheck className="w-4 h-4 text-purple-600" />;
             case "admin":
                 return <Shield className="w-4 h-4 text-blue-600" />;
+            case "user-pcd":
+                return <Heart className="w-4 h-4 text-pink-600" />;
             default:
                 return <ShieldAlert className="w-4 h-4 text-gray-600" />;
         }
@@ -229,8 +232,23 @@ export default function UserManagementPage() {
                 return `${baseClasses} bg-purple-100 text-purple-800`;
             case "admin":
                 return `${baseClasses} bg-blue-100 text-blue-800`;
+            case "user-pcd":
+                return `${baseClasses} bg-pink-100 text-pink-800`;
             default:
                 return `${baseClasses} bg-gray-100 text-gray-800`;
+        }
+    };
+
+    const getPerfilLabel = (perfil: string) => {
+        switch (perfil) {
+            case "super-user":
+                return "Super Usuário";
+            case "admin":
+                return "Administrador";
+            case "user-pcd":
+                return "Usuário PcD";
+            default:
+                return "Usuário";
         }
     };
 
@@ -334,8 +352,7 @@ export default function UserManagementPage() {
                                                 <td className="px-6 py-4">
                                                     <span className={getPerfilBadge(user.perfil)}>
                                                         {getPerfilIcon(user.perfil)}
-                                                        {user.perfil === "super-user" ? "Super Usuário" :
-                                                            user.perfil === "admin" ? "Administrador" : "Usuário"}
+                                                        {getPerfilLabel(user.perfil)}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -503,7 +520,7 @@ export default function UserManagementPage() {
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Perfil</label>
                                     <Select
-                                        onValueChange={(val) => setPerfil(val as "admin" | "super-user" | "user")}
+                                        onValueChange={(val) => setPerfil(val as "admin" | "super-user" | "user" | "user-pcd")}
                                         value={perfil}
                                     >
                                         <SelectTrigger className="focus:ring-2 focus:ring-blue-500 border-slate-300">
@@ -513,6 +530,7 @@ export default function UserManagementPage() {
                                             <SelectItem value="admin">Administrador</SelectItem>
                                             <SelectItem value="super-user">Super Usuário</SelectItem>
                                             <SelectItem value="user">Usuário</SelectItem>
+                                            <SelectItem value="user-pcd">Usuário PcD</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
