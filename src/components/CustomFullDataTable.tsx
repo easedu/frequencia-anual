@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-    Cell,
     ColumnDef,
     ColumnFiltersState,
     SortingState,
@@ -284,38 +283,80 @@ export function FullDataTable({ data }: FullDataTableProps) {
         globalFilterFn: "includesString" as const,
     });
 
-    // Memoize filtered rows for stats calculation
-    const filteredRows = React.useMemo(() => table.getFilteredRowModel().rows, [table]);
+    // Função para obter todos os dados filtrados e ordenados (sem paginação)
+    const getAllSortedFilteredData = React.useMemo(() => {
+        // Primeiro, aplicamos os filtros externos (do componente pai) + busca global
+        let filteredData = data;
+
+        // Aplicar busca global se houver
+        if (globalFilter) {
+            filteredData = data.filter(item => {
+                const searchableValues = [
+                    item.nome,
+                    item.turma,
+                    item.faltasB1?.toString(),
+                    item.faltasB2?.toString(),
+                    item.faltasB3?.toString(),
+                    item.faltasB4?.toString(),
+                    item.totalFaltas?.toString(),
+                    item.percentualFaltas?.toString(),
+                    item.percentualFrequencia?.toString(),
+                ].filter(Boolean);
+
+                return searchableValues.some(value =>
+                    value.toLowerCase().includes(globalFilter.toLowerCase())
+                );
+            });
+        }
+
+        // Aplicar ordenação se houver
+        if (sorting.length > 0) {
+            const sortConfig = sorting[0]; // Pega a primeira ordenação ativa
+            const { id: columnId, desc } = sortConfig;
+
+            filteredData = [...filteredData].sort((a, b) => {
+                const aVal = a[columnId as keyof StudentRecord];
+                const bVal = b[columnId as keyof StudentRecord];
+
+                // Tratamento para valores numéricos
+                if (typeof aVal === 'number' && typeof bVal === 'number') {
+                    return desc ? bVal - aVal : aVal - bVal;
+                }
+
+                // Tratamento para strings
+                const aStr = String(aVal || '');
+                const bStr = String(bVal || '');
+
+                if (desc) {
+                    return bStr.localeCompare(aStr, 'pt-BR');
+                } else {
+                    return aStr.localeCompare(bStr, 'pt-BR');
+                }
+            });
+        }
+
+        return filteredData;
+    }, [data, globalFilter, sorting]);
 
     // Estatísticas dos dados
     const stats = React.useMemo(() => {
-        const total = filteredRows.length;
+        const total = getAllSortedFilteredData.length;
         const avgFrequencia = total > 0
-            ? filteredRows.reduce((acc, row) => acc + (row.original.percentualFrequencia || 0), 0) / total
+            ? getAllSortedFilteredData.reduce((acc, item) => acc + (item.percentualFrequencia || 0), 0) / total
             : 0;
-        const criticalCount = filteredRows.filter(row => row.original.percentualFrequencia < 75).length;
+        const criticalCount = getAllSortedFilteredData.filter(item => item.percentualFrequencia < 75).length;
 
         return { total, avgFrequencia, criticalCount };
-    }, [filteredRows]);
+    }, [getAllSortedFilteredData]);
 
-    // Função para formatar valores para impressão
-    const formatCellValue = (cell: Cell<StudentRecord, unknown>): string => {
-        const value = cell.getValue();
-        const columnId = cell.column.id;
-
-        if (columnId === "percentualFaltas" || columnId === "percentualFrequencia") {
-            return `${value}%`;
-        }
-        return value?.toString() || "";
-    };
-
-    // Função de impressão otimizada
+    // Função de impressão otimizada - CORRIGIDA
     const handlePrint = () => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
 
         const visibleColumns = table.getAllColumns().filter(col => col.getIsVisible());
-        const rows = table.getFilteredRowModel().rows;
+
+        const sortedData = getAllSortedFilteredData;
 
         const headerMap: Record<string, string> = {
             turma: "Turma",
@@ -327,6 +368,14 @@ export function FullDataTable({ data }: FullDataTableProps) {
             totalFaltas: "Total de Faltas",
             percentualFaltas: "% de Faltas",
             percentualFrequencia: "% de Frequência",
+        };
+
+        const printStats = {
+            total: getAllSortedFilteredData.length,
+            avgFrequencia: getAllSortedFilteredData.length > 0
+                ? getAllSortedFilteredData.reduce((acc, item) => acc + (item.percentualFrequencia || 0), 0) / getAllSortedFilteredData.length
+                : 0,
+            criticalCount: getAllSortedFilteredData.filter(item => item.percentualFrequencia < 75).length
         };
 
         const printContent = `
@@ -427,15 +476,15 @@ export function FullDataTable({ data }: FullDataTableProps) {
                     <p class="subtitle">Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}</p>
                     <div class="stats">
                         <div class="stat-item">
-                            <div class="stat-value">${stats.total}</div>
+                            <div class="stat-value">${printStats.total}</div>
                             <div class="stat-label">Total de Estudantes</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-value">${stats.avgFrequencia.toFixed(1)}%</div>
+                            <div class="stat-value">${printStats.avgFrequencia.toFixed(1)}%</div>
                             <div class="stat-label">Frequência Média</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-value">${stats.criticalCount}</div>
+                            <div class="stat-value">${printStats.criticalCount}</div>
                             <div class="stat-label">Frequência < 75%</div>
                         </div>
                     </div>
@@ -449,14 +498,20 @@ export function FullDataTable({ data }: FullDataTableProps) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${rows.map(row => {
-            const freq = row.original.percentualFrequencia;
+                        ${sortedData.map(item => {
+            const freq = item.percentualFrequencia;
             const rowClass = freq < 75 ? 'critical' : freq > 90 ? 'good' : '';
             return `
                                 <tr class="${rowClass}">
                                     ${visibleColumns.map(column => {
-                const cell = row.getVisibleCells().find(c => c.column.id === column.id);
-                const cellValue = cell ? formatCellValue(cell) : '';
+                const columnId = column.id as keyof StudentRecord;
+                let cellValue = item[columnId]?.toString() || '';
+
+                // Formatar valores com porcentagem
+                if (columnId === 'percentualFaltas' || columnId === 'percentualFrequencia') {
+                    cellValue = `${cellValue}%`;
+                }
+
                 const cellClass = column.id === 'nome' ? 'nome-col' : '';
                 return `<td class="${cellClass}">${cellValue}</td>`;
             }).join('')}
@@ -467,6 +522,7 @@ export function FullDataTable({ data }: FullDataTableProps) {
                 </table>
                 <div class="footer">
                     <p>Este relatório contém informações confidenciais sobre a frequência escolar dos estudantes.</p>
+                    <p>Dados filtrados e processados em ${new Date().toLocaleDateString('pt-BR')}</p>
                 </div>
             </body>
             </html>
@@ -482,18 +538,24 @@ export function FullDataTable({ data }: FullDataTableProps) {
         }, 250);
     };
 
-    // Função para exportar como CSV
     const handleExportCSV = () => {
         const visibleColumns = table.getAllColumns().filter(col => col.getIsVisible());
-        const rows = table.getFilteredRowModel().rows;
+        const sortedData = getAllSortedFilteredData;
 
         const headers = visibleColumns.map(col => col.id).join(',');
         const csvContent = [
             headers,
-            ...rows.map(row =>
+            ...sortedData.map(item =>
                 visibleColumns.map(col => {
-                    const cell = row.getVisibleCells().find(c => c.column.id === col.id);
-                    return cell ? `"${formatCellValue(cell)}"` : '""';
+                    const columnId = col.id as keyof StudentRecord;
+                    let cellValue = item[columnId]?.toString() || '';
+
+                    // Formatar valores com porcentagem
+                    if (columnId === 'percentualFaltas' || columnId === 'percentualFrequencia') {
+                        cellValue = `${cellValue}%`;
+                    }
+
+                    return `"${cellValue}"`;
                 }).join(',')
             )
         ].join('\n');
@@ -502,7 +564,7 @@ export function FullDataTable({ data }: FullDataTableProps) {
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
-        link.setAttribute('download', `frequencia_${new Date().toISOString().slice(0, 10)}.csv`);
+        link.setAttribute('download', `frequencia_filtrada_${new Date().toISOString().slice(0, 10)}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
