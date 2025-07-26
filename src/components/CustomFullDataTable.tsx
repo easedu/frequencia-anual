@@ -256,9 +256,10 @@ export const columns: ColumnDef<StudentRecord>[] = [
 // Props do componente
 interface FullDataTableProps {
     data: StudentRecord[];
+    hideStatsHeader?: boolean; // Nova prop para controlar se deve mostrar o header de estatísticas
 }
 
-export function FullDataTable({ data }: FullDataTableProps) {
+export function FullDataTable({ data, hideStatsHeader = false }: FullDataTableProps) {
     const [sorting, setSorting] = React.useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
     const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
@@ -341,15 +342,13 @@ export function FullDataTable({ data }: FullDataTableProps) {
     // Estatísticas dos dados
     const stats = React.useMemo(() => {
         const total = getAllSortedFilteredData.length;
-        const avgFrequencia = total > 0
-            ? getAllSortedFilteredData.reduce((acc, item) => acc + (item.percentualFrequencia || 0), 0) / total
-            : 0;
-        const criticalCount = getAllSortedFilteredData.filter(item => item.percentualFrequencia < 75).length;
+        const excelentesCount = getAllSortedFilteredData.filter(item => item.percentualFrequencia >= 95.0).length;
+        const criticalCount = getAllSortedFilteredData.filter(item => item.percentualFrequencia < 75.0).length;
 
-        return { total, avgFrequencia, criticalCount };
+        return { total, excelentesCount, criticalCount };
     }, [getAllSortedFilteredData]);
 
-    // Função de impressão otimizada - CORRIGIDA
+    // Função de impressão otimizada
     const handlePrint = () => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
@@ -372,10 +371,8 @@ export function FullDataTable({ data }: FullDataTableProps) {
 
         const printStats = {
             total: getAllSortedFilteredData.length,
-            avgFrequencia: getAllSortedFilteredData.length > 0
-                ? getAllSortedFilteredData.reduce((acc, item) => acc + (item.percentualFrequencia || 0), 0) / getAllSortedFilteredData.length
-                : 0,
-            criticalCount: getAllSortedFilteredData.filter(item => item.percentualFrequencia < 75).length
+            excelentesCount: getAllSortedFilteredData.filter(item => item.percentualFrequencia >= 95.0).length,
+            criticalCount: getAllSortedFilteredData.filter(item => item.percentualFrequencia < 75.0).length
         };
 
         const printContent = `
@@ -480,12 +477,12 @@ export function FullDataTable({ data }: FullDataTableProps) {
                             <div class="stat-label">Total de Estudantes</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-value">${printStats.avgFrequencia.toFixed(1)}%</div>
-                            <div class="stat-label">Frequência Média</div>
+                            <div class="stat-value">${printStats.excelentesCount}</div>
+                            <div class="stat-label">Frequência Excelente (≥95%)</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value">${printStats.criticalCount}</div>
-                            <div class="stat-label">Frequência < 75%</div>
+                            <div class="stat-label">Frequência Crítica (&lt;75%)</div>
                         </div>
                     </div>
                 </div>
@@ -573,34 +570,36 @@ export function FullDataTable({ data }: FullDataTableProps) {
 
     return (
         <div className="w-full space-y-4">
-            {/* Header com estatísticas */}
-            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-0 shadow-sm">
-                <CardContent className="p-4">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                        <div className="space-y-1">
-                            <div className="flex items-center justify-center gap-2">
-                                <Users className="h-4 w-4 text-blue-600" />
-                                <span className="text-2xl font-bold text-gray-900">{stats.total}</span>
+            {/* Header com estatísticas - apenas se não estiver oculto */}
+            {!hideStatsHeader && (
+                <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-0 shadow-sm">
+                    <CardContent className="p-4">
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                            <div className="space-y-1">
+                                <div className="flex items-center justify-center gap-2">
+                                    <Users className="h-4 w-4 text-blue-600" />
+                                    <span className="text-2xl font-bold text-gray-900">{stats.total}</span>
+                                </div>
+                                <p className="text-xs text-gray-600">Total de Estudantes</p>
                             </div>
-                            <p className="text-xs text-gray-600">Total de Estudantes</p>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="flex items-center justify-center gap-2">
-                                <TrendingUp className="h-4 w-4 text-green-600" />
-                                <span className="text-2xl font-bold text-gray-900">{stats.avgFrequencia.toFixed(1)}%</span>
+                            <div className="space-y-1">
+                                <div className="flex items-center justify-center gap-2">
+                                    <TrendingUp className="h-4 w-4 text-green-600" />
+                                    <span className="text-2xl font-bold text-gray-900">{stats.excelentesCount}</span>
+                                </div>
+                                <p className="text-xs text-gray-600">Frequência Excelente (≥95%)</p>
                             </div>
-                            <p className="text-xs text-gray-600">Frequência Média</p>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="flex items-center justify-center gap-2">
-                                <TrendingDown className="h-4 w-4 text-red-600" />
-                                <span className="text-2xl font-bold text-gray-900">{stats.criticalCount}</span>
+                            <div className="space-y-1">
+                                <div className="flex items-center justify-center gap-2">
+                                    <TrendingDown className="h-4 w-4 text-red-600" />
+                                    <span className="text-2xl font-bold text-gray-900">{stats.criticalCount}</span>
+                                </div>
+                                <p className="text-xs text-gray-600">Frequência Crítica (&lt;75%)</p>
                             </div>
-                            <p className="text-xs text-gray-600">Frequência Crítica (&lt;75%)</p>
                         </div>
-                    </div>
-                </CardContent>
-            </Card>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Controles da tabela */}
             <Card className="border-0 shadow-sm">

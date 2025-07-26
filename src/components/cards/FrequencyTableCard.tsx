@@ -14,7 +14,10 @@ import {
     Calendar,
     TrendingUp,
     Search,
-    BookOpen
+    BookOpen,
+    Clock,
+    Sun,
+    Moon
 } from "lucide-react";
 
 interface StudentRecord {
@@ -41,7 +44,8 @@ interface RangeFilter {
 
 interface FilterState {
     selectedTurmas: Set<string>;
-    selectedCiclos: Set<string>; // Novo filtro
+    selectedCiclos: Set<string>;
+    selectedTurnos: Set<string>; // Novo filtro para turnos
     b1: RangeFilter;
     b2: RangeFilter;
     b3: RangeFilter;
@@ -58,6 +62,12 @@ const CICLOS = {
     'Autoral': { anos: ['7', '8', '9'], label: 'Ciclo Autoral (7°, 8°, 9°)' }
 };
 
+// Definição dos turnos baseada na lógica existente
+const TURNOS = {
+    'TARDE': { anos: ['1', '2', '3', '4'], label: 'Turno da Tarde (1° ao 4° ano)', icon: Sun },
+    'MANHÃ': { anos: ['5', '6', '7', '8', '9'], label: 'Turno da Manhã (5° ao 9° ano)', icon: Moon }
+};
+
 // Função para determinar o ciclo baseado no ano da turma
 const getCicloFromTurma = (turma: string): string | null => {
     const match = turma.match(/(\d+)[A-Z]+/);
@@ -72,11 +82,26 @@ const getCicloFromTurma = (turma: string): string | null => {
     return null;
 };
 
+// Função para determinar o turno baseado no ano da turma
+const getTurnoFromTurma = (turma: string): string | null => {
+    const match = turma.match(/(\d+)[A-Z]+/);
+    if (!match) return null;
+
+    const ano = match[1];
+    for (const [turno, config] of Object.entries(TURNOS)) {
+        if (config.anos.includes(ano)) {
+            return turno;
+        }
+    }
+    return null;
+};
+
 // Hook personalizado para gerenciar filtros
 const useFilters = () => {
     const [filters, setFilters] = useState<FilterState>({
         selectedTurmas: new Set(),
-        selectedCiclos: new Set(), // Inicializar novo filtro
+        selectedCiclos: new Set(),
+        selectedTurnos: new Set(), // Inicializar novo filtro
         b1: { min: "", max: "" },
         b2: { min: "", max: "" },
         b3: { min: "", max: "" },
@@ -97,7 +122,6 @@ const useFilters = () => {
         }));
     }, []);
 
-    // Novo callback para filtro de ciclos
     const updateCicloFilter = useCallback((ciclo: string) => {
         setFilters(prev => ({
             ...prev,
@@ -109,7 +133,19 @@ const useFilters = () => {
         }));
     }, []);
 
-    const updateRangeFilter = useCallback((field: keyof Omit<FilterState, 'selectedTurmas' | 'selectedCiclos'>, type: 'min' | 'max', value: string) => {
+    // Novo callback para filtro de turnos
+    const updateTurnoFilter = useCallback((turno: string) => {
+        setFilters(prev => ({
+            ...prev,
+            selectedTurnos: new Set(
+                prev.selectedTurnos.has(turno)
+                    ? [...prev.selectedTurnos].filter(t => t !== turno)
+                    : [...prev.selectedTurnos, turno]
+            )
+        }));
+    }, []);
+
+    const updateRangeFilter = useCallback((field: keyof Omit<FilterState, 'selectedTurmas' | 'selectedCiclos' | 'selectedTurnos'>, type: 'min' | 'max', value: string) => {
         setFilters(prev => ({
             ...prev,
             [field]: {
@@ -119,10 +155,27 @@ const useFilters = () => {
         }));
     }, []);
 
+    // Função para aplicar filtro de frequência crítica
+    const applyFrequenciaCriticaFilter = useCallback(() => {
+        setFilters(prev => ({
+            ...prev,
+            percentualFrequencia: { min: "", max: "74.9" }
+        }));
+    }, []);
+
+    // Função para aplicar filtro de frequência excelente
+    const applyFrequenciaExcelenteFilter = useCallback(() => {
+        setFilters(prev => ({
+            ...prev,
+            percentualFrequencia: { min: "95.0", max: "" }
+        }));
+    }, []);
+
     const resetFilters = useCallback(() => {
         setFilters({
             selectedTurmas: new Set(),
-            selectedCiclos: new Set(), // Reset do novo filtro
+            selectedCiclos: new Set(),
+            selectedTurnos: new Set(), // Reset do novo filtro
             b1: { min: "", max: "" },
             b2: { min: "", max: "" },
             b3: { min: "", max: "" },
@@ -133,7 +186,16 @@ const useFilters = () => {
         });
     }, []);
 
-    return { filters, updateTurmaFilter, updateCicloFilter, updateRangeFilter, resetFilters };
+    return {
+        filters,
+        updateTurmaFilter,
+        updateCicloFilter,
+        updateTurnoFilter,
+        updateRangeFilter,
+        applyFrequenciaCriticaFilter,
+        applyFrequenciaExcelenteFilter,
+        resetFilters
+    };
 };
 
 // Componente para input de range
@@ -179,7 +241,101 @@ const RangeInput = ({
     </div>
 );
 
-// Novo componente para seleção de ciclos
+// Componente para seleção de turnos
+const TurnoSelector = ({
+    selectedTurnos,
+    onTurnoChange,
+    turmasData
+}: {
+    selectedTurnos: Set<string>;
+    onTurnoChange: (turno: string) => void;
+    turmasData: string[];
+}) => {
+    const turnoStats = useMemo(() => {
+        const stats: { [key: string]: { turmas: number; total: number } } = {};
+
+        Object.keys(TURNOS).forEach(turno => {
+            stats[turno] = { turmas: 0, total: 0 };
+        });
+
+        turmasData.forEach(turma => {
+            const turno = getTurnoFromTurma(turma);
+            if (turno && stats[turno]) {
+                stats[turno].turmas++;
+            }
+        });
+
+        return stats;
+    }, [turmasData]);
+
+    return (
+        <div className="space-y-4">
+            <div className="text-sm text-gray-600 mb-3">
+                Selecione os turnos escolares para filtrar:
+            </div>
+
+            <div className="space-y-3">
+                {Object.entries(TURNOS).map(([turno, config]) => {
+                    const isSelected = selectedTurnos.has(turno);
+                    const stats = turnoStats[turno];
+                    const IconComponent = config.icon;
+
+                    return (
+                        <div
+                            key={turno}
+                            className={`p-3 rounded-lg border-2 transition-all cursor-pointer ${isSelected
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                            onClick={() => onTurnoChange(turno)}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-3">
+                                    <Checkbox
+                                        checked={isSelected}
+                                        onCheckedChange={() => onTurnoChange(turno)}
+                                        className="h-4 w-4"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                        <IconComponent className="h-4 w-4 text-blue-600" />
+                                        <div>
+                                            <Label className="text-sm font-medium cursor-pointer text-gray-900">
+                                                {config.label}
+                                            </Label>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                Anos: {config.anos.join(', ')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <Badge variant={isSelected ? "default" : "secondary"} className="text-xs">
+                                        {stats.turmas} turma{stats.turmas !== 1 ? 's' : ''}
+                                    </Badge>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {selectedTurnos.size > 0 && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="text-xs font-medium text-gray-700 mb-2">Turnos selecionados:</div>
+                    <div className="flex flex-wrap gap-2">
+                        {Array.from(selectedTurnos).map(turno => (
+                            <Badge key={turno} variant="default" className="text-xs">
+                                {turno}
+                            </Badge>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Componente para seleção de ciclos
 const CicloSelector = ({
     selectedCiclos,
     onCicloChange,
@@ -221,8 +377,8 @@ const CicloSelector = ({
                         <div
                             key={ciclo}
                             className={`p-3 rounded-lg border-2 transition-all cursor-pointer ${isSelected
-                                    ? 'border-blue-500 bg-blue-50'
-                                    : 'border-gray-200 hover:border-gray-300'
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-gray-200 hover:border-gray-300'
                                 }`}
                             onClick={() => onCicloChange(ciclo)}
                         >
@@ -345,7 +501,16 @@ const TurmaSelector = ({
 };
 
 export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
-    const { filters, updateTurmaFilter, updateCicloFilter, updateRangeFilter, resetFilters } = useFilters();
+    const {
+        filters,
+        updateTurmaFilter,
+        updateCicloFilter,
+        updateTurnoFilter,
+        updateRangeFilter,
+        applyFrequenciaCriticaFilter,
+        applyFrequenciaExcelenteFilter,
+        resetFilters
+    } = useFilters();
     const [showFilters, setShowFilters] = useState(false);
 
     const uniqueTurmas = useMemo(() => {
@@ -391,8 +556,14 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
             const cicloMatch = filters.selectedCiclos.size === 0 ||
                 (studentCiclo && filters.selectedCiclos.has(studentCiclo));
 
+            // Verificar filtro de turno
+            const studentTurno = getTurnoFromTurma(student.turma);
+            const turnoMatch = filters.selectedTurnos.size === 0 ||
+                (studentTurno && filters.selectedTurnos.has(studentTurno));
+
             return (
                 cicloMatch &&
+                turnoMatch &&
                 (filters.selectedTurmas.size === 0 || filters.selectedTurmas.has(student.turma)) &&
                 inRange(student.faltasB1, filters.b1.min, filters.b1.max) &&
                 inRange(student.faltasB2, filters.b2.min, filters.b2.max) &&
@@ -408,7 +579,8 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
     const activeFiltersCount = useMemo(() => {
         let count = 0;
         if (filters.selectedTurmas.size > 0) count++;
-        if (filters.selectedCiclos.size > 0) count++; // Contar filtro de ciclos
+        if (filters.selectedCiclos.size > 0) count++;
+        if (filters.selectedTurnos.size > 0) count++; // Contar filtro de turnos
 
         const ranges = [filters.b1, filters.b2, filters.b3, filters.b4, filters.totalFaltas, filters.percentualFaltas, filters.percentualFrequencia];
         ranges.forEach(range => {
@@ -417,6 +589,16 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
 
         return count;
     }, [filters]);
+
+    // Calcular estatísticas para o header
+    const stats = useMemo(() => {
+        const total = filteredData.length;
+        const totalGeral = data.length;
+        const excelentesCount = filteredData.filter(item => item.percentualFrequencia >= 95.0).length;
+        const criticalCount = filteredData.filter(item => item.percentualFrequencia < 75.0).length;
+
+        return { total, totalGeral, excelentesCount, criticalCount };
+    }, [filteredData, data]);
 
     return (
         <div className="w-full space-y-4">
@@ -433,8 +615,32 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
                                     Tabela de Frequência
                                 </CardTitle>
                                 <p className="text-sm text-gray-600">
-                                    {filteredData.length} de {data.length} estudantes
+                                    {stats.total} de {stats.totalGeral} estudantes
                                 </p>
+                            </div>
+                        </div>
+
+                        {/* Estatísticas rápidas no header */}
+                        <div className="flex items-center gap-4">
+                            <div
+                                className="text-center cursor-pointer hover:bg-green-100 rounded-lg p-2 transition-colors"
+                                onClick={applyFrequenciaExcelenteFilter}
+                                title="Clique para filtrar frequência excelente"
+                            >
+                                <div className="text-lg font-bold text-green-600">
+                                    {stats.excelentesCount}
+                                </div>
+                                <div className="text-xs text-gray-600">Freq. Excelente (≥95%)</div>
+                            </div>
+                            <div
+                                className="text-center cursor-pointer hover:bg-red-100 rounded-lg p-2 transition-colors"
+                                onClick={applyFrequenciaCriticaFilter}
+                                title="Clique para filtrar frequência crítica"
+                            >
+                                <div className="text-lg font-bold text-red-600">
+                                    {stats.criticalCount}
+                                </div>
+                                <div className="text-xs text-gray-600">Freq. Crítica (&lt;75%)</div>
                             </div>
                         </div>
 
@@ -472,15 +678,19 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
                 </CardHeader>
             </Card>
 
-            {/* Filtros com Tabs - agora com 4 abas */}
+            {/* Filtros com Tabs - agora com 5 abas */}
             {showFilters && (
                 <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
                     <CardContent className="p-4">
                         <Tabs defaultValue="ciclos" className="w-full">
-                            <TabsList className="grid w-full grid-cols-4 mb-4">
+                            <TabsList className="grid w-full grid-cols-5 mb-4">
                                 <TabsTrigger value="ciclos" className="flex items-center gap-2">
                                     <BookOpen className="h-4 w-4" />
                                     Ciclos
+                                </TabsTrigger>
+                                <TabsTrigger value="turnos" className="flex items-center gap-2">
+                                    <Clock className="h-4 w-4" />
+                                    Turnos
                                 </TabsTrigger>
                                 <TabsTrigger value="turmas" className="flex items-center gap-2">
                                     <Users className="h-4 w-4" />
@@ -500,6 +710,14 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
                                 <CicloSelector
                                     selectedCiclos={filters.selectedCiclos}
                                     onCicloChange={updateCicloFilter}
+                                    turmasData={uniqueTurmas}
+                                />
+                            </TabsContent>
+
+                            <TabsContent value="turnos" className="space-y-3">
+                                <TurnoSelector
+                                    selectedTurnos={filters.selectedTurnos}
+                                    onTurnoChange={updateTurnoFilter}
                                     turmasData={uniqueTurmas}
                                 />
                             </TabsContent>
