@@ -13,7 +13,8 @@ import {
     Users,
     Calendar,
     TrendingUp,
-    Search
+    Search,
+    BookOpen
 } from "lucide-react";
 
 interface StudentRecord {
@@ -40,6 +41,7 @@ interface RangeFilter {
 
 interface FilterState {
     selectedTurmas: Set<string>;
+    selectedCiclos: Set<string>; // Novo filtro
     b1: RangeFilter;
     b2: RangeFilter;
     b3: RangeFilter;
@@ -49,10 +51,32 @@ interface FilterState {
     percentualFrequencia: RangeFilter;
 }
 
+// Definição dos ciclos
+const CICLOS = {
+    'Alfabetização': { anos: ['1', '2', '3'], label: 'Ciclo de Alfabetização (1°, 2°, 3°)' },
+    'Interdisciplinar': { anos: ['4', '5', '6'], label: 'Ciclo Interdisciplinar (4°, 5°, 6°)' },
+    'Autoral': { anos: ['7', '8', '9'], label: 'Ciclo Autoral (7°, 8°, 9°)' }
+};
+
+// Função para determinar o ciclo baseado no ano da turma
+const getCicloFromTurma = (turma: string): string | null => {
+    const match = turma.match(/(\d+)[A-Z]+/);
+    if (!match) return null;
+
+    const ano = match[1];
+    for (const [ciclo, config] of Object.entries(CICLOS)) {
+        if (config.anos.includes(ano)) {
+            return ciclo;
+        }
+    }
+    return null;
+};
+
 // Hook personalizado para gerenciar filtros
 const useFilters = () => {
     const [filters, setFilters] = useState<FilterState>({
         selectedTurmas: new Set(),
+        selectedCiclos: new Set(), // Inicializar novo filtro
         b1: { min: "", max: "" },
         b2: { min: "", max: "" },
         b3: { min: "", max: "" },
@@ -73,7 +97,19 @@ const useFilters = () => {
         }));
     }, []);
 
-    const updateRangeFilter = useCallback((field: keyof Omit<FilterState, 'selectedTurmas'>, type: 'min' | 'max', value: string) => {
+    // Novo callback para filtro de ciclos
+    const updateCicloFilter = useCallback((ciclo: string) => {
+        setFilters(prev => ({
+            ...prev,
+            selectedCiclos: new Set(
+                prev.selectedCiclos.has(ciclo)
+                    ? [...prev.selectedCiclos].filter(c => c !== ciclo)
+                    : [...prev.selectedCiclos, ciclo]
+            )
+        }));
+    }, []);
+
+    const updateRangeFilter = useCallback((field: keyof Omit<FilterState, 'selectedTurmas' | 'selectedCiclos'>, type: 'min' | 'max', value: string) => {
         setFilters(prev => ({
             ...prev,
             [field]: {
@@ -86,6 +122,7 @@ const useFilters = () => {
     const resetFilters = useCallback(() => {
         setFilters({
             selectedTurmas: new Set(),
+            selectedCiclos: new Set(), // Reset do novo filtro
             b1: { min: "", max: "" },
             b2: { min: "", max: "" },
             b3: { min: "", max: "" },
@@ -96,7 +133,7 @@ const useFilters = () => {
         });
     }, []);
 
-    return { filters, updateTurmaFilter, updateRangeFilter, resetFilters };
+    return { filters, updateTurmaFilter, updateCicloFilter, updateRangeFilter, resetFilters };
 };
 
 // Componente para input de range
@@ -141,6 +178,96 @@ const RangeInput = ({
         {suffix && <span className="text-xs text-gray-500">{suffix}</span>}
     </div>
 );
+
+// Novo componente para seleção de ciclos
+const CicloSelector = ({
+    selectedCiclos,
+    onCicloChange,
+    turmasData
+}: {
+    selectedCiclos: Set<string>;
+    onCicloChange: (ciclo: string) => void;
+    turmasData: string[];
+}) => {
+    const cicloStats = useMemo(() => {
+        const stats: { [key: string]: { turmas: number; total: number } } = {};
+
+        Object.keys(CICLOS).forEach(ciclo => {
+            stats[ciclo] = { turmas: 0, total: 0 };
+        });
+
+        turmasData.forEach(turma => {
+            const ciclo = getCicloFromTurma(turma);
+            if (ciclo && stats[ciclo]) {
+                stats[ciclo].turmas++;
+            }
+        });
+
+        return stats;
+    }, [turmasData]);
+
+    return (
+        <div className="space-y-4">
+            <div className="text-sm text-gray-600 mb-3">
+                Selecione os ciclos educacionais para filtrar:
+            </div>
+
+            <div className="space-y-3">
+                {Object.entries(CICLOS).map(([ciclo, config]) => {
+                    const isSelected = selectedCiclos.has(ciclo);
+                    const stats = cicloStats[ciclo];
+
+                    return (
+                        <div
+                            key={ciclo}
+                            className={`p-3 rounded-lg border-2 transition-all cursor-pointer ${isSelected
+                                    ? 'border-blue-500 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                            onClick={() => onCicloChange(ciclo)}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-3">
+                                    <Checkbox
+                                        checked={isSelected}
+                                        onCheckedChange={() => onCicloChange(ciclo)}
+                                        className="h-4 w-4"
+                                    />
+                                    <div>
+                                        <Label className="text-sm font-medium cursor-pointer text-gray-900">
+                                            {config.label}
+                                        </Label>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Anos: {config.anos.join(', ')}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <Badge variant={isSelected ? "default" : "secondary"} className="text-xs">
+                                        {stats.turmas} turma{stats.turmas !== 1 ? 's' : ''}
+                                    </Badge>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {selectedCiclos.size > 0 && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="text-xs font-medium text-gray-700 mb-2">Ciclos selecionados:</div>
+                    <div className="flex flex-wrap gap-2">
+                        {Array.from(selectedCiclos).map(ciclo => (
+                            <Badge key={ciclo} variant="default" className="text-xs">
+                                {ciclo}
+                            </Badge>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 // Componente para seleção de turmas
 const TurmaSelector = ({
@@ -218,7 +345,7 @@ const TurmaSelector = ({
 };
 
 export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
-    const { filters, updateTurmaFilter, updateRangeFilter, resetFilters } = useFilters();
+    const { filters, updateTurmaFilter, updateCicloFilter, updateRangeFilter, resetFilters } = useFilters();
     const [showFilters, setShowFilters] = useState(false);
 
     const uniqueTurmas = useMemo(() => {
@@ -259,7 +386,13 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
                 return (minVal === null || value >= minVal) && (maxVal === null || value <= maxVal);
             };
 
+            // Verificar filtro de ciclo
+            const studentCiclo = getCicloFromTurma(student.turma);
+            const cicloMatch = filters.selectedCiclos.size === 0 ||
+                (studentCiclo && filters.selectedCiclos.has(studentCiclo));
+
             return (
+                cicloMatch &&
                 (filters.selectedTurmas.size === 0 || filters.selectedTurmas.has(student.turma)) &&
                 inRange(student.faltasB1, filters.b1.min, filters.b1.max) &&
                 inRange(student.faltasB2, filters.b2.min, filters.b2.max) &&
@@ -275,6 +408,7 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
     const activeFiltersCount = useMemo(() => {
         let count = 0;
         if (filters.selectedTurmas.size > 0) count++;
+        if (filters.selectedCiclos.size > 0) count++; // Contar filtro de ciclos
 
         const ranges = [filters.b1, filters.b2, filters.b3, filters.b4, filters.totalFaltas, filters.percentualFaltas, filters.percentualFrequencia];
         ranges.forEach(range => {
@@ -338,12 +472,16 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
                 </CardHeader>
             </Card>
 
-            {/* Filtros com Tabs */}
+            {/* Filtros com Tabs - agora com 4 abas */}
             {showFilters && (
                 <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
                     <CardContent className="p-4">
-                        <Tabs defaultValue="turmas" className="w-full">
-                            <TabsList className="grid w-full grid-cols-3 mb-4">
+                        <Tabs defaultValue="ciclos" className="w-full">
+                            <TabsList className="grid w-full grid-cols-4 mb-4">
+                                <TabsTrigger value="ciclos" className="flex items-center gap-2">
+                                    <BookOpen className="h-4 w-4" />
+                                    Ciclos
+                                </TabsTrigger>
                                 <TabsTrigger value="turmas" className="flex items-center gap-2">
                                     <Users className="h-4 w-4" />
                                     Turmas
@@ -357,6 +495,14 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
                                     Resumo
                                 </TabsTrigger>
                             </TabsList>
+
+                            <TabsContent value="ciclos" className="space-y-3">
+                                <CicloSelector
+                                    selectedCiclos={filters.selectedCiclos}
+                                    onCicloChange={updateCicloFilter}
+                                    turmasData={uniqueTurmas}
+                                />
+                            </TabsContent>
 
                             <TabsContent value="turmas" className="space-y-3">
                                 <TurmaSelector
