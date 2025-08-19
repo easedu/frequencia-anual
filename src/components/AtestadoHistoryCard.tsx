@@ -40,11 +40,14 @@ export default function AtestadoHistoryCard({
     setEditingAtestado,
     onDeleteAtestado,
 }: AtestadoHistoryCardProps) {
-    const formatDate = (dateString: string) => {
+        const formatDate = (dateString: string) => {
         if (!dateString) return dateString;
 
         try {
-            const date = new Date(dateString);
+            const [month, day, year] = dateString.split('/');
+            const formattedDate = `${year}-${month}-${day}`;
+
+            const date = new Date(formattedDate);
             if (isNaN(date.getTime())) {
                 return dateString;
             }
@@ -59,6 +62,7 @@ export default function AtestadoHistoryCard({
             return dateString;
         }
     };
+
 
     return (
         <>
