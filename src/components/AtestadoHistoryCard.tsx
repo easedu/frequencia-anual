@@ -40,14 +40,20 @@ export default function AtestadoHistoryCard({
     setEditingAtestado,
     onDeleteAtestado,
 }: AtestadoHistoryCardProps) {
-        const formatDate = (dateString: string) => {
+    const formatDate = (dateString: string) => {
         if (!dateString) return dateString;
 
         try {
-            const [month, day, year] = dateString.split('/');
-            const formattedDate = `${year}-${month}-${day}`;
+            const parts = dateString.split('/');
+            if (parts.length !== 3) {
+                return dateString;
+            }
 
-            const date = new Date(formattedDate);
+            // CORREÇÃO: Usar o construtor numérico para evitar problemas de fuso horário (UTC).
+            // O mês no construtor Date() é 0-indexado (0=janeiro, 1=fevereiro, etc.), por isso subtraímos 1.
+            const [day, month, year] = parts.map(Number);
+            const date = new Date(year, month - 1, day);
+
             if (isNaN(date.getTime())) {
                 return dateString;
             }
