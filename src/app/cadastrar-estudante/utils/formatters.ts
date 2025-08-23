@@ -17,16 +17,43 @@ export const cleanTelefone = (telefone: string): string => {
     return telefone.replace(/\D/g, "");
 };
 
+// Função melhorada para formatar CEP
 export const formatCep = (cep: string): string => {
+    // Remove tudo que não é dígito
     const digits = cep.replace(/\D/g, "");
-    if (digits.length <= 5) {
-        return digits;
+
+    // Limita a 8 dígitos
+    const limitedDigits = digits.slice(0, 8);
+
+    if (limitedDigits.length === 0) {
+        return "";
+    } else if (limitedDigits.length <= 5) {
+        return limitedDigits;
+    } else {
+        return `${limitedDigits.slice(0, 5)}-${limitedDigits.slice(5)}`;
     }
-    return `${digits.slice(0, 5)}-${digits.slice(5, 8)}`;
 };
 
 export const cleanCep = (cep: string): string => {
-    return cep.replace(/\D/g, "");
+    // Remove tudo que não é dígito e limita a 8 caracteres
+    return cep.replace(/\D/g, "").slice(0, 8);
+};
+
+// Função para validar CEP
+export const isValidCep = (cep: string): boolean => {
+    const cleanedCep = cleanCep(cep);
+
+    // Deve ter exatamente 8 dígitos
+    if (cleanedCep.length !== 8) {
+        return false;
+    }
+
+    // Não pode ser uma sequência de números iguais (00000000, 11111111, etc.)
+    if (/^(\d)\1{7}$/.test(cleanedCep)) {
+        return false;
+    }
+
+    return true;
 };
 
 export const formatDataNascimento = (data: string): string => {

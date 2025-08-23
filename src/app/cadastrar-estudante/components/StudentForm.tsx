@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback, memo, useMemo } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import Select, { MultiValue } from 'react-select';
@@ -14,11 +14,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { formSchema } from '../constants/formSchema';
 import { tipoDeficienciaOptions, atendimentoSaudeOptions, justificativaAveOptions } from '../constants/selectOptions';
 import { customSelectStyles } from '../constants/selectStyles';
-import { formatTelefone, cleanTelefone, cleanCep, formatDataNascimento, cleanDataNascimento } from '../utils/formatters';
+import { formatTelefone, cleanTelefone, formatCep, cleanCep, formatDataNascimento, cleanDataNascimento } from '../utils/formatters';
 import { fetchAddressFromCep } from '../utils/api';
 import { SelectOption, Estudante } from '../interfaces';
 import { toast } from 'sonner';
-
 
 interface StudentFormProps {
     form: UseFormReturn<z.infer<typeof formSchema>>;
@@ -30,7 +29,129 @@ interface StudentFormProps {
     isEditing: boolean;
 }
 
-export function StudentForm({
+// Componente memoizado para o cabeçalho dos campos
+const ModernFormField = memo(({
+    children,
+    title,
+    description,
+    icon: Icon,
+    required = false
+}: {
+    children: React.ReactNode;
+    title: string;
+    description?: string;
+    icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+    required?: boolean;
+}) => (
+    <div className="space-y-4">
+        <div className="flex items-center space-x-3">
+            {Icon && (
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                    <Icon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+            )}
+            <div>
+                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center">
+                    {title}
+                    {required && <span className="text-red-500 ml-1">*</span>}
+                </h3>
+                {description && (
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                        {description}
+                    </p>
+                )}
+            </div>
+        </div>
+        <div className="bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
+            {children}
+        </div>
+    </div>
+));
+
+ModernFormField.displayName = 'ModernFormField';
+
+// Componente memoizado para os campos de contato
+const ContactField = memo(({
+    index,
+    form,
+    onRemove,
+    canRemove
+}: {
+    index: number;
+    form: UseFormReturn<z.infer<typeof formSchema>>;
+    onRemove: () => void;
+    canRemove: boolean;
+}) => (
+    <div className="bg-white/60 dark:bg-slate-700/60 rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
+        <div className="flex items-center justify-between mb-4">
+            <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+                Contato {index + 1}
+            </h4>
+            {canRemove && (
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={onRemove}
+                    className="text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl p-2"
+                >
+                    <Trash2 className="w-4 h-4" />
+                </Button>
+            )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+                control={form.control}
+                name={`contatos.${index}.nome`}
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                            Nome do Contato
+                        </FormLabel>
+                        <FormControl>
+                            <Input
+                                {...field}
+                                placeholder="Nome completo"
+                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                            />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+
+            <FormField
+                control={form.control}
+                name={`contatos.${index}.telefone`}
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                            Telefone
+                        </FormLabel>
+                        <FormControl>
+                            <Input
+                                placeholder="(11) 99999-9999"
+                                value={field.value ? formatTelefone(field.value) : ""}
+                                onChange={(e) => {
+                                    const inputValue = e.target.value;
+                                    const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
+                                    field.onChange(cleanedValue);
+                                }}
+                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                            />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+        </div>
+    </div>
+));
+
+ContactField.displayName = 'ContactField';
+
+export const StudentForm = memo(function StudentForm({
     form,
     handleFormSubmit,
     handleCancel,
@@ -40,85 +161,66 @@ export function StudentForm({
 }: StudentFormProps) {
     const cep = form.watch("endereco.cep");
     const possuiEstagiario = form.watch("deficiencia.possuiEstagiario");
+    const contatosWatched = form.watch("contatos");
+    
+    // Memoizar contatos para evitar re-criações desnecessárias
+    const contatos = useMemo(() => contatosWatched || [], [contatosWatched]);
 
+    // Memoizar o handler de busca de CEP
+    const handleCepChange = useCallback((cepValue: string) => {
+        setCepChangedManually(true);
+        
+        const cleanedCep = cleanCep(cepValue);
+        if (cleanedCep.length === 8) {
+            fetchAddressFromCep(cleanedCep).then((address) => {
+                if (address) {
+                    form.setValue("endereco.rua", address.rua);
+                    form.setValue("endereco.bairro", address.bairro);
+                    form.setValue("endereco.cidade", address.cidade);
+                    form.setValue("endereco.estado", address.estado);
+                    form.setValue("endereco.complemento", address.complemento);
+                    toast.success("Endereço preenchido automaticamente!");
+                } else {
+                    toast.error("CEP não encontrado ou inválido.");
+                }
+            });
+        } else if (cleanedCep.length > 0 && cleanedCep.length < 8) {
+            // Limpar campos quando CEP está incompleto
+            form.setValue("endereco.rua", "");
+            form.setValue("endereco.numero", "");
+            form.setValue("endereco.bairro", "");
+            form.setValue("endereco.cidade", "");
+            form.setValue("endereco.estado", "");
+            form.setValue("endereco.complemento", "");
+        }
+    }, [form, setCepChangedManually]);
+
+    // Effect para buscar CEP
     useEffect(() => {
         if (cep && cepChangedManually) {
-            const cleanedCep = cleanCep(cep);
-            if (cleanedCep.length === 8) {
-                fetchAddressFromCep(cleanedCep).then((address) => {
-                    if (address) {
-                        form.setValue("endereco.rua", address.rua);
-                        form.setValue("endereco.bairro", address.bairro);
-                        form.setValue("endereco.cidade", address.cidade);
-                        form.setValue("endereco.estado", address.estado);
-                        form.setValue("endereco.complemento", address.complemento);
-                        toast.success("Endereço preenchido automaticamente!");
-                    } else {
-                        toast.error("CEP não encontrado ou inválido.");
-                    }
-                });
-            }
+            handleCepChange(cep);
         }
-    }, [form, cep, cepChangedManually]);
+    }, [cep, cepChangedManually, handleCepChange]);
 
-    useEffect(() => {
-        if (cep && cepChangedManually) {
-            const cleanedCep = cleanCep(cep);
-            if (cleanedCep.length > 0 && cleanedCep.length < 8) {
-                form.setValue("endereco.rua", "");
-                form.setValue("endereco.numero", "");
-                form.setValue("endereco.bairro", "");
-                form.setValue("endereco.cidade", "");
-                form.setValue("endereco.estado", "");
-                form.setValue("endereco.complemento", "");
-            }
-        }
-    }, [form, cep, cepChangedManually]);
-
+    // Effect para gerenciar campos de estagiário
     useEffect(() => {
         if (!possuiEstagiario) {
             form.setValue("deficiencia.nomeEstagiario", "NÃO NECESSITA");
             form.setValue("deficiencia.justificativaEstagiario", "SEM BARREIRAS");
         }
-    }, [form, possuiEstagiario]);
+    }, [possuiEstagiario, form]);
 
-    const ModernFormField = ({
-        children,
-        title,
-        description,
-        icon: Icon,
-        required = false
-    }: {
-        children: React.ReactNode;
-        title: string;
-        description?: string;
-        icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-        required?: boolean;
-    }) => (
-        <div className="space-y-4">
-            <div className="flex items-center space-x-3">
-                {Icon && (
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                        <Icon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                )}
-                <div>
-                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center">
-                        {title}
-                        {required && <span className="text-red-500 ml-1">*</span>}
-                    </h3>
-                    {description && (
-                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                            {description}
-                        </p>
-                    )}
-                </div>
-            </div>
-            <div className="bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
-                {children}
-            </div>
-        </div>
-    );
+    // Memoizar handlers de contato
+    const addContact = useCallback(() => {
+        const currentContatos = form.getValues("contatos") || [];
+        form.setValue("contatos", [...currentContatos, { nome: "", telefone: "" }]);
+    }, [form]);
+
+    const removeContact = useCallback((index: number) => {
+        const currentContatos = form.getValues("contatos") || [];
+        const newContatos = currentContatos.filter((_, i) => i !== index);
+        form.setValue("contatos", newContatos);
+    }, [form]);
 
     return (
         <Form {...form}>
@@ -361,10 +463,12 @@ export function StudentForm({
                                             </FormLabel>
                                             <FormControl>
                                                 <Input
-                                                    {...field}
                                                     placeholder="00000-000"
+                                                    value={field.value ? formatCep(field.value) : ""}
                                                     onChange={(e) => {
-                                                        field.onChange(e);
+                                                        const inputValue = e.target.value;
+                                                        const cleanedValue = cleanCep(inputValue);
+                                                        field.onChange(cleanedValue);
                                                         setCepChangedManually(true);
                                                     }}
                                                     className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
@@ -511,84 +615,20 @@ export function StudentForm({
                             icon={Phone}
                         >
                             <div className="space-y-6">
-                                {form.watch("contatos")?.map((_, index) => (
-                                    <div key={index} className="bg-white/60 dark:bg-slate-700/60 rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
-                                                Contato {index + 1}
-                                            </h4>
-                                            {index > 0 && (
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        const newContatos = form.getValues("contatos")?.filter((_, i) => i !== index);
-                                                        form.setValue("contatos", newContatos || []);
-                                                    }}
-                                                    className="text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl p-2"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
-                                            )}
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <FormField
-                                                control={form.control}
-                                                name={`contatos.${index}.nome`}
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
-                                                            Nome do Contato
-                                                        </FormLabel>
-                                                        <FormControl>
-                                                            <Input
-                                                                {...field}
-                                                                placeholder="Nome completo"
-                                                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
-                                                            />
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-
-                                            <FormField
-                                                control={form.control}
-                                                name={`contatos.${index}.telefone`}
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
-                                                            Telefone
-                                                        </FormLabel>
-                                                        <FormControl>
-                                                            <Input
-                                                                placeholder="(11) 99999-9999"
-                                                                value={field.value ? formatTelefone(field.value) : ""}
-                                                                onChange={(e) => {
-                                                                    const inputValue = e.target.value;
-                                                                    const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
-                                                                    field.onChange(cleanedValue);
-                                                                }}
-                                                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
-                                                            />
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-                                        </div>
-                                    </div>
+                                {contatos.map((_, index) => (
+                                    <ContactField
+                                        key={index}
+                                        index={index}
+                                        form={form}
+                                        onRemove={() => removeContact(index)}
+                                        canRemove={index > 0}
+                                    />
                                 ))}
 
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    onClick={() => {
-                                        const currentContatos = form.getValues("contatos") || [];
-                                        form.setValue("contatos", [...currentContatos, { nome: "", telefone: "" }]);
-                                    }}
+                                    onClick={addContact}
                                     className="w-full h-12 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all duration-200"
                                 >
                                     <Plus className="w-5 h-5 mr-2" />
@@ -775,7 +815,7 @@ export function StudentForm({
                                                                             <SelectValue placeholder="Selecione" />
                                                                         </SelectTrigger>
                                                                         <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
-                                                                            <SelectItem value="INSTITUTO JÔ CLEMENTE">INSTITUTO JÔ CLEMENTE</SelectItem>
+                                                                            <SelectItem value="INSTITUTO JÓ CLEMENTE">INSTITUTO JÓ CLEMENTE</SelectItem>
                                                                             <SelectItem value="CLIFAK">CLIFAK</SelectItem>
                                                                             <SelectItem value="CEJOLE">CEJOLE</SelectItem>
                                                                             <SelectItem value="CCA">CCA</SelectItem>
@@ -1073,4 +1113,4 @@ export function StudentForm({
             </form>
         </Form>
     );
-}
+});

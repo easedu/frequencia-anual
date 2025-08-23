@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,7 +9,7 @@ import { Users, Plus } from "lucide-react";
 
 import { formSchema } from "./constants/formSchema";
 import { Estudante } from "./interfaces";
-import { cleanTelefone, cleanCep, formatTelefone, cleanDataNascimento } from "./utils/formatters";
+import { cleanTelefone, cleanCep, cleanDataNascimento } from "./utils/formatters";
 import { useStudents } from "@/hooks/useStudents";
 import { StudentFilters } from "./components/StudentFilters";
 import { StudentTable } from "./components/StudentTable";
@@ -61,6 +61,7 @@ export default function CadastrarEstudantePage() {
         },
     });
 
+    // Estados dos filtros
     const [turmaFiltro, setTurmaFiltro] = useState<string>("");
     const [nomeFiltro, setNomeFiltro] = useState<string>("");
     const [statusFiltro, setStatusFiltro] = useState<string>("");
@@ -72,6 +73,8 @@ export default function CadastrarEstudantePage() {
     const [dataNascimentoFiltro, setDataNascimentoFiltro] = useState<string>("");
     const [comDeficienciaFiltro, setComDeficienciaFiltro] = useState<string>("");
     const [matriculaFiltro, setMatriculaFiltro] = useState<string>("");
+
+    // Estados da paginação e tabela
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
     const [sortColumn, setSortColumn] = useState<string>("");
@@ -91,11 +94,14 @@ export default function CadastrarEstudantePage() {
             "actions",
         ])
     );
+
+    // Estados do modal
     const [cepChangedManually, setCepChangedManually] = useState<boolean>(false);
     const [editingEstudante, setEditingEstudante] = useState<Estudante | null>(null);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [openModal, setOpenModal] = useState<boolean>(false);
 
+    // Effect para resetar formulário quando editingEstudante muda
     useEffect(() => {
         if (editingEstudante) {
             console.log("Preenchendo formulário com editingEstudante:", editingEstudante);
@@ -140,19 +146,10 @@ export default function CadastrarEstudantePage() {
         }
     }, [editingEstudante, form]);
 
+    // Effect para debug e error handling
     useEffect(() => {
         if (!loading && students.length > 0) {
             console.log("Students data:", students);
-            console.log("Primeiro estudante:", students[0]);
-            console.log("Contém bolsaFamilia?", "bolsaFamilia" in students[0]);
-            console.log("Contém contatos?", "contatos" in students[0]);
-            console.log("Contém email?", "email" in students[0]);
-            console.log("Contém endereco?", "endereco" in students[0]);
-            console.log("Contém dataNascimento?", "dataNascimento" in students[0]);
-            console.log("Contém turno?", "turno" in students[0]);
-            console.log("Contém deficiencia?", "deficiencia" in students[0]);
-            console.log("Contém matricula?", "matricula" in students[0]);
-            console.log("Contém provaSaoPaulo?", "provaSaoPaulo" in students[0]);
         }
         if (error) {
             console.error("Erro no hook useStudents:", error);
@@ -160,27 +157,28 @@ export default function CadastrarEstudantePage() {
         }
     }, [students, loading, error]);
 
-    const handleSort = (column: string) => {
+    // Handlers memoizados
+    const handleSort = useCallback((column: string) => {
         if (sortColumn === column) {
             setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
         } else {
             setSortColumn(column);
             setSortDirection("asc");
         }
-    };
+    }, [sortColumn]);
 
-    const handleRecordsPerPageChange = (value: string) => {
+    const handleRecordsPerPageChange = useCallback((value: string) => {
         setRecordsPerPage(Number(value));
         setCurrentPage(1);
-    };
+    }, []);
 
-    const handlePageChange = (page: number) => {
+    const handlePageChange = useCallback((page: number, totalPages: number) => {
         if (page >= 1 && page <= totalPages) {
             setCurrentPage(page);
         }
-    };
+    }, []);
 
-    const handleFormSubmit = async (data: z.infer<typeof formSchema>) => {
+    const handleFormSubmit = useCallback(async (data: z.infer<typeof formSchema>) => {
         if (!editingEstudante) return;
 
         const newTurma = data.turma.toUpperCase();
@@ -242,7 +240,6 @@ export default function CadastrarEstudantePage() {
                     complemento: data.endereco.complemento?.trim() || "",
                 }
                 : undefined,
-            // Preservar dados existentes da Prova São Paulo
             provaSaoPaulo: editingEstudante.provaSaoPaulo || [],
         };
 
@@ -254,10 +251,12 @@ export default function CadastrarEstudantePage() {
         } else {
             newStudents.push(student);
         }
+
         setStudents(newStudents);
         setEditingEstudante(null);
         setEditingIndex(null);
         setOpenModal(false);
+
         try {
             await saveStudents(newStudents);
             toast.success("Registro salvo com sucesso!");
@@ -265,59 +264,83 @@ export default function CadastrarEstudantePage() {
             console.error("Erro ao salvar no Firebase:", error);
             toast.error("Erro ao salvar o registro no Firebase.");
         }
-    };
+    }, [editingEstudante, students, editingIndex, saveStudents, setStudents]);
 
-    const handleCancel = () => {
+    const handleCancel = useCallback(() => {
         setEditingEstudante(null);
         setEditingIndex(null);
         setOpenModal(false);
         setCepChangedManually(false);
         form.reset();
-    };
+    }, [form]);
 
+    const handleNewStudent = useCallback(() => {
+        setEditingEstudante({
+            estudanteId: "",
+            turma: "",
+            nome: "",
+            matricula: "",
+            status: "ATIVO",
+            turno: "MANHÃ",
+            bolsaFamilia: "NÃO",
+            contatos: [{ nome: "", telefone: "" }],
+            email: "",
+            dataNascimento: "",
+            endereco: {
+                rua: "",
+                numero: "",
+                bairro: "",
+                cidade: "",
+                estado: "",
+                cep: "",
+                complemento: "",
+            },
+            deficiencia: {
+                estudanteComDeficiencia: false,
+                tipoDeficiencia: [],
+                possuiBarreiras: true,
+                aee: undefined,
+                instituicao: undefined,
+                horarioAtendimento: "NENHUM",
+                atendimentoSaude: [],
+                possuiEstagiario: false,
+                nomeEstagiario: "NÃO NECESSITA",
+                justificativaEstagiario: "SEM BARREIRAS",
+                ave: false,
+                nomeAve: "",
+                justificativaAve: [],
+            },
+            provaSaoPaulo: [],
+        });
+        setEditingIndex(null);
+        setOpenModal(true);
+        setCepChangedManually(false);
+    }, []);
+
+    // Lógica de filtragem e ordenação
     const estudantesFiltrados = students.filter((est) => {
-        const matchTurma =
-            turmaFiltro === "" || turmaFiltro === "all" || est.turma === turmaFiltro;
-        const matchNome =
-            nomeFiltro === "" ||
-            est.nome.toLowerCase().includes(nomeFiltro.toLowerCase());
-        const matchMatricula =
-            matriculaFiltro === "" ||
-            (est.matricula?.toLowerCase().includes(matriculaFiltro.toLowerCase()) ?? false);
-        const matchStatus =
-            statusFiltro === "" || statusFiltro === "all" || est.status === statusFiltro;
-        const matchTurno =
-            turnoFiltro === "" || turnoFiltro === "all" || est.turno === turnoFiltro;
-        const matchBolsaFamilia =
-            bolsaFamiliaFiltro === "" ||
-            bolsaFamiliaFiltro === "all" ||
-            est.bolsaFamilia === bolsaFamiliaFiltro;
-        const matchContato =
-            contatoFiltro === "" ||
-            (est.contatos?.some(
-                (contato) =>
-                    contato.nome.toLowerCase().includes(contatoFiltro.toLowerCase()) ||
-                    formatTelefone(contato.telefone).includes(contatoFiltro)
-            ) ?? false);
-        const matchEmail =
-            emailFiltro === "" ||
-            (est.email?.toLowerCase().includes(emailFiltro.toLowerCase()) ?? false);
-        const matchEndereco =
-            enderecoFiltro === "" ||
-            (est.endereco
-                ? `${est.endereco.rua} ${est.endereco.numero} ${est.endereco.bairro} ${est.endereco.cidade} ${est.endereco.estado} ${est.endereco.cep} ${est.endereco.complemento}`
-                    .toLowerCase()
-                    .includes(enderecoFiltro.toLowerCase())
-                : false);
-        const matchDataNascimento =
-            dataNascimentoFiltro === "" ||
-            (est.dataNascimento?.includes(cleanDataNascimento(dataNascimentoFiltro)) ?? false);
-        const matchComDeficiencia =
-            comDeficienciaFiltro === "" ||
-            comDeficienciaFiltro === "all" ||
-            (est.deficiencia?.estudanteComDeficiencia
-                ? comDeficienciaFiltro === "SIM"
-                : comDeficienciaFiltro === "NÃO");
+        const matchTurma = turmaFiltro === "" || turmaFiltro === "all" || est.turma === turmaFiltro;
+        const matchNome = nomeFiltro === "" || est.nome.toLowerCase().includes(nomeFiltro.toLowerCase());
+        const matchMatricula = matriculaFiltro === "" || (est.matricula?.toLowerCase().includes(matriculaFiltro.toLowerCase()) ?? false);
+        const matchStatus = statusFiltro === "" || statusFiltro === "all" || est.status === statusFiltro;
+        const matchTurno = turnoFiltro === "" || turnoFiltro === "all" || est.turno === turnoFiltro;
+        const matchBolsaFamilia = bolsaFamiliaFiltro === "" || bolsaFamiliaFiltro === "all" || est.bolsaFamilia === bolsaFamiliaFiltro;
+        const matchContato = contatoFiltro === "" || (est.contatos?.some(
+            (contato) =>
+                contato.nome.toLowerCase().includes(contatoFiltro.toLowerCase()) ||
+                contato.telefone.includes(contatoFiltro)
+        ) ?? false);
+        const matchEmail = emailFiltro === "" || (est.email?.toLowerCase().includes(emailFiltro.toLowerCase()) ?? false);
+        const matchEndereco = enderecoFiltro === "" || (est.endereco
+            ? `${est.endereco.rua} ${est.endereco.numero} ${est.endereco.bairro} ${est.endereco.cidade} ${est.endereco.estado} ${est.endereco.cep} ${est.endereco.complemento}`
+                .toLowerCase()
+                .includes(enderecoFiltro.toLowerCase())
+            : false);
+        const matchDataNascimento = dataNascimentoFiltro === "" || (est.dataNascimento?.includes(cleanDataNascimento(dataNascimentoFiltro)) ?? false);
+        const matchComDeficiencia = comDeficienciaFiltro === "" || comDeficienciaFiltro === "all" || (est.deficiencia?.estudanteComDeficiencia
+            ? comDeficienciaFiltro === "SIM"
+            : comDeficienciaFiltro === "NÃO");
+
         return (
             matchTurma &&
             matchNome &&
@@ -333,66 +356,50 @@ export default function CadastrarEstudantePage() {
         );
     });
 
-    const sortData = (data: Estudante[]) => {
+    const sortData = useCallback((data: Estudante[]) => {
         if (sortColumn) {
             return [...data].sort((a, b) => {
-                if (sortColumn === "contatos") {
-                    const aValue =
-                        a.contatos && a.contatos.length > 0
-                            ? a.contatos[0].nome.toLowerCase()
-                            : "";
-                    const bValue =
-                        b.contatos && b.contatos.length > 0
-                            ? b.contatos[0].nome.toLowerCase()
-                            : "";
-                    return sortDirection === "asc"
-                        ? aValue.localeCompare(bValue)
-                        : bValue.localeCompare(aValue);
+                let aValue = "";
+                let bValue = "";
+
+                switch (sortColumn) {
+                    case "contatos":
+                        aValue = a.contatos && a.contatos.length > 0 ? a.contatos[0].nome.toLowerCase() : "";
+                        bValue = b.contatos && b.contatos.length > 0 ? b.contatos[0].nome.toLowerCase() : "";
+                        break;
+                    case "email":
+                        aValue = a.email?.toLowerCase() || "";
+                        bValue = b.email?.toLowerCase() || "";
+                        break;
+                    case "matricula":
+                        aValue = a.matricula?.toLowerCase() || "";
+                        bValue = b.matricula?.toLowerCase() || "";
+                        break;
+                    case "endereco":
+                        aValue = a.endereco?.rua.toLowerCase() || "";
+                        bValue = b.endereco?.rua.toLowerCase() || "";
+                        break;
+                    case "dataNascimento":
+                        aValue = a.dataNascimento || "";
+                        bValue = b.dataNascimento || "";
+                        break;
+                    case "deficiencia":
+                        aValue = a.deficiencia?.tipoDeficiencia?.join(", ")?.toLowerCase() || "";
+                        bValue = b.deficiencia?.tipoDeficiencia?.join(", ")?.toLowerCase() || "";
+                        break;
+                    default:
+                        aValue = (a[sortColumn as keyof Estudante] as string)?.toLowerCase() || "";
+                        bValue = (b[sortColumn as keyof Estudante] as string)?.toLowerCase() || "";
+                        break;
                 }
-                if (sortColumn === "email") {
-                    const aValue = a.email?.toLowerCase() || "";
-                    const bValue = b.email?.toLowerCase() || "";
-                    return sortDirection === "asc"
-                        ? aValue.localeCompare(bValue)
-                        : bValue.localeCompare(aValue);
-                }
-                if (sortColumn === "matricula") {
-                    const aValue = a.matricula?.toLowerCase() || "";
-                    const bValue = b.matricula?.toLowerCase() || "";
-                    return sortDirection === "asc"
-                        ? aValue.localeCompare(bValue)
-                        : bValue.localeCompare(aValue);
-                }
-                if (sortColumn === "endereco") {
-                    const aValue = a.endereco?.rua.toLowerCase() || "";
-                    const bValue = b.endereco?.rua.toLowerCase() || "";
-                    return sortDirection === "asc"
-                        ? aValue.localeCompare(bValue)
-                        : bValue.localeCompare(aValue);
-                }
-                if (sortColumn === "dataNascimento") {
-                    const aValue = a.dataNascimento || "";
-                    const bValue = b.dataNascimento || "";
-                    return sortDirection === "asc"
-                        ? aValue.localeCompare(bValue)
-                        : bValue.localeCompare(aValue);
-                }
-                if (sortColumn === "deficiencia") {
-                    const aValue = a.deficiencia?.tipoDeficiencia?.join(", ")?.toLowerCase() || "";
-                    const bValue = b.deficiencia?.tipoDeficiencia?.join(", ")?.toLowerCase() || "";
-                    return sortDirection === "asc"
-                        ? aValue.localeCompare(bValue)
-                        : bValue.localeCompare(aValue);
-                }
-                const aValue = (a[sortColumn as keyof Estudante] as string)?.toLowerCase() || "";
-                const bValue = (b[sortColumn as keyof Estudante] as string)?.toLowerCase() || "";
+
                 return sortDirection === "asc"
                     ? aValue.localeCompare(bValue)
                     : bValue.localeCompare(aValue);
             });
         }
         return data;
-    };
+    }, [sortColumn, sortDirection]);
 
     const sortedData = sortData(estudantesFiltrados);
     const totalRecords = sortedData.length;
@@ -400,12 +407,6 @@ export default function CadastrarEstudantePage() {
     const indexOfLastRecord = currentPage * recordsPerPage;
     const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
     const currentRecords = sortedData.slice(indexOfFirstRecord, indexOfLastRecord);
-
-    console.log("Total de registros:", totalRecords);
-    console.log("Páginas totais:", totalPages);
-    console.log("Página atual:", currentPage);
-    console.log("Índices:", { indexOfFirstRecord, indexOfLastRecord });
-    console.log("Registros atuais:", currentRecords);
 
     if (loading) {
         return (
@@ -456,48 +457,7 @@ export default function CadastrarEstudantePage() {
                             <Button
                                 size="lg"
                                 className="bg-white/20 hover:bg-white/30 text-white border-white/30 hover:border-white/40 backdrop-blur-sm transition-all duration-300 shadow-lg hover:shadow-xl px-8 py-6 text-lg rounded-2xl"
-                                onClick={() => {
-                                    setEditingEstudante({
-                                        estudanteId: "",
-                                        turma: "",
-                                        nome: "",
-                                        matricula: "",
-                                        status: "ATIVO",
-                                        turno: "MANHÃ",
-                                        bolsaFamilia: "NÃO",
-                                        contatos: [{ nome: "", telefone: "" }],
-                                        email: "",
-                                        dataNascimento: "",
-                                        endereco: {
-                                            rua: "",
-                                            numero: "",
-                                            bairro: "",
-                                            cidade: "",
-                                            estado: "",
-                                            cep: "",
-                                            complemento: "",
-                                        },
-                                        deficiencia: {
-                                            estudanteComDeficiencia: false,
-                                            tipoDeficiencia: [],
-                                            possuiBarreiras: true,
-                                            aee: undefined,
-                                            instituicao: undefined,
-                                            horarioAtendimento: "NENHUM",
-                                            atendimentoSaude: [],
-                                            possuiEstagiario: false,
-                                            nomeEstagiario: "NÃO NECESSITA",
-                                            justificativaEstagiario: "SEM BARREIRAS",
-                                            ave: false,
-                                            nomeAve: "",
-                                            justificativaAve: [],
-                                        },
-                                        provaSaoPaulo: [],
-                                    });
-                                    setEditingIndex(null);
-                                    setOpenModal(true);
-                                    setCepChangedManually(false);
-                                }}
+                                onClick={handleNewStudent}
                             >
                                 <Plus className="w-6 h-6 mr-3" />
                                 Novo Estudante
@@ -508,7 +468,7 @@ export default function CadastrarEstudantePage() {
 
                 {/* Content Grid */}
                 <div className="space-y-8">
-                    {/*  Filters */}
+                    {/* Filters */}
                     <StudentFilters
                         students={students}
                         turmaFiltro={turmaFiltro}
@@ -537,7 +497,7 @@ export default function CadastrarEstudantePage() {
                         setVisibleColumns={setVisibleColumns}
                     />
 
-                    {/*  Table */}
+                    {/* Table */}
                     <StudentTable
                         currentRecords={currentRecords}
                         visibleColumns={visibleColumns}
@@ -550,21 +510,21 @@ export default function CadastrarEstudantePage() {
                         students={students}
                     />
 
-                    {/*  Pagination */}
+                    {/* Pagination */}
                     {totalRecords > 0 && (
                         <StudentPagination
                             currentPage={currentPage}
                             totalRecords={totalRecords}
                             recordsPerPage={recordsPerPage}
                             totalPages={totalPages}
-                            handlePageChange={handlePageChange}
+                            handlePageChange={(page) => handlePageChange(page, totalPages)}
                             handleRecordsPerPageChange={handleRecordsPerPageChange}
                         />
                     )}
                 </div>
             </div>
 
-            {/*  Dialog Modal */}
+            {/* Dialog Modal */}
             <StudentDialog
                 openModal={openModal}
                 setOpenModal={setOpenModal}
