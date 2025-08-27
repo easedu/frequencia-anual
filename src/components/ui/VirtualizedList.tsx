@@ -15,6 +15,7 @@ interface VirtualizedListProps<T> {
   items: T[];
   itemHeight: number;
   height: number;
+  width?: number | string;
   renderItem: (props: { index: number; style: React.CSSProperties; data: T[] }) => React.ReactElement;
   overscan?: number;
   onItemsRendered?: (props: { visibleStartIndex: number; visibleStopIndex: number }) => void;
@@ -33,6 +34,7 @@ export function VirtualizedList<T>({
   items,
   itemHeight = UI_CONFIG.VIRTUAL_ITEM_HEIGHT,
   height,
+  width = '100%',
   renderItem,
   overscan = 5,
   onItemsRendered,
@@ -97,6 +99,7 @@ export function VirtualizedList<T>({
       <List
         ref={listRef}
         height={height}
+        width={width}
         itemCount={filteredItems.length}
         itemSize={itemHeight}
         itemData={filteredItems}
@@ -122,6 +125,7 @@ export function VariableSizeVirtualizedList<T>({
   items,
   getItemSize,
   height,
+  width = '100%',
   renderItem,
   overscan = 5,
   onItemsRendered,
@@ -171,6 +175,7 @@ export function VariableSizeVirtualizedList<T>({
       <VariableSizeList
         ref={listRef}
         height={height}
+        width={width}
         itemCount={filteredItems.length}
         itemSize={getItemSize}
         itemData={filteredItems}
