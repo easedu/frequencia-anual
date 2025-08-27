@@ -272,6 +272,13 @@ export default function StudentProfilePage() {
         }
     }, [selectedStudentId, fetchStudentData, bimesterDates]);
 
+    // Função para recarregar dados quando uma falta é removida
+    const handleAbsenceDeleted = useCallback(async () => {
+        if (selectedStudentId) {
+            await fetchStudentData(selectedStudentId);
+        }
+    }, [selectedStudentId, fetchStudentData]);
+
     const handleAddInteraction = async (): Promise<void> => {
         if (!selectedStudentId || !interactionType || !interactionDate || !interactionDescription) {
             toast.error("Preencha todos os campos para adicionar uma interação.");
@@ -762,7 +769,14 @@ export default function StudentProfilePage() {
                         <FrequencyAllAbsencesCard studentRecord={studentRecord} />
                         <FrequencyNoJustifiedCard studentRecordWithoutJustified={studentRecordWithoutJustified} />
                     </div>
-                    <RegisteredAbsencesCard absences={absences} atestados={atestados} bimesterDates={bimesterDates} />
+                    <RegisteredAbsencesCard
+                        absences={absences}
+                        atestados={atestados}
+                        bimesterDates={bimesterDates}
+                        userRole={userRole}
+                        onAbsenceDeleted={handleAbsenceDeleted}
+                        selectedStudentId={selectedStudentId}
+                    />
                     <RegisterAtestadoCard
                         atestadoStartDate={atestadoStartDate}
                         atestadoDays={atestadoDays}
