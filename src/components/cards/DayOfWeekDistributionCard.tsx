@@ -7,6 +7,8 @@ import { BarChart, Bar, CartesianGrid, XAxis, Cell, ResponsiveContainer } from "
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/firebase.config";
 import { parseDate, getBimesterByDate, formatFirebaseDate } from "@/utils/attendanceUtils";
+import { logger } from "@/utils/logger";
+import { FIREBASE_PATHS } from "@/config/constants";
 import {
     Calendar,
     TrendingUp,
@@ -191,11 +193,12 @@ export default function DayOfWeekDistributionCard({
     });
     const [selectedTurmaDay, setSelectedTurmaDay] = useState<string | null>(null);
 
-    const dayOfWeekStats = useMemo(() => {
+    // Move a lógica assíncrona para useEffect
+    useEffect(() => {
         const fetchDayOfWeekData = async () => {
             setLoading(true);
             try {
-                const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+                const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
                 const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map((doc) => ({
                     estudanteId: doc.data().estudanteId,
                     turma: doc.data().turma,
@@ -208,7 +211,8 @@ export default function DayOfWeekDistributionCard({
                 const endDateObj = parseDate(endDate);
 
                 if (!startDateObj || !endDateObj) {
-                    return { overall: [], byTurma: {} };
+                    setDayStats({ overall: [], byTurma: {} });
+                    return;
                 }
 
                 const filteredRecords = absenceRecords.filter((record) => {
@@ -240,22 +244,20 @@ export default function DayOfWeekDistributionCard({
                     }
                 });
 
-                return { overall, byTurma };
+                setDayStats({ overall, byTurma });
             } catch (error) {
-                console.error("Erro ao calcular faltas por dia da semana:", error);
-                return { overall: [], byTurma: {} };
+                logger.error("Erro ao calcular faltas por dia da semana", { startDate, endDate }, error as Error);
+                setDayStats({ overall: [], byTurma: {} });
             } finally {
                 setLoading(false);
             }
         };
-        return fetchDayOfWeekData();
-    }, [startDate, endDate, selectedBimesters, uniqueTurmas, bimesterDates, excludeJustified]);
 
-    useEffect(() => {
-        dayOfWeekStats.then((stats) => {
-            setDayStats(stats);
-        });
-    }, [dayOfWeekStats]);
+        // Só executar se temos dados válidos
+        if (startDate && endDate && Object.keys(bimesterDates).length > 0) {
+            fetchDayOfWeekData();
+        }
+    }, [startDate, endDate, selectedBimesters, uniqueTurmas, bimesterDates, excludeJustified]);
 
     const handleTurmaClick = (turma: string) => {
         setSelectedTurmaDay((prev) => (prev === turma ? null : turma));

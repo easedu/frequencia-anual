@@ -4,6 +4,7 @@ import "./globals.css";
 import React from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,11 +35,15 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col min-h-screen`}
       >
-        <Header />
-        <main className="flex-grow container mx-auto px-4 py-6">
-          {children}
-        </main>
-        <Footer />
+        <ErrorBoundary>
+          <Header />
+          <main className="flex-grow container mx-auto px-4 py-6">
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </main>
+          <Footer />
+        </ErrorBoundary>
       </body>
     </html>
   );

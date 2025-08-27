@@ -1,6 +1,8 @@
 import { db } from "@/firebase.config";
 import { doc, getDoc } from "firebase/firestore";
 import { AnoLetivoData, BimesterDate, BimesterDates } from "./types";
+import { FIREBASE_PATHS } from "@/config/constants";
+import { logger } from "@/utils/logger";
 
 export function formatFirebaseDate(dateStr: string | undefined): string {
     if (!dateStr || typeof dateStr !== "string") return "01/01/1970";
@@ -98,7 +100,7 @@ export function getFrequencyColor(percentual: number): string {
 
 export const calculateDiasLetivos = async (start: string, end: string): Promise<{ ateHoje: number; b1: number; b2: number; b3: number; b4: number; anual: number }> => {
     try {
-        const docRef = doc(db, "2025", "ano_letivo");
+        const docRef = doc(db, FIREBASE_PATHS.academicYear());
         const docSnap = await getDoc(docRef);
         if (!docSnap.exists()) {
             return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
@@ -154,14 +156,14 @@ export const calculateDiasLetivos = async (start: string, end: string): Promise<
             anual: totalAnual,
         };
     } catch (error) {
-        console.error("Erro ao calcular dias letivos:", error);
+        logger.error("Erro ao calcular dias letivos", { start, end }, error as Error);
         return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
     }
 }
 
 export async function getDiasLetivosNoPeriodo(startDate: Date, endDate: Date): Promise<string[]> {
     try {
-        const docRef = doc(db, "2025", "ano_letivo");
+        const docRef = doc(db, FIREBASE_PATHS.academicYear());
         const docSnap = await getDoc(docRef);
         if (!docSnap.exists()) {
             return [];
@@ -186,7 +188,7 @@ export async function getDiasLetivosNoPeriodo(startDate: Date, endDate: Date): P
 
         return diasLetivos;
     } catch (error) {
-        console.error("Erro ao obter dias letivos no período:", error);
+        logger.error("Erro ao obter dias letivos no período", { startDate: startDate.toISOString(), endDate: endDate.toISOString() }, error as Error);
         return [];
     }
 };

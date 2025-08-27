@@ -16,6 +16,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { db } from "@/firebase.config";
 import { collection, query, where, getDocs, writeBatch } from "firebase/firestore";
+import { FIREBASE_PATHS } from "@/config/constants";
+import { logger } from "@/utils/logger";
+import { sanitizeString } from "@/utils/security";
 
 interface RegisteredAbsencesCardProps {
     absences: AbsenceRecord[];
@@ -109,7 +112,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
 
             // Verificar se a data é válida
             if (isNaN(date.getTime())) {
-                console.warn("Data inválida:", dateString);
+                logger.warn("Data inválida ao formatar", { dateString });
                 return dateString;
             }
 
@@ -120,7 +123,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
 
             return `${day}/${month}/${year}`;
         } catch (error) {
-            console.error("Erro ao formatar a data:", error, "Data original:", dateString);
+            logger.error("Erro ao formatar a data", { dateString }, error as Error);
             return dateString;
         }
     };
@@ -135,7 +138,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
             const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 
             // Buscar o documento da falta no Firestore
-            const controleColRef = collection(db, "2025", "faltas", "controle");
+            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
             const q = query(
                 controleColRef,
                 where("estudanteId", "==", selectedStudentId),
@@ -164,7 +167,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                 onAbsenceDeleted();
             }
         } catch (error) {
-            console.error("Erro ao remover falta:", error);
+            logger.error("Erro ao remover falta", { absenceDate, studentId: selectedStudentId }, error as Error);
             toast.error("Erro ao remover falta. Tente novamente.");
         } finally {
             setIsDeleting(false);
