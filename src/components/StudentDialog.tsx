@@ -46,6 +46,7 @@ interface StudentDialogProps {
     handleCancel: () => void;
     cepChangedManually: boolean;
     setCepChangedManually: (value: boolean) => void;
+    isSaving?: boolean;
 }
 
 export const StudentDialog = memo(function StudentDialog({
@@ -58,6 +59,7 @@ export const StudentDialog = memo(function StudentDialog({
     handleCancel,
     cepChangedManually,
     setCepChangedManually,
+    isSaving = false,
 }: StudentDialogProps) {
     const isEditing = editingIndex !== null;
 
@@ -103,6 +105,7 @@ export const StudentDialog = memo(function StudentDialog({
                         cepChangedManually={cepChangedManually}
                         setCepChangedManually={setCepChangedManually}
                         isEditing={isEditing}
+                        isSaving={isSaving}
                     />
                 </div>
             </DialogContent>

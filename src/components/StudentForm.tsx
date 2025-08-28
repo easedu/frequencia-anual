@@ -134,6 +134,7 @@ interface StudentFormProps {
     cepChangedManually: boolean;
     setCepChangedManually: (value: boolean) => void;
     isEditing: boolean;
+    isSaving?: boolean;
 }
 
 // Componente memoizado para o cabeçalho dos campos
@@ -285,6 +286,7 @@ export const StudentForm = memo(function StudentForm({
     cepChangedManually,
     setCepChangedManually,
     isEditing,
+    isSaving = false,
 }: StudentFormProps) {
     const cep = form.watch("endereco.cep");
     const possuiEstagiario = form.watch("deficiencia.possuiEstagiario");
@@ -348,9 +350,14 @@ export const StudentForm = memo(function StudentForm({
         form.setValue("contatos", newContatos);
     }, [form]);
 
+    const onError = (errors: any) => {
+        console.error('❌ Form validation errors:', errors);
+        toast.error("Por favor, corrija os erros no formulário antes de continuar");
+    };
+
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
+            <form onSubmit={form.handleSubmit(handleFormSubmit, onError)} className="space-y-8">
                 <div className="text-center bg-blue-50/50 dark:bg-blue-900/20 rounded-2xl p-4 border border-blue-200/50 dark:border-blue-800/50">
                     <p className="text-sm text-blue-700 dark:text-blue-300">
                         Campos marcados com <span className="text-red-500 font-bold">*</span> são obrigatórios
@@ -1223,17 +1230,34 @@ export const StudentForm = memo(function StudentForm({
                         type="button"
                         variant="outline"
                         onClick={handleCancel}
-                        className="h-12 px-8 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all duration-200"
+                        disabled={isSaving}
+                        className="h-12 px-8 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <X className="w-5 h-5 mr-2" />
                         Cancelar
                     </Button>
                     <Button
                         type="submit"
-                        className="h-12 px-8 text-base rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+                        disabled={isSaving}
+                        onClick={(e) => {
+                            console.log('🖱️ Submit button clicked');
+                            console.log('📊 Form values:', form.getValues());
+                            console.log('❌ Form errors:', form.formState.errors);
+                            console.log('✅ Form is valid:', form.formState.isValid);
+                        }}
+                        className="h-12 px-8 text-base rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
                     >
-                        <Save className="w-5 h-5 mr-2" />
-                        {isEditing ? 'Atualizar' : 'Salvar'} Estudante
+                        {isSaving ? (
+                            <>
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                {isEditing ? 'Atualizando...' : 'Salvando...'}
+                            </>
+                        ) : (
+                            <>
+                                <Save className="w-5 h-5 mr-2" />
+                                {isEditing ? 'Atualizar' : 'Salvar'} Estudante
+                            </>
+                        )}
                     </Button>
                 </div>
             </form>

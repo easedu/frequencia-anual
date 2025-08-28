@@ -17,36 +17,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "sonner";
 import { Estudante } from "@/types";
 
-// Student form schema
+// Student form schema - Minimal validation for debugging
 const studentSchema = z.object({
     nome: z.string().min(1, "Nome é obrigatório"),
     turma: z.string().min(1, "Turma é obrigatória"),
-    turno: z.enum(["MANHÃ", "TARDE"]),
-    dataNascimento: z.string().min(1, "Data de nascimento é obrigatória"),
+    turno: z.string().default("MANHÃ"),
+    dataNascimento: z.string().optional(),
     matricula: z.string().optional(),
-    status: z.enum(["ATIVO", "INATIVO"]),
-    bolsaFamilia: z.enum(["SIM", "NÃO"]),
-    email: z.string().email("Email inválido").optional().or(z.literal("")),
-    endereco: z.object({
-        cep: z.string().optional(),
-        rua: z.string().optional(),
-        numero: z.string().optional(),
-        complemento: z.string().optional(),
-        bairro: z.string().optional(),
-        cidade: z.string().optional(),
-        estado: z.string().optional(),
-    }).optional(),
-    contatos: z.array(z.object({
-        nome: z.string(),
-        telefone: z.string(),
-        parentesco: z.string(),
-    })).optional(),
-    deficiencia: z.object({
-        estudanteComDeficiencia: z.boolean(),
-        tipoDeficiencia: z.string().optional(),
-        observacoes: z.string().optional(),
-    }).optional(),
-});
+    status: z.string().default("ATIVO"),
+    bolsaFamilia: z.string().default("NÃO"),
+    email: z.string().optional(),
+}).passthrough(); // Allow all other fields to pass through without validation
 
 export default function CadastrarEstudantePage() {
     const { students, loading, error, saveStudents, setStudents } = useStudents();
@@ -77,6 +58,7 @@ export default function CadastrarEstudantePage() {
     const [editingIndex, setEditingIndex] = useState<number>(-1);
     const [openModal, setOpenModal] = useState(false);
     const [cepChangedManually, setCepChangedManually] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     
     // Visible columns state
     const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
@@ -259,7 +241,22 @@ export default function CadastrarEstudantePage() {
     };
     
     const handleFormSubmit = async (data: any) => {
+        if (isSaving) return; // Prevenir múltiplos cliques
+        
+        setIsSaving(true);
+        
         try {
+            // Validação manual mínima para garantir campos obrigatórios
+            if (!data.nome?.trim()) {
+                toast.error("Nome é obrigatório");
+                return;
+            }
+            
+            if (!data.turma?.trim()) {
+                toast.error("Turma é obrigatória");
+                return;
+            }
+            // Processar dados para garantir formato correto
             const processedData = {
                 ...data,
                 estudanteId: editingEstudante ? editingEstudante.estudanteId : Date.now().toString(),
@@ -268,27 +265,93 @@ export default function CadastrarEstudantePage() {
                     ...data.endereco,
                     cep: data.endereco.cep?.replace(/\D/g, '') || '',
                 } : undefined,
-                contatos: data.contatos?.map(contato => ({
-                    ...contato,
+                contatos: data.contatos?.filter((contato: any) => 
+                    contato.nome.trim() || contato.telefone.trim() || contato.parentesco.trim()
+                ).map((contato: any) => ({
+                    nome: contato.nome || '',
                     telefone: contato.telefone ? contato.telefone.replace(/\D/g, '') : '',
+                    parentesco: contato.parentesco || '',
                 })) || [],
+                deficiencia: data.deficiencia ? {
+                    estudanteComDeficiencia: data.deficiencia.estudanteComDeficiencia || false,
+                    tipoDeficiencia: Array.isArray(data.deficiencia.tipoDeficiencia) 
+                        ? data.deficiencia.tipoDeficiencia 
+                        : [],
+                    possuiBarreiras: data.deficiencia.possuiBarreiras ?? true,
+                    aee: data.deficiencia.aee || undefined,
+                    instituicao: data.deficiencia.instituicao || undefined,
+                    horarioAtendimento: data.deficiencia.horarioAtendimento || 'NENHUM',
+                    atendimentoSaude: Array.isArray(data.deficiencia.atendimentoSaude) 
+                        ? data.deficiencia.atendimentoSaude 
+                        : [],
+                    possuiEstagiario: data.deficiencia.possuiEstagiario || false,
+                    nomeEstagiario: data.deficiencia.nomeEstagiario || 'NÃO NECESSITA',
+                    justificativaEstagiario: data.deficiencia.justificativaEstagiario || 'SEM BARREIRAS',
+                    ave: data.deficiencia.ave || false,
+                    nomeAve: data.deficiencia.nomeAve || '',
+                    justificativaAve: Array.isArray(data.deficiencia.justificativaAve) 
+                        ? data.deficiencia.justificativaAve 
+                        : [],
+                    observacoes: data.deficiencia.observacoes || '',
+                } : {
+                    estudanteComDeficiencia: false,
+                    tipoDeficiencia: [],
+                    possuiBarreiras: true,
+                    horarioAtendimento: 'NENHUM',
+                    atendimentoSaude: [],
+                    possuiEstagiario: false,
+                    nomeEstagiario: 'NÃO NECESSITA',
+                    justificativaEstagiario: 'SEM BARREIRAS',
+                    ave: false,
+                    nomeAve: '',
+                    justificativaAve: [],
+                    observacoes: '',
+                }
             };
             
             let updatedStudents;
             if (editingEstudante) {
-                updatedStudents = students.map((student, index) =>
-                    index === editingIndex ? { ...student, ...processedData } : student
-                );
+                // Use o ID do estudante para encontrar e atualizar
+                updatedStudents = students.map((student) => {
+                    if (student.estudanteId === editingEstudante.estudanteId) {
+                        return { ...student, ...processedData };
+                    }
+                    return student;
+                });
             } else {
+                // Verificar se já existe um estudante com o mesmo nome e turma
+                const exists = students.some(student => 
+                    student.nome.toUpperCase() === processedData.nome.toUpperCase() &&
+                    student.turma.toUpperCase() === processedData.turma.toUpperCase()
+                );
+                
+                if (exists) {
+                    toast.error(`Estudante ${processedData.nome} já existe na turma ${processedData.turma}`);
+                    return;
+                }
+                
                 updatedStudents = [...students, processedData];
             }
             
             await saveStudents(updatedStudents);
             setStudents(updatedStudents);
             setOpenModal(false);
-            toast.success(editingEstudante ? "Estudante atualizado!" : "Estudante cadastrado!");
+            
+            toast.success(
+                editingEstudante 
+                    ? `Estudante ${processedData.nome} atualizado com sucesso!` 
+                    : `Estudante ${processedData.nome} cadastrado com sucesso!`
+            );
+            
         } catch (error) {
-            toast.error("Erro ao salvar estudante");
+            console.error('Erro ao salvar estudante:', error);
+            toast.error(
+                editingEstudante 
+                    ? "Erro ao atualizar estudante. Tente novamente." 
+                    : "Erro ao cadastrar estudante. Tente novamente."
+            );
+        } finally {
+            setIsSaving(false);
         }
     };
     
@@ -362,6 +425,7 @@ export default function CadastrarEstudantePage() {
     // Fill form when editing a student
     useEffect(() => {
         if (editingEstudante && openModal) {
+            console.log('🔧 Filling form with student data:', editingEstudante);
             form.reset({
                 nome: editingEstudante.nome || "",
                 turma: editingEstudante.turma || "",
@@ -521,6 +585,7 @@ export default function CadastrarEstudantePage() {
                 handleCancel={handleCancel}
                 cepChangedManually={cepChangedManually}
                 setCepChangedManually={setCepChangedManually}
+                isSaving={isSaving}
             />
         </div>
     );
