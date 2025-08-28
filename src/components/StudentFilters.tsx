@@ -6,7 +6,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Estudante } from '@/types';
-import { formatDataNascimento, cleanDataNascimento } from '../utils/formatters';
+import { formatDate } from '@/utils/formatters';
+
+// Helper functions for date formatting
+const formatDataNascimento = (dateStr: string): string => {
+    if (!dateStr) return '';
+    if (dateStr.length <= 2) return dateStr;
+    if (dateStr.length <= 4) return dateStr.slice(0, 2) + '/' + dateStr.slice(2);
+    return dateStr.slice(0, 2) + '/' + dateStr.slice(2, 4) + '/' + dateStr.slice(4);
+};
+
+const cleanDataNascimento = (dateStr: string): string => {
+    return dateStr.replace(/\D/g, '');
+};
 
 interface StudentFiltersProps {
     students: Estudante[];

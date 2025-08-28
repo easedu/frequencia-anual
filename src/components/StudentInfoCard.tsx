@@ -1,7 +1,14 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Student } from "../app/types";
-import { formatAddress, formatPhoneNumber, formatDataNascimento } from "../app/utils";
+import { 
+    formatAddress, 
+    formatPhoneNumber, 
+    formatDataNascimento,
+    getStatusColor,
+    getTurnoColor,
+    getBolsaFamiliaColor 
+} from "@/utils/formatters";
 import {
     User,
     GraduationCap,
@@ -21,29 +28,7 @@ interface StudentInfoCardProps {
 }
 
 export default function StudentInfoCard({ student }: StudentInfoCardProps) {
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'ATIVO': return 'bg-green-100 text-green-800 border-green-200';
-            case 'INATIVO': return 'bg-red-100 text-red-800 border-red-200';
-            default: return 'bg-gray-100 text-gray-800 border-gray-200';
-        }
-    };
-
-    const getTurnoColor = (turno: string) => {
-        switch (turno) {
-            case 'MANHÃ': return 'bg-blue-100 text-blue-800 border-blue-200';
-            case 'TARDE': return 'bg-orange-100 text-orange-800 border-orange-200';
-            default: return 'bg-gray-100 text-gray-800 border-gray-200';
-        }
-    };
-
-    const getBolsaFamiliaColor = (bolsa: string) => {
-        switch (bolsa) {
-            case 'SIM': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-            case 'NÃO': return 'bg-gray-100 text-gray-600 border-gray-200';
-            default: return 'bg-gray-100 text-gray-600 border-gray-200';
-        }
-    };
+    // Formatadores movidos para utils centralizados
 
     return (
         <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50">

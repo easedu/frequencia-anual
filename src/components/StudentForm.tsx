@@ -11,13 +11,120 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { formSchema } from '../constants/formSchema';
-import { tipoDeficienciaOptions, atendimentoSaudeOptions, justificativaAveOptions } from '../constants/selectOptions';
-import { customSelectStyles } from '../constants/selectStyles';
-import { formatTelefone, cleanTelefone, formatCep, cleanCep, formatDataNascimento, cleanDataNascimento } from '../utils/formatters';
-import { fetchAddressFromCep } from '../utils/api';
-import { SelectOption, Estudante } from '@/types';
+import { formatPhoneNumber, formatCep, formatDate } from '@/utils/formatters';
+import { Estudante } from '@/types';
 import { toast } from 'sonner';
+
+// Types
+interface SelectOption {
+    value: string;
+    label: string;
+}
+
+// Form schema inline
+const formSchema = z.object({
+    nome: z.string().min(1, "Nome é obrigatório"),
+    turma: z.string().min(1, "Turma é obrigatória"),
+    turno: z.enum(["MANHÃ", "TARDE"]),
+    dataNascimento: z.string().min(1, "Data de nascimento é obrigatória"),
+    matricula: z.string().optional(),
+    status: z.enum(["ATIVO", "INATIVO"]),
+    bolsaFamilia: z.enum(["SIM", "NÃO"]),
+    email: z.string().email("Email inválido").optional().or(z.literal("")),
+    endereco: z.object({
+        cep: z.string().optional(),
+        rua: z.string().optional(),
+        numero: z.string().optional(),
+        complemento: z.string().optional(),
+        bairro: z.string().optional(),
+        cidade: z.string().optional(),
+        estado: z.string().optional(),
+    }).optional(),
+    contatos: z.array(z.object({
+        nome: z.string(),
+        telefone: z.string(),
+        parentesco: z.string(),
+    })).optional(),
+    deficiencia: z.object({
+        estudanteComDeficiencia: z.boolean(),
+        tipoDeficiencia: z.array(z.string()).optional(),
+        observacoes: z.string().optional(),
+        possuiBarreiras: z.boolean().optional(),
+        aee: z.string().optional(),
+        instituicao: z.string().optional(),
+        horarioAtendimento: z.string().optional(),
+        atendimentoSaude: z.array(z.string()).optional(),
+        possuiEstagiario: z.boolean().optional(),
+        nomeEstagiario: z.string().optional(),
+        justificativaEstagiario: z.string().optional(),
+        ave: z.boolean().optional(),
+        nomeAve: z.string().optional(),
+        justificativaAve: z.array(z.string()).optional(),
+    }).optional(),
+});
+
+// Helper functions
+const formatTelefone = (value: string) => formatPhoneNumber(value);
+const cleanTelefone = (value: string) => value.replace(/\D/g, '');
+const formatCepLocal = (value: string) => formatCep(value);
+const cleanCep = (value: string) => value.replace(/\D/g, '');
+const formatDataNascimento = (value: string) => {
+    if (!value) return '';
+    if (value.length <= 2) return value;
+    if (value.length <= 4) return value.slice(0, 2) + '/' + value.slice(2);
+    return value.slice(0, 2) + '/' + value.slice(2, 4) + '/' + value.slice(4);
+};
+const cleanDataNascimento = (value: string) => value.replace(/\D/g, '');
+
+// Options
+const tipoDeficienciaOptions = [
+    { value: 'fisica', label: 'Deficiência Física' },
+    { value: 'visual', label: 'Deficiência Visual' },
+    { value: 'auditiva', label: 'Deficiência Auditiva' },
+    { value: 'intelectual', label: 'Deficiência Intelectual' },
+    { value: 'multipla', label: 'Deficiência Múltipla' },
+];
+
+const atendimentoSaudeOptions = [
+    { value: 'publico', label: 'Público' },
+    { value: 'privado', label: 'Privado' },
+    { value: 'convenio', label: 'Convênio' },
+];
+
+const justificativaAveOptions = [
+    { value: 'laudo', label: 'Laudo Médico' },
+    { value: 'observacao', label: 'Observação Pedagógica' },
+    { value: 'outros', label: 'Outros' },
+];
+
+const customSelectStyles = {
+    control: (provided: any) => ({
+        ...provided,
+        minHeight: '40px',
+        borderColor: '#e2e8f0',
+        boxShadow: 'none',
+        '&:hover': {
+            borderColor: '#cbd5e0',
+        },
+    }),
+    option: (provided: any, state: any) => ({
+        ...provided,
+        backgroundColor: state.isSelected ? '#3b82f6' : state.isFocused ? '#f1f5f9' : 'white',
+        color: state.isSelected ? 'white' : '#374151',
+    }),
+};
+
+// API function stub
+const fetchAddressFromCep = async (cep: string) => {
+    try {
+        const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Erro ao buscar CEP:', error);
+        return null;
+    }
+};
 
 interface StudentFormProps {
     form: UseFormReturn<z.infer<typeof formSchema>>;
@@ -100,7 +207,7 @@ const ContactField = memo(({
             )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <FormField
                 control={form.control}
                 name={`contatos.${index}.nome`}
@@ -145,6 +252,26 @@ const ContactField = memo(({
                     </FormItem>
                 )}
             />
+
+            <FormField
+                control={form.control}
+                name={`contatos.${index}.parentesco`}
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                            Parentesco
+                        </FormLabel>
+                        <FormControl>
+                            <Input
+                                {...field}
+                                placeholder="Ex: Mãe, Pai, Responsável"
+                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                            />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
         </div>
     </div>
 ));
@@ -174,11 +301,10 @@ export const StudentForm = memo(function StudentForm({
         if (cleanedCep.length === 8) {
             fetchAddressFromCep(cleanedCep).then((address) => {
                 if (address) {
-                    form.setValue("endereco.rua", address.rua);
+                    form.setValue("endereco.rua", address.logradouro);
                     form.setValue("endereco.bairro", address.bairro);
-                    form.setValue("endereco.cidade", address.cidade);
+                    form.setValue("endereco.cidade", address.localidade);
                     form.setValue("endereco.estado", address.estado);
-                    form.setValue("endereco.complemento", address.complemento);
                     toast.success("Endereço preenchido automaticamente!");
                 } else {
                     toast.error("CEP não encontrado ou inválido.");
@@ -213,7 +339,7 @@ export const StudentForm = memo(function StudentForm({
     // Memoizar handlers de contato
     const addContact = useCallback(() => {
         const currentContatos = form.getValues("contatos") || [];
-        form.setValue("contatos", [...currentContatos, { nome: "", telefone: "" }]);
+        form.setValue("contatos", [...currentContatos, { nome: "", telefone: "", parentesco: "" }]);
     }, [form]);
 
     const removeContact = useCallback((index: number) => {
@@ -464,7 +590,7 @@ export const StudentForm = memo(function StudentForm({
                                             <FormControl>
                                                 <Input
                                                     placeholder="00000-000"
-                                                    value={field.value ? formatCep(field.value) : ""}
+                                                    value={field.value ? formatCepLocal(field.value) : ""}
                                                     onChange={(e) => {
                                                         const inputValue = e.target.value;
                                                         const cleanedValue = cleanCep(inputValue);

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Edit, ChevronUp, ChevronDown, Mail, Phone, MapPin, User, Calendar, Clock, DollarSign, CheckCircle, XCircle } from 'lucide-react';
 import { Estudante, Contato } from '@/types';
-import { formatTelefone, formatCep, formatDataNascimento } from '../utils/formatters';
+import { formatPhoneNumber, formatCep, formatDate } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -275,7 +275,7 @@ export function StudentTable({
                                                 <div className="flex items-center justify-center">
                                                     <Calendar className="w-4 h-4 mr-2 text-slate-500" />
                                                     <span className="text-slate-700 dark:text-slate-300">
-                                                        {formatDataNascimento(est.dataNascimento)}
+                                                        {formatDate(est.dataNascimento)}
                                                     </span>
                                                 </div>
                                             ) : (
@@ -315,7 +315,7 @@ export function StudentTable({
                                                     <div key={i} className="flex items-center text-sm">
                                                         <Phone className="w-3 h-3 mr-2 text-slate-500" />
                                                         <span className="text-slate-700 dark:text-slate-300 truncate">
-                                                            {contato.nome}: {formatTelefone(contato.telefone)}
+                                                            {contato.nome}: {formatPhoneNumber(contato.telefone)}
                                                         </span>
                                                     </div>
                                                 ))

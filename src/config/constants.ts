@@ -54,6 +54,7 @@ export const SECURITY_CONFIG = {
 export const getFirebasePath = (...segments: string[]) => segments.join('/');
 
 export const FIREBASE_PATHS = {
+  students: () => getFirebasePath(FIREBASE_COLLECTIONS.STUDENTS, FIREBASE_COLLECTIONS.STUDENT_LIST),
   studentList: () => getFirebasePath(FIREBASE_COLLECTIONS.STUDENTS, FIREBASE_COLLECTIONS.STUDENT_LIST),
   academicYear: () => getFirebasePath(FIREBASE_COLLECTIONS.STUDENTS, FIREBASE_COLLECTIONS.ACADEMIC_YEAR),
   absenceControl: () => getFirebasePath(FIREBASE_COLLECTIONS.STUDENTS, FIREBASE_COLLECTIONS.ABSENCES, FIREBASE_COLLECTIONS.ABSENCE_CONTROL),

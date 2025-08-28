@@ -18,7 +18,6 @@ import { db } from "@/firebase.config";
 import { collection, query, where, getDocs, writeBatch } from "firebase/firestore";
 import { FIREBASE_PATHS } from "@/config/constants";
 import { logger } from "@/utils/logger";
-import { sanitizeString } from "@/utils/security";
 
 interface RegisteredAbsencesCardProps {
     absences: AbsenceRecord[];

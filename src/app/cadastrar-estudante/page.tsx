@@ -1,44 +1,83 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Users, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 
 import { useStudents } from "@/hooks/useStudents";
-import { useStudentFilters } from "./hooks/useStudentFilters";
-import { useStudentSorting } from "./hooks/useStudentSorting";
-import { useStudentPagination } from "./hooks/useStudentPagination";
-import { useStudentForm } from "./hooks/useStudentForm";
-import { StudentFilters } from "./components/StudentFilters";
-import { StudentTable } from "./components/StudentTable";
-import { StudentPagination } from "./components/StudentPagination";
-import { StudentDialog } from "./components/StudentDialog";
+import { StudentFilters } from "@/components/StudentFilters";
+import { StudentTable } from "@/components/StudentTable";
+import { StudentPagination } from "@/components/StudentPagination";
+import { StudentDialog } from "@/components/StudentDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "sonner";
+import { Estudante } from "@/types";
+
+// Student form schema
+const studentSchema = z.object({
+    nome: z.string().min(1, "Nome é obrigatório"),
+    turma: z.string().min(1, "Turma é obrigatória"),
+    turno: z.enum(["MANHÃ", "TARDE"]),
+    dataNascimento: z.string().min(1, "Data de nascimento é obrigatória"),
+    matricula: z.string().optional(),
+    status: z.enum(["ATIVO", "INATIVO"]),
+    bolsaFamilia: z.enum(["SIM", "NÃO"]),
+    email: z.string().email("Email inválido").optional().or(z.literal("")),
+    endereco: z.object({
+        cep: z.string().optional(),
+        rua: z.string().optional(),
+        numero: z.string().optional(),
+        complemento: z.string().optional(),
+        bairro: z.string().optional(),
+        cidade: z.string().optional(),
+        estado: z.string().optional(),
+    }).optional(),
+    contatos: z.array(z.object({
+        nome: z.string(),
+        telefone: z.string(),
+        parentesco: z.string(),
+    })).optional(),
+    deficiencia: z.object({
+        estudanteComDeficiencia: z.boolean(),
+        tipoDeficiencia: z.string().optional(),
+        observacoes: z.string().optional(),
+    }).optional(),
+});
 
 export default function CadastrarEstudantePage() {
     const { students, loading, error, saveStudents, setStudents } = useStudents();
     
-    // Custom hooks for state management
-    const { filters, setters, filteredStudents } = useStudentFilters(students);
-    const { sortColumn, sortDirection, handleSort, sortedData } = useStudentSorting(filteredStudents);
-    const { currentPage, recordsPerPage, totalPages, handlePageChange, handleRecordsPerPageChange, paginateData } = useStudentPagination(sortedData.length);
-    const {
-        form,
-        editingEstudante,
-        setEditingEstudante,
-        editingIndex,
-        setEditingIndex,
-        openModal,
-        setOpenModal,
-        cepChangedManually,
-        setCepChangedManually,
-        handleFormSubmit,
-        handleCancel,
-        handleNewStudent,
-    } = useStudentForm(students, saveStudents, setStudents);
-
+    // Filter states
+    const [turmaFiltro, setTurmaFiltro] = useState<string>("");
+    const [nomeFiltro, setNomeFiltro] = useState<string>("");
+    const [statusFiltro, setStatusFiltro] = useState<string>("");
+    const [bolsaFamiliaFiltro, setBolsaFamiliaFiltro] = useState<string>("");
+    const [turnoFiltro, setTurnoFiltro] = useState<string>("");
+    const [contatoFiltro, setContatoFiltro] = useState<string>("");
+    const [emailFiltro, setEmailFiltro] = useState<string>("");
+    const [enderecoFiltro, setEnderecoFiltro] = useState<string>("");
+    const [dataNascimentoFiltro, setDataNascimentoFiltro] = useState<string>("");
+    const [comDeficienciaFiltro, setComDeficienciaFiltro] = useState<string>("");
+    const [matriculaFiltro, setMatriculaFiltro] = useState<string>("");
+    
+    // Sorting states
+    const [sortColumn, setSortColumn] = useState<string>("");
+    const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+    
+    // Pagination states
+    const [currentPage, setCurrentPage] = useState(1);
+    const [recordsPerPage, setRecordsPerPage] = useState(10);
+    
+    // Modal states
+    const [editingEstudante, setEditingEstudante] = useState<Estudante | null>(null);
+    const [editingIndex, setEditingIndex] = useState<number>(-1);
+    const [openModal, setOpenModal] = useState(false);
+    const [cepChangedManually, setCepChangedManually] = useState(false);
+    
     // Visible columns state
     const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
         new Set([
@@ -55,6 +94,263 @@ export default function CadastrarEstudantePage() {
             "actions",
         ])
     );
+    
+    // Form
+    const form = useForm({
+        resolver: zodResolver(studentSchema),
+        defaultValues: {
+            nome: "",
+            turma: "",
+            turno: "MANHÃ",
+            dataNascimento: "",
+            matricula: "",
+            status: "ATIVO",
+            bolsaFamilia: "NÃO",
+            email: "",
+            endereco: {
+                cep: "",
+                rua: "",
+                numero: "",
+                complemento: "",
+                bairro: "",
+                cidade: "",
+                estado: "",
+            },
+            contatos: [{ nome: "", telefone: "", parentesco: "" }],
+            deficiencia: {
+                estudanteComDeficiencia: false,
+                tipoDeficiencia: "",
+                observacoes: "",
+            },
+        },
+    });
+    
+    // Filtered students
+    const filteredStudents = useMemo(() => {
+        return students.filter((est) => {
+            const matchTurma = turmaFiltro === "" || turmaFiltro === "all" || est.turma === turmaFiltro;
+            const matchNome = nomeFiltro === "" || est.nome.toLowerCase().includes(nomeFiltro.toLowerCase());
+            const matchMatricula = matriculaFiltro === "" || (est.matricula?.toLowerCase().includes(matriculaFiltro.toLowerCase()) ?? false);
+            const matchStatus = statusFiltro === "" || statusFiltro === "all" || est.status === statusFiltro;
+            const matchTurno = turnoFiltro === "" || turnoFiltro === "all" || est.turno === turnoFiltro;
+            const matchBolsaFamilia = bolsaFamiliaFiltro === "" || bolsaFamiliaFiltro === "all" || est.bolsaFamilia === bolsaFamiliaFiltro;
+            const matchContato = contatoFiltro === "" || (est.contatos?.some(
+                (contato) =>
+                    contato.nome.toLowerCase().includes(contatoFiltro.toLowerCase()) ||
+                    contato.telefone.includes(contatoFiltro)
+            ) ?? false);
+            const matchEmail = emailFiltro === "" || (est.email?.toLowerCase().includes(emailFiltro.toLowerCase()) ?? false);
+            const matchEndereco = enderecoFiltro === "" || (est.endereco
+                ? `${est.endereco.rua} ${est.endereco.numero} ${est.endereco.bairro} ${est.endereco.cidade} ${est.endereco.estado} ${est.endereco.cep} ${est.endereco.complemento}`
+                    .toLowerCase()
+                    .includes(enderecoFiltro.toLowerCase())
+                : false);
+            const cleanDataNascimento = (dateStr: string): string => dateStr.replace(/\D/g, '');
+            const matchDataNascimento = dataNascimentoFiltro === "" || (est.dataNascimento?.includes(cleanDataNascimento(dataNascimentoFiltro)) ?? false);
+            const matchComDeficiencia = comDeficienciaFiltro === "" || comDeficienciaFiltro === "all" || (est.deficiencia?.estudanteComDeficiencia
+                ? comDeficienciaFiltro === "SIM"
+                : comDeficienciaFiltro === "NÃO");
+
+            return (
+                matchTurma &&
+                matchNome &&
+                matchMatricula &&
+                matchStatus &&
+                matchTurno &&
+                matchBolsaFamilia &&
+                matchContato &&
+                matchEmail &&
+                matchEndereco &&
+                matchDataNascimento &&
+                matchComDeficiencia
+            );
+        });
+    }, [
+        students,
+        turmaFiltro,
+        nomeFiltro,
+        matriculaFiltro,
+        statusFiltro,
+        turnoFiltro,
+        bolsaFamiliaFiltro,
+        contatoFiltro,
+        emailFiltro,
+        enderecoFiltro,
+        dataNascimentoFiltro,
+        comDeficienciaFiltro,
+    ]);
+    
+    // Sorted data
+    const sortedData = useMemo(() => {
+        if (!sortColumn) return filteredStudents;
+        
+        return [...filteredStudents].sort((a, b) => {
+            let aVal = a[sortColumn] || "";
+            let bVal = b[sortColumn] || "";
+            
+            if (typeof aVal === 'string' && typeof bVal === 'string') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+            
+            if (sortDirection === 'asc') {
+                return aVal > bVal ? 1 : -1;
+            } else {
+                return aVal < bVal ? 1 : -1;
+            }
+        });
+    }, [filteredStudents, sortColumn, sortDirection]);
+    
+    // Pagination calculations
+    const totalPages = Math.ceil(sortedData.length / recordsPerPage);
+    const indexOfLastRecord = currentPage * recordsPerPage;
+    const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
+    const currentRecords = sortedData.slice(indexOfFirstRecord, indexOfLastRecord);
+    
+    // Handlers
+    const handleSort = (column: string) => {
+        if (sortColumn === column) {
+            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortColumn(column);
+            setSortDirection('asc');
+        }
+    };
+    
+    const handlePageChange = (page: number) => {
+        setCurrentPage(page);
+    };
+    
+    const handleRecordsPerPageChange = (records: number) => {
+        setRecordsPerPage(records);
+        setCurrentPage(1);
+    };
+    
+    const handleNewStudent = () => {
+        form.reset({
+            nome: "",
+            turma: "",
+            turno: "MANHÃ",
+            dataNascimento: "",
+            matricula: "",
+            status: "ATIVO",
+            bolsaFamilia: "NÃO",
+            email: "",
+            endereco: {
+                cep: "",
+                rua: "",
+                numero: "",
+                complemento: "",
+                bairro: "",
+                cidade: "",
+                estado: "",
+            },
+            contatos: [{ nome: "", telefone: "", parentesco: "" }],
+            deficiencia: {
+                estudanteComDeficiencia: false,
+                tipoDeficiencia: "",
+                observacoes: "",
+            },
+        });
+        setEditingEstudante(null);
+        setEditingIndex(-1);
+        setCepChangedManually(false);
+        setOpenModal(true);
+    };
+    
+    const handleFormSubmit = async (data: any) => {
+        try {
+            const processedData = {
+                ...data,
+                estudanteId: editingEstudante ? editingEstudante.estudanteId : Date.now().toString(),
+                dataNascimento: data.dataNascimento ? data.dataNascimento.replace(/\D/g, '') : '',
+                endereco: data.endereco ? {
+                    ...data.endereco,
+                    cep: data.endereco.cep?.replace(/\D/g, '') || '',
+                } : undefined,
+                contatos: data.contatos?.map(contato => ({
+                    ...contato,
+                    telefone: contato.telefone ? contato.telefone.replace(/\D/g, '') : '',
+                })) || [],
+            };
+            
+            let updatedStudents;
+            if (editingEstudante) {
+                updatedStudents = students.map((student, index) =>
+                    index === editingIndex ? { ...student, ...processedData } : student
+                );
+            } else {
+                updatedStudents = [...students, processedData];
+            }
+            
+            await saveStudents(updatedStudents);
+            setStudents(updatedStudents);
+            setOpenModal(false);
+            toast.success(editingEstudante ? "Estudante atualizado!" : "Estudante cadastrado!");
+        } catch (error) {
+            toast.error("Erro ao salvar estudante");
+        }
+    };
+    
+    const handleCancel = () => {
+        setOpenModal(false);
+        form.reset({
+            nome: "",
+            turma: "",
+            turno: "MANHÃ",
+            dataNascimento: "",
+            matricula: "",
+            status: "ATIVO",
+            bolsaFamilia: "NÃO",
+            email: "",
+            endereco: {
+                cep: "",
+                rua: "",
+                numero: "",
+                complemento: "",
+                bairro: "",
+                cidade: "",
+                estado: "",
+            },
+            contatos: [{ nome: "", telefone: "", parentesco: "" }],
+            deficiencia: {
+                estudanteComDeficiencia: false,
+                tipoDeficiencia: "",
+                observacoes: "",
+            },
+        });
+        setEditingEstudante(null);
+        setEditingIndex(-1);
+        setCepChangedManually(false);
+    };
+    
+    const filters = {
+        turmaFiltro,
+        nomeFiltro,
+        matriculaFiltro,
+        statusFiltro,
+        bolsaFamiliaFiltro,
+        turnoFiltro,
+        contatoFiltro,
+        emailFiltro,
+        enderecoFiltro,
+        dataNascimentoFiltro,
+        comDeficienciaFiltro,
+    };
+    
+    const setters = {
+        setTurmaFiltro,
+        setNomeFiltro,
+        setMatriculaFiltro,
+        setStatusFiltro,
+        setBolsaFamiliaFiltro,
+        setTurnoFiltro,
+        setContatoFiltro,
+        setEmailFiltro,
+        setEnderecoFiltro,
+        setDataNascimentoFiltro,
+        setComDeficienciaFiltro,
+    };
 
     // Error handling
     useEffect(() => {
@@ -63,8 +359,39 @@ export default function CadastrarEstudantePage() {
         }
     }, [error]);
 
-    // Calculate current records for display
-    const currentRecords = paginateData(sortedData);
+    // Fill form when editing a student
+    useEffect(() => {
+        if (editingEstudante && openModal) {
+            form.reset({
+                nome: editingEstudante.nome || "",
+                turma: editingEstudante.turma || "",
+                turno: editingEstudante.turno || "MANHÃ",
+                dataNascimento: editingEstudante.dataNascimento ? editingEstudante.dataNascimento.replace(/\D/g, '') : "",
+                matricula: editingEstudante.matricula || "",
+                status: editingEstudante.status || "ATIVO",
+                bolsaFamilia: editingEstudante.bolsaFamilia || "NÃO",
+                email: editingEstudante.email || "",
+                endereco: {
+                    cep: editingEstudante.endereco?.cep || "",
+                    rua: editingEstudante.endereco?.rua || "",
+                    numero: editingEstudante.endereco?.numero || "",
+                    complemento: editingEstudante.endereco?.complemento || "",
+                    bairro: editingEstudante.endereco?.bairro || "",
+                    cidade: editingEstudante.endereco?.cidade || "",
+                    estado: editingEstudante.endereco?.estado || "",
+                },
+                contatos: editingEstudante.contatos?.length > 0 
+                    ? editingEstudante.contatos 
+                    : [{ nome: "", telefone: "", parentesco: "" }],
+                deficiencia: {
+                    estudanteComDeficiencia: editingEstudante.deficiencia?.estudanteComDeficiencia || false,
+                    tipoDeficiencia: editingEstudante.deficiencia?.tipoDeficiencia || "",
+                    observacoes: editingEstudante.deficiencia?.observacoes || "",
+                },
+            });
+        }
+    }, [editingEstudante, openModal, form]);
+
     const totalRecords = sortedData.length;
 
     if (loading) {
