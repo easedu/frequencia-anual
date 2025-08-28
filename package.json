@@ -18,6 +18,8 @@
     "bundle:report": "npm run build && npm run build 2>&1 | grep -A 30 'Route (app)' > bundle-size-report.txt",
     "bundle:check": "node scripts/bundle-monitor.js",
     "bundle:monitor": "node scripts/bundle-monitor.js",
+    "icons:generate": "node scripts/generate-icons.js",
+    "icons:shortcuts": "node scripts/generate-icons.js --shortcuts",
     "clean": "rm -rf .next out dist",
     "quality": "npm run lint && npm run type-check && npm run test && npm run build",
     "ci:full": "npm run quality && npm run analyze && npm run bundle:report"
@@ -78,6 +80,7 @@
     "lodash-es": "^4.17.21",
     "postcss": "^8",
     "react-window": "^1.8.11",
+    "sharp": "^0.34.3",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.7.0",
     "typescript": "^5"

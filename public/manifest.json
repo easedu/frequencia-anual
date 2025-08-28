@@ -1,0 +1,138 @@
+{
+  "name": "Gestão Escolar - Sistema de Frequência",
+  "short_name": "Frequência Escolar",
+  "description": "Sistema completo para gestão de frequência escolar com suporte offline",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  
+  "icons": [
+    {
+      "src": "/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-96x96.png", 
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-128x128.png",
+      "sizes": "128x128", 
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png", 
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  
+  "categories": ["education", "productivity", "utilities"],
+  "lang": "pt-BR",
+  
+  "shortcuts": [
+    {
+      "name": "Marcar Faltas",
+      "description": "Acesso rápido para marcar faltas dos estudantes",
+      "url": "/marcar-faltas",
+      "icons": [
+        {
+          "src": "/shortcut-mark-attendance.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Controlar Faltas",
+      "description": "Gerenciar e revisar faltas registradas",
+      "url": "/controlar-faltas", 
+      "icons": [
+        {
+          "src": "/shortcut-control-attendance.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Relatório Bolsa Família",
+      "description": "Gerar relatório para o programa Bolsa Família",
+      "url": "/relatorio-bolsa-familia",
+      "icons": [
+        {
+          "src": "/shortcut-report.png", 
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  
+  "screenshots": [
+    {
+      "src": "/screenshot-home.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Tela inicial do sistema de gestão escolar"
+    },
+    {
+      "src": "/screenshot-attendance.png", 
+      "sizes": "640x1136",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Interface de controle de frequência" 
+    }
+  ],
+  
+  "protocol_handlers": [
+    {
+      "protocol": "web+attendance",
+      "url": "/marcar-faltas?data=%s"
+    }
+  ],
+  
+  "prefer_related_applications": false,
+  
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
+}

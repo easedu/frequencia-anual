@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/select";
 import { toast, Toaster } from "sonner";
 import { useStudents, Estudante } from "@/hooks/useStudents";
+import { scheduleSync } from "@/lib/serviceWorker";
+import { useServiceWorkerContext } from "@/components/ServiceWorkerProvider";
 import {
     Calendar,
     Users,
@@ -44,7 +46,8 @@ import {
     School,
     CheckCircle2,
     Clock,
-    User
+    User,
+    WifiOff
 } from "lucide-react";
 
 // Constantes para coleções e documentos
@@ -119,6 +122,7 @@ function getValidDates(academicYearData: AcademicYearData | null, role: Role | n
 export default function MarcarFaltasPage() {
     const router = useRouter();
     const { students, loading } = useStudents();
+    const { isOnline } = useServiceWorkerContext();
 
     // Estados para dados e UI
     const [academicYearData, setAcademicYearData] = useState<AcademicYearData | null>(null);
@@ -179,15 +183,11 @@ export default function MarcarFaltasPage() {
 
     // Obtém o perfil do usuário do Firestore
     useEffect(() => {
-        if (!auth.currentUser) {
-            router.push("/login");
-            return;
-        }
         const fetchUserRole = async () => {
             try {
                 const uid = auth.currentUser?.uid;
                 if (!uid) {
-                    router.push("/login");
+                    logger.warn("Usuário não autenticado");
                     return;
                 }
                 const q = query(collection(db, "users"), where("uid", "==", uid));
@@ -196,8 +196,10 @@ export default function MarcarFaltasPage() {
                     const data = querySnapshot.docs[0].data();
                     const userRole = (data.perfil as Role) || "user";
                     setRole(userRole);
+                    logger.info("Perfil do usuário carregado:", { role: userRole });
                 } else {
                     setRole("user");
+                    logger.info("Usuário não encontrado, definindo perfil padrão como 'user'");
                 }
             } catch (error) {
                 logger.error("Erro ao buscar usuário", error as Error);
@@ -206,7 +208,7 @@ export default function MarcarFaltasPage() {
         };
 
         fetchUserRole();
-    }, [router]);
+    }, []);
 
     // Carrega faltas existentes sempre que turma ou data mudam
     useEffect(() => {
@@ -288,11 +290,61 @@ export default function MarcarFaltasPage() {
         }));
     };
 
+    // Função auxiliar para salvar offline
+    const saveAbsencesOffline = async () => {
+        const formattedDate = convertToISO(selectedDate);
+        
+        // Preparar dados para sincronização
+        const attendanceData = {
+            date: formattedDate,
+            class: selectedClass,
+            absences: filteredStudents
+                .filter(est => markedAbsences[est.estudanteId])
+                .map(est => ({
+                    estudanteId: est.estudanteId,
+                    nome: est.nome,
+                    turma: selectedClass,
+                    data: formattedDate
+                })),
+            role,
+            timestamp: new Date().toISOString()
+        };
+
+        // Agendar para sincronização
+        await scheduleSync('attendance', attendanceData);
+        
+        toast.success("Faltas salvas offline! Serão sincronizadas quando voltar a conexão.", {
+            description: `${attendanceData.absences.length} ausência(s) registrada(s)`
+        });
+
+        // Atualizar estado local para refletir as mudanças
+        setExistingAbsences(prev => ({
+            ...prev,
+            ...Object.fromEntries(
+                attendanceData.absences.map(absence => [absence.estudanteId, true])
+            )
+        }));
+        
+        setMarkedAbsences(prev => ({
+            ...prev,
+            ...Object.fromEntries(
+                attendanceData.absences.map(absence => [absence.estudanteId, true])
+            )
+        }));
+    };
+
     // Salva faltas evitando duplicatas
     const handleSaveAbsences = async () => {
         setIsSaving(true);
-        const formattedDate = convertToISO(selectedDate);
+        
         try {
+            if (!isOnline) {
+                await saveAbsencesOffline();
+                setOpenDialog(false);
+                return;
+            }
+
+            const formattedDate = convertToISO(selectedDate);
             const batch = writeBatch(db);
             const controleColRef = collection(db, ACADEMIC_YEAR, COLLECTION_FALTAS, SUBCOLLECTION_CONTROLE);
 
@@ -392,6 +444,14 @@ export default function MarcarFaltasPage() {
                 <div className="text-center">
                     <h1 className="text-3xl font-bold text-gray-800 mb-2">Marcação de Faltas</h1>
                     <p className="text-gray-600">Gerencie a presença dos estudantes</p>
+                    
+                    {/* Indicador de modo offline */}
+                    {!isOnline && (
+                        <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-orange-100 border border-orange-200 rounded-full text-orange-700">
+                            <WifiOff className="w-4 h-4" />
+                            <span className="text-sm font-medium">Modo Offline - Os dados serão sincronizados automaticamente</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Controles */}

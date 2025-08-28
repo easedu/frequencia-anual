@@ -6,10 +6,11 @@ import { auth } from "@/firebase.config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useRouter } from "next/navigation";
 import { getFriendlyErrorMessage } from "@/utils/errorMessages";
 import { Card, CardContent } from "@/components/ui/card";
 import { Mail, Lock, Eye, EyeOff, GraduationCap } from "lucide-react";
+import { useAuth } from "@/components/AuthProvider";
+import { logger } from "@/utils/logger";
 
 export default function Login() {
     const [email, setEmail] = useState("");
@@ -17,7 +18,7 @@ export default function Login() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
-    const router = useRouter();
+    const { isAuthenticated } = useAuth();
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -30,15 +31,31 @@ export default function Login() {
 
         setLoading(true);
         try {
+            logger.info('🔐 Tentando fazer login...', { email });
             await signInWithEmailAndPassword(auth, email, password);
-            router.push("/home");
+            logger.info('✅ Login realizado com sucesso');
+            // O redirecionamento será feito automaticamente pelo AuthProvider
         } catch (err: unknown) {
             const errorInfo = err as { code?: string; message: string };
             const code = errorInfo.code || errorInfo.message;
-            setError(getFriendlyErrorMessage(code));
+            const friendlyError = getFriendlyErrorMessage(code);
+            logger.error('❌ Erro no login:', { error: friendlyError, code });
+            setError(friendlyError);
         } finally {
             setLoading(false);
         }
+    }
+
+    // Se usuário já está logado, não renderizar a página de login
+    if (isAuthenticated) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600 font-medium">Redirecionando...</p>
+                </div>
+            </div>
+        );
     }
 
     return (
