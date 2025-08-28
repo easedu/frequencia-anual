@@ -80,6 +80,7 @@ export default function RelatorioFaltasPage() {
     const [showAbsences, setShowAbsences] = useState<boolean>(false);
     const [showFrequency, setShowFrequency] = useState<boolean>(true);
     const [excludeJustified, setExcludeJustified] = useState<boolean>(true);
+    const [showOnlyLowFrequency, setShowOnlyLowFrequency] = useState<boolean>(false);
     const [diasLetivos, setDiasLetivos] = useState<{ [key: number]: number }>({});
 
     const parseDate = (dateStr: string): Date | null => {
@@ -164,20 +165,6 @@ export default function RelatorioFaltasPage() {
         calculateDiasLetivos();
     }, [calculateDiasLetivos]);
 
-    const filteredStudents = students
-        .filter(student =>
-            searchFilter === "" ||
-            student.turma.toLowerCase().includes(searchFilter.toLowerCase()) ||
-            student.nome.toLowerCase().includes(searchFilter.toLowerCase())
-        )
-        .sort((a, b) => a.nome.localeCompare(b.nome));
-
-    const totalRecords = filteredStudents.length;
-    const totalPages = Math.ceil(totalRecords / recordsPerPage);
-    const indexOfLastRecord = currentPage * recordsPerPage;
-    const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
-    const currentRecords = filteredStudents.slice(indexOfFirstRecord, indexOfLastRecord);
-
     const getAbsencesByMonth = (estudanteId: string, monthIndex: number): number => {
         return absenceRecords.filter(record => {
             const recordDate = new Date(record.data);
@@ -207,6 +194,24 @@ export default function RelatorioFaltasPage() {
             return false;
         });
     };
+
+    const filteredStudents = students
+        .filter(student => {
+            const matchesSearch = searchFilter === "" ||
+                student.turma.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                student.nome.toLowerCase().includes(searchFilter.toLowerCase());
+            
+            const matchesFrequencyFilter = !showOnlyLowFrequency || hasLowFrequency(student.estudanteId);
+            
+            return matchesSearch && matchesFrequencyFilter;
+        })
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+
+    const totalRecords = filteredStudents.length;
+    const totalPages = Math.ceil(totalRecords / recordsPerPage);
+    const indexOfLastRecord = currentPage * recordsPerPage;
+    const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
+    const currentRecords = filteredStudents.slice(indexOfFirstRecord, indexOfLastRecord);
 
     const handleMonthChange = (month: string): void => {
         const newSelectedMonths = new Set(selectedMonths);
@@ -485,6 +490,19 @@ export default function RelatorioFaltasPage() {
                                     <label htmlFor="excludeJustified" className="text-sm font-medium cursor-pointer flex items-center gap-1">
                                         {excludeJustified ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
                                         Excluir Justificadas
+                                    </label>
+                                </div>
+
+                                <div className="flex items-center space-x-2 bg-red-50 px-3 py-2 rounded-lg border border-red-200">
+                                    <Checkbox
+                                        id="showOnlyLowFrequency"
+                                        checked={showOnlyLowFrequency}
+                                        onCheckedChange={(checked) => setShowOnlyLowFrequency(checked as boolean)}
+                                        className="data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
+                                    />
+                                    <label htmlFor="showOnlyLowFrequency" className="text-sm font-medium cursor-pointer flex items-center gap-1 text-red-700">
+                                        <AlertTriangle className="w-3 h-3" />
+                                        Frequência &lt; 75%
                                     </label>
                                 </div>
                             </div>
