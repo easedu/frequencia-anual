@@ -1,9 +1,85 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Edit, ChevronUp, ChevronDown, Mail, Phone, MapPin, User, Calendar, Clock, DollarSign, CheckCircle, XCircle } from 'lucide-react';
 import { Estudante, Contato } from '@/types';
 import { formatPhoneNumber, formatCep, formatDate } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+
+// Componentes otimizados com React.memo
+const StatusBadge = memo(({ status }: { status: string }) => {
+    return status === "ATIVO" ? (
+        <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            ATIVO
+        </Badge>
+    ) : (
+        <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800">
+            <XCircle className="w-3 h-3 mr-1" />
+            INATIVO
+        </Badge>
+    );
+});
+StatusBadge.displayName = 'StatusBadge';
+
+const TurnoBadge = memo(({ turno }: { turno: string }) => {
+    return turno === "MANHÃ" ? (
+        <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+            <Clock className="w-3 h-3 mr-1" />
+            MANHÃ
+        </Badge>
+    ) : (
+        <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800">
+            <Clock className="w-3 h-3 mr-1" />
+            TARDE
+        </Badge>
+    );
+});
+TurnoBadge.displayName = 'TurnoBadge';
+
+const BolsaFamiliaBadge = memo(({ bolsa }: { bolsa: string }) => {
+    return bolsa === "SIM" ? (
+        <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800">
+            <DollarSign className="w-3 h-3 mr-1" />
+            SIM
+        </Badge>
+    ) : (
+        <Badge variant="outline" className="text-slate-600 dark:text-slate-400">
+            NÃO
+        </Badge>
+    );
+});
+BolsaFamiliaBadge.displayName = 'BolsaFamiliaBadge';
+
+const SortHeader = memo(({ 
+    column, 
+    children, 
+    className = "", 
+    sortColumn, 
+    sortDirection, 
+    onSort 
+}: { 
+    column: string; 
+    children: React.ReactNode; 
+    className?: string;
+    sortColumn: string;
+    sortDirection: "asc" | "desc";
+    onSort: (column: string) => void;
+}) => (
+    <th
+        className={`px-6 py-4 text-left font-semibold text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-all duration-200 ${className}`}
+        onClick={() => onSort(column)}
+    >
+        <div className="flex items-center space-x-2">
+            <span>{children}</span>
+            {sortColumn === column && (
+                sortDirection === "asc" ?
+                    <ChevronUp className="w-4 h-4 text-blue-500" /> :
+                    <ChevronDown className="w-4 h-4 text-blue-500" />
+            )}
+        </div>
+    </th>
+));
+SortHeader.displayName = 'SortHeader';
 
 interface StudentTableProps {
     currentRecords: Estudante[];
@@ -17,7 +93,7 @@ interface StudentTableProps {
     students: Estudante[];
 }
 
-export function StudentTable({
+export const StudentTable = memo(function StudentTable({
     currentRecords,
     visibleColumns,
     sortColumn,
@@ -28,63 +104,6 @@ export function StudentTable({
     setOpenModal,
     students,
 }: StudentTableProps) {
-
-    const getStatusBadge = (status: string) => {
-        return status === "ATIVO" ? (
-            <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                ATIVO
-            </Badge>
-        ) : (
-            <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800">
-                <XCircle className="w-3 h-3 mr-1" />
-                INATIVO
-            </Badge>
-        );
-    };
-
-    const getTurnoBadge = (turno: string) => {
-        return turno === "MANHÃ" ? (
-            <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800">
-                <Clock className="w-3 h-3 mr-1" />
-                MANHÃ
-            </Badge>
-        ) : (
-            <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800">
-                <Clock className="w-3 h-3 mr-1" />
-                TARDE
-            </Badge>
-        );
-    };
-
-    const getBolsaFamiliaBadge = (bolsa: string) => {
-        return bolsa === "SIM" ? (
-            <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800">
-                <DollarSign className="w-3 h-3 mr-1" />
-                SIM
-            </Badge>
-        ) : (
-            <Badge variant="outline" className="text-slate-600 dark:text-slate-400">
-                NÃO
-            </Badge>
-        );
-    };
-
-    const SortHeader = ({ column, children, className = "" }: { column: string; children: React.ReactNode; className?: string }) => (
-        <th
-            className={`px-6 py-4 text-left font-semibold text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-all duration-200 ${className}`}
-            onClick={() => handleSort(column)}
-        >
-            <div className="flex items-center space-x-2">
-                <span>{children}</span>
-                {sortColumn === column && (
-                    sortDirection === "asc" ?
-                        <ChevronUp className="w-4 h-4 text-blue-500" /> :
-                        <ChevronDown className="w-4 h-4 text-blue-500" />
-                )}
-            </div>
-        </th>
-    );
 
     if (currentRecords.length === 0) {
         return (
@@ -131,84 +150,144 @@ export function StudentTable({
                     <thead className="bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur-sm">
                         <tr>
                             {visibleColumns.has("turma") && (
-                                <SortHeader column="turma">
+                                <SortHeader 
+                                    column="turma"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         🏫 <span className="ml-2">Turma</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("nome") && (
-                                <SortHeader column="nome">
+                                <SortHeader 
+                                    column="nome"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         👤 <span className="ml-2">Nome</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("matricula") && (
-                                <SortHeader column="matricula">
+                                <SortHeader 
+                                    column="matricula"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         🎓 <span className="ml-2">Matrícula</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("dataNascimento") && (
-                                <SortHeader column="dataNascimento">
+                                <SortHeader 
+                                    column="dataNascimento"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         📅 <span className="ml-2">Nascimento</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("turno") && (
-                                <SortHeader column="turno">
+                                <SortHeader 
+                                    column="turno"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         ⏰ <span className="ml-2">Turno</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("bolsaFamilia") && (
-                                <SortHeader column="bolsaFamilia">
+                                <SortHeader 
+                                    column="bolsaFamilia"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         💰 <span className="ml-2">Bolsa Família</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("status") && (
-                                <SortHeader column="status">
+                                <SortHeader 
+                                    column="status"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         ✅ <span className="ml-2">Status</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("contatos") && (
-                                <SortHeader column="contatos">
+                                <SortHeader 
+                                    column="contatos"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         📞 <span className="ml-2">Contatos</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("email") && (
-                                <SortHeader column="email">
+                                <SortHeader 
+                                    column="email"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         ✉️ <span className="ml-2">E-mail</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("endereco") && (
-                                <SortHeader column="endereco">
+                                <SortHeader 
+                                    column="endereco"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         🏠 <span className="ml-2">Endereço</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("deficiencia") && (
-                                <SortHeader column="deficiencia">
+                                <SortHeader 
+                                    column="deficiencia"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         ♿ <span className="ml-2">Deficiência</span>
                                     </div>
                                 </SortHeader>
                             )}
                             {visibleColumns.has("provaSaoPaulo") && (
-                                <SortHeader column="provaSaoPaulo">
+                                <SortHeader 
+                                    column="provaSaoPaulo"
+                                    sortColumn={sortColumn}
+                                    sortDirection={sortDirection}
+                                    onSort={handleSort}
+                                >
                                     <div className="flex items-center">
                                         📊 <span className="ml-2">Prova SP</span>
                                     </div>
@@ -289,21 +368,21 @@ export function StudentTable({
                                 {visibleColumns.has("turno") && (
                                     <td className="px-6 py-4">
                                         <div className="flex justify-center">
-                                            {getTurnoBadge(est.turno)}
+                                            <TurnoBadge turno={est.turno} />
                                         </div>
                                     </td>
                                 )}
                                 {visibleColumns.has("bolsaFamilia") && (
                                     <td className="px-6 py-4">
                                         <div className="flex justify-center">
-                                            {getBolsaFamiliaBadge(est.bolsaFamilia)}
+                                            <BolsaFamiliaBadge bolsa={est.bolsaFamilia} />
                                         </div>
                                     </td>
                                 )}
                                 {visibleColumns.has("status") && (
                                     <td className="px-6 py-4">
                                         <div className="flex justify-center">
-                                            {getStatusBadge(est.status)}
+                                            <StatusBadge status={est.status} />
                                         </div>
                                     </td>
                                 )}
@@ -457,4 +536,4 @@ export function StudentTable({
             </div>
         </div>
     );
-}
+});

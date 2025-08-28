@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-08-28T00:15:37.994Z",
+  "timestamp": "2025-08-28T13:24:30.660Z",
   "sharedSize": 102,
   "routes": [
     {
@@ -14,7 +14,7 @@
     },
     {
       "route": "/cadastrar-estudante",
-      "pageSize": 73.9,
+      "pageSize": 72.4,
       "totalSize": 343
     },
     {
@@ -39,18 +39,18 @@
     },
     {
       "route": "/marcar-faltas",
-      "pageSize": 7.8,
+      "pageSize": 7,
       "totalSize": 277
     },
     {
       "route": "/perfil-deficiente",
-      "pageSize": 9.9,
+      "pageSize": 9.3,
       "totalSize": 380
     },
     {
       "route": "/perfil-estudante",
       "pageSize": 109,
-      "totalSize": 379
+      "totalSize": 380
     },
     {
       "route": "/prova-sao-paulo",
@@ -63,6 +63,79 @@
       "totalSize": 264
     }
   ],
-  "warnings": [],
-  "errors": []
+  "warnings": [
+    {
+      "type": "page_size_warning",
+      "message": "Página individual excede limite recomendado: 109KB > 80KB",
+      "route": "/perfil-estudante"
+    },
+    {
+      "type": "shared_size_warning",
+      "message": "Shared bundle muito grande: 102KB > 60KB"
+    }
+  ],
+  "errors": [
+    {
+      "type": "total_size_exceeded",
+      "message": "First Load JS total excede limite: 426KB > 120KB",
+      "route": "/controlar-faltas"
+    }
+  ],
+  "recommendations": [
+    {
+      "category": "Páginas Grandes",
+      "items": [
+        {
+          "page": "/perfil-estudante",
+          "size": 109,
+          "suggestions": [
+            "Implementar virtualization para listas grandes",
+            "Lazy load de gráficos e visualizações",
+            "Dynamic imports para componentes de análise"
+          ]
+        },
+        {
+          "page": "/cadastrar-estudante",
+          "size": 72.4,
+          "suggestions": [
+            "Implementar lazy loading para formulários complexos",
+            "Quebrar componente StudentForm em partes menores",
+            "Dynamic import para bibliotecas de validação"
+          ]
+        },
+        {
+          "page": "/controlar-faltas",
+          "size": 62.7,
+          "suggestions": [
+            "Lazy load para componentes de calendário",
+            "Code splitting para funcionalidades avançadas",
+            "Otimizar imports de bibliotecas de data"
+          ]
+        }
+      ]
+    },
+    {
+      "category": "Bundle Compartilhado",
+      "items": [
+        {
+          "suggestion": "Considere implementar code splitting mais granular",
+          "details": [
+            "Lazy load componentes não-críticos",
+            "Dynamic imports para bibliotecas pesadas",
+            "Tree shaking das dependências"
+          ]
+        }
+      ]
+    }
+  ],
+  "performance": {
+    "totalPages": 12,
+    "averagePageSize": 26.1,
+    "largestPage": {
+      "route": "/perfil-estudante",
+      "pageSize": 109,
+      "totalSize": 380
+    },
+    "totalBundleSize": 415.2
+  }
 }
