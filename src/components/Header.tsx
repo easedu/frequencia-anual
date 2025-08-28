@@ -159,16 +159,6 @@ export default function Header() {
                             <span>Home</span>
                         </Link>
 
-                        <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-200 font-medium text-left">
-                            <User className="w-5 h-5" />
-                            <span>Perfil</span>
-                        </button>
-
-                        <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-200 font-medium text-left">
-                            <Settings className="w-5 h-5" />
-                            <span>Configurações</span>
-                        </button>
-
                         <div className="border-t border-slate-200 dark:border-slate-600 pt-2 mt-2">
                             <button
                                 onClick={() => {
