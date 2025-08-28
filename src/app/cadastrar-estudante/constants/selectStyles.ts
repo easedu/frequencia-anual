@@ -1,5 +1,5 @@
 import { StylesConfig } from "react-select";
-import { SelectOption } from "../interfaces";
+import { SelectOption } from "@/types";
 
 export const customSelectStyles: StylesConfig<SelectOption, true> = {
     control: (provided) => ({

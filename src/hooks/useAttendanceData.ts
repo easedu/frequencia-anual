@@ -6,6 +6,7 @@ import {
     parseDate,
     formatFirebaseDate,
 } from "@/utils/attendanceUtils";
+import { logger } from "@/utils/logger";
 
 interface StudentRecord {
     estudanteId: string;
@@ -105,7 +106,7 @@ export function useAttendanceData({
                     setBimesterDates(dates);
                 }
             } catch (error) {
-                console.error("Erro ao buscar períodos dos bimestres:", error);
+                logger.error("Erro ao buscar períodos dos bimestres", error);
             }
         };
         fetchBimesterDates();
@@ -262,7 +263,7 @@ export function useAttendanceData({
 
                 return Object.values(aggregated);
             } catch (error) {
-                console.error("Erro ao buscar registros de faltas:", error);
+                logger.error("Erro ao buscar registros de faltas", error);
                 return [];
             }
         },
@@ -304,7 +305,7 @@ export function useAttendanceData({
                 }
                 return 0;
             } catch (error) {
-                console.error("Erro ao calcular dias letivos:", error);
+                logger.error("Erro ao calcular dias letivos", error);
                 return 0;
             }
         },
@@ -341,7 +342,7 @@ export function useAttendanceData({
 
                 setStudentAbsences(absencesByBimester);
             } catch (error) {
-                console.error("Erro ao buscar faltas do estudante:", error);
+                logger.error("Erro ao buscar faltas do estudante", error);
                 setStudentAbsences({ b1: [], b2: [], b3: [], b4: [] });
             }
         },
@@ -374,7 +375,7 @@ export function useAttendanceData({
 
             setDuplicateAbsences(duplicates);
         } catch (error) {
-            console.error("Erro ao buscar duplicatas de faltas:", error);
+            logger.error("Erro ao buscar duplicatas de faltas", error);
             setDuplicateAbsences([]);
         }
     }, []);
@@ -408,7 +409,7 @@ export function useAttendanceData({
             );
             await Promise.all(deletePromises);
 
-            console.log(`Removidos ${duplicatesToRemove.length} registros duplicados.`);
+            logger.info(`Removidos ${duplicatesToRemove.length} registros duplicados`);
 
             await fetchDuplicateAbsences();
 
@@ -418,7 +419,7 @@ export function useAttendanceData({
                 setData(newData);
             }
         } catch (error) {
-            console.error("Erro ao remover duplicatas de faltas:", error);
+            logger.error("Erro ao remover duplicatas de faltas", error);
         }
     }, [fetchDuplicateAbsences, filterState, calculateDiasLetivos, bimesterDates, fetchStudentData]);
 

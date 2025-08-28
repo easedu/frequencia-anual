@@ -1,0 +1,68 @@
+{
+  "timestamp": "2025-08-28T00:15:37.994Z",
+  "sharedSize": 102,
+  "routes": [
+    {
+      "route": "/_not-found",
+      "pageSize": 1,
+      "totalSize": 103
+    },
+    {
+      "route": "/cadastrar-ano-letivo",
+      "pageSize": 8.2,
+      "totalSize": 244
+    },
+    {
+      "route": "/cadastrar-estudante",
+      "pageSize": 73.9,
+      "totalSize": 343
+    },
+    {
+      "route": "/controlar-faltas",
+      "pageSize": 62.7,
+      "totalSize": 426
+    },
+    {
+      "route": "/gerenciar-usuarios",
+      "pageSize": 7.5,
+      "totalSize": 273
+    },
+    {
+      "route": "/home",
+      "pageSize": 6.6,
+      "totalSize": 225
+    },
+    {
+      "route": "/login",
+      "pageSize": 4.7,
+      "totalSize": 231
+    },
+    {
+      "route": "/marcar-faltas",
+      "pageSize": 7.8,
+      "totalSize": 277
+    },
+    {
+      "route": "/perfil-deficiente",
+      "pageSize": 9.9,
+      "totalSize": 380
+    },
+    {
+      "route": "/perfil-estudante",
+      "pageSize": 109,
+      "totalSize": 379
+    },
+    {
+      "route": "/prova-sao-paulo",
+      "pageSize": 14.3,
+      "totalSize": 277
+    },
+    {
+      "route": "/relatorio-bolsa-familia",
+      "pageSize": 10.6,
+      "totalSize": 264
+    }
+  ],
+  "warnings": [],
+  "errors": []
+}

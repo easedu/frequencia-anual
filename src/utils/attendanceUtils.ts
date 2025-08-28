@@ -1,7 +1,9 @@
+import { logger } from "@/utils/logger";
+
 export function getBimesterByDate(dateStr: string, bimesterDates: { [key: number]: { start: string; end: string } }): number {
     const date = parseDate(dateStr);
     if (!date || isNaN(date.getTime())) {
-        console.error("Data inválida:", dateStr);
+        logger.error("Data inválida", { dateStr });
         return 0;
     }
 

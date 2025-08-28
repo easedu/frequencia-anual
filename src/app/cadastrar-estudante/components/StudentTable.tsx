@@ -1,6 +1,6 @@
 import React from 'react';
 import { Edit, ChevronUp, ChevronDown, Mail, Phone, MapPin, User, Calendar, Clock, DollarSign, CheckCircle, XCircle } from 'lucide-react';
-import { Estudante, Contato } from '../interfaces';
+import { Estudante, Contato } from '@/types';
 import { formatTelefone, formatCep, formatDataNascimento } from '../utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

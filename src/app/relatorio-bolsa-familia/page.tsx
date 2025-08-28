@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { collection, getDocs, getDoc, doc, DocumentSnapshot, DocumentData } from "firebase/firestore";
 import { db } from "@/firebase.config";
+import { logger } from "@/utils/logger";
 import {
     FileText,
     Search,
@@ -116,7 +117,7 @@ export default function RelatorioFaltasPage() {
             }
             setDiasLetivos(diasPorMes);
         } catch (error) {
-            console.error("Erro ao calcular dias letivos:", error);
+            logger.error("Erro ao calcular dias letivos", error as Error);
             return {};
         }
     }, []);
@@ -134,7 +135,7 @@ export default function RelatorioFaltasPage() {
                 }
                 setStudents(studentList);
             } catch (error) {
-                console.error("Erro ao carregar estudantes:", error);
+                logger.error("Erro ao carregar estudantes", error as Error);
             } finally {
                 setLoadingStudents(false);
             }
@@ -152,7 +153,7 @@ export default function RelatorioFaltasPage() {
                 }));
                 setAbsenceRecords(records);
             } catch (error) {
-                console.error("Erro ao carregar faltas:", error);
+                logger.error("Erro ao carregar faltas", error as Error);
             } finally {
                 setLoadingAbsences(false);
             }
@@ -235,7 +236,7 @@ export default function RelatorioFaltasPage() {
 
         const printDoc = printFrame.contentWindow?.document;
         if (!printDoc) {
-            console.error("Não foi possível acessar o documento do iframe.");
+            logger.error("Não foi possível acessar o documento do iframe");
             document.body.removeChild(printFrame);
             return;
         }

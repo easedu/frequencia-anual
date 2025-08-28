@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Estudante } from '../interfaces';
+import { Estudante } from '@/types';
 import { formatDataNascimento, cleanDataNascimento } from '../utils/formatters';
 
 interface StudentFiltersProps {

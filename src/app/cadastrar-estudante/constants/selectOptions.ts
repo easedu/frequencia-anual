@@ -1,4 +1,4 @@
-import { SelectOption } from "../interfaces";
+import { SelectOption } from "@/types";
 
 export const tipoDeficienciaOptions: SelectOption[] = [
     { value: "DI", label: "DI" },

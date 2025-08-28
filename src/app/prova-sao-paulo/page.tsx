@@ -18,6 +18,7 @@ import { Toaster, toast } from "sonner";
 import { FileSpreadsheet, Upload, CheckCircle, AlertTriangle, Info } from "lucide-react";
 import { db } from "@/firebase.config";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import { logger } from "@/utils/logger";
 import Papa from "papaparse";
 
 // Interfaces
@@ -137,7 +138,6 @@ export default function ProvaSaoPauloPage() {
 
                 // Obter cabeçalhos da linha correta
                 const headers = rows[headerRowIndex].map(header => header.trim());
-                console.log("Cabeçalhos encontrados:", headers);
 
                 // Verificar se temos os cabeçalhos esperados
                 const requiredHeaders = ["NomeDoAluno", "Edicao", "MediaDoAluno", "NivelProficienciaDoAluno", "CodigoDaTurmaDoAluno"];
@@ -180,7 +180,6 @@ export default function ProvaSaoPauloPage() {
                     return;
                 }
 
-                console.log("Dados processados:", data.slice(0, 3));
                 setCsvData(data);
                 setPreviewData(data.slice(0, 5));
                 toast.success(`${data.length} registros carregados do CSV`);
@@ -322,7 +321,7 @@ export default function ProvaSaoPauloPage() {
             toast.success(`Processamento concluído! ${resultado.alunosAtualizados} alunos atualizados.`);
 
         } catch (error) {
-            console.error("Erro durante processamento:", error);
+            logger.error("Erro durante processamento", error as Error);
             toast.error(`Erro durante processamento: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
         } finally {
             setIsProcessing(false);

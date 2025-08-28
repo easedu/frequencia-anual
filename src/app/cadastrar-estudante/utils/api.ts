@@ -1,4 +1,5 @@
-import { Endereco } from "../interfaces";
+import { Endereco } from "@/types";
+import { logger } from "@/utils/logger";
 
 export const fetchAddressFromCep = async (cep: string): Promise<Endereco | null> => {
     try {
@@ -7,17 +8,16 @@ export const fetchAddressFromCep = async (cep: string): Promise<Endereco | null>
 
         // Valida se o CEP tem exatamente 8 dígitos
         if (cleanedCep.length !== 8) {
-            console.warn(`CEP inválido: deve conter exatamente 8 dígitos. CEP fornecido: "${cep}" (${cleanedCep.length} dígitos)`);
+            logger.warn(`CEP inválido: deve conter exatamente 8 dígitos. CEP fornecido: "${cep}" (${cleanedCep.length} dígitos)`);
             return null;
         }
 
         // Valida se o CEP não é uma sequência de números iguais (como 00000000, 11111111, etc.)
         if (/^(\d)\1{7}$/.test(cleanedCep)) {
-            console.warn(`CEP inválido: não pode ser uma sequência de números iguais. CEP: ${cleanedCep}`);
+            logger.warn(`CEP inválido: não pode ser uma sequência de números iguais. CEP: ${cleanedCep}`);
             return null;
         }
 
-        console.log(`Consultando CEP: ${cleanedCep}`);
 
         const response = await fetch(`https://viacep.com.br/ws/${cleanedCep}/json/`);
 
@@ -29,17 +29,16 @@ export const fetchAddressFromCep = async (cep: string): Promise<Endereco | null>
 
         // Verifica se a API retornou erro
         if (data.erro) {
-            console.warn(`CEP não encontrado na base dos Correios: ${cleanedCep}`);
+            logger.warn(`CEP não encontrado na base dos Correios: ${cleanedCep}`);
             return null;
         }
 
         // Verifica se os campos essenciais estão presentes
         if (!data.localidade || !data.uf) {
-            console.warn(`Dados incompletos retornados para o CEP: ${cleanedCep}`, data);
+            logger.warn(`Dados incompletos retornados para o CEP: ${cleanedCep}`, data);
             return null;
         }
 
-        console.log(`Endereço encontrado para CEP ${cleanedCep}:`, data);
 
         return {
             rua: data.logradouro || "",
@@ -51,13 +50,13 @@ export const fetchAddressFromCep = async (cep: string): Promise<Endereco | null>
             complemento: data.complemento || "",
         };
     } catch (error) {
-        console.error(`Erro ao consultar CEP "${cep}":`, error);
+        logger.error(`Erro ao consultar CEP "${cep}"`, error);
 
         // Diferentes tratamentos para diferentes tipos de erro
         if (error instanceof TypeError && error.message.includes('fetch')) {
-            console.error('Erro de conectividade - verifique sua conexão com a internet');
+            logger.error('Erro de conectividade - verifique sua conexão com a internet');
         } else if (error instanceof SyntaxError) {
-            console.error('Erro ao processar resposta da API - resposta inválida');
+            logger.error('Erro ao processar resposta da API - resposta inválida');
         }
 
         return null;

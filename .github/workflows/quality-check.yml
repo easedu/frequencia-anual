@@ -48,7 +48,67 @@ jobs:
       run: npm run build
 
     - name: Bundle size analysis
-      run: npm run analyze
+      run: |
+        npm run analyze
+        npm run bundle:monitor
+    
+    - name: Upload bundle analysis
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bundle-analysis-${{ matrix.node-version }}
+        path: |
+          bundle-analysis.json
+          .next/analyze/
+        retention-days: 30
+    
+    - name: Comment bundle analysis on PR
+      if: github.event_name == 'pull_request' && matrix.node-version == '20.x'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          try {
+            const analysis = JSON.parse(fs.readFileSync('bundle-analysis.json', 'utf8'));
+            const maxTotal = Math.max(...analysis.routes.map(r => r.totalSize));
+            const maxPage = Math.max(...analysis.routes.map(r => r.pageSize));
+            
+            let status = '✅';
+            if (analysis.errors.length > 0) status = '❌';
+            else if (analysis.warnings.length > 0) status = '⚠️';
+            
+            const comment = `## ${status} Bundle Analysis Report
+            
+            **Summary:**
+            - 📦 Shared JS: ${analysis.sharedSize}KB
+            - 📄 Total Routes: ${analysis.routes.length}
+            - 📈 Largest Page: ${maxPage}KB
+            - 🎯 Largest Total: ${maxTotal}KB
+            
+            ${analysis.warnings.length > 0 ? `**Warnings:**\n${analysis.warnings.map(w => `- ⚠️ ${w}`).join('\n')}\n\n` : ''}
+            ${analysis.errors.length > 0 ? `**Errors:**\n${analysis.errors.map(e => `- ❌ ${e}`).join('\n')}\n\n` : ''}
+            
+            <details>
+            <summary>📊 Detailed Bundle Sizes</summary>
+            
+            | Route | Page Size | Total Size |
+            |-------|-----------|------------|
+            ${analysis.routes.map(r => `| ${r.route} | ${r.pageSize}KB | ${r.totalSize}KB |`).join('\n')}
+            
+            </details>
+            
+            *Report generated at ${analysis.timestamp}*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          } catch (error) {
+            console.log('Could not generate bundle analysis comment:', error.message);
+          }
 
   performance-check:
     runs-on: ubuntu-latest

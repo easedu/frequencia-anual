@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { Plus, Edit } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { formSchema } from '../constants/formSchema';
-import { Estudante } from '../interfaces';
+import { Estudante } from '@/types';
 import { StudentForm } from './StudentForm';
 
 interface StudentDialogProps {

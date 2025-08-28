@@ -5,6 +5,7 @@ import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
 import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where, deleteField, writeBatch } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { logger } from "@/utils/logger";
 import { headerImageBase64 } from "@/assets/headerImage";
 import SearchByNameCard from "../../components/SearchByNameCard";
 import SearchByClassCard from "../../components/SearchByClassCard";
@@ -86,7 +87,7 @@ export default function StudentProfilePage() {
                     setUserRole("user");
                 }
             } catch (error) {
-                // TODO: Implement logger - console.error("Erro ao carregar perfil do usuário:", error);
+                logger.error("Erro ao carregar perfil do usuário", error as Error);
                 setUserRole("user");
             } finally {
                 setLoadingUserRole(false);
@@ -111,7 +112,7 @@ export default function StudentProfilePage() {
                 setAllStudents(activeStudents.sort((a, b) => a.nome.localeCompare(b.nome)));
             }
         } catch (error) {
-            // TODO: Implement logger - console.error("Erro ao buscar lista de estudantes:", error);
+            logger.error("Erro ao buscar lista de estudantes", error as Error);
         } finally {
             setLoadingStudents(false);
         }
@@ -132,7 +133,7 @@ export default function StudentProfilePage() {
                 setBimesterDates(dates);
             }
         } catch (error) {
-            // TODO: Implement logger - console.error("Erro ao buscar períodos dos bimestres:", error);
+            logger.error("Erro ao buscar períodos dos bimestres", error as Error);
         }
     }, []);
 
@@ -255,7 +256,7 @@ export default function StudentProfilePage() {
             })).sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
             setInteractions(interactionRecords);
         } catch (error) {
-            // TODO: Implement logger - console.error("Erro ao buscar dados do aluno:", error);
+            logger.error("Erro ao buscar dados do aluno", error as Error);
         } finally {
             setLoadingProfile(false);
         }
@@ -316,7 +317,7 @@ export default function StudentProfilePage() {
 
             toast.success("Interação salva com sucesso!");
         } catch (error) {
-            // TODO: Implement logger - console.error("Erro ao cadastrar interação:", error);
+            logger.error("Erro ao cadastrar interação", error as Error);
             toast.error("Erro ao salvar interação. Tente novamente.");
         }
     };
@@ -350,7 +351,7 @@ export default function StudentProfilePage() {
             await fetchStudentData(selectedStudentId);
             toast.success("Interação atualizada com sucesso!");
         } catch (error) {
-            // TODO: Implement logger - console.error("Erro ao atualizar interação:", error);
+            logger.error("Erro ao atualizar interação", error as Error);
             toast.error("Erro ao atualizar interação. Tente novamente.");
         }
     };
@@ -363,7 +364,7 @@ export default function StudentProfilePage() {
             await fetchStudentData(selectedStudentId);
             toast.success("Interação excluída com sucesso!");
         } catch (error) {
-            // TODO: Implement logger - console.error("Erro ao excluir interação:", error);
+            logger.error("Erro ao excluir interação", error as Error);
             toast.error("Erro ao excluir interação. Tente novamente.");
         } finally {
             setShowDeleteDialog(null);
@@ -463,7 +464,7 @@ export default function StudentProfilePage() {
 
             toast.success("Atestado salvo com sucesso!");
         } catch (error) {
-            // TODO: Implement logger - console.error("Erro ao cadastrar atestado:", error);
+            logger.error("Erro ao cadastrar atestado", error as Error);
             toast.error("Erro ao salvar atestado. Tente novamente.");
         }
     };
@@ -567,7 +568,7 @@ export default function StudentProfilePage() {
             await fetchStudentData(selectedStudentId);
             toast.success("Atestado atualizado com sucesso!");
         } catch (error) {
-            // TODO: Implement logger - console.error("Erro ao atualizar atestado:", error);
+            logger.error("Erro ao atualizar atestado", error as Error);
             toast.error("Erro ao atualizar atestado. Tente novamente.");
         }
     };
@@ -595,7 +596,7 @@ export default function StudentProfilePage() {
             await fetchStudentData(selectedStudentId);
             toast.success("Atestado excluído com sucesso!");
         } catch (error) {
-            // TODO: Implement logger - console.error("Erro ao excluir atestado:", error);
+            logger.error("Erro ao excluir atestado", error as Error);
             toast.error("Erro ao excluir atestado. Tente novamente.");
         } finally {
             setShowDeleteAtestadoDialog(null);

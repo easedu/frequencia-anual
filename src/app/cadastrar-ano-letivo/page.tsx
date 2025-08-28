@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { db } from '@/firebase.config';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { logger } from '@/utils/logger';
 import { toast, Toaster } from 'sonner';
 import { Calendar, Save, BookOpen, Clock, CheckCircle2 } from 'lucide-react';
 
@@ -77,7 +78,7 @@ export default function CadastrarAnoLetivoPage() {
                     setCardData(newInitialData);
                 }
             } catch (error) {
-                console.error("Erro ao buscar dados do Firebase", error);
+                logger.error("Erro ao buscar dados do Firebase", error as Error);
             }
         }
         fetchData();
@@ -94,7 +95,7 @@ export default function CadastrarAnoLetivoPage() {
             await setDoc(docRef, dataToSave);
             toast.success("Dados salvos com sucesso!");
         } catch (error) {
-            console.error("Erro ao salvar dados no Firebase", error);
+            logger.error("Erro ao salvar dados no Firebase", error as Error);
             toast.error("Erro ao salvar dados no Firebase");
         }
     }
@@ -268,7 +269,7 @@ function BimesterCard({
                 tempList.sort((a, b) => a.date.getTime() - b.date.getTime());
                 setDatesList(tempList);
             } catch (error) {
-                console.error("Erro ao interpretar data", error);
+                logger.error("Erro ao interpretar data", error as Error);
                 setDatesList([]);
             }
         }

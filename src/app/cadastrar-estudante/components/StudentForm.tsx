@@ -16,7 +16,7 @@ import { tipoDeficienciaOptions, atendimentoSaudeOptions, justificativaAveOption
 import { customSelectStyles } from '../constants/selectStyles';
 import { formatTelefone, cleanTelefone, formatCep, cleanCep, formatDataNascimento, cleanDataNascimento } from '../utils/formatters';
 import { fetchAddressFromCep } from '../utils/api';
-import { SelectOption, Estudante } from '../interfaces';
+import { SelectOption, Estudante } from '@/types';
 import { toast } from 'sonner';
 
 interface StudentFormProps {

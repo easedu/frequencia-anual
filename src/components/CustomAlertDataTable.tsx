@@ -13,6 +13,7 @@ import {
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table";
+import { logger } from "@/utils/logger";
 import {
     ArrowUpDown,
     ChevronDown,
@@ -246,7 +247,7 @@ export function AlertDataTable({ data }: AlertDataTableProps) {
 
         const printDoc = printFrame.contentWindow?.document;
         if (!printDoc) {
-            console.error("Não foi possível acessar o documento do iframe.");
+            logger.error("Não foi possível acessar o documento do iframe");
             document.body.removeChild(printFrame);
             return;
         }

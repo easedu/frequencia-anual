@@ -15,8 +15,12 @@
     "check:years": "grep -r '2025' src/ --exclude-dir=scripts && echo 'Hard-coded years found!' || echo 'No hard-coded years found.'",
     "security:xss": "eslint src/ --ext .ts,.tsx --rule 'no-unsanitized-html: error'",
     "analyze": "ANALYZE=true next build",
+    "bundle:report": "npm run build && npm run build 2>&1 | grep -A 30 'Route (app)' > bundle-size-report.txt",
+    "bundle:check": "node scripts/bundle-monitor.js",
+    "bundle:monitor": "node scripts/bundle-monitor.js",
     "clean": "rm -rf .next out dist",
-    "quality": "npm run lint && npm run type-check && npm run test && npm run build"
+    "quality": "npm run lint && npm run type-check && npm run test && npm run build",
+    "ci:full": "npm run quality && npm run analyze && npm run bundle:report"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
@@ -59,6 +63,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@next/bundle-analyzer": "^15.5.2",
     "@types/file-saver": "^2.0.7",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^20",

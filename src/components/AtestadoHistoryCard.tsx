@@ -10,6 +10,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { logger } from "@/utils/logger";
 import { History, Pencil, Trash, Calendar, Clock, FileText, User, Shield } from "lucide-react";
 import {
     AlertDialog,
@@ -64,7 +65,7 @@ export default function AtestadoHistoryCard({
                 year: 'numeric'
             });
         } catch (error) {
-            console.error("Erro ao formatar a data:", error);
+            logger.error("Erro ao formatar a data", error as Error);
             return dateString;
         }
     };

@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase.config";
 import { v4 as uuidv4 } from "uuid";
-import { Estudante, Contato, Endereco, Deficiencia, ProvaSaoPaulo } from "../interfaces";
+import { logger } from "@/utils/logger";
+import { Estudante, Contato, Endereco, Deficiencia, ProvaSaoPaulo } from "@/types";
 
 // Função para determinar o turno com base na turma
 const determinarTurno = (turma: string): "MANHÃ" | "TARDE" => {
@@ -40,7 +41,6 @@ export const useStudents = () => {
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                console.log("Dados brutos do Firebase:", data);
                 const fetchedStudents: Estudante[] = (data.estudantes || []).map((student: unknown) => {
                     const s = student as {
                         estudanteId?: string;
@@ -127,17 +127,14 @@ export const useStudents = () => {
                             }))
                             : [],
                     };
-                    console.log("Estudante processado:", fetchedStudent);
                     return fetchedStudent;
                 });
                 setStudents(fetchedStudents);
-                console.log("Lista final de estudantes:", fetchedStudents);
             } else {
-                console.log("Documento não existe no Firebase, inicializando vazio.");
                 setStudents([]);
             }
         } catch (err) {
-            console.error("Erro ao buscar estudantes:", err);
+            logger.error("Erro ao buscar estudantes", err as Error);
             setError(err as Error);
         } finally {
             setLoading(false);
@@ -148,13 +145,11 @@ export const useStudents = () => {
     const saveStudents = async (newStudents: Estudante[]) => {
         try {
             const cleanedStudents = newStudents.map((student) => removeUndefined(student));
-            console.log("Dados limpos a serem salvos no Firebase:", cleanedStudents);
             const docRef = doc(db, "2025", "lista_de_estudantes");
             await setDoc(docRef, { estudantes: cleanedStudents }, { merge: false });
             setStudents(newStudents);
-            console.log("Dados salvos com sucesso no Firebase.");
         } catch (err) {
-            console.error("Erro ao salvar no Firebase:", err);
+            logger.error("Erro ao salvar no Firebase", err as Error);
             setError(err as Error);
             throw err;
         }

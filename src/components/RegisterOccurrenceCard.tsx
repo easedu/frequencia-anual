@@ -39,7 +39,6 @@ export default function RegisterOccurrenceCard({
     id,
 }: RegisterOccurrenceCardProps) {
     useEffect(() => {
-        console.log("RegisterOccurrenceCard useEffect triggered, editingOccurrence:", editingOccurrence);
         if (editingOccurrence) {
             setOccurrenceDate(editingOccurrence.date);
             setOccurrenceDescription(editingOccurrence.description);
@@ -52,7 +51,6 @@ export default function RegisterOccurrenceCard({
     }, [editingOccurrence, setOccurrenceDate, setOccurrenceDescription, setOccurrenceSensitive]);
 
     const handleSensitiveChange = (checked: boolean | string) => {
-        console.log("Checkbox onCheckedChange triggered, checked value:", checked);
         const isChecked = typeof checked === "boolean" ? checked : checked === "true";
         setOccurrenceSensitive(isChecked);
     };

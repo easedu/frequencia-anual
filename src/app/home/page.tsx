@@ -5,6 +5,7 @@ import { auth, db } from "@/firebase.config";
 import { useRouter } from "next/navigation";
 import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart } from "lucide-react";
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
+import { logger } from "@/utils/logger";
 
 // Define os tipos possíveis para o perfil do usuário
 type Role = "admin" | "super-user" | "user" | "user-pcd";
@@ -68,7 +69,7 @@ export default function Home() {
                     setFavorites(favDoc.data().favorites || []);
                 }
             } catch (error) {
-                console.error("Erro ao buscar usuário:", error);
+                logger.error("Erro ao buscar usuário", error as Error);
                 setRole("user");
                 setUserName(auth.currentUser?.displayName || auth.currentUser?.email || "Usuário");
             }
@@ -108,7 +109,7 @@ export default function Home() {
         try {
             await setDoc(doc(db, "userPreferences", uid), { favorites: newFavorites }, { merge: true });
         } catch (error) {
-            console.error("Erro ao salvar favoritos:", error);
+            logger.error("Erro ao salvar favoritos", error as Error);
         }
     };
 

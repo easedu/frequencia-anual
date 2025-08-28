@@ -12,7 +12,8 @@ import {
     Mail,
     MapPin,
     Phone,
-    DollarSign
+    DollarSign,
+    Accessibility
 } from "lucide-react";
 
 interface StudentInfoCardProps {
@@ -65,8 +66,8 @@ export default function StudentInfoCard({ student }: StudentInfoCardProps) {
                         </div>
                     </div>
 
-                    {/* Grid compacto - 6 colunas em telas médias */}
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
+                    {/* Grid compacto - 7 colunas em telas médias para incluir PCD */}
+                    <div className="grid grid-cols-2 md:grid-cols-7 gap-2 mb-4">
                         <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
                             <div className="flex items-center gap-1 mb-1">
                                 <CreditCard className="w-3 h-3 text-purple-600" />
@@ -121,6 +122,20 @@ export default function StudentInfoCard({ student }: StudentInfoCardProps) {
                             <p className="text-xs font-medium text-gray-900 truncate">
                                 {student.dataNascimento ? formatDataNascimento(student.dataNascimento) : "N/A"}
                             </p>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+                            <div className="flex items-center gap-1 mb-1">
+                                <Accessibility className="w-3 h-3 text-blue-600" />
+                                <span className="text-xs font-medium text-gray-600">PCD</span>
+                            </div>
+                            <Badge className={`${
+                                student.deficiencia?.estudanteComDeficiencia 
+                                    ? 'bg-blue-100 text-blue-800 border-blue-200' 
+                                    : 'bg-gray-100 text-gray-600 border-gray-200'
+                            } font-semibold text-xs px-2 py-0`}>
+                                {student.deficiencia?.estudanteComDeficiencia ? 'SIM' : 'NÃO'}
+                            </Badge>
                         </div>
                     </div>
                 </div>

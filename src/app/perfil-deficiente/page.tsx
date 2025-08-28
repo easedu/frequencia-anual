@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useStudents } from "@/hooks/useStudents";
+import { logger } from "@/utils/logger";
 import {
     Card,
     CardContent,
@@ -35,7 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Estudante } from "@/interfaces";
+import { Estudante } from "@/types";
 import { Pencil, Trash, X } from "lucide-react";
 import {
     AlertDialog,
@@ -172,7 +173,7 @@ export default function DashboardDeficiencia() {
                     setUserRole("user");
                 }
             } catch (error) {
-                console.error("Erro ao carregar perfil do usuário:", error);
+                logger.error("Erro ao carregar perfil do usuário", error as Error);
                 setUserRole("user");
             }
         };
@@ -222,7 +223,7 @@ export default function DashboardDeficiencia() {
 
             setOccurrences(occurrencesData);
         } catch (error) {
-            console.error("Erro ao buscar ocorrências:", error);
+            logger.error("Erro ao buscar ocorrências", error as Error);
             toast.error("Erro ao carregar ocorrências");
         }
     };
@@ -263,7 +264,7 @@ export default function DashboardDeficiencia() {
             document.getElementById("occurrence-card")?.scrollIntoView({ behavior: "smooth" });
 
         } catch (error) {
-            console.error("Erro ao adicionar ocorrência:", error);
+            logger.error("Erro ao adicionar ocorrência", error as Error);
             toast.error("Erro ao cadastrar ocorrência");
         }
     };
@@ -300,7 +301,7 @@ export default function DashboardDeficiencia() {
             toast.success("Ocorrência atualizada com sucesso!");
 
         } catch (error) {
-            console.error("Erro ao atualizar ocorrência:", error);
+            logger.error("Erro ao atualizar ocorrência", error as Error);
             toast.error("Erro ao atualizar ocorrência");
         }
     };
@@ -317,7 +318,7 @@ export default function DashboardDeficiencia() {
             toast.success("Ocorrência excluída com sucesso!");
 
         } catch (error) {
-            console.error("Erro ao excluir ocorrência:", error);
+            logger.error("Erro ao excluir ocorrência", error as Error);
             toast.error("Erro ao excluir ocorrência");
         } finally {
             setShowDeleteOccurrenceDialog(null);

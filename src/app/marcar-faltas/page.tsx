@@ -12,6 +12,7 @@ import {
     collection,
 } from "firebase/firestore";
 import { db, auth } from "@/firebase.config";
+import { logger } from "@/utils/logger";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -146,7 +147,7 @@ export default function MarcarFaltasPage() {
                     setErrorMessage("Dados do ano letivo não encontrados.");
                 }
             } catch (error) {
-                console.error("Erro ao carregar ano letivo:", error);
+                logger.error("Erro ao carregar ano letivo", error as Error);
                 setErrorMessage("Erro ao carregar dados do ano letivo.");
             }
         };
@@ -199,7 +200,7 @@ export default function MarcarFaltasPage() {
                     setRole("user");
                 }
             } catch (error) {
-                console.error("Erro ao buscar usuário:", error);
+                logger.error("Erro ao buscar usuário", error as Error);
                 setRole("user");
             }
         };
@@ -232,7 +233,7 @@ export default function MarcarFaltasPage() {
                 setExistingAbsenceDocs(newExistingAbsenceDocs);
                 setMarkedAbsences(newExistingAbsences);
             } catch (error) {
-                console.error("Erro ao carregar faltas existentes:", error);
+                logger.error("Erro ao carregar faltas existentes", error as Error);
             }
         };
 
@@ -364,7 +365,7 @@ export default function MarcarFaltasPage() {
             setExistingAbsenceDocs(newExistingAbsenceDocs);
             setMarkedAbsences(newExistingAbsences);
         } catch (error) {
-            console.error("Erro ao salvar faltas:", error);
+            logger.error("Erro ao salvar faltas", error as Error);
             toast.error("Erro ao salvar faltas.");
         } finally {
             setIsSaving(false);

@@ -8,6 +8,7 @@ import {
 } from "firebase/auth";
 import { doc, getDocs, collection, addDoc, updateDoc } from "firebase/firestore";
 import { db, auth } from "@/firebase.config";
+import { logger } from "@/utils/logger";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -89,7 +90,7 @@ export default function UserManagementPage() {
             setUsers(sortedUsers);
             setError("");
         } catch (err) {
-            console.error("Erro ao carregar usuários:", err);
+            logger.error("Erro ao carregar usuários", err as Error);
             setError("Erro ao carregar usuários.");
         } finally {
             setLoadingUsers(false);
@@ -178,7 +179,7 @@ export default function UserManagementPage() {
             await fetchUsers();
             setOpenDialog(false);
         } catch (err) {
-            console.error("Erro ao salvar usuário:", err);
+            logger.error("Erro ao salvar usuário", err as Error);
             toast.error("Erro ao salvar usuário.");
         } finally {
             setSaving(false);
@@ -192,7 +193,7 @@ export default function UserManagementPage() {
             await sendPasswordResetEmail(auth, editingUser.email);
             toast.success("Email de redefinição de senha enviado com sucesso!");
         } catch (err) {
-            console.error("Erro ao enviar email de redefinição:", err);
+            logger.error("Erro ao enviar email de redefinição", err as Error);
             toast.error("Erro ao enviar email de redefinição.");
         } finally {
             setResettingPassword(false);
@@ -207,7 +208,7 @@ export default function UserManagementPage() {
             toast.success("Usuário desabilitado!");
             await fetchUsers(); // Re-carrega e re-ordena a lista
         } catch (err) {
-            console.error("Erro ao desabilitar usuário:", err);
+            logger.error("Erro ao desabilitar usuário", err as Error);
             toast.error("Erro ao desabilitar usuário.");
         }
     };
