@@ -1239,12 +1239,6 @@ export const StudentForm = memo(function StudentForm({
                     <Button
                         type="submit"
                         disabled={isSaving}
-                        onClick={(e) => {
-                            console.log('🖱️ Submit button clicked');
-                            console.log('📊 Form values:', form.getValues());
-                            console.log('❌ Form errors:', form.formState.errors);
-                            console.log('✅ Form is valid:', form.formState.isValid);
-                        }}
                         className="h-12 px-8 text-base rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
                     >
                         {isSaving ? (
