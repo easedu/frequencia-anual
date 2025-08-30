@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from 'next/navigation';
 import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
 import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where, deleteField, writeBatch } from "firebase/firestore";
@@ -24,6 +25,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function StudentProfilePage() {
+    const searchParams = useSearchParams();
     const [allStudents, setAllStudents] = useState<Student[]>([]);
     const [selectedTurma, setSelectedTurma] = useState<string>("");
     const [selectedStudentId, setSelectedStudentId] = useState<string>("");
@@ -272,6 +274,28 @@ export default function StudentProfilePage() {
             fetchStudentData(selectedStudentId);
         }
     }, [selectedStudentId, fetchStudentData, bimesterDates]);
+
+    // Detectar query parameter 'id' e selecionar estudante automaticamente
+    useEffect(() => {
+        const studentIdFromQuery = searchParams.get('id');
+        if (studentIdFromQuery && allStudents.length > 0 && !selectedStudentId) {
+            // Verificar se o ID existe nos estudantes carregados
+            const foundStudent = allStudents.find(s => s.estudanteId === studentIdFromQuery);
+            if (foundStudent) {
+                console.log('Carregando estudante a partir da URL:', foundStudent.nome);
+                setSelectedStudentId(studentIdFromQuery);
+                setSearchName(foundStudent.nome);
+                // Limpar sugestões e resetar turma
+                setSuggestions([]);
+                setSelectedTurma("");
+                // Feedback para o usuário
+                toast.success(`Perfil do estudante ${foundStudent.nome} carregado automaticamente`);
+            } else {
+                console.warn('Estudante não encontrado com ID:', studentIdFromQuery);
+                toast.error('Estudante não encontrado');
+            }
+        }
+    }, [searchParams, allStudents, selectedStudentId]);
 
     // Função para recarregar dados quando uma falta é removida
     const handleAbsenceDeleted = useCallback(async () => {
@@ -765,7 +789,11 @@ export default function StudentProfilePage() {
                 </Card>
             ) : student && (
                 <>
-                    <StudentInfoCard student={student} />
+                    <StudentInfoCard 
+                        student={student} 
+                        studentRecord={studentRecord} 
+                        studentRecordWithoutJustified={studentRecordWithoutJustified}
+                    />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FrequencyAllAbsencesCard studentRecord={studentRecord} />
                         <FrequencyNoJustifiedCard studentRecordWithoutJustified={studentRecordWithoutJustified} />

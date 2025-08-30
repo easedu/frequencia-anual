@@ -316,6 +316,42 @@ export function getBolsaFamiliaColor(bolsa: string): string {
   }
 }
 
+/**
+ * Calcula faixa de frequência baseada na porcentagem
+ * Faixa 4: 100% à 76%, Faixa 3: 75% à 51%, Faixa 2: 50% à 26%, Faixa 1: 25% à 0%
+ */
+export function getFrequencyBand(percentualFrequencia: number): {
+  faixa: number;
+  label: string;
+  color: string;
+} {
+  if (percentualFrequencia >= 76) {
+    return {
+      faixa: 4,
+      label: 'Faixa 4',
+      color: 'bg-green-100 text-green-800 border-green-200'
+    };
+  } else if (percentualFrequencia >= 51) {
+    return {
+      faixa: 3,
+      label: 'Faixa 3',
+      color: 'bg-blue-100 text-blue-800 border-blue-200'
+    };
+  } else if (percentualFrequencia >= 26) {
+    return {
+      faixa: 2,
+      label: 'Faixa 2',
+      color: 'bg-yellow-100 text-yellow-800 border-yellow-200'
+    };
+  } else {
+    return {
+      faixa: 1,
+      label: 'Faixa 1',
+      color: 'bg-red-100 text-red-800 border-red-200'
+    };
+  }
+}
+
 // ============================================================================
 // UTILITÁRIOS DE LIMPEZA DE CACHE
 // ============================================================================

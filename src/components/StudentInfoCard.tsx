@@ -1,13 +1,14 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Student } from "../app/types";
+import { Student, StudentRecord } from "../app/types";
 import { 
     formatAddress, 
     formatPhoneNumber, 
     formatDataNascimento,
     getStatusColor,
     getTurnoColor,
-    getBolsaFamiliaColor 
+    getBolsaFamiliaColor,
+    getFrequencyBand
 } from "@/utils/formatters";
 import {
     User,
@@ -20,15 +21,21 @@ import {
     MapPin,
     Phone,
     DollarSign,
-    Accessibility
+    Accessibility,
+    TrendingUp
 } from "lucide-react";
 
 interface StudentInfoCardProps {
     student: Student;
+    studentRecord?: StudentRecord | null;
+    studentRecordWithoutJustified?: StudentRecord | null;
 }
 
-export default function StudentInfoCard({ student }: StudentInfoCardProps) {
-    // Formatadores movidos para utils centralizados
+export default function StudentInfoCard({ student, studentRecord, studentRecordWithoutJustified }: StudentInfoCardProps) {
+    // Calcular faixa de frequência baseada na frequência excluindo faltas justificadas
+    const frequencyBandInfo = studentRecordWithoutJustified ? 
+        getFrequencyBand(studentRecordWithoutJustified.percentualFrequenciaAteHoje) : 
+        null;
 
     return (
         <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50">
@@ -51,8 +58,8 @@ export default function StudentInfoCard({ student }: StudentInfoCardProps) {
                         </div>
                     </div>
 
-                    {/* Grid compacto - 7 colunas em telas médias para incluir PCD */}
-                    <div className="grid grid-cols-2 md:grid-cols-7 gap-2 mb-4">
+                    {/* Grid compacto - 8 colunas em telas médias para incluir PCD e Faixa */}
+                    <div className="grid grid-cols-2 md:grid-cols-8 gap-2 mb-4">
                         <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
                             <div className="flex items-center gap-1 mb-1">
                                 <CreditCard className="w-3 h-3 text-purple-600" />
@@ -121,6 +128,22 @@ export default function StudentInfoCard({ student }: StudentInfoCardProps) {
                             } font-semibold text-xs px-2 py-0`}>
                                 {student.deficiencia?.estudanteComDeficiencia ? 'SIM' : 'NÃO'}
                             </Badge>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+                            <div className="flex items-center gap-1 mb-1">
+                                <TrendingUp className="w-3 h-3 text-orange-600" />
+                                <span className="text-xs font-medium text-gray-600">Frequência</span>
+                            </div>
+                            {frequencyBandInfo ? (
+                                <Badge className={`${frequencyBandInfo.color} font-semibold text-xs px-2 py-0`}>
+                                    {frequencyBandInfo.label}
+                                </Badge>
+                            ) : (
+                                <Badge className="bg-gray-100 text-gray-600 border-gray-200 font-semibold text-xs px-2 py-0">
+                                    N/A
+                                </Badge>
+                            )}
                         </div>
                     </div>
                 </div>

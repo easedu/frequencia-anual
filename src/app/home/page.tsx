@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { auth, db } from "@/firebase.config";
 import { useRouter } from "next/navigation";
-import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart } from "lucide-react";
+import { CheckCircle, UserPlus, Calendar, BarChart, BarChart3, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart, AlertTriangle } from "lucide-react";
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
 import { logger } from "@/utils/logger";
 
@@ -208,6 +208,14 @@ export default function Home() {
                     color: "purple",
                     description: "Adicione novos estudantes ao sistema"
                 },
+                {
+                    key: "monitorar-faltas-consecutivas",
+                    title: "Monitorar Faltas Consecutivas",
+                    icon: AlertTriangle,
+                    href: "/monitorar-faltas-consecutivas",
+                    color: "amber",
+                    description: "Monitore faltas consecutivas de dias letivos"
+                },
             ];
         }
 
@@ -260,6 +268,14 @@ export default function Home() {
                     href: "/relatorio-bolsa-familia",
                     color: "blue",
                     description: "Gere relatórios para programa social"
+                },
+                {
+                    key: "monitorar-faltas-consecutivas",
+                    title: "Monitorar Faltas Consecutivas",
+                    icon: AlertTriangle,
+                    href: "/monitorar-faltas-consecutivas",
+                    color: "amber",
+                    description: "Monitore faltas consecutivas de dias letivos"
                 },
             ];
         }
@@ -338,6 +354,14 @@ export default function Home() {
                     color: "pink",
                     description: "Acompanhe estudantes com deficiência"
                 },
+                {
+                    key: "monitorar-faltas-consecutivas",
+                    title: "Monitorar Faltas Consecutivas",
+                    icon: AlertTriangle,
+                    href: "/monitorar-faltas-consecutivas",
+                    color: "amber",
+                    description: "Monitore faltas consecutivas de dias letivos"
+                },
             ];
         }
 
@@ -393,6 +417,12 @@ export default function Home() {
                 hover: "hover:from-pink-600 hover:to-rose-700",
                 icon: "bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400",
                 border: "border-pink-200 dark:border-pink-800"
+            },
+            amber: {
+                gradient: "from-amber-500 to-orange-600",
+                hover: "hover:from-amber-600 hover:to-orange-700",
+                icon: "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400",
+                border: "border-amber-200 dark:border-amber-800"
             }
         };
         return colorMap[color] || colorMap.blue;
