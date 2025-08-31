@@ -19,10 +19,13 @@ import AtestadoHistoryCard from "../../components/AtestadoHistoryCard";
 import RegisterInteractionCard from "../../components/RegisterInteractionCard";
 import InteractionHistoryCard from "../../components/InteractionHistoryCard";
 import ProvaSaoPauloCard from "../../components/ProvaSaoPauloCard";
-import { Student, StudentRecord, FamilyInteraction, Atestado, AbsenceRecord, BimesterDates, AnoLetivoData } from "../types";
+import WhatsAppModal from "../../components/WhatsAppModal";
+import { Student, StudentRecord, FamilyInteraction, Atestado, AbsenceRecord, BimesterDates, AnoLetivoData, Contato } from "../types";
 import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate, getDiasLetivosNoPeriodo } from "../utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import WhatsAppService from "../../services/whatsappService";
+import WhatsAppTrackingService from "../../services/whatsappTrackingService";
 
 export default function StudentProfilePage() {
     const searchParams = useSearchParams();
@@ -53,6 +56,11 @@ export default function StudentProfilePage() {
     const [editingInteraction, setEditingInteraction] = useState<FamilyInteraction | null>(null);
     const [showDeleteDialog, setShowDeleteDialog] = useState<string | null>(null);
     const [showDeleteAtestadoDialog, setShowDeleteAtestadoDialog] = useState<string | null>(null);
+    
+    // WhatsApp states
+    const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+    const [selectedContact, setSelectedContact] = useState<Contato | null>(null);
+    const [verifiedWhatsAppNumbers, setVerifiedWhatsAppNumbers] = useState<Set<string>>(new Set());
 
     const auth = getAuth();
 
@@ -97,6 +105,19 @@ export default function StudentProfilePage() {
         };
         fetchUserRole();
     }, [auth]);
+
+    // Load verified WhatsApp numbers
+    useEffect(() => {
+        const loadVerifiedNumbers = async () => {
+            try {
+                const verifiedNumbers = await WhatsAppTrackingService.getAllVerifiedNumbers();
+                setVerifiedWhatsAppNumbers(verifiedNumbers);
+            } catch (error) {
+                logger.error("Erro ao carregar números verificados do WhatsApp", {}, error as Error);
+            }
+        };
+        loadVerifiedNumbers();
+    }, []);
 
     const fetchAllStudents = useCallback(async (): Promise<void> => {
         try {
@@ -627,6 +648,76 @@ export default function StudentProfilePage() {
         }
     };
 
+    // WhatsApp functions
+    const handleWhatsAppClick = (contact: Contato) => {
+        setSelectedContact(contact);
+        setIsWhatsAppModalOpen(true);
+    };
+
+    const handleSendWhatsAppMessage = async (
+        phone: string,
+        message: string,
+        checkWhatsApp: boolean
+    ): Promise<{
+        success: boolean;
+        message: string;
+        data?: any;
+        error?: string;
+    }> => {
+        try {
+            // Send WhatsApp message via API
+            const result = await WhatsAppService.sendMessage(phone, message, checkWhatsApp);
+            
+            if (result.success && result.data) {
+                // If first time and successful, mark number as verified
+                if (checkWhatsApp && result.data.hasWhatsApp) {
+                    await WhatsAppTrackingService.markNumberAsVerified(
+                        phone,
+                        true,
+                        selectedStudentId,
+                        selectedContact?.nome
+                    );
+                    
+                    // Update local state
+                    setVerifiedWhatsAppNumbers(prev => new Set([...prev, phone]));
+                } else if (!checkWhatsApp) {
+                    // Update message count for existing verified number
+                    await WhatsAppTrackingService.updateMessageCount(phone);
+                }
+                
+                toast.success("Mensagem enviada com sucesso!");
+            } else {
+                // If first time and failed because no WhatsApp, still mark as checked
+                if (checkWhatsApp && !result.data?.hasWhatsApp) {
+                    await WhatsAppTrackingService.markNumberAsVerified(
+                        phone,
+                        false,
+                        selectedStudentId,
+                        selectedContact?.nome
+                    );
+                }
+                
+                toast.error(result.message || "Falha ao enviar mensagem");
+            }
+            
+            return result;
+            
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+            logger.error("Erro ao enviar mensagem WhatsApp", { 
+                phone: `${phone.substring(0, 4)}****${phone.substring(phone.length - 4)}`,
+                studentId: selectedStudentId
+            }, error as Error);
+            
+            toast.error("Erro interno ao enviar mensagem");
+            return {
+                success: false,
+                message: "Erro interno ao enviar mensagem",
+                error: errorMessage
+            };
+        }
+    };
+
     const handleSearchName = (value: string) => {
         setSearchName(value);
         setSelectedTurma("");
@@ -793,6 +884,8 @@ export default function StudentProfilePage() {
                         student={student} 
                         studentRecord={studentRecord} 
                         studentRecordWithoutJustified={studentRecordWithoutJustified}
+                        onWhatsAppClick={handleWhatsAppClick}
+                        verifiedWhatsAppNumbers={verifiedWhatsAppNumbers}
                     />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FrequencyAllAbsencesCard studentRecord={studentRecord} />
@@ -857,6 +950,19 @@ export default function StudentProfilePage() {
                     {userRole === "admin" && <ProvaSaoPauloCard student={student} />}
                 </>
             )}
+
+            {/* WhatsApp Modal */}
+            <WhatsAppModal
+                isOpen={isWhatsAppModalOpen}
+                onClose={() => {
+                    setIsWhatsAppModalOpen(false);
+                    setSelectedContact(null);
+                }}
+                student={student}
+                selectedContact={selectedContact}
+                onSendMessage={handleSendWhatsAppMessage}
+                verifiedNumbers={verifiedWhatsAppNumbers}
+            />
         </div>
     );
 }
