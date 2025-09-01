@@ -42,7 +42,7 @@ export default function WhatsAppModal({
     onSendMessage,
     verifiedNumbers
 }: WhatsAppModalProps) {
-    const [message, setMessage] = useState("");
+    const [message, setMessage] = useState("")
     const [isSending, setIsSending] = useState(false);
     const [sendResult, setSendResult] = useState<{
         success: boolean;
@@ -53,7 +53,7 @@ export default function WhatsAppModal({
     // Reset modal state when opening/closing
     useEffect(() => {
         if (isOpen) {
-            setMessage("");
+            setMessage("Olá! 👋\n\n📢 Este é um número *exclusivo para comunicados* da *EMEF Habib Kyrillos*.\n\nPara atendimento personalizado, procure-nos:\n\n📞 *Telefone*: (11) 5621-4087\n🕐 Segunda a sexta: 7h às 18h30\n\n🏫 *Atendimento presencial*:\n📍 Rua Rio Grande do Norte, s/n\n🕐 Segunda a sexta: 8h às 17h\n\nEstaremos prontos para ajudar! 😊");
             setSendResult(null);
             setIsSending(false);
         }
