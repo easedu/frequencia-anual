@@ -240,7 +240,7 @@ export default function StudentInfoCard({
                                             </div>
                                             
                                             {/* WhatsApp button compacto */}
-                                            {/* {isEligible && onWhatsAppClick && (
+                                            {isEligible && onWhatsAppClick && (
                                                 <button
                                                     onClick={() => onWhatsAppClick(contato)}
                                                     className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 ${
@@ -252,7 +252,7 @@ export default function StudentInfoCard({
                                                 >
                                                     <MessageCircle className="w-3 h-3" />
                                                 </button>
-                                            )} */}
+                                            )}
                                         </div>
                                     );
                                 })

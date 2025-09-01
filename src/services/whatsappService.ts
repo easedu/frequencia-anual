@@ -1,8 +1,8 @@
 import { logger } from "@/utils/logger";
 
 // WhatsApp API Configuration
-const WHATSAPP_API_URL = process.env.NEXT_PUBLIC_WHATSAPP_API_URL || "https://your-whatsapp-api-endpoint.com/send";
-const WHATSAPP_API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzeXN0ZW0iOiJoYWJpYiBjb25udHJvbCIsIndoYXRzYXBwIjoic2VuZCJ9.YZzzEobbzvO68qEzTTanfRPheZF-VL_Osbc_B_7ePuw";
+const WHATSAPP_API_URL = process.env.NEXT_PUBLIC_WHATSAPP_API_URL;
+const WHATSAPP_API_TOKEN = process.env.NEXT_PUBLIC_WHATSAPP_API_TOKEN;
 
 // Interface for API request body
 interface WhatsAppSendRequest {
@@ -49,6 +49,11 @@ export class WhatsAppService {
             // Check if API URL is configured
             if (!WHATSAPP_API_URL || WHATSAPP_API_URL.includes("your-whatsapp-api-endpoint.com")) {
                 throw new Error("URL da API WhatsApp não configurada. Configure NEXT_PUBLIC_WHATSAPP_API_URL no .env.local");
+            }
+
+            // Check if API token is configured
+            if (!WHATSAPP_API_TOKEN) {
+                throw new Error("Token da API WhatsApp não configurado. Configure NEXT_PUBLIC_WHATSAPP_API_TOKEN no .env.local");
             }
 
             // Prepare request body
