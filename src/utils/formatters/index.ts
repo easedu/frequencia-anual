@@ -17,7 +17,7 @@ const formatCache = new Map<string, string>();
  * Formata data do Firebase (yyyy-mm-dd) para o formato brasileiro (dd/mm/yyyy)
  */
 export function formatFirebaseDate(dateStr: string | undefined): string {
-  if (!dateStr || typeof dateStr !== "string") return "01/01/1970";
+  if (!dateStr || typeof dateStr !== "string") return "";
   
   // Verificar cache primeiro
   if (formatCache.has(dateStr)) {
@@ -26,14 +26,14 @@ export function formatFirebaseDate(dateStr: string | undefined): string {
   
   try {
     const [year, month, day] = dateStr.split('-').map(Number);
-    if (isNaN(year) || isNaN(month) || isNaN(day)) return "01/01/1970";
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return "";
     
     const formatted = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
     formatCache.set(dateStr, formatted);
     return formatted;
   } catch (error) {
     logger.error('Erro ao formatar data do Firebase', error as Error);
-    return "01/01/1970";
+    return "";
   }
 }
 
@@ -42,7 +42,7 @@ export function formatFirebaseDate(dateStr: string | undefined): string {
  */
 export function formatDate(dateString: string | undefined): string {
   if (!dateString || typeof dateString !== "string") {
-    return "01/01/1970";
+    return "";
   }
 
   // Verificar cache primeiro
@@ -57,6 +57,20 @@ export function formatDate(dateString: string | undefined): string {
     // Verificar se já está no formato dd/mm/yyyy
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
       return dateString;
+    }
+
+    // Formato ddmmyyyy (8 dígitos sem separadores) - comum no Firebase
+    if (/^\d{8}$/.test(dateString)) {
+      const day = dateString.substring(0, 2);
+      const month = dateString.substring(2, 4);
+      const year = dateString.substring(4, 8);
+      date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      
+      if (!isNaN(date.getTime())) {
+        formattedDate = `${day}/${month}/${year}`;
+        formatCache.set(dateString, formattedDate);
+        return formattedDate;
+      }
     }
 
     // Tentar diferentes formatos
@@ -84,11 +98,12 @@ export function formatDate(dateString: string | undefined): string {
         date = new Date(dateString);
       }
     } else {
+      // Tenta criar a data diretamente
       date = new Date(dateString);
     }
 
     if (isNaN(date.getTime())) {
-      return "01/01/1970";
+      return "";
     }
 
     formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
@@ -99,7 +114,7 @@ export function formatDate(dateString: string | undefined): string {
 
   } catch (error) {
     logger.error('Erro ao formatar data', error as Error);
-    return "01/01/1970";
+    return "";
   }
 }
 
