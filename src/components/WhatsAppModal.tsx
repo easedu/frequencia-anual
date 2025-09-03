@@ -53,7 +53,7 @@ export default function WhatsAppModal({
     // Reset modal state when opening/closing
     useEffect(() => {
         if (isOpen) {
-            setMessage("");
+            setMessage("🏫 EMEF Habib Kyrillos - Comunicado Importante!\n\nOlá! A partir de agora você receberá comunicados da Escola também por aqui!\n\n📢 Confirme que você recebeu esta mensagem com: ”OK”\n\nAguardamos sua confirmação!\n\nAssim, saberemos que os próximos comunicados chegarão até você. 😊");
             setSendResult(null);
             setIsSending(false);
         }
