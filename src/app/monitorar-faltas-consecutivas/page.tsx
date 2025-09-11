@@ -27,7 +27,9 @@ import {
   ChevronDown,
   ChevronUp,
   CalendarDays,
-  User
+  User,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase.config';
@@ -84,7 +86,8 @@ export default function MonitorarFaltasConsecutivasPage() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   
   // Paginação para grandes datasets
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentActivePage, setCurrentActivePage] = useState(1);
+  const [currentInactivePage, setCurrentInactivePage] = useState(1);
   const [itemsPerPage] = useState(50); // Limite de 50 estudantes por página
 
   // Extrair turmas únicas
@@ -556,18 +559,21 @@ export default function MonitorarFaltasConsecutivasPage() {
     const totalActivePages = Math.ceil(activeStudents.length / itemsPerPage);
     const totalInactivePages = Math.ceil(inactiveStudents.length / itemsPerPage);
     
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
+    const activeStartIndex = (currentActivePage - 1) * itemsPerPage;
+    const activeEndIndex = activeStartIndex + itemsPerPage;
+    
+    const inactiveStartIndex = (currentInactivePage - 1) * itemsPerPage;
+    const inactiveEndIndex = inactiveStartIndex + itemsPerPage;
     
     return {
-      activeStudentsPaginated: activeStudents.slice(startIndex, endIndex),
-      inactiveStudentsPaginated: inactiveStudents.slice(startIndex, endIndex),
+      activeStudentsPaginated: activeStudents.slice(activeStartIndex, activeEndIndex),
+      inactiveStudentsPaginated: inactiveStudents.slice(inactiveStartIndex, inactiveEndIndex),
       totalActivePages,
       totalInactivePages,
       currentlyShowingActive: Math.min(activeStudents.length, itemsPerPage),
       currentlyShowingInactive: Math.min(inactiveStudents.length, itemsPerPage),
     };
-  }, [activeStudents, inactiveStudents, currentPage, itemsPerPage]);
+  }, [activeStudents, inactiveStudents, currentActivePage, currentInactivePage, itemsPerPage]);
 
   // Estatísticas
   const stats = useMemo(() => {
@@ -671,6 +677,12 @@ export default function MonitorarFaltasConsecutivasPage() {
     // Usar query parameter para passar o ID do estudante
     router.push(`/perfil-estudante?id=${estudanteId}`);
   };
+
+  // Reset da paginação quando os filtros mudarem
+  useEffect(() => {
+    setCurrentActivePage(1);
+    setCurrentInactivePage(1);
+  }, [debouncedSearchTerm, showPCD, selectedClass, selectedShift, selectedSeverity]);
 
   useEffect(() => {
     // Analisar automaticamente APENAS no carregamento inicial
@@ -1064,7 +1076,7 @@ export default function MonitorarFaltasConsecutivasPage() {
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-3">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-gray-700">#{index + 1}</span>
+                              <span className="font-bold text-gray-700">#{(currentActivePage - 1) * itemsPerPage + index + 1}</span>
                               <div>
                                 <h4 className="font-semibold text-gray-900 flex items-center gap-2">
                                   {absence.studentName}
@@ -1241,6 +1253,56 @@ export default function MonitorarFaltasConsecutivasPage() {
               </Card>
             )}
             
+            {/* Controles de Paginação para Casos Ativos */}
+            {activeStudents.length > itemsPerPage && (
+              <Card className="border-0 shadow-lg">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      Mostrando {Math.min((currentActivePage - 1) * itemsPerPage + 1, activeStudents.length)} - {Math.min(currentActivePage * itemsPerPage, activeStudents.length)} de {activeStudents.length} casos ativos
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentActivePage(currentActivePage - 1)}
+                        disabled={currentActivePage === 1}
+                        className="flex items-center gap-1"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Anterior
+                      </Button>
+                      
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.ceil(activeStudents.length / itemsPerPage) }, (_, i) => i + 1).map((page) => (
+                          <Button
+                            key={page}
+                            variant={currentActivePage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentActivePage(page)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {page}
+                          </Button>
+                        ))}
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentActivePage(currentActivePage + 1)}
+                        disabled={currentActivePage === Math.ceil(activeStudents.length / itemsPerPage)}
+                        className="flex items-center gap-1"
+                      >
+                        Próximo
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
             {/* SEÇÃO 2: CASOS INATIVOS */}
             {inactiveStudents.length > 0 && (
               <Card className="border-0 shadow-lg">
@@ -1269,7 +1331,7 @@ export default function MonitorarFaltasConsecutivasPage() {
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-3">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-gray-700">#{index + 1}</span>
+                              <span className="font-bold text-gray-700">#{(currentInactivePage - 1) * itemsPerPage + index + 1}</span>
                               <div>
                                 <h4 className="font-semibold text-gray-900 flex items-center gap-2">
                                   {absence.studentName}
@@ -1438,6 +1500,56 @@ export default function MonitorarFaltasConsecutivasPage() {
                         )}
                       </div>
                     ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Controles de Paginação para Casos Inativos */}
+            {inactiveStudents.length > itemsPerPage && (
+              <Card className="border-0 shadow-lg">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      Mostrando {Math.min((currentInactivePage - 1) * itemsPerPage + 1, inactiveStudents.length)} - {Math.min(currentInactivePage * itemsPerPage, inactiveStudents.length)} de {inactiveStudents.length} casos inativos
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentInactivePage(currentInactivePage - 1)}
+                        disabled={currentInactivePage === 1}
+                        className="flex items-center gap-1"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Anterior
+                      </Button>
+                      
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.ceil(inactiveStudents.length / itemsPerPage) }, (_, i) => i + 1).map((page) => (
+                          <Button
+                            key={page}
+                            variant={currentInactivePage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentInactivePage(page)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {page}
+                          </Button>
+                        ))}
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentInactivePage(currentInactivePage + 1)}
+                        disabled={currentInactivePage === Math.ceil(inactiveStudents.length / itemsPerPage)}
+                        className="flex items-center gap-1"
+                      >
+                        Próximo
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
