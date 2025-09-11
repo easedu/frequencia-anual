@@ -364,7 +364,7 @@ export default function DashboardDeficiencia() {
     const filteredStudents = useMemo(() => {
         return students.filter((student) => {
             const def = student.deficiencia;
-            if (!def?.estudanteComDeficiencia) return false;
+            if (student.status !== 'ATIVO' || !def?.estudanteComDeficiencia) return false;
             return (
                 (filtroTipoDeficiencia === "TODOS" ||
                     def.tipoDeficiencia?.includes(filtroTipoDeficiencia)) &&
@@ -515,18 +515,18 @@ export default function DashboardDeficiencia() {
     const aveData = processChartData(filteredStudents, "justificativaAve");
 
     // Cálculo dos totais para os cartões de big numbers
-    const totalComDeficiencia = filteredStudents.length;
-    const totalEstudantes = students.length;
-    const totalComBarreiras = filteredStudents.filter(
-        (s) => s.deficiencia?.possuiBarreiras
+    const totalComDeficiencia = students.filter(s => s.status === 'ATIVO' && s.deficiencia?.estudanteComDeficiencia).length;
+    const totalEstudantes = students.filter(s => s.status === 'ATIVO').length;
+    const totalComBarreiras = students.filter(
+        (s) => s.status === 'ATIVO' && s.deficiencia?.estudanteComDeficiencia && s.deficiencia?.possuiBarreiras
     ).length;
     const totalSemBarreiras = totalComDeficiencia - totalComBarreiras;
-    const totalComEstagiario = filteredStudents.filter(
-        (s) => s.deficiencia?.possuiEstagiario
+    const totalComEstagiario = students.filter(
+        (s) => s.status === 'ATIVO' && s.deficiencia?.estudanteComDeficiencia && s.deficiencia?.possuiEstagiario
     ).length;
     const totalSemEstagiario = totalComDeficiencia - totalComEstagiario;
-    const totalComAve = filteredStudents.filter(
-        (s) => s.deficiencia?.ave
+    const totalComAve = students.filter(
+        (s) => s.status === 'ATIVO' && s.deficiencia?.estudanteComDeficiencia && s.deficiencia?.ave
     ).length;
     const totalSemAve = totalComDeficiencia - totalComAve;
 
