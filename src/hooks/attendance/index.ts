@@ -3,6 +3,10 @@
  * Replaces the monolithic useAttendanceData with focused, reusable hooks
  */
 
+import { useStudentRecords } from './useStudentRecords';
+import { useBimesterPeriods } from './useBimesterPeriods';
+import { useSchoolDays } from './useSchoolDays';
+
 export { useStudentRecords } from './useStudentRecords';
 export { useBimesterPeriods } from './useBimesterPeriods';
 export { useSchoolDays } from './useSchoolDays';

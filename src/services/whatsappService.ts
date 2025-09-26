@@ -77,7 +77,7 @@ export class WhatsAppService {
 
             // Make API request with timeout
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds timeout
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
 
             try {
                 const response = await fetch(WHATSAPP_API_URL, {

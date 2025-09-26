@@ -162,6 +162,7 @@ export default function StudentProfilePage() {
 
     const fetchStudentData = useCallback(async (studentId: string): Promise<void> => {
         if (!studentId) return;
+
         try {
             setLoadingProfile(true);
             const foundStudent = allStudents.find((s: Student) => s.estudanteId === studentId);
@@ -267,16 +268,43 @@ export default function StudentProfilePage() {
             };
             setStudentRecordWithoutJustified(aggregatedNoJustified);
 
-            // Fetch interactions
-            const interactionsSnapshot = await getDocs(collection(db, "2025", "interactions", studentId));
-            const interactionRecords: FamilyInteraction[] = interactionsSnapshot.docs.map((doc) => ({
-                id: doc.id,
-                type: doc.data().type as string,
-                date: formatFirebaseDate(doc.data().date as string),
-                description: doc.data().description as string,
-                createdBy: doc.data().createdBy as string || "Não informado",
-                sensitive: doc.data().sensitive as boolean || false,
-            })).sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
+            // Fetch interactions from both collections for compatibility
+            const newInteractionsSnapshot = await getDocs(collection(db, "2025", "interacoes_familia", studentId));
+            const oldInteractionsSnapshot = await getDocs(collection(db, "2025", "interactions", studentId));
+
+            const interactionRecords: FamilyInteraction[] = [];
+
+            // Mapear interações da collection nova
+            newInteractionsSnapshot.docs.forEach(doc => {
+                const interaction = {
+                    id: doc.id,
+                    type: doc.data().type as string,
+                    date: formatFirebaseDate(doc.data().date as string),
+                    description: doc.data().description as string,
+                    createdBy: doc.data().createdBy as string || "Não informado",
+                    sensitive: doc.data().sensitive as boolean || false,
+                    _collection: 'interacoes_familia' // Indicador da collection
+                } as FamilyInteraction & { _collection: string };
+                interactionRecords.push(interaction);
+            });
+
+            // Mapear interações da collection antiga
+            oldInteractionsSnapshot.docs.forEach(doc => {
+                const interaction = {
+                    id: doc.id,
+                    type: doc.data().type as string,
+                    date: formatFirebaseDate(doc.data().date as string),
+                    description: doc.data().description as string,
+                    createdBy: doc.data().createdBy as string || "Não informado",
+                    sensitive: doc.data().sensitive as boolean || false,
+                    _collection: 'interactions' // Indicador da collection
+                } as FamilyInteraction & { _collection: string };
+                interactionRecords.push(interaction);
+            });
+
+            // Ordenar por data
+            interactionRecords.sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
+
             setInteractions(interactionRecords);
         } catch (error) {
             logger.error("Erro ao buscar dados do aluno", error as Error);
@@ -350,7 +378,7 @@ export default function StudentProfilePage() {
                 sensitive: interactionSensitive,
             };
 
-            await addDoc(collection(db, "2025", "interactions", selectedStudentId), interactionData);
+            await addDoc(collection(db, "2025", "interacoes_familia", selectedStudentId), interactionData);
             setInteractionType("");
             setInteractionDate(new Date().toLocaleDateString("pt-BR"));
             setInteractionDescription("");
@@ -380,7 +408,11 @@ export default function StudentProfilePage() {
         }
 
         try {
-            const interactionRef = doc(db, "2025", "interactions", selectedStudentId, editingInteraction.id);
+            // Determinar a collection correta baseada no indicador
+            const interactionWithCollection = editingInteraction as FamilyInteraction & { _collection?: string };
+            const collectionName = interactionWithCollection._collection || "interacoes_familia"; // Default para nova
+
+            const interactionRef = doc(db, "2025", collectionName, selectedStudentId, editingInteraction.id);
             await updateDoc(interactionRef, {
                 type: interactionType,
                 date: formattedDate,
@@ -404,7 +436,11 @@ export default function StudentProfilePage() {
     const handleDeleteInteraction = async (interactionId: string): Promise<void> => {
         if (!selectedStudentId) return;
         try {
-            const interactionRef = doc(db, "2025", "interactions", selectedStudentId, interactionId);
+            // Encontrar a interação para determinar a collection
+            const interactionToDelete = interactions.find(i => i.id === interactionId) as FamilyInteraction & { _collection?: string };
+            const collectionName = interactionToDelete?._collection || "interacoes_familia"; // Default para nova
+
+            const interactionRef = doc(db, "2025", collectionName, selectedStudentId, interactionId);
             await deleteDoc(interactionRef);
             await fetchStudentData(selectedStudentId);
             toast.success("Interação excluída com sucesso!");

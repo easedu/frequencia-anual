@@ -81,6 +81,7 @@ export interface StudentRecord {
 
 export interface FamilyInteraction {
     id: string;
+    studentId: string;
     type: string;
     date: string;
     description: string;

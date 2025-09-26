@@ -120,8 +120,8 @@ export default function InteractionHistoryCard({
                                                 <span className="text-sm text-gray-600 font-medium">{interaction.date}</span>
                                             </TableCell>
                                             <TableCell className="py-2">
-                                                <div className="max-w-[300px]">
-                                                    <span className="text-sm text-gray-700 line-clamp-2">{interaction.description}</span>
+                                                <div className="max-w-[400px]">
+                                                    <span className="text-sm text-gray-700 whitespace-pre-wrap break-words">{interaction.description}</span>
                                                 </div>
                                             </TableCell>
                                             <TableCell className="py-2">

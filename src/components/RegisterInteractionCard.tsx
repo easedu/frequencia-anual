@@ -26,6 +26,8 @@ interface RegisterInteractionCardProps {
     onAddInteraction: () => Promise<void>;
     onEditInteraction: () => Promise<void>;
     id?: string;
+    readonlyType?: boolean; // Nova prop para tornar o tipo não editável
+    allowedTypes?: string[]; // Tipos de interação permitidos (quando não readonly)
 }
 
 export default function RegisterInteractionCard({
@@ -43,6 +45,8 @@ export default function RegisterInteractionCard({
     onAddInteraction,
     onEditInteraction,
     id,
+    readonlyType = false,
+    allowedTypes,
 }: RegisterInteractionCardProps) {
     useEffect(() => {
         if (editingInteraction) {
@@ -50,12 +54,9 @@ export default function RegisterInteractionCard({
             setInteractionDate(editingInteraction.date);
             setInteractionDescription(editingInteraction.description);
             setInteractionSensitive(editingInteraction.sensitive || false);
-        } else {
-            setInteractionType("");
-            setInteractionDate(new Date().toLocaleDateString("pt-BR"));
-            setInteractionDescription("");
-            setInteractionSensitive(false);
         }
+        // Não limpar campos se editingInteraction for null/undefined
+        // Isso permite que o componente seja usado em modais sem resetar
     }, [editingInteraction, setInteractionType, setInteractionDate, setInteractionDescription, setInteractionSensitive]);
 
     const handleSensitiveChange = (checked: boolean | string) => {
@@ -71,7 +72,8 @@ export default function RegisterInteractionCard({
         setInteractionSensitive(false);
     };
 
-    const interactionTypes = [
+    // Usar tipos permitidos se fornecidos, senão usar lista completa
+    const interactionTypes = allowedTypes || [
         'Contato telefônico',
         'Contato digital',
         'Conversa com a família',
@@ -120,18 +122,27 @@ export default function RegisterInteractionCard({
                                 <MessageSquare className="w-3 h-3 text-blue-600" />
                                 <span>Tipo de Interação</span>
                             </Label>
-                            <Select value={interactionType} onValueChange={setInteractionType}>
-                                <SelectTrigger id="interaction-type" className="h-9 border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors">
-                                    <SelectValue placeholder="Selecione o tipo" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {interactionTypes.map((type) => (
-                                        <SelectItem key={type} value={type} className="text-sm">
-                                            {type}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            {readonlyType ? (
+                                <div className="h-9 px-3 py-2 border border-gray-300 rounded-md bg-gray-50 flex items-center">
+                                    <span className="text-sm text-gray-700">{interactionType}</span>
+                                    <Badge className="ml-2 bg-orange-100 text-orange-800 border-orange-200 text-xs">
+                                        Fixo
+                                    </Badge>
+                                </div>
+                            ) : (
+                                <Select value={interactionType} onValueChange={setInteractionType}>
+                                    <SelectTrigger id="interaction-type" className="h-9 border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors">
+                                        <SelectValue placeholder="Selecione o tipo" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {interactionTypes.map((type) => (
+                                            <SelectItem key={type} value={type} className="text-sm">
+                                                {type}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
                         </div>
 
                         <div className="space-y-1">

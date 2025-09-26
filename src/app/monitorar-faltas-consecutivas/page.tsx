@@ -29,14 +29,18 @@ import {
   CalendarDays,
   User,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText,
+  X
 } from 'lucide-react';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/firebase.config';
+import { collection, getDocs, query, where, doc, getDoc, addDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db, auth } from '@/firebase.config';
 import { useStudents } from '@/hooks/useStudents';
 import { toast } from 'sonner';
 import { FIREBASE_PATHS } from '@/config/constants';
 import { useRouter } from 'next/navigation';
+import RegisterInteractionCard from '@/components/RegisterInteractionCard';
+import type { FamilyInteraction } from '@/app/types';
 
 interface ConsecutiveAbsence {
   estudanteId: string;
@@ -81,13 +85,28 @@ export default function MonitorarFaltasConsecutivasPage() {
   // Cache global do documento ano_letivo (persiste durante a sessão)
   const [academicYearCache, setAcademicYearCache] = useState<any>(null);
   const [academicYearCacheTime, setAcademicYearCacheTime] = useState<number>(0);
-  
+
+  // Estados para o modal de interação
+  const [selectedAbsence, setSelectedAbsence] = useState<ConsecutiveAbsence | null>(null);
+  const [showInteractionCard, setShowInteractionCard] = useState(false);
+  const [interactionType, setInteractionType] = useState<string>("");
+  const [interactionDate, setInteractionDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
+  const [interactionDescription, setInteractionDescription] = useState<string>("");
+  const [interactionSensitive, setInteractionSensitive] = useState<boolean>(false);
+
+  // Estado para controlar casos resolvidos
+  const [resolvedCases, setResolvedCases] = useState<Set<string>>(new Set());
+
+  // Estado para controlar hidratação (evitar mismatch entre server e client)
+  const [isHydrated, setIsHydrated] = useState(false);
+
   // Debounce para busca
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   
   // Paginação para grandes datasets
   const [currentActivePage, setCurrentActivePage] = useState(1);
   const [currentInactivePage, setCurrentInactivePage] = useState(1);
+  const [currentResolvedPage, setCurrentResolvedPage] = useState(1);
   const [itemsPerPage] = useState(50); // Limite de 50 estudantes por página
 
   // Extrair turmas únicas
@@ -508,87 +527,103 @@ export default function MonitorarFaltasConsecutivasPage() {
     return consecutivePeriods.some(period => isConsecutivePeriodActive(period, schoolDays));
   };
 
-  // Filtrar resultados e separa por períodos ativos/inativos
-  const { activeStudents, inactiveStudents, filteredResults } = useMemo(() => {
+  // Filtrar resultados e separa por períodos ativos/inativos/resolvidos
+  const { activeStudents, inactiveStudents, resolvedStudents, filteredResults } = useMemo(() => {
     const filtered = consecutiveAbsences.filter(absence => {
       // Filtro de busca por nome com debounce
       if (debouncedSearchTerm && !absence.studentName.toLowerCase().includes(debouncedSearchTerm.toLowerCase())) {
         return false;
       }
-      
+
       // Filtro PCD
       if (!showPCD && absence.hasDisability) return false;
-      
+
       // Filtro por turma
       if (selectedClass !== 'all' && absence.className !== selectedClass) return false;
-      
+
       // Filtro por turno
       if (selectedShift !== 'all' && absence.shift !== selectedShift) return false;
-      
+
       // Filtro por severidade
       if (selectedSeverity !== 'all' && absence.severity !== selectedSeverity) return false;
-      
+
       return true;
     });
 
-    // Separar estudantes com períodos ativos dos inativos
+    // Separar estudantes por categoria: ativos, inativos e resolvidos
     const active: typeof filtered = [];
     const inactive: typeof filtered = [];
+    const resolved: typeof filtered = [];
 
     filtered.forEach(absence => {
-      const hasActivePeriod = currentSchoolDays.length > 0 && 
-        absence.consecutivePeriods && 
-        hasActiveConsecutivePeriod(absence.consecutivePeriods, currentSchoolDays);
-      
-      if (hasActivePeriod) {
-        active.push(absence);
+      const isResolved = isHydrated && resolvedCases.has(absence.estudanteId);
+
+      if (isResolved) {
+        resolved.push(absence);
       } else {
-        inactive.push(absence);
+        const hasActivePeriod = currentSchoolDays.length > 0 &&
+          absence.consecutivePeriods &&
+          hasActiveConsecutivePeriod(absence.consecutivePeriods, currentSchoolDays);
+
+        if (hasActivePeriod) {
+          active.push(absence);
+        } else {
+          inactive.push(absence);
+        }
       }
     });
 
     return {
       activeStudents: active,
       inactiveStudents: inactive,
+      resolvedStudents: resolved,
       filteredResults: filtered
     };
-  }, [consecutiveAbsences, debouncedSearchTerm, showPCD, selectedClass, selectedShift, selectedSeverity, currentSchoolDays]);
+  }, [consecutiveAbsences, debouncedSearchTerm, showPCD, selectedClass, selectedShift, selectedSeverity, currentSchoolDays, isHydrated, resolvedCases]);
 
-  // Paginação dos resultados ativos e inativos
+  // Paginação dos resultados ativos, inativos e resolvidos
   const paginatedResults = useMemo(() => {
     const totalActivePages = Math.ceil(activeStudents.length / itemsPerPage);
     const totalInactivePages = Math.ceil(inactiveStudents.length / itemsPerPage);
-    
+    const totalResolvedPages = Math.ceil(resolvedStudents.length / itemsPerPage);
+
     const activeStartIndex = (currentActivePage - 1) * itemsPerPage;
     const activeEndIndex = activeStartIndex + itemsPerPage;
-    
+
     const inactiveStartIndex = (currentInactivePage - 1) * itemsPerPage;
     const inactiveEndIndex = inactiveStartIndex + itemsPerPage;
-    
+
+    const resolvedStartIndex = (currentResolvedPage - 1) * itemsPerPage;
+    const resolvedEndIndex = resolvedStartIndex + itemsPerPage;
+
     return {
       activeStudentsPaginated: activeStudents.slice(activeStartIndex, activeEndIndex),
       inactiveStudentsPaginated: inactiveStudents.slice(inactiveStartIndex, inactiveEndIndex),
+      resolvedStudentsPaginated: resolvedStudents.slice(resolvedStartIndex, resolvedEndIndex),
       totalActivePages,
       totalInactivePages,
+      totalResolvedPages,
       currentlyShowingActive: Math.min(activeStudents.length, itemsPerPage),
       currentlyShowingInactive: Math.min(inactiveStudents.length, itemsPerPage),
+      currentlyShowingResolved: Math.min(resolvedStudents.length, itemsPerPage),
     };
-  }, [activeStudents, inactiveStudents, currentActivePage, currentInactivePage, itemsPerPage]);
+  }, [activeStudents, inactiveStudents, resolvedStudents, currentActivePage, currentInactivePage, currentResolvedPage, itemsPerPage]);
 
   // Estatísticas
   const stats = useMemo(() => {
     return {
       total: filteredResults.length,
-      active: activeStudents.length, // NOVO: casos com períodos ativos
-      inactive: inactiveStudents.length, // NOVO: casos com períodos inativos
+      active: activeStudents.length,
+      inactive: inactiveStudents.length,
+      resolved: resolvedStudents.length, // NOVO: casos resolvidos
       warning: filteredResults.filter(a => a.severity === 'warning').length,
       critical: filteredResults.filter(a => a.severity === 'critical').length,
       withDisability: filteredResults.filter(a => a.hasDisability).length,
-      averageConsecutiveDays: filteredResults.length > 0 
+      averageConsecutiveDays: filteredResults.length > 0
         ? Math.round(filteredResults.reduce((sum, a) => sum + a.consecutiveDays, 0) / filteredResults.length)
         : 0
     };
-  }, [filteredResults, activeStudents, inactiveStudents]);
+  }, [filteredResults, activeStudents, inactiveStudents, resolvedStudents]);
 
   // Função para alternar seleção de bimestre
   const toggleBimester = (bimester: string) => {
@@ -678,11 +713,150 @@ export default function MonitorarFaltasConsecutivasPage() {
     router.push(`/perfil-estudante?id=${estudanteId}`);
   };
 
+  // Funções para gerenciar casos resolvidos no Firebase
+  const loadResolvedCases = async () => {
+    try {
+      const resolvedCasesRef = collection(db, '2025', 'casos_resolvidos', 'faltas_consecutivas');
+      const querySnapshot = await getDocs(resolvedCasesRef);
+
+      const resolved = new Set<string>();
+      querySnapshot.forEach((docSnap) => {
+        resolved.add(docSnap.id); // O ID do documento é o estudanteId
+      });
+
+      setResolvedCases(resolved);
+    } catch (error) {
+      console.error('Erro ao carregar casos resolvidos:', error);
+    }
+  };
+
+  const saveResolvedCase = async (estudanteId: string, interactionId: string) => {
+    try {
+      const resolvedCaseRef = doc(db, '2025', 'casos_resolvidos', 'faltas_consecutivas', estudanteId);
+      await setDoc(resolvedCaseRef, {
+        estudanteId,
+        interactionId,
+        resolvedAt: new Date().toISOString(),
+        resolvedBy: auth.currentUser?.uid || 'unknown'
+      });
+    } catch (error) {
+      console.error('Erro ao salvar caso resolvido:', error);
+      throw error;
+    }
+  };
+
+  const removeResolvedCase = async (estudanteId: string) => {
+    try {
+      const resolvedCaseRef = doc(db, '2025', 'casos_resolvidos', 'faltas_consecutivas', estudanteId);
+      await deleteDoc(resolvedCaseRef);
+
+      // Remover do estado local também
+      const newResolvedCases = new Set(resolvedCases);
+      newResolvedCases.delete(estudanteId);
+      setResolvedCases(newResolvedCases);
+    } catch (error) {
+      console.error('Erro ao remover caso resolvido:', error);
+      throw error;
+    }
+  };
+
+  // Funções para o modal de interação
+  const handleResolveAbsence = (absence: ConsecutiveAbsence) => {
+    setSelectedAbsence(absence);
+    setShowInteractionCard(true);
+    // Reset form
+    setInteractionType("");
+    setInteractionDate(new Date().toLocaleDateString("pt-BR"));
+    setInteractionDescription("");
+    setInteractionSensitive(false);
+  };
+
+  const handleCancelInteraction = () => {
+    setShowInteractionCard(false);
+    setSelectedAbsence(null);
+    setInteractionType("");
+    setInteractionDate(new Date().toLocaleDateString("pt-BR"));
+    setInteractionDescription("");
+    setInteractionSensitive(false);
+  };
+
+  // Registrar interação e marcar como resolvido
+  const handleAddInteraction = async () => {
+    if (!selectedAbsence || !interactionDescription.trim()) {
+      toast.error('Descrição da interação é obrigatória');
+      return;
+    }
+
+    if (!interactionType.trim()) {
+      toast.error('Tipo de interação é obrigatório');
+      return;
+    }
+
+    try {
+      // Preparar dados da interação
+      const parseDateToFirebase = (dateStr: string): string | null => {
+        const [day, month, year] = dateStr.split('/').map(Number);
+        if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || month < 1 || month > 12 || day > 31) return null;
+        return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      };
+
+      const formattedDate = parseDateToFirebase(interactionDate);
+      if (!formattedDate) {
+        toast.error('Data inválida. Use o formato DD/MM/YYYY.');
+        return;
+      }
+
+      // Obter nome do usuário atual
+      const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
+
+      const interactionData: Omit<FamilyInteraction, 'id'> = {
+        type: interactionType,
+        date: formattedDate, // Data no formato Firebase
+        description: interactionDescription,
+        sensitive: interactionSensitive,
+        createdBy: currentUser
+      };
+
+      const interactionRef = await addDoc(
+        collection(db, '2025', 'interacoes_familia', selectedAbsence.estudanteId),
+        interactionData
+      );
+
+      // Salvar caso como resolvido no Firebase
+      await saveResolvedCase(selectedAbsence.estudanteId, interactionRef.id);
+
+      // Marcar como resolvido no estado local
+      const newResolvedCases = new Set(resolvedCases).add(selectedAbsence.estudanteId);
+      setResolvedCases(newResolvedCases);
+
+      toast.success('Interação registrada e caso marcado como resolvido!');
+      setShowInteractionCard(false);
+      setSelectedAbsence(null);
+
+    } catch (error) {
+      console.error('Erro ao registrar interação:', error);
+      toast.error('Erro ao registrar interação');
+    }
+  };
+
   // Reset da paginação quando os filtros mudarem
   useEffect(() => {
     setCurrentActivePage(1);
     setCurrentInactivePage(1);
+    setCurrentResolvedPage(1);
   }, [debouncedSearchTerm, showPCD, selectedClass, selectedShift, selectedSeverity]);
+
+  // Inicializar hidratação e carregar dados persistidos
+  useEffect(() => {
+    const initializePage = async () => {
+      setIsHydrated(true);
+
+      // Carregar casos resolvidos do Firebase
+      await loadResolvedCases();
+    };
+
+    initializePage();
+  }, []);
 
   useEffect(() => {
     // Analisar automaticamente APENAS no carregamento inicial
@@ -731,7 +905,76 @@ export default function MonitorarFaltasConsecutivasPage() {
           </div>
         </div>
       )}
-      
+
+      {/* Modal de Interação */}
+      {showInteractionCard && selectedAbsence && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={handleCancelInteraction}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="mb-4">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Resolver Caso de Faltas Consecutivas
+                </h3>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-red-800">
+                    <User className="w-4 h-4" />
+                    <span className="font-medium">{selectedAbsence.studentName}</span>
+                    {selectedAbsence.hasDisability && (
+                      <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+                        <Heart className="h-3 w-3 mr-1" />
+                        PCD
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-red-700 mt-1">
+                    <span className="flex items-center gap-1">
+                      <BookOpen className="w-3 h-3" />
+                      {selectedAbsence.className}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {selectedAbsence.shift}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <CalendarX className="w-3 h-3" />
+                      {selectedAbsence.consecutiveDays} dias consecutivos
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <RegisterInteractionCard
+                interactionType={interactionType}
+                interactionDate={interactionDate}
+                interactionDescription={interactionDescription}
+                interactionSensitive={interactionSensitive}
+                editingInteraction={undefined}
+                userRole={null} // Será obtido automaticamente
+                setInteractionType={setInteractionType}
+                setInteractionDate={setInteractionDate}
+                setInteractionDescription={setInteractionDescription}
+                setInteractionSensitive={setInteractionSensitive}
+                setEditingInteraction={() => {}}
+                onAddInteraction={handleAddInteraction}
+                onEditInteraction={async () => {}}
+                readonlyType={false} // Permitir seleção de qualquer tipo
+              />
+
+              <div className="flex gap-3 mt-4">
+                <Button
+                  onClick={handleCancelInteraction}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="text-center mb-8">
@@ -936,7 +1179,7 @@ export default function MonitorarFaltasConsecutivasPage() {
         </Card>
 
         {/* Estatísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6">
           {/* Card de CASOS ATIVOS - destaque especial */}
           <Card className="border-0 shadow-lg bg-gradient-to-br from-red-600 to-red-700 text-white">
             <CardContent className="p-6">
@@ -956,6 +1199,20 @@ export default function MonitorarFaltasConsecutivasPage() {
                     </div>
                   )}
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Card de CASOS RESOLVIDOS - novo */}
+          <Card className="border-0 shadow-lg bg-gradient-to-br from-green-600 to-green-700 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-green-100 text-sm font-medium">RESOLVIDOS</p>
+                  <p className="text-2xl font-bold text-white">{stats.resolved}</p>
+                  <p className="text-xs text-green-200">Casos finalizados</p>
+                </div>
+                <CheckCircle className="h-10 w-10 text-green-200" />
               </div>
             </CardContent>
           </Card>
@@ -1071,7 +1328,11 @@ export default function MonitorarFaltasConsecutivasPage() {
                     {paginatedResults.activeStudentsPaginated.map((absence, index) => (
                       <div
                         key={absence.estudanteId}
-                        className="p-4 rounded-lg border-2 border-red-300 bg-gradient-to-br from-red-50 to-red-100 shadow-lg"
+                        className={`p-4 rounded-lg border-2 shadow-lg transition-all duration-300 ${
+                          isHydrated && resolvedCases.has(absence.estudanteId)
+                            ? 'border-green-300 bg-gradient-to-br from-green-50 to-green-100 opacity-75'
+                            : 'border-red-300 bg-gradient-to-br from-red-50 to-red-100'
+                        }`}
                       >
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-3">
@@ -1084,6 +1345,12 @@ export default function MonitorarFaltasConsecutivasPage() {
                                     <Badge className="bg-purple-100 text-purple-800 border-purple-200">
                                       <Heart className="h-3 w-3 mr-1" />
                                       PCD
+                                    </Badge>
+                                  )}
+                                  {isHydrated && resolvedCases.has(absence.estudanteId) && (
+                                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Resolvido
                                     </Badge>
                                   )}
                                 </h4>
@@ -1120,7 +1387,18 @@ export default function MonitorarFaltasConsecutivasPage() {
                               >
                                 <User className="h-4 w-4 text-blue-600 group-hover:text-blue-700" />
                               </button>
-                              
+
+                              {isHydrated && !resolvedCases.has(absence.estudanteId) && (
+                                <Button
+                                  onClick={() => handleResolveAbsence(absence)}
+                                  className="bg-red-600 hover:bg-red-700 flex items-center gap-2 h-9"
+                                  size="sm"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                  Resolver
+                                </Button>
+                              )}
+
                               <button
                                 onClick={() => toggleStudentExpansion(absence.estudanteId)}
                                 className="p-2 rounded-lg bg-white/60 hover:bg-white transition-all duration-200 border border-gray-300 hover:border-blue-400"
@@ -1158,11 +1436,15 @@ export default function MonitorarFaltasConsecutivasPage() {
                           <div className="bg-white/60 p-3 rounded border">
                             <span className="text-gray-600">Status:</span>
                             <div className={`font-medium ${
-                              absence.severity === 'critical' ? 'text-red-600' : 'text-orange-600'
+                              isHydrated && resolvedCases.has(absence.estudanteId)
+                                ? 'text-green-600'
+                                : absence.severity === 'critical' ? 'text-red-600' : 'text-orange-600'
                             }`}>
-                              {absence.severity === 'critical' 
-                                ? 'Intervenção Urgente' 
-                                : 'Acompanhamento Necessário'
+                              {isHydrated && resolvedCases.has(absence.estudanteId)
+                                ? 'Caso Resolvido'
+                                : absence.severity === 'critical'
+                                  ? 'Intervenção Urgente'
+                                  : 'Acompanhamento Necessário'
                               }
                             </div>
                           </div>
@@ -1323,9 +1605,11 @@ export default function MonitorarFaltasConsecutivasPage() {
                       <div
                         key={absence.estudanteId}
                         className={`p-4 rounded-lg border transition-all duration-200 ${
-                          absence.severity === 'critical'
-                            ? 'bg-red-50 border-red-200 opacity-80'
-                            : 'bg-orange-50 border-orange-200 opacity-80'
+                          isHydrated && resolvedCases.has(absence.estudanteId)
+                            ? 'bg-green-50 border-green-200 opacity-60'
+                            : absence.severity === 'critical'
+                              ? 'bg-red-50 border-red-200 opacity-80'
+                              : 'bg-orange-50 border-orange-200 opacity-80'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-3">
@@ -1339,6 +1623,12 @@ export default function MonitorarFaltasConsecutivasPage() {
                                     <Badge className="bg-purple-100 text-purple-800 border-purple-200">
                                       <Heart className="h-3 w-3 mr-1" />
                                       PCD
+                                    </Badge>
+                                  )}
+                                  {isHydrated && resolvedCases.has(absence.estudanteId) && (
+                                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Resolvido
                                     </Badge>
                                   )}
                                 </h4>
@@ -1375,7 +1665,18 @@ export default function MonitorarFaltasConsecutivasPage() {
                               >
                                 <User className="h-4 w-4 text-blue-600 group-hover:text-blue-700" />
                               </button>
-                              
+
+                              {isHydrated && !resolvedCases.has(absence.estudanteId) && (
+                                <Button
+                                  onClick={() => handleResolveAbsence(absence)}
+                                  className="bg-red-600 hover:bg-red-700 flex items-center gap-2 h-9"
+                                  size="sm"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                  Resolver
+                                </Button>
+                              )}
+
                               <button
                                 onClick={() => toggleStudentExpansion(absence.estudanteId)}
                                 className="p-2 rounded-lg bg-white/60 hover:bg-white transition-all duration-200 border border-gray-300 hover:border-blue-400"
@@ -1413,10 +1714,12 @@ export default function MonitorarFaltasConsecutivasPage() {
                           <div className="bg-white/60 p-3 rounded border">
                             <span className="text-gray-600">Status:</span>
                             <div className={`font-medium ${
-                              absence.severity === 'critical' ? 'text-red-600' : 'text-orange-600'
+                              resolvedCases.has(absence.estudanteId)
+                                ? 'text-green-600'
+                                : absence.severity === 'critical' ? 'text-red-600' : 'text-orange-600'
                             }`}>
-                              {absence.severity === 'critical' 
-                                ? 'Período Concluído' 
+                              {resolvedCases.has(absence.estudanteId)
+                                ? 'Caso Resolvido'
                                 : 'Período Concluído'
                               }
                             </div>
@@ -1504,7 +1807,7 @@ export default function MonitorarFaltasConsecutivasPage() {
                 </CardContent>
               </Card>
             )}
-            
+
             {/* Controles de Paginação para Casos Inativos */}
             {inactiveStudents.length > itemsPerPage && (
               <Card className="border-0 shadow-lg">
@@ -1524,7 +1827,7 @@ export default function MonitorarFaltasConsecutivasPage() {
                         <ChevronLeft className="h-4 w-4" />
                         Anterior
                       </Button>
-                      
+
                       <div className="flex items-center gap-1">
                         {Array.from({ length: Math.ceil(inactiveStudents.length / itemsPerPage) }, (_, i) => i + 1).map((page) => (
                           <Button
@@ -1538,12 +1841,253 @@ export default function MonitorarFaltasConsecutivasPage() {
                           </Button>
                         ))}
                       </div>
-                      
+
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setCurrentInactivePage(currentInactivePage + 1)}
                         disabled={currentInactivePage === Math.ceil(inactiveStudents.length / itemsPerPage)}
+                        className="flex items-center gap-1"
+                      >
+                        Próximo
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* SEÇÃO 3: CASOS RESOLVIDOS */}
+            {resolvedStudents.length > 0 && (
+              <Card className="border-0 shadow-lg border-l-4 border-l-green-500">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <div>
+                      <div>✅ Casos Resolvidos</div>
+                      <p className="text-sm font-normal text-green-600 mt-1">
+                        {resolvedStudents.length} caso{resolvedStudents.length > 1 ? 's' : ''} com intervenção registrada
+                      </p>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {paginatedResults.resolvedStudentsPaginated.map((absence, index) => (
+                      <div
+                        key={absence.estudanteId}
+                        className="p-4 rounded-lg border-2 border-green-300 bg-gradient-to-br from-green-50 to-green-100 shadow-lg opacity-90"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-gray-700">#{(currentResolvedPage - 1) * itemsPerPage + index + 1}</span>
+                              <div>
+                                <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                                  {absence.studentName}
+                                  {absence.hasDisability && (
+                                    <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+                                      <Heart className="h-3 w-3 mr-1" />
+                                      PCD
+                                    </Badge>
+                                  )}
+                                  <Badge className="bg-green-100 text-green-800 border-green-200">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Resolvido
+                                  </Badge>
+                                </h4>
+                                <div className="flex items-center gap-4 text-sm text-gray-600">
+                                  <span className="flex items-center gap-1">
+                                    <BookOpen className="h-3 w-3" />
+                                    {absence.className}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {absence.shift}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <Badge className="bg-green-100 text-green-800 border-green-200">
+                              Finalizado
+                            </Badge>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => navigateToStudentProfile(absence.estudanteId)}
+                                className="p-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-all duration-200 border border-blue-200 hover:border-blue-400 group"
+                                title="Ver perfil completo do estudante"
+                              >
+                                <User className="h-4 w-4 text-blue-600 group-hover:text-blue-700" />
+                              </button>
+
+                              <button
+                                onClick={() => toggleStudentExpansion(absence.estudanteId)}
+                                className="p-2 rounded-lg bg-white/60 hover:bg-white transition-all duration-200 border border-gray-300 hover:border-blue-400"
+                                title={expandedStudents.has(absence.estudanteId) ? 'Recolher detalhes' : 'Ver detalhes das faltas'}
+                              >
+                                {expandedStudents.has(absence.estudanteId) ? (
+                                  <ChevronUp className="h-4 w-4 text-gray-600" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4 text-gray-600" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="bg-white/60 p-3 rounded border">
+                            <span className="text-gray-600">Dias consecutivos:</span>
+                            <div className="font-bold text-lg text-green-600">
+                              {absence.consecutiveDays} dias
+                            </div>
+                          </div>
+                          <div className="bg-white/60 p-3 rounded border">
+                            <span className="text-gray-600">Período:</span>
+                            <div className="font-medium">
+                              {absence.startDate} a {absence.endDate}
+                            </div>
+                          </div>
+                          <div className="bg-white/60 p-3 rounded border">
+                            <span className="text-gray-600">Total de faltas:</span>
+                            <div className="font-bold">
+                              {absence.totalAbsences} faltas
+                            </div>
+                          </div>
+                          <div className="bg-white/60 p-3 rounded border">
+                            <span className="text-gray-600">Status:</span>
+                            <div className="font-medium text-green-600">
+                              Caso Resolvido
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Conteúdo expandido - mesmo código das outras seções */}
+                        {expandedStudents.has(absence.estudanteId) && absence.allAbsences && (
+                          <div className="mt-4 pt-4 border-t border-gray-200">
+                            <div className="mb-4">
+                              <h5 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                                <CalendarDays className="h-4 w-4 text-blue-600" />
+                                Detalhes das Faltas ({absence.allAbsences.length} total)
+                              </h5>
+
+                              {absence.consecutivePeriods && absence.consecutivePeriods.length > 0 && (
+                                <div className="mb-4">
+                                  <h6 className="text-sm font-medium text-gray-800 mb-2">Períodos Consecutivos Identificados:</h6>
+                                  <div className="grid gap-2">
+                                    {absence.consecutivePeriods.map((period, periodIndex) => (
+                                      <div key={periodIndex} className="bg-green-100 border border-green-200 rounded-lg p-3">
+                                        <div className="flex items-center justify-between">
+                                          <span className="font-medium text-green-800">
+                                            Período {periodIndex + 1}: {period.start} a {period.end}
+                                          </span>
+                                          <Badge className="bg-green-200 text-green-800">
+                                            {period.days} dias consecutivos
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="bg-gray-50 rounded-lg p-4">
+                                <h6 className="text-sm font-medium text-gray-800 mb-3">Todas as Faltas (ordenadas por data):</h6>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                                  {absence.allAbsences
+                                    .sort((a, b) => parseDateDDMMYYYY(a).getTime() - parseDateDDMMYYYY(b).getTime())
+                                    .map((falta, faltaIndex) => {
+                                      const { inPeriod, period } = isDateInConsecutivePeriod(falta, absence.consecutivePeriods || []);
+                                      return (
+                                        <div
+                                          key={faltaIndex}
+                                          className={`p-2 rounded text-center text-xs border transition-all duration-200 ${
+                                            inPeriod
+                                              ? 'bg-green-200 border-green-400 text-green-900 font-bold shadow-md'
+                                              : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
+                                          }`}
+                                          title={
+                                            inPeriod
+                                              ? `Parte do período consecutivo: ${period?.start} a ${period?.end} (${period?.days} dias)`
+                                              : 'Falta isolada'
+                                          }
+                                        >
+                                          {falta}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+
+                                <div className="mt-3 pt-3 border-t border-gray-200">
+                                  <div className="flex flex-wrap items-center gap-4 text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-3 h-3 bg-green-200 border border-green-400 rounded"></div>
+                                      <span className="text-gray-600">Faltas consecutivas</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-3 h-3 bg-white border border-gray-300 rounded"></div>
+                                      <span className="text-gray-600">Faltas isoladas</span>
+                                    </div>
+                                    <div className="ml-auto text-gray-500">
+                                      Total: {absence.allAbsences.length} faltas
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Controles de Paginação para Casos Resolvidos */}
+            {resolvedStudents.length > itemsPerPage && (
+              <Card className="border-0 shadow-lg">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      Mostrando {Math.min((currentResolvedPage - 1) * itemsPerPage + 1, resolvedStudents.length)} - {Math.min(currentResolvedPage * itemsPerPage, resolvedStudents.length)} de {resolvedStudents.length} casos resolvidos
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentResolvedPage(currentResolvedPage - 1)}
+                        disabled={currentResolvedPage === 1}
+                        className="flex items-center gap-1"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Anterior
+                      </Button>
+
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.ceil(resolvedStudents.length / itemsPerPage) }, (_, i) => i + 1).map((page) => (
+                          <Button
+                            key={page}
+                            variant={currentResolvedPage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentResolvedPage(page)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {page}
+                          </Button>
+                        ))}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentResolvedPage(currentResolvedPage + 1)}
+                        disabled={currentResolvedPage === Math.ceil(resolvedStudents.length / itemsPerPage)}
                         className="flex items-center gap-1"
                       >
                         Próximo

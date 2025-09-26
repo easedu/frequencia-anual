@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { auth, db } from "@/firebase.config";
 import { useRouter } from "next/navigation";
-import { CheckCircle, UserPlus, Calendar, BarChart, BarChart3, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart, AlertTriangle } from "lucide-react";
+import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart, AlertTriangle, ClipboardList, TrendingUp } from "lucide-react";
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
 import { logger } from "@/utils/logger";
 
@@ -209,12 +209,12 @@ export default function Home() {
                     description: "Adicione novos estudantes ao sistema"
                 },
                 {
-                    key: "monitorar-faltas-consecutivas",
-                    title: "Monitorar Faltas Consecutivas",
-                    icon: AlertTriangle,
-                    href: "/monitorar-faltas-consecutivas",
-                    color: "amber",
-                    description: "Monitore faltas consecutivas de dias letivos"
+                    key: "relatorio-interacoes",
+                    title: "Relatórios de Interações",
+                    icon: TrendingUp,
+                    href: "/relatorio-interacoes",
+                    color: "emerald",
+                    description: "Análise e estatísticas do histórico de interações"
                 },
             ];
         }
@@ -262,20 +262,20 @@ export default function Home() {
                     description: "Visualize dados completos dos estudantes"
                 },
                 {
-                    key: "relatorio-bolsa-familia",
-                    title: "Relatório Bolsa Família",
-                    icon: CalendarX,
-                    href: "/relatorio-bolsa-familia",
-                    color: "blue",
-                    description: "Gere relatórios para programa social"
+                    key: "gerenciador-tarefas",
+                    title: "Gerenciador de Tarefas",
+                    icon: ClipboardList,
+                    href: "/gerenciador-tarefas",
+                    color: "slate",
+                    description: "Organize e acompanhe suas tarefas diárias"
                 },
                 {
-                    key: "monitorar-faltas-consecutivas",
-                    title: "Monitorar Faltas Consecutivas",
-                    icon: AlertTriangle,
-                    href: "/monitorar-faltas-consecutivas",
-                    color: "amber",
-                    description: "Monitore faltas consecutivas de dias letivos"
+                    key: "relatorio-interacoes",
+                    title: "Relatórios de Interações",
+                    icon: TrendingUp,
+                    href: "/relatorio-interacoes",
+                    color: "emerald",
+                    description: "Análise e estatísticas do histórico de interações"
                 },
             ];
         }
@@ -362,6 +362,22 @@ export default function Home() {
                     color: "amber",
                     description: "Monitore faltas consecutivas de dias letivos"
                 },
+                {
+                    key: "gerenciador-tarefas",
+                    title: "Gerenciador de Tarefas",
+                    icon: ClipboardList,
+                    href: "/gerenciador-tarefas",
+                    color: "slate",
+                    description: "Organize e acompanhe suas tarefas diárias"
+                },
+                {
+                    key: "relatorio-interacoes",
+                    title: "Relatórios de Interações",
+                    icon: TrendingUp,
+                    href: "/relatorio-interacoes",
+                    color: "emerald",
+                    description: "Análise e estatísticas do histórico de interações"
+                },
             ];
         }
 
@@ -423,6 +439,18 @@ export default function Home() {
                 hover: "hover:from-amber-600 hover:to-orange-700",
                 icon: "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400",
                 border: "border-amber-200 dark:border-amber-800"
+            },
+            slate: {
+                gradient: "from-slate-500 to-gray-600",
+                hover: "hover:from-slate-600 hover:to-gray-700",
+                icon: "bg-slate-100 dark:bg-slate-900/30 text-slate-600 dark:text-slate-400",
+                border: "border-slate-200 dark:border-slate-800"
+            },
+            emerald: {
+                gradient: "from-emerald-500 to-teal-600",
+                hover: "hover:from-emerald-600 hover:to-teal-700",
+                icon: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400",
+                border: "border-emerald-200 dark:border-emerald-800"
             }
         };
         return colorMap[color] || colorMap.blue;
@@ -611,6 +639,7 @@ export default function Home() {
                         </div>
                     </div>
                 )}
+
 
                 {/* Grid de cards */}
                 <section
