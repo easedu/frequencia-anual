@@ -117,7 +117,7 @@ export default function WhatsAppModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-2xl max-w-[90vw] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <MessageCircle className="h-5 w-5 text-green-600" />
@@ -140,10 +140,13 @@ export default function WhatsAppModal({
 
                     {/* Contact Info */}
                     <div className="bg-blue-50 rounded-lg p-4 space-y-2">
+                        <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4 text-green-600" />
+                            <span className="font-medium">{selectedContact.nome}</span>
+                        </div>
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Phone className="h-4 w-4 text-green-600" />
-                                <span className="font-medium">{selectedContact.nome}</span>
+                            <div className="text-sm text-gray-600">
+                                {formatPhoneNumber(selectedContact.telefone)}
                             </div>
                             {isVerified && (
                                 <Badge className="bg-green-100 text-green-800 text-xs">
@@ -152,11 +155,8 @@ export default function WhatsAppModal({
                                 </Badge>
                             )}
                         </div>
-                        <div className="text-sm text-gray-600">
-                            {formatPhoneNumber(selectedContact.telefone)}
-                        </div>
                         
-                        {!isEligible && (
+                        {!isEligible && !isVerified && (
                             <Alert>
                                 <AlertCircle className="h-4 w-4" />
                                 <AlertDescription className="text-sm">
@@ -176,9 +176,10 @@ export default function WhatsAppModal({
                             placeholder="Digite sua mensagem aqui..."
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
-                            rows={4}
+                            rows={8}
                             maxLength={1000}
                             disabled={isSending}
+                            className="min-h-[200px]"
                         />
                         <div className="text-xs text-gray-500 text-right">
                             {message.length}/1000 caracteres

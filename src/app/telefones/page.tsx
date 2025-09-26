@@ -25,6 +25,8 @@ import { WhatsAppTrackingService } from '@/services/whatsappTrackingService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import * as XLSX from 'xlsx';
+import WhatsAppModal from '@/components/WhatsAppModal';
+import { logger } from '@/utils/logger';
 
 interface PhoneContact {
   telefone: string;
@@ -47,6 +49,11 @@ export default function TelefonesPage() {
   const [loadingWhatsAppData, setLoadingWhatsAppData] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [processingFile, setProcessingFile] = useState(false);
+
+  // Estados para o modal do WhatsApp
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<PhoneContact | null>(null);
+  const [verifiedWhatsAppNumbers, setVerifiedWhatsAppNumbers] = useState<Set<string>>(new Set());
 
   // Extrair todos os telefones dos estudantes
   const extractPhoneContacts = useMemo(() => {
@@ -116,6 +123,15 @@ export default function TelefonesPage() {
       });
 
       setPhoneContacts(updatedContacts);
+
+      // Atualizar conjunto de números verificados com WhatsApp
+      const numbersWithWhatsApp = new Set<string>();
+      verifiedNumbers.forEach((data, phone) => {
+        if (data.hasWhatsApp) {
+          numbersWithWhatsApp.add(phone);
+        }
+      });
+      setVerifiedWhatsAppNumbers(numbersWithWhatsApp);
 
     } catch (error) {
       console.error('Erro ao carregar dados de verificação:', error);
@@ -219,10 +235,74 @@ export default function TelefonesPage() {
     }
   };
 
-  // Função para abrir WhatsApp
-  const openWhatsApp = (phone: string) => {
-    const whatsappUrl = `https://wa.me/55${phone}`;
-    window.open(whatsappUrl, '_blank');
+  // Função para abrir modal do WhatsApp
+  const openWhatsAppModal = (contact: PhoneContact) => {
+    setSelectedContact(contact);
+    setIsWhatsAppModalOpen(true);
+  };
+
+  // Função para enviar mensagem via WhatsApp
+  const handleSendWhatsAppMessage = async (
+    phone: string,
+    message: string,
+    checkWhatsApp: boolean = false
+  ) => {
+    try {
+      // Preparar dados da requisição
+      const requestData = {
+        phone,
+        message,
+        studentId: selectedContact?.estudanteId,
+        contactName: selectedContact?.nome,
+        checkWhatsApp
+      };
+
+      // Fazer requisição usando a mesma API do envio de mensagens
+      const response = await fetch(process.env.NEXT_PUBLIC_WHATSAPP_API_URL!, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_WHATSAPP_API_TOKEN}`
+        },
+        body: JSON.stringify(requestData)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success("Mensagem enviada com sucesso!");
+
+        // Atualizar contador de mensagens se necessário
+        if (selectedContact) {
+          await WhatsAppTrackingService.updateMessageCount(phone);
+        }
+
+        return {
+          success: true,
+          message: "Mensagem enviada com sucesso!",
+          data: result
+        };
+      } else {
+        toast.error(result.message || "Falha ao enviar mensagem");
+        return {
+          success: false,
+          message: result.message || "Falha ao enviar mensagem"
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+      logger.error("Erro ao enviar mensagem WhatsApp", {
+        phone: `${phone.substring(0, 4)}****${phone.substring(phone.length - 4)}`,
+        studentId: selectedContact?.estudanteId
+      }, error as Error);
+
+      toast.error("Erro interno ao enviar mensagem");
+      return {
+        success: false,
+        message: "Erro interno ao enviar mensagem",
+        error: errorMessage
+      };
+    }
   };
 
   // Função para processar arquivo Excel de verificação
@@ -562,34 +642,44 @@ export default function TelefonesPage() {
                       onClick={() => copyPhone(contact.telefone)}
                       title="Copiar telefone"
                     >
-                      <Copy className="h-4 w-4" />
+                      <Copy className="h-4 w-4 mr-1" />
+                      Copiar
                     </Button>
 
                     {contact.hasWhatsApp && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => openWhatsApp(contact.telefone)}
+                        onClick={() => openWhatsAppModal(contact)}
                         className="text-green-600 border-green-600 hover:bg-green-50"
-                        title="Abrir no WhatsApp"
+                        title="Enviar mensagem via WhatsApp"
                       >
-                        <ExternalLink className="h-4 w-4" />
+                        <MessageCircle className="h-4 w-4 mr-1" />
+                        WhatsApp
                       </Button>
                     )}
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => verifyWhatsApp(contact.telefone)}
-                      disabled={verifyingPhone === contact.telefone}
-                      className="text-blue-600 border-blue-600 hover:bg-blue-50"
-                    >
-                      {verifyingPhone === contact.telefone ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <MessageCircle className="h-4 w-4" />
-                      )}
-                    </Button>
+                    {(!contact.whatsAppVerified || (contact.whatsAppVerified && !contact.hasWhatsApp)) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => verifyWhatsApp(contact.telefone)}
+                        disabled={verifyingPhone === contact.telefone}
+                        className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                      >
+                        {verifyingPhone === contact.telefone ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+                            Verificando...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            {contact.whatsAppVerified && !contact.hasWhatsApp ? 'Reverificar' : 'Verificar'}
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -646,6 +736,33 @@ export default function TelefonesPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* WhatsApp Modal */}
+        <WhatsAppModal
+          isOpen={isWhatsAppModalOpen}
+          onClose={() => {
+            setIsWhatsAppModalOpen(false);
+            setSelectedContact(null);
+          }}
+          student={{
+            nome: selectedContact?.estudanteNome || '',
+            estudanteId: selectedContact?.estudanteId || '',
+            turma: selectedContact?.turma || '',
+            turno: (selectedContact?.turno as "MANHÃ" | "TARDE") || "MANHÃ",
+            status: "ATIVO",
+            bolsaFamilia: "NÃO",
+            contatos: selectedContact ? [{
+              nome: selectedContact.nome,
+              telefone: selectedContact.telefone
+            }] : []
+          }}
+          selectedContact={selectedContact ? {
+            nome: selectedContact.nome,
+            telefone: selectedContact.telefone
+          } : null}
+          onSendMessage={handleSendWhatsAppMessage}
+          verifiedNumbers={verifiedWhatsAppNumbers}
+        />
       </div>
     </div>
   );
