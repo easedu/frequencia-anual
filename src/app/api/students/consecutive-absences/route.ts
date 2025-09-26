@@ -29,9 +29,14 @@ interface ApiResponse {
   error?: string;
   metadata?: {
     totalStudentsAnalyzed: number;
+    totalActiveStudents: number;
     schoolDaysConsidered: number;
     currentBimesters: string[];
     minConsecutiveDays: number;
+    onlyActive: boolean;
+    ongoingOnly: boolean;
+    executionTimeMs: number;
+    limitApplied: boolean;
   };
 }
 
@@ -225,6 +230,35 @@ function isConsecutivePeriodActive(period: { start: string; end: string; days: n
   return recentDay >= periodStart && recentDay <= periodEnd;
 }
 
+// Função para verificar se um caso está "ongoing" (em andamento até o último dia letivo)
+function isConsecutivePeriodOngoing(period: { start: string; end: string; days: number }, schoolDays: SchoolDay[]): boolean {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  // Considerar até ontem para casos onde faltas de hoje ainda não foram lançadas
+  const ontem = new Date(hoje);
+  ontem.setDate(ontem.getDate() - 1);
+
+  // Encontrar o dia letivo mais recente até ontem
+  const schoolDaysUntilYesterday = schoolDays.filter(day => {
+    const dayDate = parseDateDDMMYYYY(day.date);
+    return dayDate <= ontem;
+  });
+
+  if (schoolDaysUntilYesterday.length === 0) return false;
+
+  // Ordenar por data e pegar o mais recente
+  const mostRecentSchoolDay = schoolDaysUntilYesterday
+    .sort((a, b) => parseDateDDMMYYYY(b.date).getTime() - parseDateDDMMYYYY(a.date).getTime())[0];
+
+  const periodEnd = parseDateDDMMYYYY(period.end);
+  const recentDay = parseDateDDMMYYYY(mostRecentSchoolDay.date);
+
+  // Um período é "ongoing" se termina exatamente no último dia letivo disponível
+  // (significa que as faltas continuam até o dia mais recente)
+  return periodEnd.getTime() === recentDay.getTime();
+}
+
 function calculateConsecutiveAbsences(absences: string[], schoolDays: SchoolDay[], minConsecutiveDays: number): {
   consecutiveDays: number;
   startDate: string;
@@ -300,7 +334,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const minConsecutiveDays = parseInt(searchParams.get('minConsecutiveDays') || '10');
     const bimesters = searchParams.get('bimesters')?.split(',') || [];
-    const onlyActive = searchParams.get('onlyActive') === 'true'; // Novo parâmetro
+    const onlyActive = searchParams.get('onlyActive') === 'true'; // Filtrar apenas casos com período ativo
+    const ongoingOnly = searchParams.get('ongoingOnly') === 'true'; // Filtrar apenas casos ongoing (em andamento)
 
     // Verificar timeout periodicamente
     const checkTimeout = () => {
@@ -415,6 +450,14 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // Se ongoingOnly for true, verificar se há períodos ongoing (em andamento)
+        if (ongoingOnly) {
+          const hasOngoingPeriod = allPeriods.some(period => isConsecutivePeriodOngoing(period, schoolDays));
+          if (!hasOngoingPeriod) {
+            continue; // Pular este estudante se não tiver períodos ongoing
+          }
+        }
+
         results.push({
           estudanteId: student.estudanteId,
           studentName: student.nome,
@@ -446,6 +489,8 @@ export async function GET(request: NextRequest) {
         schoolDaysConsidered: schoolDays.length,
         currentBimesters: selectedBimesters,
         minConsecutiveDays,
+        onlyActive,
+        ongoingOnly,
         executionTimeMs: executionTime,
         limitApplied: activeStudents.length > maxStudents
       }
