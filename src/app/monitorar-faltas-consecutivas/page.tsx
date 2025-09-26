@@ -255,20 +255,20 @@ export default function MonitorarFaltasConsecutivasPage() {
   };
 
   // Carregar faltas de TODOS os estudantes em uma query batch otimizada
-  const loadAllStudentAbsences = async (studentIds: string[]): Promise<Record<string, string[]>> => {
+  const loadAllStudentAbsences = async (studentIds: string[], schoolDays: SchoolDay[]): Promise<Record<string, string[]>> => {
     try {
       console.time('Carregamento de faltas - Total');
       const absencesRef = collection(db, FIREBASE_PATHS.absenceControl());
-      
+
       // Otimizar batch size (máximo suportado pelo Firestore é 30 para 'in')
       const batchSize = 30;
       const batches: Promise<Record<string, string[]>>[] = [];
-      
+
       console.log(`Carregando faltas para ${studentIds.length} estudantes em batches de ${batchSize}`);
-      
+
       for (let i = 0; i < studentIds.length; i += batchSize) {
         const batch = studentIds.slice(i, i + batchSize);
-        const batchPromise = getBatchAbsences(absencesRef, batch, i / batchSize + 1);
+        const batchPromise = getBatchAbsences(absencesRef, batch, i / batchSize + 1, schoolDays);
         batches.push(batchPromise);
       }
       
@@ -304,17 +304,20 @@ export default function MonitorarFaltasConsecutivasPage() {
   };
 
   // Função helper para processar um batch de estudantes
-  const getBatchAbsences = async (absencesRef: any, studentIds: string[], batchNumber: number): Promise<Record<string, string[]>> => {
+  const getBatchAbsences = async (absencesRef: any, studentIds: string[], batchNumber: number, schoolDays: SchoolDay[]): Promise<Record<string, string[]>> => {
     console.time(`Batch ${batchNumber} (${studentIds.length} estudantes)`);
-    
+
     const querySnapshot = await getDocs(query(absencesRef, where('estudanteId', 'in', studentIds)));
     const batchAbsences: Record<string, string[]> = {};
-    
+
+    // Criar set de datas de dias letivos para filtro rápido
+    const schoolDayDates = new Set(schoolDays.map(day => day.date));
+
     // Inicializar arrays vazios para todos os estudantes do batch
     studentIds.forEach(id => {
       batchAbsences[id] = [];
     });
-    
+
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as any;
       if (!data.justified && data.estudanteId && data.data) {
@@ -324,23 +327,24 @@ export default function MonitorarFaltasConsecutivasPage() {
           const [year, month, day] = dateStr.split('-');
           dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
         }
-        
-        if (batchAbsences[data.estudanteId]) {
+
+        // Filtrar apenas faltas em dias letivos
+        if (schoolDayDates.has(dateStr) && batchAbsences[data.estudanteId]) {
           batchAbsences[data.estudanteId].push(dateStr);
         }
       }
     });
-    
+
     console.timeEnd(`Batch ${batchNumber} (${studentIds.length} estudantes)`);
     console.log(`✓ Batch ${batchNumber}: ${querySnapshot.size} faltas encontradas`);
-    
+
     return batchAbsences;
   };
 
   // Calcular faltas consecutivas (atualizada para detectar todos os períodos)
-  const calculateConsecutiveAbsences = (absences: string[], schoolDays: SchoolDay[]): { 
-    consecutiveDays: number; 
-    startDate: string; 
+  const calculateConsecutiveAbsences = (absences: string[], schoolDays: SchoolDay[], minConsecutiveDaysParam: number): {
+    consecutiveDays: number;
+    startDate: string;
     endDate: string;
     allPeriods: { start: string; end: string; days: number }[];
   } => {
@@ -350,7 +354,7 @@ export default function MonitorarFaltasConsecutivasPage() {
 
     // Todas as datas já estão no formato dd/mm/yyyy
     const schoolDaysDates = schoolDays.map(day => day.date);
-    
+
     let maxConsecutive = 0;
     let currentConsecutive = 0;
     let startDate = '';
@@ -361,14 +365,14 @@ export default function MonitorarFaltasConsecutivasPage() {
     // Percorrer dias letivos em ordem
     for (let i = 0; i < schoolDaysDates.length; i++) {
       const currentDate = schoolDaysDates[i];
-      
+
       if (absences.includes(currentDate)) {
         // Estudante faltou neste dia letivo
         if (currentConsecutive === 0) {
           currentStartDate = currentDate;
         }
         currentConsecutive++;
-        
+
         // Atualizar o máximo se necessário
         if (currentConsecutive > maxConsecutive) {
           maxConsecutive = currentConsecutive;
@@ -377,7 +381,7 @@ export default function MonitorarFaltasConsecutivasPage() {
         }
       } else {
         // Estudante estava presente, quebrar sequência
-        if (currentConsecutive >= minConsecutiveDays) {
+        if (currentConsecutive >= minConsecutiveDaysParam) {
           allPeriods.push({
             start: currentStartDate,
             end: schoolDaysDates[i - 1], // Último dia da sequência
@@ -387,9 +391,9 @@ export default function MonitorarFaltasConsecutivasPage() {
         currentConsecutive = 0;
       }
     }
-    
+
     // Verificar se a sequência termina no final dos dados
-    if (currentConsecutive >= minConsecutiveDays) {
+    if (currentConsecutive >= minConsecutiveDaysParam) {
       allPeriods.push({
         start: currentStartDate,
         end: schoolDaysDates[schoolDaysDates.length - 1],
@@ -397,7 +401,12 @@ export default function MonitorarFaltasConsecutivasPage() {
       });
     }
 
-    return { consecutiveDays: maxConsecutive, startDate, endDate, allPeriods };
+    // Sempre retornar se há faltas consecutivas
+    if (maxConsecutive >= minConsecutiveDaysParam) {
+      return { consecutiveDays: maxConsecutive, startDate, endDate, allPeriods };
+    }
+
+    return { consecutiveDays: 0, startDate: '', endDate: '', allPeriods: [] };
   };
 
   // Analisar faltas consecutivas de todos os estudantes
@@ -433,7 +442,7 @@ export default function MonitorarFaltasConsecutivasPage() {
 
       // Carregar todas as faltas em batch (MUITO mais eficiente)
       console.time('Busca de faltas batch');
-      const allStudentAbsences = await loadAllStudentAbsences(studentIds);
+      const allStudentAbsences = await loadAllStudentAbsences(studentIds, schoolDays);
       console.timeEnd('Busca de faltas batch');
       
       const results: ConsecutiveAbsence[] = [];
@@ -445,7 +454,7 @@ export default function MonitorarFaltasConsecutivasPage() {
         
         if (absences.length === 0) continue; // Skip estudantes sem faltas
         
-        const { consecutiveDays, startDate, endDate, allPeriods } = calculateConsecutiveAbsences(absences, schoolDays);
+        const { consecutiveDays, startDate, endDate, allPeriods } = calculateConsecutiveAbsences(absences, schoolDays, minConsecutiveDays);
         
         if (consecutiveDays >= minConsecutiveDays) {
           // Verificar se há pelo menos um período ativo para logs
@@ -816,6 +825,7 @@ export default function MonitorarFaltasConsecutivasPage() {
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
       const interactionData: Omit<FamilyInteraction, 'id'> = {
+        studentId: selectedAbsence.estudanteId,
         type: interactionType,
         date: formattedDate, // Data no formato Firebase
         description: interactionDescription,
@@ -954,7 +964,7 @@ export default function MonitorarFaltasConsecutivasPage() {
                 interactionDate={interactionDate}
                 interactionDescription={interactionDescription}
                 interactionSensitive={interactionSensitive}
-                editingInteraction={undefined}
+                editingInteraction={null}
                 userRole={null} // Será obtido automaticamente
                 setInteractionType={setInteractionType}
                 setInteractionDate={setInteractionDate}

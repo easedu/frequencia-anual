@@ -20,7 +20,7 @@ interface ConsecutiveAbsenceResponse {
   endDate: string;
   severity: 'warning' | 'critical';
   totalAbsences: number;
-  allPeriods: { start: string; end: string; days: number }[];
+  allPeriods?: { start: string; end: string; days: number }[];
 }
 
 interface ApiResponse {
@@ -37,6 +37,7 @@ interface ApiResponse {
     ongoingOnly: boolean;
     executionTimeMs: number;
     limitApplied: boolean;
+    totalRecords: number;
   };
 }
 
@@ -138,7 +139,7 @@ async function loadSchoolDays(selectedBimesters: string[]): Promise<SchoolDay[]>
 async function loadAllStudentAbsences(studentIds: string[], schoolDays: SchoolDay[]): Promise<Record<string, string[]>> {
   try {
     const absencesRef = collection(db, FIREBASE_PATHS.absenceControl());
-    const batchSize = 10; // Reduzir tamanho do batch para melhor performance
+    const batchSize = 5; // Reduzir ainda mais o tamanho do batch
     const allAbsences: Record<string, string[]> = {};
 
     // Criar set de datas de dias letivos para filtro rápido
@@ -151,7 +152,7 @@ async function loadAllStudentAbsences(studentIds: string[], schoolDays: SchoolDa
 
       const batchPromise = Promise.race([
         getDocs(query(absencesRef, where('estudanteId', 'in', batch))),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Batch timeout')), 8000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Batch timeout')), 4000))
       ]).then((querySnapshot: any) => {
         // Inicializar arrays vazios para todos os estudantes do batch
         batch.forEach(id => {
@@ -176,10 +177,7 @@ async function loadAllStudentAbsences(studentIds: string[], schoolDays: SchoolDa
         });
       }).catch(error => {
         console.warn(`Erro no batch ${i}-${i + batchSize}:`, error);
-        // Inicializar com arrays vazios para não quebrar o processamento
-        batch.forEach(id => {
-          allAbsences[id] = [];
-        });
+        // Não inicializar estudantes com timeout - eles serão ignorados no processamento
       });
 
       promises.push(batchPromise);
@@ -230,7 +228,7 @@ function isConsecutivePeriodActive(period: { start: string; end: string; days: n
   return recentDay >= periodStart && recentDay <= periodEnd;
 }
 
-// Função para verificar se um caso está "ongoing" (em andamento até o último dia letivo)
+// Função para verificar se um caso está "ongoing" (mesma lógica da página para INTERVENÇÃO)
 function isConsecutivePeriodOngoing(period: { start: string; end: string; days: number }, schoolDays: SchoolDay[]): boolean {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
@@ -239,7 +237,7 @@ function isConsecutivePeriodOngoing(period: { start: string; end: string; days: 
   const ontem = new Date(hoje);
   ontem.setDate(ontem.getDate() - 1);
 
-  // Encontrar o dia letivo mais recente até ontem
+  // Encontrar o dia letivo mais recente até ontem (não hoje)
   const schoolDaysUntilYesterday = schoolDays.filter(day => {
     const dayDate = parseDateDDMMYYYY(day.date);
     return dayDate <= ontem;
@@ -251,12 +249,12 @@ function isConsecutivePeriodOngoing(period: { start: string; end: string; days: 
   const mostRecentSchoolDay = schoolDaysUntilYesterday
     .sort((a, b) => parseDateDDMMYYYY(b.date).getTime() - parseDateDDMMYYYY(a.date).getTime())[0];
 
+  // Verificar se o período consecutivo inclui o dia letivo mais recente (até ontem)
+  const periodStart = parseDateDDMMYYYY(period.start);
   const periodEnd = parseDateDDMMYYYY(period.end);
   const recentDay = parseDateDDMMYYYY(mostRecentSchoolDay.date);
 
-  // Um período é "ongoing" se termina exatamente no último dia letivo disponível
-  // (significa que as faltas continuam até o dia mais recente)
-  return periodEnd.getTime() === recentDay.getTime();
+  return recentDay >= periodStart && recentDay <= periodEnd;
 }
 
 function calculateConsecutiveAbsences(absences: string[], schoolDays: SchoolDay[], minConsecutiveDays: number): {
@@ -336,6 +334,13 @@ export async function GET(request: NextRequest) {
     const bimesters = searchParams.get('bimesters')?.split(',') || [];
     const onlyActive = searchParams.get('onlyActive') === 'true'; // Filtrar apenas casos com período ativo
     const ongoingOnly = searchParams.get('ongoingOnly') === 'true'; // Filtrar apenas casos ongoing (em andamento)
+    const clearCache = searchParams.get('clearCache') === 'true'; // Limpar cache se solicitado
+
+    // Limpar cache se solicitado
+    if (clearCache) {
+      apiCache.clear();
+      console.log('Cache limpo por solicitação do usuário');
+    }
 
     // Verificar timeout periodicamente
     const checkTimeout = () => {
@@ -410,7 +415,7 @@ export async function GET(request: NextRequest) {
     const studentIds = activeStudents.map((s: any) => s.estudanteId);
 
     // Limitar processamento para evitar timeout
-    const maxStudents = 500; // Limitar número de estudantes processados
+    const maxStudents = 200; // Reduzir limite para melhor performance
     const limitedStudents = activeStudents.slice(0, maxStudents);
     const limitedStudentIds = limitedStudents.map((s: any) => s.estudanteId);
 
@@ -423,9 +428,20 @@ export async function GET(request: NextRequest) {
     // Processar cada estudante com verificação de timeout
     let processed = 0;
     for (const student of limitedStudents) {
-      // Verificar timeout a cada 50 estudantes processados
-      if (processed % 50 === 0) {
+      // Verificar timeout a cada 20 estudantes processados e parar se restam menos de 5 segundos
+      if (processed % 20 === 0) {
+        const remainingTime = maxExecutionTime - (Date.now() - startTime);
+        if (remainingTime < 5000) { // Parar se restam menos de 5 segundos
+          console.log(`Parando processamento antecipado. Processados: ${processed}/${limitedStudents.length}`);
+          break;
+        }
         checkTimeout();
+      }
+
+      // Pular estudantes que não tiveram dados carregados (timeout)
+      if (!allStudentAbsences.hasOwnProperty(student.estudanteId)) {
+        processed++;
+        continue;
       }
 
       const absences = allStudentAbsences[student.estudanteId] || [];
@@ -452,25 +468,40 @@ export async function GET(request: NextRequest) {
 
         // Se ongoingOnly for true, verificar se há períodos ongoing (em andamento)
         if (ongoingOnly) {
-          const hasOngoingPeriod = allPeriods.some(period => isConsecutivePeriodOngoing(period, schoolDays));
-          if (!hasOngoingPeriod) {
+          const ongoingPeriods = allPeriods.filter(period => isConsecutivePeriodOngoing(period, schoolDays));
+          if (ongoingPeriods.length === 0) {
             continue; // Pular este estudante se não tiver períodos ongoing
           }
-        }
 
-        results.push({
-          estudanteId: student.estudanteId,
-          studentName: student.nome,
-          className: student.turma,
-          shift: student.turno,
-          hasDisability: student.deficiencia?.estudanteComDeficiencia || false,
-          consecutiveDays,
-          startDate,
-          endDate,
-          severity: consecutiveDays >= 15 ? 'critical' : 'warning',
-          totalAbsences: absences.length,
-          allPeriods
-        });
+          // Para ongoingOnly, retornar apenas os dados do período ongoing, sem allPeriods
+          const ongoingPeriod = ongoingPeriods[0]; // Pegar o primeiro período ongoing
+          results.push({
+            estudanteId: student.estudanteId,
+            studentName: student.nome,
+            className: student.turma,
+            shift: student.turno,
+            hasDisability: student.deficiencia?.estudanteComDeficiencia || false,
+            consecutiveDays: ongoingPeriod.days,
+            startDate: ongoingPeriod.start,
+            endDate: ongoingPeriod.end,
+            severity: ongoingPeriod.days >= 15 ? 'critical' : 'warning',
+            totalAbsences: absences.length
+          });
+        } else {
+          results.push({
+            estudanteId: student.estudanteId,
+            studentName: student.nome,
+            className: student.turma,
+            shift: student.turno,
+            hasDisability: student.deficiencia?.estudanteComDeficiencia || false,
+            consecutiveDays,
+            startDate,
+            endDate,
+            severity: consecutiveDays >= 15 ? 'critical' : 'warning',
+            totalAbsences: absences.length,
+            allPeriods
+          });
+        }
       }
       processed++;
     }
@@ -492,7 +523,8 @@ export async function GET(request: NextRequest) {
         onlyActive,
         ongoingOnly,
         executionTimeMs: executionTime,
-        limitApplied: activeStudents.length > maxStudents
+        limitApplied: activeStudents.length > maxStudents,
+        totalRecords: results.length
       }
     } as ApiResponse);
 
