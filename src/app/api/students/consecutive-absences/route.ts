@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import { FIREBASE_PATHS } from '@/config/constants';
+import { apiCache, withTimeout, processInChunks } from '@/utils/apiOptimization';
 
 interface SchoolDay {
   date: string;
@@ -40,21 +41,22 @@ let academicYearCacheTime = 0;
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutos
 
 async function loadAcademicYearData(): Promise<any> {
-  const now = Date.now();
+  const cacheKey = 'academic-year-2025';
 
-  // Verificar se o cache ainda é válido
-  if (academicYearCache && (now - academicYearCacheTime) < CACHE_TTL) {
-    return academicYearCache;
+  // Verificar cache melhorado
+  const cached = apiCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
 
   try {
     const docRef = doc(db, '2025', 'ano_letivo');
-    const docSnap = await getDoc(docRef);
+    const docSnap = await withTimeout(getDoc(docRef), 5000, 'Timeout loading academic year');
 
     if (docSnap.exists()) {
       const data = docSnap.data();
-      academicYearCache = data;
-      academicYearCacheTime = now;
+      // Cache por 15 minutos
+      apiCache.set(cacheKey, data, 15);
       return data;
     }
 
@@ -128,38 +130,58 @@ async function loadSchoolDays(selectedBimesters: string[]): Promise<SchoolDay[]>
   }
 }
 
-async function loadAllStudentAbsences(studentIds: string[]): Promise<Record<string, string[]>> {
+async function loadAllStudentAbsences(studentIds: string[], schoolDays: SchoolDay[]): Promise<Record<string, string[]>> {
   try {
     const absencesRef = collection(db, FIREBASE_PATHS.absenceControl());
-    const batchSize = 30;
+    const batchSize = 10; // Reduzir tamanho do batch para melhor performance
     const allAbsences: Record<string, string[]> = {};
 
-    // Processar em batches para otimizar performance
+    // Criar set de datas de dias letivos para filtro rápido
+    const schoolDayDates = new Set(schoolDays.map(day => day.date));
+
+    // Processar em batches menores e com timeout individual
+    const promises = [];
     for (let i = 0; i < studentIds.length; i += batchSize) {
       const batch = studentIds.slice(i, i + batchSize);
-      const querySnapshot = await getDocs(query(absencesRef, where('estudanteId', 'in', batch)));
 
-      // Inicializar arrays vazios para todos os estudantes do batch
-      batch.forEach(id => {
-        allAbsences[id] = [];
+      const batchPromise = Promise.race([
+        getDocs(query(absencesRef, where('estudanteId', 'in', batch))),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Batch timeout')), 8000))
+      ]).then((querySnapshot: any) => {
+        // Inicializar arrays vazios para todos os estudantes do batch
+        batch.forEach(id => {
+          allAbsences[id] = [];
+        });
+
+        querySnapshot.forEach((docSnap: any) => {
+          const data = docSnap.data();
+          if (!data.justified && data.estudanteId && data.data) {
+            // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
+            let dateStr = data.data;
+            if (dateStr.includes('-')) {
+              const [year, month, day] = dateStr.split('-');
+              dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+            }
+
+            // Filtrar apenas faltas em dias letivos
+            if (schoolDayDates.has(dateStr) && allAbsences[data.estudanteId]) {
+              allAbsences[data.estudanteId].push(dateStr);
+            }
+          }
+        });
+      }).catch(error => {
+        console.warn(`Erro no batch ${i}-${i + batchSize}:`, error);
+        // Inicializar com arrays vazios para não quebrar o processamento
+        batch.forEach(id => {
+          allAbsences[id] = [];
+        });
       });
 
-      querySnapshot.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        if (!data.justified && data.estudanteId && data.data) {
-          // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
-          let dateStr = data.data;
-          if (dateStr.includes('-')) {
-            const [year, month, day] = dateStr.split('-');
-            dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
-          }
-
-          if (allAbsences[data.estudanteId]) {
-            allAbsences[data.estudanteId].push(dateStr);
-          }
-        }
-      });
+      promises.push(batchPromise);
     }
+
+    // Aguardar todos os batches com timeout global
+    await Promise.allSettled(promises);
 
     return allAbsences;
   } catch (error) {
@@ -271,10 +293,20 @@ function calculateConsecutiveAbsences(absences: string[], schoolDays: SchoolDay[
 }
 
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+  const maxExecutionTime = 25000; // 25 segundos (limite do Vercel é 30s)
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const minConsecutiveDays = parseInt(searchParams.get('minConsecutiveDays') || '10');
     const bimesters = searchParams.get('bimesters')?.split(',') || [];
+
+    // Verificar timeout periodicamente
+    const checkTimeout = () => {
+      if (Date.now() - startTime > maxExecutionTime) {
+        throw new Error('Timeout: Operação muito demorada para o Vercel');
+      }
+    };
 
     // Validação de parâmetros
     if (minConsecutiveDays < 1 || minConsecutiveDays > 50) {
@@ -301,6 +333,8 @@ export async function GET(request: NextRequest) {
       } as ApiResponse, { status: 400 });
     }
 
+    checkTimeout();
+
     // Carregar dias letivos
     const schoolDays = await loadSchoolDays(selectedBimesters);
     if (schoolDays.length === 0) {
@@ -309,6 +343,8 @@ export async function GET(request: NextRequest) {
         error: 'Nenhum dia letivo encontrado para os bimestres selecionados'
       } as ApiResponse, { status: 404 });
     }
+
+    checkTimeout();
 
     // Carregar estudantes
     const docRef = doc(db, FIREBASE_PATHS.students());
@@ -332,17 +368,36 @@ export async function GET(request: NextRequest) {
       } as ApiResponse, { status: 404 });
     }
 
-    // Carregar todas as faltas
+    checkTimeout();
+
+    // Carregar todas as faltas (passando schoolDays para otimização)
     const studentIds = activeStudents.map((s: any) => s.estudanteId);
-    const allStudentAbsences = await loadAllStudentAbsences(studentIds);
+
+    // Limitar processamento para evitar timeout
+    const maxStudents = 500; // Limitar número de estudantes processados
+    const limitedStudents = activeStudents.slice(0, maxStudents);
+    const limitedStudentIds = limitedStudents.map((s: any) => s.estudanteId);
+
+    const allStudentAbsences = await loadAllStudentAbsences(limitedStudentIds, schoolDays);
+
+    checkTimeout();
 
     const results: ConsecutiveAbsenceResponse[] = [];
 
-    // Processar cada estudante
-    for (const student of activeStudents) {
+    // Processar cada estudante com verificação de timeout
+    let processed = 0;
+    for (const student of limitedStudents) {
+      // Verificar timeout a cada 50 estudantes processados
+      if (processed % 50 === 0) {
+        checkTimeout();
+      }
+
       const absences = allStudentAbsences[student.estudanteId] || [];
 
-      if (absences.length === 0) continue;
+      if (absences.length === 0) {
+        processed++;
+        continue;
+      }
 
       const { consecutiveDays, startDate, endDate, allPeriods } = calculateConsecutiveAbsences(
         absences,
@@ -365,19 +420,25 @@ export async function GET(request: NextRequest) {
           allPeriods
         });
       }
+      processed++;
     }
 
     // Ordenar por dias consecutivos (maior primeiro)
     results.sort((a, b) => b.consecutiveDays - a.consecutiveDays);
 
+    const executionTime = Date.now() - startTime;
+
     return NextResponse.json({
       success: true,
       data: results,
       metadata: {
-        totalStudentsAnalyzed: activeStudents.length,
+        totalStudentsAnalyzed: limitedStudents.length,
+        totalActiveStudents: activeStudents.length,
         schoolDaysConsidered: schoolDays.length,
         currentBimesters: selectedBimesters,
-        minConsecutiveDays
+        minConsecutiveDays,
+        executionTimeMs: executionTime,
+        limitApplied: activeStudents.length > maxStudents
       }
     } as ApiResponse);
 
