@@ -448,8 +448,10 @@ export default function MonitorarFaltasConsecutivasPage() {
         const { consecutiveDays, startDate, endDate, allPeriods } = calculateConsecutiveAbsences(absences, schoolDays);
         
         if (consecutiveDays >= minConsecutiveDays) {
-          console.log(`${student.nome}: ${consecutiveDays} dias consecutivos (${absences.length} faltas total)`);
-          
+          // Verificar se há pelo menos um período ativo para logs
+          const hasActivePeriod = allPeriods.some(period => isConsecutivePeriodActive(period, schoolDays));
+          console.log(`${student.nome}: ${consecutiveDays} dias consecutivos (${absences.length} faltas total) - ${hasActivePeriod ? 'ATIVO' : 'HISTÓRICO'}`);
+
           results.push({
             estudanteId: student.estudanteId,
             studentName: student.nome,
@@ -501,24 +503,28 @@ export default function MonitorarFaltasConsecutivasPage() {
   const isConsecutivePeriodActive = (period: { start: string; end: string; days: number }, schoolDays: SchoolDay[]): boolean => {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    
-    // Encontrar o dia letivo mais recente até hoje
-    const schoolDaysUntilToday = schoolDays.filter(day => {
+
+    // Considerar até ontem para casos onde faltas de hoje ainda não foram lançadas
+    const ontem = new Date(hoje);
+    ontem.setDate(ontem.getDate() - 1);
+
+    // Encontrar o dia letivo mais recente até ontem (não hoje)
+    const schoolDaysUntilYesterday = schoolDays.filter(day => {
       const dayDate = parseDateDDMMYYYY(day.date);
-      return dayDate <= hoje;
+      return dayDate <= ontem;
     });
-    
-    if (schoolDaysUntilToday.length === 0) return false;
-    
+
+    if (schoolDaysUntilYesterday.length === 0) return false;
+
     // Ordenar por data e pegar o mais recente
-    const mostRecentSchoolDay = schoolDaysUntilToday
+    const mostRecentSchoolDay = schoolDaysUntilYesterday
       .sort((a, b) => parseDateDDMMYYYY(b.date).getTime() - parseDateDDMMYYYY(a.date).getTime())[0];
-    
-    // Verificar se o período consecutivo inclui o dia letivo mais recente
+
+    // Verificar se o período consecutivo inclui o dia letivo mais recente (até ontem)
     const periodStart = parseDateDDMMYYYY(period.start);
     const periodEnd = parseDateDDMMYYYY(period.end);
     const recentDay = parseDateDDMMYYYY(mostRecentSchoolDay.date);
-    
+
     return recentDay >= periodStart && recentDay <= periodEnd;
   };
 

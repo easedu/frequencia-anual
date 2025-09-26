@@ -201,19 +201,23 @@ function isConsecutivePeriodActive(period: { start: string; end: string; days: n
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
-  // Encontrar o dia letivo mais recente até hoje
-  const schoolDaysUntilToday = schoolDays.filter(day => {
+  // Considerar até ontem para casos onde faltas de hoje ainda não foram lançadas
+  const ontem = new Date(hoje);
+  ontem.setDate(ontem.getDate() - 1);
+
+  // Encontrar o dia letivo mais recente até ontem (não hoje)
+  const schoolDaysUntilYesterday = schoolDays.filter(day => {
     const dayDate = parseDateDDMMYYYY(day.date);
-    return dayDate <= hoje;
+    return dayDate <= ontem;
   });
 
-  if (schoolDaysUntilToday.length === 0) return false;
+  if (schoolDaysUntilYesterday.length === 0) return false;
 
   // Ordenar por data e pegar o mais recente
-  const mostRecentSchoolDay = schoolDaysUntilToday
+  const mostRecentSchoolDay = schoolDaysUntilYesterday
     .sort((a, b) => parseDateDDMMYYYY(b.date).getTime() - parseDateDDMMYYYY(a.date).getTime())[0];
 
-  // Verificar se o período consecutivo inclui o dia letivo mais recente
+  // Verificar se o período consecutivo inclui o dia letivo mais recente (até ontem)
   const periodStart = parseDateDDMMYYYY(period.start);
   const periodEnd = parseDateDDMMYYYY(period.end);
   const recentDay = parseDateDDMMYYYY(mostRecentSchoolDay.date);
@@ -280,15 +284,11 @@ function calculateConsecutiveAbsences(absences: string[], schoolDays: SchoolDay[
     });
   }
 
-  // Verificar se há pelo menos um período ativo
-  const hasActivePeriod = allPeriods.some(period => isConsecutivePeriodActive(period, schoolDays));
-
-  // Só retornar casos que tenham pelo menos um período ativo
-  if (maxConsecutive >= minConsecutiveDays && hasActivePeriod) {
+  // Sempre retornar se há faltas consecutivas
+  if (maxConsecutive >= minConsecutiveDays) {
     return { consecutiveDays: maxConsecutive, startDate, endDate, allPeriods };
   }
 
-  // Se não há faltas consecutivas ativas, retornar zero
   return { consecutiveDays: 0, startDate: '', endDate: '', allPeriods: [] };
 }
 
@@ -300,6 +300,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const minConsecutiveDays = parseInt(searchParams.get('minConsecutiveDays') || '10');
     const bimesters = searchParams.get('bimesters')?.split(',') || [];
+    const onlyActive = searchParams.get('onlyActive') === 'true'; // Novo parâmetro
 
     // Verificar timeout periodicamente
     const checkTimeout = () => {
@@ -406,6 +407,14 @@ export async function GET(request: NextRequest) {
       );
 
       if (consecutiveDays >= minConsecutiveDays) {
+        // Se onlyActive for true, verificar se há períodos ativos
+        if (onlyActive) {
+          const hasActivePeriod = allPeriods.some(period => isConsecutivePeriodActive(period, schoolDays));
+          if (!hasActivePeriod) {
+            continue; // Pular este estudante se não tiver períodos ativos
+          }
+        }
+
         results.push({
           estudanteId: student.estudanteId,
           studentName: student.nome,
