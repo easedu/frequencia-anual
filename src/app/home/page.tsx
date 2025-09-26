@@ -216,14 +216,6 @@ export default function Home() {
                     color: "emerald",
                     description: "Análise e estatísticas do histórico de interações"
                 },
-                {
-                    key: "telefones",
-                    title: "Lista de Telefones",
-                    icon: Phone,
-                    href: "/telefones",
-                    color: "blue",
-                    description: "Visualize todos os telefones com verificação de WhatsApp"
-                },
             ];
         }
 
@@ -284,14 +276,6 @@ export default function Home() {
                     href: "/relatorio-interacoes",
                     color: "emerald",
                     description: "Análise e estatísticas do histórico de interações"
-                },
-                {
-                    key: "telefones",
-                    title: "Lista de Telefones",
-                    icon: Phone,
-                    href: "/telefones",
-                    color: "blue",
-                    description: "Visualize todos os telefones com verificação de WhatsApp"
                 },
             ];
         }

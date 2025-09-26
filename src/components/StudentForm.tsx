@@ -212,8 +212,8 @@ const ContactField = memo(({
             return;
         }
 
-        // Verificar se é elegível para WhatsApp
-        if (!WhatsAppVerificationService.isWhatsAppEligible(cleanPhone)) {
+        // Verificar se é elegível para WhatsApp (tem 11 dígitos e terceiro dígito é 9)
+        if (cleanPhone.length < 11 || cleanPhone.substring(2, 3) !== '9') {
             setWhatsappStatus({ isVerifying: false, verified: false });
             return;
         }
@@ -221,11 +221,20 @@ const ContactField = memo(({
         setWhatsappStatus(prev => ({ ...prev, isVerifying: true }));
 
         try {
-            const result = await WhatsAppVerificationService.checkAndSaveWhatsAppStatus(
-                cleanPhone,
-                undefined, // studentId será definido ao salvar o estudante
-                form.getValues(`contatos.${index}.nome`)
-            );
+            // Usar API route em vez de chamar o serviço diretamente
+            const response = await fetch('/api/whatsapp/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    phone: cleanPhone,
+                    studentId: undefined, // será definido ao salvar o estudante
+                    contactName: form.getValues(`contatos.${index}.nome`)
+                })
+            });
+
+            const result = await response.json();
 
             setWhatsappStatus({
                 isVerifying: false,

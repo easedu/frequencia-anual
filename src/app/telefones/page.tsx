@@ -16,7 +16,9 @@ import {
   RefreshCw,
   Copy,
   ExternalLink,
-  Download
+  Download,
+  Upload,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useStudents } from '@/hooks/useStudents';
 import { toast } from 'sonner';
@@ -45,6 +47,8 @@ export default function TelefonesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [verifyingPhone, setVerifyingPhone] = useState<string | null>(null);
   const [loadingWhatsAppData, setLoadingWhatsAppData] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [processingFile, setProcessingFile] = useState(false);
 
   // Extrair todos os telefones dos estudantes
   const extractPhoneContacts = useMemo(() => {
@@ -88,9 +92,13 @@ export default function TelefonesPage() {
       const verifiedNumbers = new Map<string, { hasWhatsApp: boolean; verifiedAt: string }>();
 
       const querySnapshot = await getDocs(collection(db, 'whatsapp_verified_numbers'));
+
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        verifiedNumbers.set(data.phone, {
+        const docId = doc.id;
+
+        // Usar o doc.id como chave (que é como o Firebase salva)
+        verifiedNumbers.set(docId, {
           hasWhatsApp: data.hasWhatsApp,
           verifiedAt: data.verifiedAt?.toDate?.()?.toISOString() || new Date().toISOString()
         });
@@ -99,15 +107,18 @@ export default function TelefonesPage() {
       // Atualizar contatos com dados de verificação
       const updatedContacts = extractPhoneContacts.map(contact => {
         const verification = verifiedNumbers.get(contact.telefone);
+        const hasVerification = !!verification;
+
         return {
           ...contact,
           hasWhatsApp: verification?.hasWhatsApp,
-          whatsAppVerified: !!verification,
+          whatsAppVerified: hasVerification,
           lastVerified: verification?.verifiedAt
         };
       });
 
       setPhoneContacts(updatedContacts);
+
     } catch (error) {
       console.error('Erro ao carregar dados de verificação:', error);
       toast.error('Erro ao carregar dados de verificação do WhatsApp');
@@ -155,12 +166,20 @@ export default function TelefonesPage() {
       // Encontrar o contato para obter informações do estudante
       const contact = phoneContacts.find(c => c.telefone === phone);
 
-      // Usar o serviço real de verificação
-      const result = await WhatsAppVerificationService.checkAndSaveWhatsAppStatus(
-        phone,
-        contact?.estudanteId,
-        contact?.nome
-      );
+      // Usar API route em vez de chamar o serviço diretamente
+      const response = await fetch('/api/whatsapp/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone: phone,
+          studentId: contact?.estudanteId,
+          contactName: contact?.nome
+        })
+      });
+
+      const result = await response.json();
 
       // Atualizar estado local
       setPhoneContacts(prev => prev.map(c =>
@@ -206,6 +225,104 @@ export default function TelefonesPage() {
   const openWhatsApp = (phone: string) => {
     const whatsappUrl = `https://wa.me/55${phone}`;
     window.open(whatsappUrl, '_blank');
+  };
+
+  // Função para processar arquivo Excel de verificação
+  const processExcelFile = async (file: File) => {
+    setUploading(true);
+    setProcessingFile(true);
+
+    try {
+      // Ler arquivo
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      // Pegar a primeira planilha
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+
+      // Converter para JSON
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+
+      if (jsonData.length === 0) {
+        throw new Error('Arquivo está vazio ou não pôde ser lido');
+      }
+
+      if (jsonData.length === 1) {
+        throw new Error('Arquivo contém apenas cabeçalho, sem dados para processar');
+      }
+
+      // Processar dados
+      let processedCount = 0;
+      let errorCount = 0;
+      let skippedCount = 0;
+
+      for (let i = 1; i < jsonData.length; i++) { // Pular header (linha 0)
+        const row = jsonData[i];
+
+        if (!row || row.length === 0) {
+          skippedCount++;
+          continue;
+        }
+
+        try {
+          let phone = String(row[0] || '').replace(/\D/g, ''); // Limpar número
+
+          // Se o número começa com 55 (código do Brasil), remover para normalizar
+          if (phone.startsWith('55') && phone.length > 11) {
+            phone = phone.substring(2); // Remove o +55
+          }
+
+          const hasWhatsAppValue = String(row[1] || '').toLowerCase();
+          const whatsappName = String(row[2] || '');
+
+          if (phone.length < 10) {
+            skippedCount++;
+            continue;
+          }
+
+          // Determinar se tem WhatsApp baseado na coluna
+          const hasWhatsAppBool = hasWhatsAppValue.includes('true') ||
+                                 hasWhatsAppValue.includes('sim') ||
+                                 hasWhatsAppValue.includes('yes') ||
+                                 hasWhatsAppValue.includes('1') ||
+                                 hasWhatsAppValue === 'true';
+
+          // Salvar no Firebase usando o serviço existente
+          await WhatsAppTrackingService.markNumberAsVerified(
+            phone,
+            hasWhatsAppBool,
+            undefined, // studentId (será buscado automaticamente se existir)
+            whatsappName || undefined
+          );
+
+          processedCount++;
+
+        } catch (error) {
+          errorCount++;
+        }
+      }
+
+      // Limpar cache do WhatsAppTrackingService para forçar nova busca
+      WhatsAppTrackingService.clearCache();
+
+      // Atualizar dados locais
+      await loadWhatsAppVerificationData();
+
+      const message = `Importação concluída!
+        ✅ ${processedCount} números processados
+        ${errorCount > 0 ? `❌ ${errorCount} erros` : ''}
+        ${skippedCount > 0 ? `⚠️ ${skippedCount} linhas puladas` : ''}`;
+
+      toast.success(message);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error(`Erro ao processar arquivo: ${errorMessage}`);
+    } finally {
+      setUploading(false);
+      setProcessingFile(false);
+    }
   };
 
   // Função para exportar para Excel
@@ -393,6 +510,7 @@ export default function TelefonesPage() {
                   <Download className="h-4 w-4 mr-2" />
                   Exportar Excel
                 </Button>
+
               </div>
             </div>
           </CardContent>
@@ -407,9 +525,6 @@ export default function TelefonesPage() {
                 Telefones Encontrados ({filteredPhones.length})
               </div>
               <div className="text-sm font-normal text-gray-600">
-                {filteredPhones.length > 0 && (
-                  <span>📲 Números serão exportados no formato +55XXXXXXXXXX</span>
-                )}
               </div>
             </CardTitle>
           </CardHeader>
@@ -487,6 +602,49 @@ export default function TelefonesPage() {
                   <p>Nenhum telefone encontrado</p>
                 </div>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Upload de Arquivo */}
+        <Card className="border-0 shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-purple-600" />
+              Importar Verificações de WhatsApp
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Faça upload de um arquivo Excel com verificações de WhatsApp para atualizar a base de dados.
+                O arquivo deve conter colunas: <code className="bg-gray-100 px-2 py-1 rounded">Telefone</code>, <code className="bg-gray-100 px-2 py-1 rounded">Tem_WhatsApp</code>, <code className="bg-gray-100 px-2 py-1 rounded">Nome_WhatsApp</code>
+              </p>
+
+              <div className="flex items-center gap-4">
+                <Input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      processExcelFile(file);
+                    }
+                  }}
+                  disabled={uploading || processingFile}
+                  className="flex-1"
+                  key={Math.random()} // Force reset after each upload
+                />
+
+                {(uploading || processingFile) && (
+                  <div className="flex items-center gap-2 text-purple-600">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">
+                      {uploading ? 'Lendo arquivo...' : 'Processando dados...'}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
