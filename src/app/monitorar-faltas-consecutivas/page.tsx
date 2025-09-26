@@ -523,7 +523,10 @@ export default function MonitorarFaltasConsecutivasPage() {
       return dayDate <= ontem;
     });
 
-    if (schoolDaysUntilYesterday.length === 0) return false;
+    if (schoolDaysUntilYesterday.length === 0) {
+      console.log('Nenhum dia letivo encontrado até ontem para verificar período ativo');
+      return false;
+    }
 
     // Ordenar por data e pegar o mais recente
     const mostRecentSchoolDay = schoolDaysUntilYesterday
@@ -534,7 +537,17 @@ export default function MonitorarFaltasConsecutivasPage() {
     const periodEnd = parseDateDDMMYYYY(period.end);
     const recentDay = parseDateDDMMYYYY(mostRecentSchoolDay.date);
 
-    return recentDay >= periodStart && recentDay <= periodEnd;
+    const isActive = recentDay >= periodStart && recentDay <= periodEnd;
+
+    // Log para debug PCDs
+    if (period.start === '10/09/2025' && period.end === '25/09/2025') {
+      console.log('DEBUG PCD CATHARINA:');
+      console.log('- Período:', period.start, 'a', period.end);
+      console.log('- Dia letivo mais recente:', mostRecentSchoolDay.date);
+      console.log('- Período ativo?:', isActive);
+    }
+
+    return isActive;
   };
 
   // Função para verificar se estudante tem períodos ativos
@@ -1201,19 +1214,14 @@ export default function MonitorarFaltasConsecutivasPage() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-red-100 text-sm font-medium flex items-center gap-1">
+                  <p className="text-red-80 text-sm font-medium flex items-center gap-1">
                     INTERVENÇÃO
                   </p>
                   <p className="text-2xl font-bold text-white">{stats.active}</p>
                   <p className="text-xs text-red-200">Períodos ativos</p>
                 </div>
-                <div className="relative">
-                  <AlertTriangle className="h-10 w-10 text-red-200" />
-                  {stats.active > 0 && (
-                    <div className="absolute -top-2 -right-2 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center animate-pulse">
-                      <span className="text-xs font-bold text-red-800">!</span>
-                    </div>
-                  )}
+                <div className="mr-2">
+                  <AlertTriangle className="h-8 w-8 text-red-200" />
                 </div>
               </div>
             </CardContent>
