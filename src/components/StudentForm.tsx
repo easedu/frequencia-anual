@@ -1,8 +1,8 @@
-import React, { useEffect, useCallback, memo, useMemo } from 'react';
+import React, { useEffect, useCallback, memo, useMemo, useState } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import Select, { MultiValue } from 'react-select';
-import { Trash2, Plus, User, Home, Phone, Heart, Save, X } from 'lucide-react';
+import { Trash2, Plus, User, Home, Phone, Heart, Save, X, MessageCircle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select as ShadcnSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,6 +14,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { formatPhoneNumber, formatCep, formatDate } from '@/utils/formatters';
 import { Estudante } from '@/types';
 import { toast } from 'sonner';
+import { WhatsAppVerificationService } from '@/services/whatsappVerificationService';
+import { Badge } from '@/components/ui/badge';
 
 // Types
 interface SelectOption {
@@ -41,9 +43,9 @@ const formSchema = z.object({
         estado: z.string().optional(),
     }).optional(),
     contatos: z.array(z.object({
-        nome: z.string(),
-        telefone: z.string(),
-        parentesco: z.string(),
+        nome: z.string().default(""),
+        telefone: z.string().default(""),
+        parentesco: z.string().default(""),
     })).optional(),
     deficiencia: z.object({
         estudanteComDeficiencia: z.boolean(),
@@ -189,7 +191,99 @@ const ContactField = memo(({
     form: UseFormReturn<z.infer<typeof formSchema>>;
     onRemove: () => void;
     canRemove: boolean;
-}) => (
+}) => {
+    const [whatsappStatus, setWhatsappStatus] = useState<{
+        isVerifying: boolean;
+        hasWhatsApp?: boolean;
+        whatsappName?: string;
+        verified: boolean;
+    }>({
+        isVerifying: false,
+        verified: false
+    });
+
+    // Função para verificar WhatsApp quando telefone for alterado
+    const verifyWhatsApp = useCallback(async (phone: string) => {
+        const cleanPhone = phone.replace(/\D/g, '');
+
+        // Só verificar se o número tem pelo menos 10 dígitos
+        if (cleanPhone.length < 10) {
+            setWhatsappStatus({ isVerifying: false, verified: false });
+            return;
+        }
+
+        // Verificar se é elegível para WhatsApp
+        if (!WhatsAppVerificationService.isWhatsAppEligible(cleanPhone)) {
+            setWhatsappStatus({ isVerifying: false, verified: false });
+            return;
+        }
+
+        setWhatsappStatus(prev => ({ ...prev, isVerifying: true }));
+
+        try {
+            const result = await WhatsAppVerificationService.checkAndSaveWhatsAppStatus(
+                cleanPhone,
+                undefined, // studentId será definido ao salvar o estudante
+                form.getValues(`contatos.${index}.nome`)
+            );
+
+            setWhatsappStatus({
+                isVerifying: false,
+                hasWhatsApp: result.hasWhatsApp,
+                whatsappName: result.whatsappName,
+                verified: true
+            });
+
+            if (result.success) {
+                if (result.hasWhatsApp) {
+                    toast.success(`WhatsApp encontrado! ${result.whatsappName ? `(${result.whatsappName})` : ''}`);
+                } else {
+                    toast.info('Número verificado - WhatsApp não encontrado');
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao verificar WhatsApp:', error);
+            setWhatsappStatus({
+                isVerifying: false,
+                verified: false
+            });
+            toast.error('Erro ao verificar WhatsApp');
+        }
+    }, [form, index]);
+
+    // Debounce para verificação automática
+    const [phoneDebounceTimer, setPhoneDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+
+    const handlePhoneChange = useCallback((inputValue: string) => {
+        const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
+
+        // Limpar timer anterior
+        if (phoneDebounceTimer) {
+            clearTimeout(phoneDebounceTimer);
+        }
+
+        // Definir novo timer para verificação automática
+        const newTimer = setTimeout(() => {
+            if (cleanedValue.length >= 10) {
+                verifyWhatsApp(cleanedValue);
+            }
+        }, 2000); // 2 segundos após parar de digitar
+
+        setPhoneDebounceTimer(newTimer);
+
+        return cleanedValue;
+    }, [phoneDebounceTimer, verifyWhatsApp]);
+
+    // Cleanup do timer
+    useEffect(() => {
+        return () => {
+            if (phoneDebounceTimer) {
+                clearTimeout(phoneDebounceTimer);
+            }
+        };
+    }, [phoneDebounceTimer]);
+
+    return (
     <div className="bg-white/60 dark:bg-slate-700/60 rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
         <div className="flex items-center justify-between mb-4">
             <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
@@ -220,6 +314,7 @@ const ContactField = memo(({
                         <FormControl>
                             <Input
                                 {...field}
+                                value={field.value || ""}
                                 placeholder="Nome completo"
                                 className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                             />
@@ -234,22 +329,55 @@ const ContactField = memo(({
                 name={`contatos.${index}.telefone`}
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                             Telefone
+                            {whatsappStatus.isVerifying && (
+                                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                            )}
+                            {whatsappStatus.verified && (
+                                <Badge
+                                    variant={whatsappStatus.hasWhatsApp ? "default" : "secondary"}
+                                    className={`text-xs ${whatsappStatus.hasWhatsApp ? "bg-green-600" : "bg-gray-500"}`}
+                                >
+                                    {whatsappStatus.hasWhatsApp ? (
+                                        <><CheckCircle className="w-3 h-3 mr-1" /> WhatsApp</>
+                                    ) : (
+                                        <><XCircle className="w-3 h-3 mr-1" /> Sem WhatsApp</>
+                                    )}
+                                </Badge>
+                            )}
                         </FormLabel>
                         <FormControl>
-                            <Input
-                                placeholder="(11) 99999-9999"
-                                value={field.value ? formatTelefone(field.value) : ""}
-                                onChange={(e) => {
-                                    const inputValue = e.target.value;
-                                    const cleanedValue = cleanTelefone(inputValue).slice(0, 11);
-                                    field.onChange(cleanedValue);
-                                }}
-                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
-                            />
+                            <div className="relative">
+                                <Input
+                                    placeholder="(11) 99999-9999"
+                                    value={field.value ? formatTelefone(field.value) : ""}
+                                    onChange={(e) => {
+                                        const inputValue = e.target.value;
+                                        const cleanedValue = handlePhoneChange(inputValue);
+                                        field.onChange(cleanedValue || "");
+                                    }}
+                                    className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 pr-10"
+                                />
+                                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                                    {whatsappStatus.isVerifying ? (
+                                        <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                                    ) : whatsappStatus.verified ? (
+                                        whatsappStatus.hasWhatsApp ? (
+                                            <MessageCircle className="w-4 h-4 text-green-500" />
+                                        ) : (
+                                            <XCircle className="w-4 h-4 text-gray-400" />
+                                        )
+                                    ) : null}
+                                </div>
+                            </div>
                         </FormControl>
                         <FormMessage />
+                        {whatsappStatus.whatsappName && (
+                            <p className="text-xs text-green-600 mt-1">
+                                Nome no WhatsApp: {whatsappStatus.whatsappName}
+                            </p>
+                        )}
                     </FormItem>
                 )}
             />
@@ -265,6 +393,7 @@ const ContactField = memo(({
                         <FormControl>
                             <Input
                                 {...field}
+                                value={field.value || ""}
                                 placeholder="Ex: Mãe, Pai, Responsável"
                                 className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                             />
@@ -275,7 +404,8 @@ const ContactField = memo(({
             />
         </div>
     </div>
-));
+    );
+});
 
 ContactField.displayName = 'ContactField';
 

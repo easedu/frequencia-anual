@@ -74,16 +74,23 @@ export class WhatsAppTrackingService {
     ): Promise<void> {
         try {
             const cleanPhone = this.cleanPhoneNumber(phone);
-            
-            const verifiedNumber: VerifiedWhatsAppNumber = {
+
+            // Criar objeto base sem campos opcionais
+            const verifiedNumber: any = {
                 phone: cleanPhone,
                 hasWhatsApp,
                 verifiedAt: serverTimestamp(),
                 lastMessageAt: serverTimestamp(),
-                messageCount: 1,
-                studentId,
-                contactName
+                messageCount: 1
             };
+
+            // Só adicionar campos opcionais se tiverem valor definido
+            if (studentId !== undefined && studentId !== null && studentId !== "") {
+                verifiedNumber.studentId = studentId;
+            }
+            if (contactName !== undefined && contactName !== null && contactName !== "") {
+                verifiedNumber.contactName = contactName;
+            }
 
             // Save to Firebase
             const docRef = doc(db, this.COLLECTION_PATH, cleanPhone);

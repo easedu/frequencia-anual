@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { auth, db } from "@/firebase.config";
 import { useRouter } from "next/navigation";
-import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart, AlertTriangle, ClipboardList, TrendingUp } from "lucide-react";
+import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart, AlertTriangle, ClipboardList, TrendingUp, Phone } from "lucide-react";
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
 import { logger } from "@/utils/logger";
 
@@ -216,6 +216,14 @@ export default function Home() {
                     color: "emerald",
                     description: "Análise e estatísticas do histórico de interações"
                 },
+                {
+                    key: "telefones",
+                    title: "Lista de Telefones",
+                    icon: Phone,
+                    href: "/telefones",
+                    color: "blue",
+                    description: "Visualize todos os telefones com verificação de WhatsApp"
+                },
             ];
         }
 
@@ -276,6 +284,14 @@ export default function Home() {
                     href: "/relatorio-interacoes",
                     color: "emerald",
                     description: "Análise e estatísticas do histórico de interações"
+                },
+                {
+                    key: "telefones",
+                    title: "Lista de Telefones",
+                    icon: Phone,
+                    href: "/telefones",
+                    color: "blue",
+                    description: "Visualize todos os telefones com verificação de WhatsApp"
                 },
             ];
         }
@@ -377,6 +393,14 @@ export default function Home() {
                     href: "/relatorio-interacoes",
                     color: "emerald",
                     description: "Análise e estatísticas do histórico de interações"
+                },
+                {
+                    key: "telefones",
+                    title: "Lista de Telefones",
+                    icon: Phone,
+                    href: "/telefones",
+                    color: "blue",
+                    description: "Visualize todos os telefones com verificação de WhatsApp"
                 },
             ];
         }
