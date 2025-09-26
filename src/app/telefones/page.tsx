@@ -17,13 +17,11 @@ import {
   Copy,
   ExternalLink,
   Download,
-  Upload,
   FileSpreadsheet
 } from 'lucide-react';
 import { useStudents } from '@/hooks/useStudents';
 import { toast } from 'sonner';
 import { WhatsAppTrackingService } from '@/services/whatsappTrackingService';
-import { WhatsAppVerificationService } from '@/services/whatsappVerificationService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import * as XLSX from 'xlsx';
