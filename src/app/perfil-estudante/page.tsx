@@ -24,7 +24,6 @@ import { Student, StudentRecord, FamilyInteraction, Atestado, AbsenceRecord, Bim
 import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate, getDiasLetivosNoPeriodo } from "../utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import WhatsAppService from "../../services/whatsappService";
 import WhatsAppTrackingService from "../../services/whatsappTrackingService";
 
 export default function StudentProfilePage() {
@@ -693,7 +692,7 @@ export default function StudentProfilePage() {
     const handleSendWhatsAppMessage = async (
         phone: string,
         message: string,
-        checkWhatsApp: boolean
+        checkWhatsApp: boolean = false
     ): Promise<{
         success: boolean;
         message: string;
@@ -701,50 +700,47 @@ export default function StudentProfilePage() {
         error?: string;
     }> => {
         try {
-            // Send WhatsApp message via API
-            const result = await WhatsAppService.sendMessage(phone, message, checkWhatsApp);
-            
-            if (result.success && result.data) {
-                // If first time and successful, mark number as verified
-                if (checkWhatsApp && result.data.hasWhatsApp) {
-                    await WhatsAppTrackingService.markNumberAsVerified(
-                        phone,
-                        true,
-                        selectedStudentId,
-                        selectedContact?.nome
-                    );
-                    
-                    // Update local state
-                    setVerifiedWhatsAppNumbers(prev => new Set([...prev, phone]));
-                } else if (!checkWhatsApp) {
-                    // Update message count for existing verified number
+            // Usar API route para envio de mensagens (mesma da página de telefones)
+            const response = await fetch('/api/whatsapp/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    phone,
+                    message
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                toast.success("Mensagem enviada com sucesso!");
+
+                // Atualizar contador de mensagens se necessário
+                if (selectedContact) {
                     await WhatsAppTrackingService.updateMessageCount(phone);
                 }
-                
-                toast.success("Mensagem enviada com sucesso!");
+
+                return {
+                    success: true,
+                    message: "Mensagem enviada com sucesso!",
+                    data: result
+                };
             } else {
-                // If first time and failed because no WhatsApp, still mark as checked
-                if (checkWhatsApp && !result.data?.hasWhatsApp) {
-                    await WhatsAppTrackingService.markNumberAsVerified(
-                        phone,
-                        false,
-                        selectedStudentId,
-                        selectedContact?.nome
-                    );
-                }
-                
                 toast.error(result.message || "Falha ao enviar mensagem");
+                return {
+                    success: false,
+                    message: result.message || "Falha ao enviar mensagem"
+                };
             }
-            
-            return result;
-            
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
-            logger.error("Erro ao enviar mensagem WhatsApp", { 
+            logger.error("Erro ao enviar mensagem WhatsApp", {
                 phone: `${phone.substring(0, 4)}****${phone.substring(phone.length - 4)}`,
                 studentId: selectedStudentId
             }, error as Error);
-            
+
             toast.error("Erro interno ao enviar mensagem");
             return {
                 success: false,
