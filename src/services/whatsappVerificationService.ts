@@ -18,9 +18,10 @@ interface WhatsAppCheckResponse extends Array<{
 }> {}
 
 // Configuração da API
-const API_URL = process.env.WHATSAPP_VERIFICATION_API_URL!;
-const API_USERNAME = process.env.WHATSAPP_VERIFICATION_API_USERNAME!;
-const API_PASSWORD = process.env.WHATSAPP_VERIFICATION_API_PASSWORD!;
+const API_BASE_URL = process.env.BASE_URL_API_HABIB_KYRILLOS!;
+const API_ENDPOINT = process.env.ENDPOINT_API_HABIB_KYRILLOS_WHATSAPP_NUMBER_VERIFICATION!;
+const API_USERNAME = process.env.API_HABIB_KYRILLOS_USERNAME!;
+const API_PASSWORD = process.env.API_HABIB_KYRILLOS_PASSWORD!;
 
 export class WhatsAppVerificationService {
     /**
@@ -44,6 +45,9 @@ export class WhatsAppVerificationService {
 
             // Preparar headers com Basic Auth
             const credentials = btoa(`${API_USERNAME}:${API_PASSWORD}`);
+
+            // Construir URL completa
+            const API_URL = `${API_BASE_URL}${API_ENDPOINT}`;
 
             logger.info("Checking WhatsApp number via API", {
                 phone: `${cleanPhone.substring(0, 4)}****${cleanPhone.substring(cleanPhone.length - 4)}`,

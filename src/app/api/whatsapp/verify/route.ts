@@ -4,8 +4,11 @@ import { WhatsAppVerificationService } from '@/services/whatsappVerificationServ
 export async function POST(request: NextRequest) {
   try {
     // Verificar se as variáveis de ambiente estão configuradas
-    if (!process.env.WHATSAPP_VERIFICATION_API_URL) {
-      console.error('WHATSAPP_VERIFICATION_API_URL não configurada');
+    if (!process.env.BASE_URL_API_HABIB_KYRILLOS ||
+        !process.env.ENDPOINT_API_HABIB_KYRILLOS_WHATSAPP_NUMBER_VERIFICATION ||
+        !process.env.API_HABIB_KYRILLOS_USERNAME ||
+        !process.env.API_HABIB_KYRILLOS_PASSWORD) {
+      console.error('Variáveis de ambiente da API Habib Kyrillos não configuradas');
       return NextResponse.json(
         {
           success: false,

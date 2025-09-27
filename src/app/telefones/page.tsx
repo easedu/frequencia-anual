@@ -248,23 +248,16 @@ export default function TelefonesPage() {
     checkWhatsApp: boolean = false
   ) => {
     try {
-      // Preparar dados da requisição
-      const requestData = {
-        phone,
-        message,
-        studentId: selectedContact?.estudanteId,
-        contactName: selectedContact?.nome,
-        checkWhatsApp
-      };
-
-      // Fazer requisição usando a mesma API do envio de mensagens
-      const response = await fetch(process.env.NEXT_PUBLIC_WHATSAPP_API_URL!, {
+      // Usar API route para envio de mensagens
+      const response = await fetch('/api/whatsapp/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_WHATSAPP_API_TOKEN}`
         },
-        body: JSON.stringify(requestData)
+        body: JSON.stringify({
+          phone,
+          message
+        })
       });
 
       const result = await response.json();
