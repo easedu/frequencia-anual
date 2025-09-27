@@ -66,7 +66,7 @@ export class WhatsAppVerificationService {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP Error: ${response.status} - ${response.statusText}`);
+                throw new Error(`Sistema indisponível. Tente novamente mais tarde. (Status: ${response.status})`);
             }
 
             const result: WhatsAppCheckResponse = await response.json();
