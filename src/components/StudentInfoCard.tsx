@@ -1,6 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Student, StudentRecord, Contato } from "../app/types";
 import { 
     formatAddress, 
@@ -25,7 +24,9 @@ import {
     Accessibility,
     TrendingUp,
     MessageCircle,
-    CheckCircle
+    CheckCircle,
+    RotateCcw,
+    AlertTriangle
 } from "lucide-react";
 
 interface StudentInfoCardProps {
@@ -34,14 +35,17 @@ interface StudentInfoCardProps {
     studentRecordWithoutJustified?: StudentRecord | null;
     onWhatsAppClick?: (contact: Contato) => void;
     verifiedWhatsAppNumbers?: Set<string>;
+    contactVerificationData?: Map<string, { verificationStatus?: string; hasWhatsApp?: boolean }>;
+    onRetryVerification?: (contact: Contato) => void;
 }
 
-export default function StudentInfoCard({ 
-    student, 
-    studentRecord, 
-    studentRecordWithoutJustified, 
+export default function StudentInfoCard({
+    student,
+    studentRecordWithoutJustified,
     onWhatsAppClick,
-    verifiedWhatsAppNumbers = new Set()
+    verifiedWhatsAppNumbers = new Set(),
+    contactVerificationData = new Map(),
+    onRetryVerification
 }: StudentInfoCardProps) {
     // Calcular faixa de frequência baseada na frequência excluindo faltas justificadas
     const frequencyBandInfo = studentRecordWithoutJustified ? 
@@ -59,6 +63,24 @@ export default function StudentInfoCard({
     const isNumberVerified = (phone: string): boolean => {
         const cleanPhone = phone.replace(/\D/g, '');
         return verifiedWhatsAppNumbers.has(cleanPhone);
+    };
+
+    // Helper function to get verification status
+    const getVerificationStatus = (phone: string): { status: string; hasWhatsApp: boolean } | null => {
+        const cleanPhone = phone.replace(/\D/g, '');
+        const data = contactVerificationData.get(cleanPhone);
+        if (!data) return null;
+
+        return {
+            status: data.verificationStatus || 'verified',
+            hasWhatsApp: data.hasWhatsApp || false
+        };
+    };
+
+    // Helper function to check if retry is needed
+    const needsRetry = (phone: string): boolean => {
+        const verificationData = getVerificationStatus(phone);
+        return verificationData?.status === 'unavailable' || verificationData?.status === 'error';
     };
 
     return (
@@ -214,7 +236,9 @@ export default function StudentInfoCard({
                                 student.contatos.map((contato, index) => {
                                     const isEligible = isWhatsAppEligible(contato.telefone);
                                     const isVerified = isNumberVerified(contato.telefone);
-                                    
+                                    const verificationData = getVerificationStatus(contato.telefone);
+                                    const showRetry = needsRetry(contato.telefone);
+
                                     return (
                                         <div key={index} className="group flex items-center gap-2 bg-gray-50 hover:bg-blue-50 px-3 py-2 rounded-lg border border-gray-200 hover:border-blue-200 transition-all duration-200 text-sm">
                                             {/* Nome e número */}
@@ -223,12 +247,32 @@ export default function StudentInfoCard({
                                                 <span className="text-gray-600 font-mono text-xs">
                                                     {formatPhoneNumber(contato.telefone)}
                                                 </span>
-                                                
-                                                {/* Status badge */}
+
+                                                {/* Status badges */}
                                                 {isVerified && (
                                                     <CheckCircle className="w-3 h-3 text-green-600 flex-shrink-0" />
                                                 )}
-                                                
+
+                                                {verificationData?.status === 'unavailable' && (
+                                                    <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs px-1 py-0">
+                                                        <AlertTriangle className="w-2 h-2 mr-1" />
+                                                        Indisponível
+                                                    </Badge>
+                                                )}
+
+                                                {verificationData?.status === 'error' && (
+                                                    <Badge className="bg-red-100 text-red-800 border-red-200 text-xs px-1 py-0">
+                                                        <AlertTriangle className="w-2 h-2 mr-1" />
+                                                        Erro
+                                                    </Badge>
+                                                )}
+
+                                                {verificationData && !verificationData.hasWhatsApp && verificationData.status === 'verified' && (
+                                                    <Badge className="bg-gray-100 text-gray-600 border-gray-200 text-xs px-1 py-0">
+                                                        Sem WhatsApp
+                                                    </Badge>
+                                                )}
+
                                                 {/* Botão copiar (hover) */}
                                                 <button
                                                     onClick={() => navigator.clipboard.writeText(contato.telefone)}
@@ -238,21 +282,31 @@ export default function StudentInfoCard({
                                                     📋
                                                 </button>
                                             </div>
-                                            
-                                            {/* WhatsApp button compacto */}
-                                            {isEligible && onWhatsAppClick && (
-                                                <button
-                                                    onClick={() => onWhatsAppClick(contato)}
-                                                    className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 ${
-                                                        isVerified 
-                                                            ? 'bg-green-100 hover:bg-green-200 text-green-600' 
-                                                            : 'bg-gray-100 hover:bg-green-100 text-gray-500 hover:text-green-600'
-                                                    }`}
-                                                    title={isVerified ? "Enviar WhatsApp (verificado)" : "Enviar WhatsApp"}
-                                                >
-                                                    <MessageCircle className="w-3 h-3" />
-                                                </button>
-                                            )}
+
+                                            {/* Action buttons */}
+                                            <div className="flex items-center gap-1">
+                                                {/* Retry verification button */}
+                                                {isEligible && showRetry && onRetryVerification && (
+                                                    <button
+                                                        onClick={() => onRetryVerification(contato)}
+                                                        className="w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 bg-yellow-100 hover:bg-yellow-200 text-yellow-700"
+                                                        title="Tentar verificar novamente"
+                                                    >
+                                                        <RotateCcw className="w-3 h-3" />
+                                                    </button>
+                                                )}
+
+                                                {/* WhatsApp button compacto */}
+                                                {isEligible && onWhatsAppClick && isVerified && (
+                                                    <button
+                                                        onClick={() => onWhatsAppClick(contato)}
+                                                        className="w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 bg-green-100 hover:bg-green-200 text-green-600"
+                                                        title="Enviar WhatsApp (verificado)"
+                                                    >
+                                                        <MessageCircle className="w-3 h-3" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     );
                                 })

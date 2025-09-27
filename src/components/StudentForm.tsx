@@ -196,7 +196,8 @@ const ContactField = memo(({
         isVerifying: boolean;
         hasWhatsApp?: boolean;
         whatsappName?: string;
-        verified: boolean;
+        verified: boolean | 'unavailable';
+        error?: string;
     }>({
         isVerifying: false,
         verified: false
@@ -236,18 +237,34 @@ const ContactField = memo(({
 
             const result = await response.json();
 
-            setWhatsappStatus({
-                isVerifying: false,
-                hasWhatsApp: result.hasWhatsApp,
-                whatsappName: result.whatsappName,
-                verified: true
-            });
-
             if (result.success) {
+                setWhatsappStatus({
+                    isVerifying: false,
+                    hasWhatsApp: result.hasWhatsApp,
+                    whatsappName: result.whatsappName,
+                    verified: true
+                });
+
                 if (result.hasWhatsApp) {
                     toast.success(`WhatsApp encontrado! ${result.whatsappName ? `(${result.whatsappName})` : ''}`);
                 } else {
                     toast.info('Número verificado - WhatsApp não encontrado');
+                }
+            } else {
+                // Tratar diferentes tipos de erro
+                const isUnavailable = result.verificationStatus === 'unavailable';
+
+                setWhatsappStatus({
+                    isVerifying: false,
+                    hasWhatsApp: false,
+                    verified: isUnavailable ? 'unavailable' : false,
+                    error: result.error
+                });
+
+                if (isUnavailable) {
+                    toast.warning('Verificação indisponível - contato salvo para verificar depois');
+                } else {
+                    toast.error(`Erro na verificação: ${result.error}`);
                 }
             }
         } catch (error) {
@@ -345,10 +362,18 @@ const ContactField = memo(({
                             )}
                             {whatsappStatus.verified && (
                                 <Badge
-                                    variant={whatsappStatus.hasWhatsApp ? "default" : "secondary"}
-                                    className={`text-xs ${whatsappStatus.hasWhatsApp ? "bg-green-600" : "bg-gray-500"}`}
+                                    variant={
+                                        whatsappStatus.verified === 'unavailable' ? "outline" :
+                                        whatsappStatus.hasWhatsApp ? "default" : "secondary"
+                                    }
+                                    className={`text-xs ${
+                                        whatsappStatus.verified === 'unavailable' ? "bg-yellow-100 text-yellow-800 border-yellow-300" :
+                                        whatsappStatus.hasWhatsApp ? "bg-green-600" : "bg-gray-500"
+                                    }`}
                                 >
-                                    {whatsappStatus.hasWhatsApp ? (
+                                    {whatsappStatus.verified === 'unavailable' ? (
+                                        <><AlertTriangle className="w-3 h-3 mr-1" /> Verificação indisponível</>
+                                    ) : whatsappStatus.hasWhatsApp ? (
                                         <><CheckCircle className="w-3 h-3 mr-1" /> WhatsApp</>
                                     ) : (
                                         <><XCircle className="w-3 h-3 mr-1" /> Sem WhatsApp</>

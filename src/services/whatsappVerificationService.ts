@@ -33,6 +33,7 @@ export class WhatsAppVerificationService {
         error?: string;
         whatsappName?: string;
         jid?: string;
+        isApiUnavailable?: boolean;
     }> {
         try {
             // Limpar e formatar número
@@ -111,10 +112,18 @@ export class WhatsAppVerificationService {
                 error: errorMessage
             });
 
+            // Detectar se é erro de conectividade/API indisponível
+            const isApiUnavailable = errorMessage.includes('fetch') ||
+                                    errorMessage.includes('ECONNREFUSED') ||
+                                    errorMessage.includes('ENOTFOUND') ||
+                                    errorMessage.includes('network') ||
+                                    errorMessage.includes('timeout');
+
             return {
                 hasWhatsApp: false,
                 success: false,
-                error: errorMessage
+                error: errorMessage,
+                isApiUnavailable
             };
         }
     }
@@ -131,16 +140,30 @@ export class WhatsAppVerificationService {
         hasWhatsApp: boolean;
         error?: string;
         whatsappName?: string;
+        verificationStatus?: string;
     }> {
         try {
             // Verificar na API
             const checkResult = await this.checkWhatsAppNumber(phone);
 
             if (!checkResult.success) {
+                // Determinar o status baseado no tipo de erro
+                const verificationStatus = (checkResult as any).isApiUnavailable ? 'unavailable' : 'error';
+
+                // Salvar como verificação indisponível ou erro
+                await WhatsAppTrackingService.markNumberAsVerified(
+                    phone,
+                    false, // hasWhatsApp = false quando há erro
+                    studentId || undefined,
+                    contactName || undefined,
+                    verificationStatus
+                );
+
                 return {
                     success: false,
                     hasWhatsApp: false,
-                    error: checkResult.error
+                    error: checkResult.error,
+                    verificationStatus
                 };
             }
 
@@ -150,7 +173,8 @@ export class WhatsAppVerificationService {
                 phone,
                 checkResult.hasWhatsApp,
                 studentId || undefined,
-                contactName || checkResult.whatsappName || undefined
+                contactName || checkResult.whatsappName || undefined,
+                'verified'
             );
 
             logger.info("WhatsApp status saved to database", {

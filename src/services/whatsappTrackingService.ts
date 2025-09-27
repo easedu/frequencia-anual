@@ -20,6 +20,7 @@ interface VerifiedWhatsAppNumber {
     messageCount: number;
     studentId?: string;
     contactName?: string;
+    verificationStatus: 'verified' | 'unavailable' | 'error'; // Status da verificação
 }
 
 // Service class for WhatsApp number tracking
@@ -70,7 +71,8 @@ export class WhatsAppTrackingService {
         phone: string,
         hasWhatsApp: boolean,
         studentId?: string,
-        contactName?: string
+        contactName?: string,
+        verificationStatus: 'verified' | 'unavailable' | 'error' = 'verified'
     ): Promise<void> {
         try {
             const cleanPhone = this.cleanPhoneNumber(phone);
@@ -81,7 +83,8 @@ export class WhatsAppTrackingService {
                 hasWhatsApp,
                 verifiedAt: serverTimestamp(),
                 lastMessageAt: serverTimestamp(),
-                messageCount: 1
+                messageCount: 1,
+                verificationStatus
             };
 
             // Só adicionar campos opcionais se tiverem valor definido

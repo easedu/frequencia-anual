@@ -60,6 +60,7 @@ export default function StudentProfilePage() {
     const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
     const [selectedContact, setSelectedContact] = useState<Contato | null>(null);
     const [verifiedWhatsAppNumbers, setVerifiedWhatsAppNumbers] = useState<Set<string>>(new Set());
+    const [contactVerificationData, setContactVerificationData] = useState<Map<string, { verificationStatus?: string; hasWhatsApp?: boolean }>>(new Map());
 
     const auth = getAuth();
 
@@ -105,7 +106,7 @@ export default function StudentProfilePage() {
         fetchUserRole();
     }, [auth]);
 
-    // Load verified WhatsApp numbers
+    // Load verified WhatsApp numbers and contact verification data
     useEffect(() => {
         const loadVerifiedNumbers = async () => {
             try {
@@ -117,6 +118,38 @@ export default function StudentProfilePage() {
         };
         loadVerifiedNumbers();
     }, []);
+
+    // Load contact verification data when student changes
+    useEffect(() => {
+        const loadContactVerificationData = async () => {
+            if (!student?.contatos || student.contatos.length === 0) {
+                setContactVerificationData(new Map());
+                return;
+            }
+
+            try {
+                const verificationMap = new Map();
+
+                for (const contato of student.contatos) {
+                    const cleanPhone = contato.telefone.replace(/\D/g, '');
+                    const docRef = doc(db, 'whatsapp_verified_numbers', cleanPhone);
+                    const docSnap = await getDoc(docRef);
+
+                    if (docSnap.exists()) {
+                        verificationMap.set(cleanPhone, docSnap.data());
+                    }
+                }
+
+                setContactVerificationData(verificationMap);
+            } catch (error) {
+                logger.error("Erro ao carregar dados de verificação dos contatos", {}, error as Error);
+            }
+        };
+
+        if (student) {
+            loadContactVerificationData();
+        }
+    }, [student]);
 
     const fetchAllStudents = useCallback(async (): Promise<void> => {
         try {
@@ -689,14 +722,63 @@ export default function StudentProfilePage() {
         setIsWhatsAppModalOpen(true);
     };
 
+    const handleRetryVerification = async (contact: Contato) => {
+        try {
+            toast.info("Verificando WhatsApp...");
+
+            const response = await fetch('/api/whatsapp/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    phone: contact.telefone,
+                    studentId: selectedStudentId,
+                    contactName: contact.nome
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                toast.success(result.hasWhatsApp ? "WhatsApp verificado com sucesso!" : "Número sem WhatsApp");
+
+                // Recarregar dados de verificação
+                const cleanPhone = contact.telefone.replace(/\D/g, '');
+                const docRef = doc(db, 'whatsapp_verified_numbers', cleanPhone);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const updatedData = new Map(contactVerificationData);
+                    updatedData.set(cleanPhone, docSnap.data());
+                    setContactVerificationData(updatedData);
+                }
+
+                // Atualizar números verificados se necessário
+                if (result.hasWhatsApp) {
+                    setVerifiedWhatsAppNumbers(prev => new Set([...prev, cleanPhone]));
+                }
+            } else {
+                const errorMessage = result.error || "Erro na verificação";
+                if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('timeout')) {
+                    toast.error("API indisponível. Tente novamente mais tarde.");
+                } else {
+                    toast.error(errorMessage);
+                }
+            }
+        } catch (error) {
+            logger.error("Erro ao reverificar WhatsApp", { phone: contact.telefone }, error as Error);
+            toast.error("Erro interno. Tente novamente.");
+        }
+    };
+
     const handleSendWhatsAppMessage = async (
         phone: string,
-        message: string,
-        checkWhatsApp: boolean = false
+        message: string
     ): Promise<{
         success: boolean;
         message: string;
-        data?: any;
+        data?: unknown;
         error?: string;
     }> => {
         try {
@@ -912,12 +994,14 @@ export default function StudentProfilePage() {
                 </Card>
             ) : student && (
                 <>
-                    <StudentInfoCard 
-                        student={student} 
-                        studentRecord={studentRecord} 
+                    <StudentInfoCard
+                        student={student}
+                        studentRecord={studentRecord}
                         studentRecordWithoutJustified={studentRecordWithoutJustified}
                         onWhatsAppClick={handleWhatsAppClick}
                         verifiedWhatsAppNumbers={verifiedWhatsAppNumbers}
+                        contactVerificationData={contactVerificationData}
+                        onRetryVerification={handleRetryVerification}
                     />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FrequencyAllAbsencesCard studentRecord={studentRecord} />
