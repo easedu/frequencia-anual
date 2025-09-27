@@ -108,7 +108,7 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
   }
 }
 
-// Função para buscar faltas de estudantes em um mês específico
+// Função para buscar faltas de estudantes em um mês específico - OTIMIZADA PARA PRODUÇÃO
 async function loadStudentAbsencesForMonth(
   studentIds: string[],
   schoolDaysInMonth: string[],
@@ -117,6 +117,7 @@ async function loadStudentAbsencesForMonth(
   const cacheKey = `absences-month-${referenceMonth}-${studentIds.length}`;
   const cached = apiCache.get(cacheKey) as Record<string, number> | undefined;
   if (cached) {
+    console.log('[DEBUG] Faltas carregadas do cache');
     return cached;
   }
 
@@ -131,54 +132,71 @@ async function loadStudentAbsencesForMonth(
 
     // Criar set de datas do mês para filtro rápido
     const monthDatesSet = new Set(schoolDaysInMonth);
+    console.log(`[DEBUG] Processando ${studentIds.length} estudantes em batches menores e sequenciais`);
 
-    // Aumentar batch size para melhor performance
-    const batchSize = 30;
-    const batchPromises: Promise<void>[] = [];
+    // NOVA ESTRATÉGIA: Batches menores e sequenciais para evitar sobrecarga
+    const batchSize = 10; // Reduzido drasticamente
+    const maxConcurrentBatches = 3; // Máximo 3 queries simultâneas
 
-    for (let i = 0; i < studentIds.length; i += batchSize) {
-      const batch = studentIds.slice(i, i + batchSize);
+    for (let i = 0; i < studentIds.length; i += batchSize * maxConcurrentBatches) {
+      const concurrentBatches: Promise<void>[] = [];
 
-      const batchPromise = (async () => {
-        try {
-          const querySnapshot = await withTimeout(
-            getDocs(query(absencesRef, where('estudanteId', 'in', batch))),
-            12000,
-            'Timeout loading absences batch'
-          );
+      // Processar até 3 batches por vez
+      for (let j = 0; j < maxConcurrentBatches && (i + j * batchSize) < studentIds.length; j++) {
+        const startIndex = i + j * batchSize;
+        const batch = studentIds.slice(startIndex, startIndex + batchSize);
 
-          querySnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            if (!data.justified && data.estudanteId && data.data) {
-              // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
-              let dateStr = data.data;
-              if (dateStr.includes('-')) {
-                const [year, month, day] = dateStr.split('-');
-                dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+        const batchPromise = (async () => {
+          try {
+            console.log(`[DEBUG] Processando batch ${startIndex}-${startIndex + batch.length - 1}`);
+            const querySnapshot = await withTimeout(
+              getDocs(query(absencesRef, where('estudanteId', 'in', batch))),
+              20000, // Aumentado para 20s por batch individual
+              'Timeout loading absences batch'
+            );
+
+            querySnapshot.forEach((docSnap) => {
+              const data = docSnap.data();
+              if (!data.justified && data.estudanteId && data.data) {
+                // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
+                let dateStr = data.data;
+                if (dateStr.includes('-')) {
+                  const [year, month, day] = dateStr.split('-');
+                  dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+                }
+
+                // Contar apenas faltas em dias letivos do mês especificado
+                if (monthDatesSet.has(dateStr)) {
+                  absencesByStudent[data.estudanteId] = (absencesByStudent[data.estudanteId] || 0) + 1;
+                }
               }
+            });
+            console.log(`[DEBUG] Batch ${startIndex}-${startIndex + batch.length - 1} concluído`);
+          } catch (error) {
+            console.warn(`[ERROR] Erro no batch ${startIndex}-${startIndex + batch.length - 1}:`, error);
+          }
+        })();
 
-              // Contar apenas faltas em dias letivos do mês especificado
-              if (monthDatesSet.has(dateStr)) {
-                absencesByStudent[data.estudanteId] = (absencesByStudent[data.estudanteId] || 0) + 1;
-              }
-            }
-          });
-        } catch (error) {
-          console.warn(`Erro no batch ${i}-${i + batchSize}:`, error);
-        }
-      })();
+        concurrentBatches.push(batchPromise);
+      }
 
-      batchPromises.push(batchPromise);
+      // Aguardar conclusão dos batches atuais antes de prosseguir
+      await Promise.all(concurrentBatches);
+
+      // Pequena pausa entre grupos de batches para evitar rate limiting
+      if (i + batchSize * maxConcurrentBatches < studentIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
 
-    // Executar todos os batches em paralelo
-    await Promise.all(batchPromises);
+    const totalWithAbsences = Object.values(absencesByStudent).filter(count => count > 0).length;
+    console.log(`[DEBUG] Faltas processadas: ${totalWithAbsences} estudantes com faltas`);
 
     // Cache por 30 minutos
     apiCache.set(cacheKey, absencesByStudent, 30);
     return absencesByStudent;
   } catch (error) {
-    console.error('Erro ao carregar faltas dos estudantes:', error);
+    console.error('[ERROR] Erro ao carregar faltas dos estudantes:', error);
     return {} as Record<string, number>;
   }
 }
@@ -253,7 +271,7 @@ async function loadVerifiedWhatsAppContactsSafe(): Promise<Record<string, Verifi
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
-  const maxExecutionTime = 45000; // 45 segundos
+  const maxExecutionTime = 120000; // 2 minutos para produção
 
   // Debug environment info
   console.log(`[DEBUG] Environment - NODE_ENV: ${process.env.NODE_ENV}`);
@@ -329,10 +347,10 @@ export async function GET(request: NextRequest) {
     const checkTimeout = (step: string) => {
       const elapsed = Date.now() - startTime;
       if (elapsed > maxExecutionTime) {
-        console.error(`Timeout na etapa: ${step}. Tempo decorrido: ${elapsed}ms`);
-        throw new Error(`Timeout: Operação muito demorada na etapa ${step}`);
+        console.error(`[TIMEOUT] Etapa: ${step}. Tempo decorrido: ${elapsed}ms`);
+        throw new Error(`Timeout: Operação muito demorada na etapa ${step} após ${elapsed}ms`);
       }
-      console.log(`Etapa ${step} concluída em ${elapsed}ms`);
+      console.log(`[TIMING] Etapa ${step} concluída em ${elapsed}ms`);
     };
 
     checkTimeout('início');
