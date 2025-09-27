@@ -49,6 +49,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authProgress, setAuthProgress] = useState(0);
+  const [profileProgress, setProfileProgress] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -99,30 +101,63 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     logger.info('🔐 Inicializando AuthProvider...');
-    
+
+    let authStep = 0;
+    let profileStep = 0;
+
+    // Simular progresso da autenticação com incrementos deterministas
+    const authProgressInterval = setInterval(() => {
+      setAuthProgress(prev => {
+        if (prev >= 100) return 100;
+        authStep += 1;
+        const newProgress = Math.min(100, authStep * 8); // Incremento de 8% a cada 200ms
+        return newProgress;
+      });
+    }, 200);
+
     // Timeout de segurança para evitar loading infinito
     const timeoutId = setTimeout(() => {
       logger.warn('⏰ Timeout na verificação de autenticação, forçando redirecionamento');
       setLoading(false);
+      clearInterval(authProgressInterval);
       router.replace('/login');
     }, 10000); // 10 segundos máximo
-    
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       clearTimeout(timeoutId); // Cancelar timeout se auth resolver
-      
-      logger.info('👤 Estado de autenticação mudou:', { 
+      clearInterval(authProgressInterval);
+      setAuthProgress(100);
+
+      logger.info('👤 Estado de autenticação mudou:', {
         hasUser: !!firebaseUser,
         uid: firebaseUser?.uid,
-        email: firebaseUser?.email 
+        email: firebaseUser?.email
       });
-      
+
       setUser(firebaseUser);
-      
+
       if (firebaseUser) {
+        // Simular progresso do carregamento do perfil com incrementos deterministas
+        const profileProgressInterval = setInterval(() => {
+          setProfileProgress(prev => {
+            if (prev >= 100) {
+              clearInterval(profileProgressInterval);
+              return 100;
+            }
+            profileStep += 1;
+            const newProgress = Math.min(100, profileStep * 12); // Incremento de 12% a cada 150ms
+            return newProgress;
+          });
+        }, 150);
+
         try {
           await fetchUserProfile(firebaseUser);
+          clearInterval(profileProgressInterval);
+          setProfileProgress(100);
         } catch (error) {
           logger.error('❌ Erro ao buscar perfil, continuando sem perfil:', { error });
+          clearInterval(profileProgressInterval);
+          setProfileProgress(100);
           setUserProfile({
             nome: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
             email: firebaseUser.email || '',
@@ -132,16 +167,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       } else {
         setUserProfile(null);
+        setProfileProgress(0);
       }
-      
+
       setLoading(false);
-      
+
       // Lógica de redirecionamento após carregar o estado
       handleAuthRedirect(firebaseUser, pathname);
     });
 
     return () => {
       clearTimeout(timeoutId);
+      clearInterval(authProgressInterval);
       logger.info('🔐 Limpando listener de autenticação');
       unsubscribe();
     };
@@ -227,27 +264,60 @@ export function AuthProvider({ children }: AuthProviderProps) {
             {/* Card de loading */}
             <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl border-0 shadow-2xl shadow-blue-500/10 dark:shadow-blue-400/10 rounded-3xl overflow-hidden p-8 max-w-md mx-auto">
               {/* Spinner animado */}
-              <div className="relative mb-6">
-                <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 mx-auto"></div>
-                <div className="animate-spin rounded-full h-16 w-16 border-4 border-transparent border-t-blue-600 border-r-blue-500 absolute top-0 left-1/2 transform -translate-x-1/2"></div>
+              <div className="relative mb-6 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100"></div>
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-transparent border-t-blue-600 border-r-blue-500 absolute"></div>
               </div>
 
               {/* Texto principal */}
               <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-2">
                 Inicializando Sistema
               </h2>
-              <p className="text-slate-600 dark:text-slate-400 mb-4">
+              <p className="text-slate-600 dark:text-slate-400 mb-6">
                 Verificando suas credenciais...
               </p>
 
-              {/* Barra de progresso animada */}
-              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-4">
-                <div className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+              {/* Primeira barra de progresso - Autenticação */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Autenticação
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {Math.round(authProgress)}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                  <div
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                    style={{width: `${authProgress}%`}}
+                  ></div>
+                </div>
               </div>
 
-              {/* Status text */}
-              <p className="text-xs text-slate-500 dark:text-slate-400 animate-pulse">
-                Conectando com servidor...
+              {/* Segunda barra de progresso - Perfil do usuário */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Carregando perfil
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {Math.round(profileProgress)}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                  <div
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 h-2 rounded-full transition-all duration-300 ease-out"
+                    style={{width: `${profileProgress}%`}}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Status text dinâmico */}
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {authProgress < 100 ? 'Conectando com servidor...' :
+                 profileProgress < 100 ? 'Carregando dados do usuário...' :
+                 'Finalizando...'}
               </p>
             </div>
 

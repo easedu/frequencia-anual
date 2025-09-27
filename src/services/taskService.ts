@@ -6,8 +6,6 @@ import {
   collection,
   doc,
   getDocs,
-  addDoc,
-  updateDoc,
   query,
   where,
   getDoc,
@@ -15,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import { logger } from '@/utils/logger';
-import type { UserTask, TaskStatus, TaskGenerationResult, BimesterTaskControl } from '@/types/tasks';
+import type { UserTask, TaskGenerationResult, BimesterTaskControl } from '@/types/tasks';
 import type { Student } from '@/app/types';
 
 export class TaskService {
@@ -59,17 +57,6 @@ export class TaskService {
     }
   }
 
-  /**
-   * Calcula o percentual de frequência de um estudante no bimestre atual
-   * (sem considerar faltas justificadas)
-   */
-  private static async calculateCurrentBimesterFrequency(
-    estudanteId: string,
-    currentBimester: string
-  ): Promise<number> {
-    const result = await this.calculateCurrentBimesterData(estudanteId, currentBimester);
-    return result.frequency;
-  }
 
   /**
    * Calcula dados completos de frequência de um estudante no bimestre atual
@@ -160,32 +147,6 @@ export class TaskService {
       };
   }
 
-  /**
-   * Verifica se o usuário já completou uma tarefa para um estudante em um bimestre
-   */
-  private static async hasCompletedTaskInBimester(
-    userId: string,
-    estudanteId: string,
-    bimestre: string
-  ): Promise<boolean> {
-    try {
-      const controlRef = collection(db, this.COLLECTION_TASK_CONTROL);
-      const controlQuery = query(
-        controlRef,
-        where('userId', '==', userId),
-        where('estudanteId', '==', estudanteId),
-        where('bimestre', '==', bimestre),
-        where('taskType', '==', 'CONSELHO_TUTELAR'),
-        where('hasCompletedTask', '==', true)
-      );
-
-      const controlSnap = await getDocs(controlQuery);
-      return !controlSnap.empty;
-    } catch (error) {
-      logger.error('Erro ao verificar tarefa completada:', error as Error);
-      return false;
-    }
-  }
 
   /**
    * Gera tarefas para estudantes com frequência baixa no bimestre atual
@@ -492,7 +453,7 @@ export class TaskService {
       const taskSnap = await getDoc(taskRef);
 
       if (!taskSnap.exists()) {
-        logger.error('Tarefa não encontrada:', taskId);
+        logger.error('Tarefa não encontrada', { taskId });
         return false;
       }
 
