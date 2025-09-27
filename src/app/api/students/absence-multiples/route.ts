@@ -47,11 +47,11 @@ async function loadAcademicYearData(): Promise<any> {
 
   try {
     const docRef = doc(db, '2025', 'ano_letivo');
-    const docSnap = await withTimeout(getDoc(docRef), 5000, 'Timeout loading academic year');
+    const docSnap = await withTimeout(getDoc(docRef), 8000, 'Timeout loading academic year');
 
     if (docSnap.exists()) {
       const data = docSnap.data();
-      apiCache.set(cacheKey, data, 15); // Cache por 15 minutos
+      apiCache.set(cacheKey, data, 60); // Cache por 60 minutos
       return data;
     }
 
@@ -105,8 +105,15 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
 // Função para buscar faltas de estudantes em um mês específico
 async function loadStudentAbsencesForMonth(
   studentIds: string[],
-  schoolDaysInMonth: string[]
+  schoolDaysInMonth: string[],
+  referenceMonth: string
 ): Promise<Record<string, number>> {
+  const cacheKey = `absences-month-${referenceMonth}-${studentIds.length}`;
+  const cached = apiCache.get(cacheKey) as Record<string, number> | undefined;
+  if (cached) {
+    return cached;
+  }
+
   try {
     const absencesRef = collection(db, FIREBASE_PATHS.absenceControl());
     const absencesByStudent: Record<string, number> = {};
@@ -119,53 +126,70 @@ async function loadStudentAbsencesForMonth(
     // Criar set de datas do mês para filtro rápido
     const monthDatesSet = new Set(schoolDaysInMonth);
 
-    // Processar em batches de 10 (limite do Firebase)
-    const batchSize = 10;
+    // Aumentar batch size para melhor performance
+    const batchSize = 30;
+    const batchPromises: Promise<void>[] = [];
+
     for (let i = 0; i < studentIds.length; i += batchSize) {
       const batch = studentIds.slice(i, i + batchSize);
 
-      try {
-        const querySnapshot = await withTimeout(
-          getDocs(query(absencesRef, where('estudanteId', 'in', batch))),
-          8000,
-          'Timeout loading absences batch'
-        );
+      const batchPromise = (async () => {
+        try {
+          const querySnapshot = await withTimeout(
+            getDocs(query(absencesRef, where('estudanteId', 'in', batch))),
+            12000,
+            'Timeout loading absences batch'
+          );
 
-        querySnapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (!data.justified && data.estudanteId && data.data) {
-            // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
-            let dateStr = data.data;
-            if (dateStr.includes('-')) {
-              const [year, month, day] = dateStr.split('-');
-              dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
-            }
+          querySnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (!data.justified && data.estudanteId && data.data) {
+              // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
+              let dateStr = data.data;
+              if (dateStr.includes('-')) {
+                const [year, month, day] = dateStr.split('-');
+                dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+              }
 
-            // Contar apenas faltas em dias letivos do mês especificado
-            if (monthDatesSet.has(dateStr)) {
-              absencesByStudent[data.estudanteId] = (absencesByStudent[data.estudanteId] || 0) + 1;
+              // Contar apenas faltas em dias letivos do mês especificado
+              if (monthDatesSet.has(dateStr)) {
+                absencesByStudent[data.estudanteId] = (absencesByStudent[data.estudanteId] || 0) + 1;
+              }
             }
-          }
-        });
-      } catch (error) {
-        console.warn(`Erro no batch ${i}-${i + batchSize}:`, error);
-      }
+          });
+        } catch (error) {
+          console.warn(`Erro no batch ${i}-${i + batchSize}:`, error);
+        }
+      })();
+
+      batchPromises.push(batchPromise);
     }
 
+    // Executar todos os batches em paralelo
+    await Promise.all(batchPromises);
+
+    // Cache por 30 minutos
+    apiCache.set(cacheKey, absencesByStudent, 30);
     return absencesByStudent;
   } catch (error) {
     console.error('Erro ao carregar faltas dos estudantes:', error);
-    return {};
+    return {} as Record<string, number>;
   }
 }
 
 // Função para buscar contatos verificados do WhatsApp
 async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedContact[]>> {
+  const cacheKey = 'whatsapp-verified-contacts';
+  const cached = apiCache.get(cacheKey) as Record<string, VerifiedContact[]> | undefined;
+  if (cached) {
+    return cached;
+  }
+
   try {
     const verifiedContactsRef = collection(db, 'whatsapp_verified_numbers');
     const querySnapshot = await withTimeout(
       getDocs(verifiedContactsRef),
-      10000,
+      15000,
       'Timeout loading WhatsApp verified contacts'
     );
 
@@ -187,16 +211,18 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
       }
     });
 
+    // Cache por 45 minutos
+    apiCache.set(cacheKey, contactsByStudent, 45);
     return contactsByStudent;
   } catch (error) {
     console.error('Erro ao carregar contatos verificados do WhatsApp:', error);
-    return {};
+    return {} as Record<string, VerifiedContact[]>;
   }
 }
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
-  const maxExecutionTime = 25000; // 25 segundos
+  const maxExecutionTime = 45000; // 45 segundos
 
   // Basic Authentication
   const authorization = request.headers.get('authorization');
@@ -263,14 +289,17 @@ export async function GET(request: NextRequest) {
       } as ApiResponse, { status: 400 });
     }
 
-    // Verificar timeout
-    const checkTimeout = () => {
-      if (Date.now() - startTime > maxExecutionTime) {
-        throw new Error('Timeout: Operação muito demorada');
+    // Verificar timeout com logs detalhados
+    const checkTimeout = (step: string) => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed > maxExecutionTime) {
+        console.error(`Timeout na etapa: ${step}. Tempo decorrido: ${elapsed}ms`);
+        throw new Error(`Timeout: Operação muito demorada na etapa ${step}`);
       }
+      console.log(`Etapa ${step} concluída em ${elapsed}ms`);
     };
 
-    checkTimeout();
+    checkTimeout('início');
 
     // Carregar dias letivos do mês especificado
     const schoolDaysInMonth = await getSchoolDaysForMonth(referenceMonth);
@@ -281,11 +310,15 @@ export async function GET(request: NextRequest) {
       } as ApiResponse, { status: 404 });
     }
 
-    checkTimeout();
+    checkTimeout('dias letivos carregados');
 
     // Carregar estudantes ativos
     const studentsDocRef = doc(db, FIREBASE_PATHS.students());
-    const studentsDocSnap = await getDoc(studentsDocRef);
+    const studentsDocSnap = await withTimeout(
+      getDoc(studentsDocRef),
+      10000,
+      'Timeout loading students'
+    );
 
     if (!studentsDocSnap.exists()) {
       return NextResponse.json({
@@ -305,16 +338,16 @@ export async function GET(request: NextRequest) {
       } as ApiResponse, { status: 404 });
     }
 
-    checkTimeout();
+    checkTimeout('estudantes carregados');
 
     // Carregar faltas dos estudantes no mês especificado
     const studentIds = activeStudents.map(s => s.estudanteId);
     const [studentAbsences, verifiedContacts] = await Promise.all([
-      loadStudentAbsencesForMonth(studentIds, schoolDaysInMonth),
+      loadStudentAbsencesForMonth(studentIds, schoolDaysInMonth, referenceMonth),
       loadVerifiedWhatsAppContacts()
     ]);
 
-    checkTimeout();
+    checkTimeout('faltas e contatos carregados');
 
     // Filtrar estudantes que têm múltiplos da quantidade de faltas especificada
     const results: StudentWithAbsenceMultiples[] = [];
@@ -361,12 +394,21 @@ export async function GET(request: NextRequest) {
     } as ApiResponse);
 
   } catch (error) {
-    console.error('Erro na API de múltiplos de faltas:', error);
+    const executionTime = Date.now() - startTime;
+    console.error('Erro na API de múltiplos de faltas:', {
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+      executionTime,
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
     return NextResponse.json({
       success: false,
       error: error instanceof Error && error.message.includes('Timeout')
-        ? 'Timeout na operação. Tente novamente.'
-        : 'Erro interno do servidor'
+        ? `Timeout na operação após ${executionTime}ms. Tente novamente.`
+        : 'Erro interno do servidor',
+      metadata: {
+        executionTimeMs: executionTime
+      }
     } as ApiResponse, { status: 500 });
   }
 }
