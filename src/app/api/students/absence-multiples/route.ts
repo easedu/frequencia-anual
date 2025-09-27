@@ -33,6 +33,8 @@ interface ApiResponse {
     schoolDaysInMonth: number;
     studentsWithTargetMultiples: number;
     executionTimeMs: number;
+    whatsappContactsLoaded: boolean;
+    studentsWithWhatsappContacts?: number;
   };
 }
 
@@ -42,22 +44,26 @@ async function loadAcademicYearData(): Promise<any> {
 
   const cached = apiCache.get(cacheKey);
   if (cached) {
+    console.log('[DEBUG] Dados do ano letivo carregados do cache');
     return cached;
   }
 
   try {
+    console.log('[DEBUG] Carregando dados do ano letivo do Firebase...');
     const docRef = doc(db, '2025', 'ano_letivo');
     const docSnap = await withTimeout(getDoc(docRef), 8000, 'Timeout loading academic year');
 
     if (docSnap.exists()) {
       const data = docSnap.data();
+      console.log('[DEBUG] Dados do ano letivo carregados com sucesso');
       apiCache.set(cacheKey, data, 60); // Cache por 60 minutos
       return data;
     }
 
+    console.error('[ERROR] Documento do ano letivo não existe no Firebase');
     return null;
   } catch (error) {
-    console.error('Erro ao carregar ano letivo:', error);
+    console.error('[ERROR] Erro ao carregar ano letivo:', error);
     return null;
   }
 }
@@ -182,14 +188,18 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
   const cacheKey = 'whatsapp-verified-contacts';
   const cached = apiCache.get(cacheKey) as Record<string, VerifiedContact[]> | undefined;
   if (cached) {
+    console.log('[DEBUG] Contatos WhatsApp carregados do cache');
     return cached;
   }
 
   try {
+    console.log('[DEBUG] Carregando contatos WhatsApp do Firebase...');
     const verifiedContactsRef = collection(db, 'whatsapp_verified_numbers');
+
+    // Reduzir timeout e adicionar fallback
     const querySnapshot = await withTimeout(
       getDocs(verifiedContactsRef),
-      15000,
+      8000, // Reduzido de 15000 para 8000
       'Timeout loading WhatsApp verified contacts'
     );
 
@@ -211,11 +221,32 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
       }
     });
 
+    console.log(`[DEBUG] Contatos WhatsApp carregados: ${Object.keys(contactsByStudent).length} estudantes`);
+
     // Cache por 45 minutos
     apiCache.set(cacheKey, contactsByStudent, 45);
     return contactsByStudent;
   } catch (error) {
-    console.error('Erro ao carregar contatos verificados do WhatsApp:', error);
+    console.error('[ERROR] Erro ao carregar contatos verificados do WhatsApp:', error);
+    // Retorna objeto vazio em caso de erro para não bloquear a API
+    return {} as Record<string, VerifiedContact[]>;
+  }
+}
+
+// Função alternativa para carregar contatos sem bloquear a API principal
+async function loadVerifiedWhatsAppContactsSafe(): Promise<Record<string, VerifiedContact[]>> {
+  try {
+    return await Promise.race([
+      loadVerifiedWhatsAppContacts(),
+      new Promise<Record<string, VerifiedContact[]>>((resolve) => {
+        setTimeout(() => {
+          console.log('[WARNING] WhatsApp contacts loading timed out, returning empty');
+          resolve({} as Record<string, VerifiedContact[]>);
+        }, 6000); // 6 segundos
+      })
+    ]);
+  } catch (error) {
+    console.error('[ERROR] Failed to load WhatsApp contacts safely:', error);
     return {} as Record<string, VerifiedContact[]>;
   }
 }
@@ -223,6 +254,11 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   const maxExecutionTime = 45000; // 45 segundos
+
+  // Debug environment info
+  console.log(`[DEBUG] Environment - NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`[DEBUG] Current school year: ${process.env.NEXT_PUBLIC_SCHOOL_YEAR || 'default'}`);
+  console.log(`[DEBUG] Firebase paths - Students: ${FIREBASE_PATHS.students()}, Absences: ${FIREBASE_PATHS.absenceControl()}`);
 
   // Basic Authentication
   const authorization = request.headers.get('authorization');
@@ -302,8 +338,12 @@ export async function GET(request: NextRequest) {
     checkTimeout('início');
 
     // Carregar dias letivos do mês especificado
+    console.log(`[DEBUG] Carregando dias letivos para o mês: ${referenceMonth}`);
     const schoolDaysInMonth = await getSchoolDaysForMonth(referenceMonth);
+    console.log(`[DEBUG] Dias letivos encontrados: ${schoolDaysInMonth.length}`, schoolDaysInMonth);
+
     if (schoolDaysInMonth.length === 0) {
+      console.error(`[ERROR] Nenhum dia letivo encontrado para o mês ${referenceMonth}`);
       return NextResponse.json({
         success: false,
         error: `Nenhum dia letivo encontrado para o mês ${referenceMonth}`
@@ -329,9 +369,13 @@ export async function GET(request: NextRequest) {
 
     const studentsData = studentsDocSnap.data();
     const allStudents = (studentsData.estudantes || []) as Student[];
+    console.log(`[DEBUG] Total de estudantes na base: ${allStudents.length}`);
+
     const activeStudents = allStudents.filter(student => student.status === 'ATIVO');
+    console.log(`[DEBUG] Estudantes ativos: ${activeStudents.length}`);
 
     if (activeStudents.length === 0) {
+      console.error('[ERROR] Nenhum estudante ativo encontrado');
       return NextResponse.json({
         success: false,
         error: 'Nenhum estudante ativo encontrado'
@@ -342,19 +386,26 @@ export async function GET(request: NextRequest) {
 
     // Carregar faltas dos estudantes no mês especificado
     const studentIds = activeStudents.map(s => s.estudanteId);
+    console.log(`[DEBUG] IDs dos estudantes para carregar faltas: ${studentIds.length}`);
+
     const [studentAbsences, verifiedContacts] = await Promise.all([
       loadStudentAbsencesForMonth(studentIds, schoolDaysInMonth, referenceMonth),
-      loadVerifiedWhatsAppContacts()
+      loadVerifiedWhatsAppContactsSafe()
     ]);
+
+    console.log(`[DEBUG] Faltas carregadas para ${Object.keys(studentAbsences).length} estudantes`);
+    console.log(`[DEBUG] Contatos verificados para ${Object.keys(verifiedContacts).length} estudantes`);
 
     checkTimeout('faltas e contatos carregados');
 
     // Filtrar estudantes que têm múltiplos da quantidade de faltas especificada
     const results: StudentWithAbsenceMultiples[] = [];
     let studentsWithTargetMultiples = 0;
+    let studentsWithAbsences = 0;
 
     activeStudents.forEach(student => {
       const absencesCount = studentAbsences[student.estudanteId] || 0;
+      if (absencesCount > 0) studentsWithAbsences++;
 
       // Verificar se o número de faltas é múltiplo do valor especificado e maior que 0
       if (absencesCount > 0 && absencesCount % absenceMultiple === 0) {
@@ -374,10 +425,16 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    console.log(`[DEBUG] Estudantes com faltas: ${studentsWithAbsences}`);
+    console.log(`[DEBUG] Estudantes com múltiplos de ${absenceMultiple}: ${studentsWithTargetMultiples}`);
+    console.log(`[DEBUG] Resultados finais: ${results.length}`);
+
     // Ordenar por número de faltas (decrescente)
     results.sort((a, b) => b.absencesCount - a.absencesCount);
 
     const executionTime = Date.now() - startTime;
+    const whatsappContactsLoaded = Object.keys(verifiedContacts).length > 0;
+    const studentsWithWhatsappContacts = Object.keys(verifiedContacts).length;
 
     return NextResponse.json({
       success: true,
@@ -389,7 +446,9 @@ export async function GET(request: NextRequest) {
         referenceMonth,
         schoolDaysInMonth: schoolDaysInMonth.length,
         studentsWithTargetMultiples,
-        executionTimeMs: executionTime
+        executionTimeMs: executionTime,
+        whatsappContactsLoaded,
+        studentsWithWhatsappContacts
       }
     } as ApiResponse);
 
