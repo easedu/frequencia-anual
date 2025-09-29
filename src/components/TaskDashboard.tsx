@@ -132,6 +132,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
       priority: userTask.priority, // Usar prioridade da API
       status: userTask.status === 'COMPLETED' ? 'resolved' : 'pending',
       createdAt: new Date(userTask.createdAt),
+      createdBy: userTask.createdBy || 'Não informado',
       resolvedAt: userTask.completedAt ? new Date(userTask.completedAt) : undefined,
       resolvedAction: userTask.status === 'COMPLETED' ? resolvedAction : undefined,
       resolvedDescription: userTask.status === 'COMPLETED' ? resolvedDescription : undefined,
@@ -794,22 +795,26 @@ function ResolvedTaskCard({ task }: { task: DashboardTask }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 text-sm mb-4">
           <div className="bg-white p-3 rounded border">
             <span className="text-gray-600">Criado em:</span>
             <div className="font-medium">{task.createdAt.toLocaleDateString('pt-BR')}</div>
+          </div>
+          <div className="bg-white p-3 rounded border">
+            <span className="text-gray-600">Criado por:</span>
+            <div className="font-medium">{task.createdBy || 'Não informado'}</div>
           </div>
           <div className="bg-white p-3 rounded border">
             <span className="text-gray-600">Resolvida em:</span>
             <div className="font-medium">{task.resolvedAt?.toLocaleDateString('pt-BR')}</div>
           </div>
           <div className="bg-white p-3 rounded border">
-            <span className="text-gray-600">Ação Tomada:</span>
-            <div className="font-medium">{task.resolvedAction}</div>
+            <span className="text-gray-600">Resolvido por:</span>
+            <div className="font-medium">{task.resolvedBy || 'Não informado'}</div>
           </div>
           <div className="bg-white p-3 rounded border">
-            <span className="text-gray-600">Criado por:</span>
-            <div className="font-medium">{task.resolvedBy || 'Não informado'}</div>
+            <span className="text-gray-600">Ação Tomada:</span>
+            <div className="font-medium">{task.resolvedAction}</div>
           </div>
         </div>
 

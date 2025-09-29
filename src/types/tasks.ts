@@ -17,6 +17,7 @@ export interface UserTask {
   priority: 'critical' | 'attention' | 'routine'; // Prioridade da tarefa
   recommendedAction: string; // Ação recomendada original
   createdAt: string; // Data de criação da tarefa
+  createdBy: string; // Nome de quem criou a tarefa
   completedAt?: string; // Data de conclusão da tarefa
   interactionId?: string; // ID da interação registrada quando a tarefa foi concluída
   interactionType?: string; // Tipo de interação quando resolvida

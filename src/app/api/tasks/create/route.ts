@@ -16,7 +16,9 @@ interface CreateTaskRequest {
   reference_year: number;
   priority: 0 | 1 | 2; // 0 = Crítica, 1 = Atenção, 2 = Rotina
   created_at: string;
+  created_by: string; // Nome de quem criou a tarefa
   processed_at?: string;
+  solved_by?: string; // Nome de quem resolveu a tarefa (obrigatório se is_resolved = true)
   recommended_action?: string; // Obrigatório se is_resolved = false
   action_taken?: string; // Obrigatório se is_resolved = true
   action_description?: string;
@@ -249,6 +251,13 @@ export async function POST(request: NextRequest) {
       } as CreateTaskResponse, { status: 400 });
     }
 
+    if (!taskData.created_by) {
+      return NextResponse.json({
+        success: false,
+        error: 'Campo obrigatório: created_by'
+      } as CreateTaskResponse, { status: 400 });
+    }
+
     if (typeof taskData.absences_count !== 'number' || taskData.absences_count < 0) {
       return NextResponse.json({
         success: false,
@@ -277,6 +286,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: false,
           error: 'Para tarefas resolvidas, action_taken e action_description são obrigatórios'
+        } as CreateTaskResponse, { status: 400 });
+      }
+      if (!taskData.solved_by) {
+        return NextResponse.json({
+          success: false,
+          error: 'Para tarefas resolvidas, solved_by é obrigatório'
         } as CreateTaskResponse, { status: 400 });
       }
     } else {
@@ -329,6 +344,7 @@ export async function POST(request: NextRequest) {
       absencesCount: taskData.absences_count,
       isPCD: studentData.deficiencia?.estudanteComDeficiencia || false,
       createdAt: taskData.created_at,
+      createdBy: taskData.created_by, // Salvar quem criou a tarefa
       priority: priorityLevel,
       recommendedAction: taskData.recommended_action || '' // Salvar a ação recomendada original
     };
@@ -336,7 +352,7 @@ export async function POST(request: NextRequest) {
     // Adicionar campos opcionais apenas se não forem undefined
     if (taskData.is_resolved && taskData.processed_at) {
       newTask.completedAt = taskData.processed_at;
-      newTask.resolvedBy = 'API Externa'; // Indicar que foi resolvida via API
+      newTask.resolvedBy = taskData.solved_by || taskData.created_by; // Usar solved_by se fornecido, senão created_by
     }
 
     batch.set(taskRef, newTask);
@@ -351,7 +367,7 @@ export async function POST(request: NextRequest) {
         type: taskData.action_taken,
         description: taskData.action_description,
         date: taskData.processed_at || new Date().toISOString(),
-        createdBy: "BOT",
+        createdBy: taskData.solved_by || taskData.created_by, // Usar solved_by se fornecido, senão created_by
         sensitive: false
       };
 

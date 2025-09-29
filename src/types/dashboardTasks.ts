@@ -20,6 +20,7 @@ export interface DashboardTask {
   priority: TaskPriorityLevel;
   status: TaskStatus;
   createdAt: Date;
+  createdBy: string; // Nome de quem criou a tarefa
   resolvedAt?: Date;
   resolvedAction?: string;
   resolvedDescription?: string;
