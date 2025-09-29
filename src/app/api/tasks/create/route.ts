@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collection, doc, getDoc, addDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import { FIREBASE_PATHS } from '@/config/constants';
 import { logger } from '@/utils/logger';
 import type { Student, FamilyInteraction } from '@/app/types';
-import type { UserTask, TaskType, TaskStatus } from '@/types/tasks';
+import type { UserTask, TaskType } from '@/types/tasks';
 
 /**
  * Interface para os dados de entrada da API
@@ -41,7 +41,7 @@ interface CreateTaskResponse {
 /**
  * Função para determinar o tipo de tarefa baseado na ação recomendada
  */
-function getTaskTypeFromAction(action: string): TaskType {
+function getTaskTypeFromAction(_action: string): TaskType {
   // Por enquanto só temos um tipo, mas pode ser expandido
   return 'CONSELHO_TUTELAR';
 }
@@ -57,6 +57,28 @@ function mapPriorityToLevel(priority: 0 | 1 | 2): 'critical' | 'attention' | 'ro
       return 'attention';
     case 2:
       return 'routine';
+  }
+}
+
+/**
+ * Função para converter data ISO para formato Firebase (YYYY-MM-DD)
+ */
+function convertISOToFirebaseDate(isoString: string): string {
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) {
+      // Se não for uma data válida, tentar como se fosse já no formato correto
+      return isoString;
+    }
+
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+  } catch (error) {
+    logger.error('Erro ao converter data ISO para Firebase:', error as Error);
+    return new Date().toISOString().split('T')[0]; // Fallback para hoje
   }
 }
 
@@ -129,73 +151,6 @@ function calculateFrequencyPercentage(absencesCount: number, totalDays: number):
   if (totalDays === 0) return 100;
   const attendance = totalDays - absencesCount;
   return Math.max(0, (attendance / totalDays) * 100);
-}
-
-/**
- * Função para criar uma interação familiar
- */
-async function createFamilyInteraction(
-  studentId: string,
-  actionType: string,
-  description: string,
-  date: string
-): Promise<string> {
-  try {
-    const interactionData: Omit<FamilyInteraction, "id"> = {
-      studentId,
-      type: actionType,
-      description,
-      date,
-      createdBy: "BOT",
-      sensitive: false
-    };
-
-    const interactionsRef = collection(db, FIREBASE_PATHS.interactions(studentId));
-    const docRef = await addDoc(interactionsRef, interactionData);
-
-    logger.info(`Interação criada para estudante ${studentId}: ${docRef.id}`);
-    return docRef.id;
-  } catch (error) {
-    logger.error('Erro ao criar interação familiar:', error as Error);
-    throw error;
-  }
-}
-
-/**
- * Função para criar uma tarefa de usuário
- */
-async function createUserTask(
-  taskData: CreateTaskRequest,
-  studentData: Student,
-  bimestre: string,
-  frequencyPercentage: number
-): Promise<string> {
-  try {
-    const newTask: Omit<UserTask, 'id'> = {
-      userId: "BOT", // Usando BOT como userId
-      estudanteId: taskData.estudante_id,
-      studentName: studentData.nome,
-      studentClass: studentData.turma,
-      taskType: getTaskTypeFromAction(taskData.recommended_action),
-      bimestre,
-      status: taskData.is_resolved ? 'COMPLETED' : 'PENDING',
-      frequencyPercentage,
-      absencesCount: taskData.absences_count,
-      isPCD: studentData.deficiencia?.estudanteComDeficiencia || false,
-      createdAt: taskData.created_at,
-      completedAt: taskData.is_resolved ? taskData.processed_at : undefined,
-      interactionId: undefined // Será preenchido após criar a interação, se necessário
-    };
-
-    const tasksRef = collection(db, 'userTasks');
-    const docRef = await addDoc(tasksRef, newTask);
-
-    logger.info(`Tarefa criada: ${docRef.id}`);
-    return docRef.id;
-  } catch (error) {
-    logger.error('Erro ao criar tarefa:', error as Error);
-    throw error;
-  }
 }
 
 /**
@@ -332,7 +287,7 @@ export async function POST(request: NextRequest) {
     taskId = taskRef.id;
 
     // Criar objeto da tarefa, removendo campos undefined
-    const newTask: any = {
+    const newTask: Omit<UserTask, 'id'> = {
       userId: "BOT",
       estudanteId: taskData.estudante_id,
       studentName: studentData.nome,
@@ -346,7 +301,7 @@ export async function POST(request: NextRequest) {
       createdAt: taskData.created_at,
       createdBy: taskData.created_by, // Salvar quem criou a tarefa
       priority: priorityLevel,
-      recommendedAction: taskData.recommended_action || '' // Salvar a ação recomendada original
+      recommendedAction: taskData.recommended_action || taskData.action_taken || 'Ação não especificada' // Salvar a ação recomendada original
     };
 
     // Adicionar campos opcionais apenas se não forem undefined
@@ -366,7 +321,7 @@ export async function POST(request: NextRequest) {
         studentId: taskData.estudante_id,
         type: taskData.action_taken,
         description: taskData.action_description,
-        date: taskData.processed_at || new Date().toISOString(),
+        date: convertISOToFirebaseDate(taskData.processed_at || new Date().toISOString()),
         createdBy: taskData.solved_by || taskData.created_by, // Usar solved_by se fornecido, senão created_by
         sensitive: false
       };

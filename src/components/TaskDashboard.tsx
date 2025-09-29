@@ -717,7 +717,7 @@ function TaskCard({ task, onResolve }: { task: DashboardTask; onResolve: (task: 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-4">
           <div className="bg-gray-50 p-3 rounded border">
             <span className="text-gray-600">Bimestre:</span>
             <div className="font-medium">{task.bimester}</div>
@@ -729,6 +729,10 @@ function TaskCard({ task, onResolve }: { task: DashboardTask; onResolve: (task: 
           <div className="bg-gray-50 p-3 rounded border">
             <span className="text-gray-600">Criado em:</span>
             <div className="font-medium">{task.createdAt.toLocaleDateString('pt-BR')}</div>
+          </div>
+          <div className="bg-gray-50 p-3 rounded border">
+            <span className="text-gray-600">Criado por:</span>
+            <div className="font-medium">{task.createdBy || 'Não informado'}</div>
           </div>
         </div>
 
@@ -795,14 +799,10 @@ function ResolvedTaskCard({ task }: { task: DashboardTask }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 text-sm mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-4">
           <div className="bg-white p-3 rounded border">
             <span className="text-gray-600">Criado em:</span>
             <div className="font-medium">{task.createdAt.toLocaleDateString('pt-BR')}</div>
-          </div>
-          <div className="bg-white p-3 rounded border">
-            <span className="text-gray-600">Criado por:</span>
-            <div className="font-medium">{task.createdBy || 'Não informado'}</div>
           </div>
           <div className="bg-white p-3 rounded border">
             <span className="text-gray-600">Resolvida em:</span>
