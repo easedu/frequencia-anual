@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { auth, db } from "@/firebase.config";
 import { useRouter } from "next/navigation";
-import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart, AlertTriangle, ClipboardList, TrendingUp, Phone } from "lucide-react";
+import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart, AlertTriangle, ClipboardList, TrendingUp, Phone, LayoutDashboard } from "lucide-react";
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
 import { logger } from "@/utils/logger";
 
@@ -209,6 +209,14 @@ export default function Home() {
                     description: "Adicione novos estudantes ao sistema"
                 },
                 {
+                    key: "painel-tarefas",
+                    title: "Painel de Tarefas",
+                    icon: LayoutDashboard,
+                    href: "/painel-tarefas",
+                    color: "violet",
+                    description: "Acompanhamento centralizado de tarefas por prioridade"
+                },
+                {
                     key: "relatorio-interacoes",
                     title: "Relatórios de Interações",
                     icon: TrendingUp,
@@ -260,6 +268,14 @@ export default function Home() {
                     href: "/perfil-estudante",
                     color: "blue",
                     description: "Visualize dados completos dos estudantes"
+                },
+                {
+                    key: "painel-tarefas",
+                    title: "Painel de Tarefas",
+                    icon: LayoutDashboard,
+                    href: "/painel-tarefas",
+                    color: "violet",
+                    description: "Acompanhamento centralizado de tarefas por prioridade"
                 },
                 {
                     key: "gerenciador-tarefas",
@@ -363,6 +379,14 @@ export default function Home() {
                     description: "Monitore faltas consecutivas de dias letivos"
                 },
                 {
+                    key: "painel-tarefas",
+                    title: "Painel de Tarefas",
+                    icon: LayoutDashboard,
+                    href: "/painel-tarefas",
+                    color: "violet",
+                    description: "Acompanhamento centralizado de tarefas por prioridade"
+                },
+                {
                     key: "gerenciador-tarefas",
                     title: "Gerenciador de Tarefas",
                     icon: ClipboardList,
@@ -459,6 +483,12 @@ export default function Home() {
                 hover: "hover:from-emerald-600 hover:to-teal-700",
                 icon: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400",
                 border: "border-emerald-200 dark:border-emerald-800"
+            },
+            violet: {
+                gradient: "from-violet-500 to-purple-600",
+                hover: "hover:from-violet-600 hover:to-purple-700",
+                icon: "bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400",
+                border: "border-violet-200 dark:border-violet-800"
             }
         };
         return colorMap[color] || colorMap.blue;
