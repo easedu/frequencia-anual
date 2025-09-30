@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# Arquivos de debug temporários
+DEBUG_CHECK_DATES.md
+DEBUG_DATAS_AULA.md
+
+# Logs do Firebase
+firebase-debug.log
+
+# Regras temporárias de firestore (manter apenas firestore.rules)
+firestore.rules.permissive
+firestore.rules.restrictive
+firestore.rules.working

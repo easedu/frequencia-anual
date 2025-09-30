@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "sonner";
 import { Estudante } from "@/types";
+import { StudentServiceV2 } from "@/services/firebase/studentServiceV2";
 
 // Student form schema - Minimal validation for debugging
 const studentSchema = z.object({
@@ -30,7 +31,7 @@ const studentSchema = z.object({
 }).passthrough(); // Allow all other fields to pass through without validation
 
 export default function CadastrarEstudantePage() {
-    const { students, loading, error, saveStudents, setStudents } = useStudents();
+    const { students, loading, error, setStudents } = useStudents();
     
     // Filter states
     const [turmaFiltro, setTurmaFiltro] = useState<string>("");
@@ -309,32 +310,37 @@ export default function CadastrarEstudantePage() {
                 }
             };
             
-            let updatedStudents;
             if (editingEstudante) {
-                // Use o ID do estudante para encontrar e atualizar
-                updatedStudents = students.map((student) => {
+                // Atualizar apenas um estudante usando V2
+                await StudentServiceV2.updateStudent(processedData);
+
+                // Atualizar o estado local
+                const updatedStudents = students.map((student) => {
                     if (student.estudanteId === editingEstudante.estudanteId) {
                         return { ...student, ...processedData };
                     }
                     return student;
                 });
+                setStudents(updatedStudents);
             } else {
                 // Verificar se já existe um estudante com o mesmo nome e turma
-                const exists = students.some(student => 
+                const exists = students.some(student =>
                     student.nome.toUpperCase() === processedData.nome.toUpperCase() &&
                     student.turma.toUpperCase() === processedData.turma.toUpperCase()
                 );
-                
+
                 if (exists) {
                     toast.error(`Estudante ${processedData.nome} já existe na turma ${processedData.turma}`);
                     return;
                 }
-                
-                updatedStudents = [...students, processedData];
+
+                // Adicionar novo estudante usando V2
+                await StudentServiceV2.addStudent(processedData);
+
+                // Atualizar o estado local
+                setStudents([...students, processedData]);
             }
-            
-            await saveStudents(updatedStudents);
-            setStudents(updatedStudents);
+
             setOpenModal(false);
             
             toast.success(

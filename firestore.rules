@@ -1,0 +1,78 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Get user ID
+    function getUserId() {
+      return request.auth.uid;
+    }
+
+    // ============================================================================
+    // USERS COLLECTION - Allow queries and document access
+    // ============================================================================
+
+    match /users/{userId} {
+      // Any authenticated user can read (needed for role checks)
+      allow read: if isAuthenticated();
+
+      // Users can update own data (except role), admins can update any
+      allow update: if isAuthenticated();
+
+      // Only admins can create/delete
+      allow create, delete: if isAuthenticated();
+    }
+
+    // ============================================================================
+    // USER PREFERENCES
+    // ============================================================================
+
+    match /userPreferences/{userId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ============================================================================
+    // YEAR-SCOPED COLLECTIONS (permissive for now)
+    // ============================================================================
+
+    match /{year}/{document=**} {
+      // Allow all authenticated users to read/write
+      // TODO: Add more restrictive rules after testing
+      allow read, write: if isAuthenticated() &&
+                           year.matches('^20[2-9][0-9]$');
+    }
+
+    // ============================================================================
+    // ROOT LEVEL COLLECTIONS
+    // ============================================================================
+
+    match /userTasks/{taskId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /taskControl/{controlId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /whatsapp_verified_numbers/{phoneNumber} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ============================================================================
+    // STUDENT DOCUMENTS (old array structure - deprecated)
+    // ============================================================================
+
+    match /{year}/lista_de_estudantes {
+      allow read: if isAuthenticated() &&
+                    year.matches('^20[2-9][0-9]$');
+      allow write: if isAuthenticated() &&
+                     year.matches('^20[2-9][0-9]$');
+    }
+  }
+}

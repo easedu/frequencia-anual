@@ -9,12 +9,15 @@ import {
   query,
   where,
   getDoc,
-  writeBatch
+  writeBatch,
+  Timestamp
 } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import { logger } from '@/utils/logger';
 import type { UserTask, TaskGenerationResult, BimesterTaskControl } from '@/types/tasks';
 import type { Student } from '@/app/types';
+import { addCreationAudit, addUpdateAudit } from '@/utils/auditHelpers';
+import { initializeSoftDelete } from '@/utils/softDeleteHelpers';
 
 export class TaskService {
   private static readonly COLLECTION_TASKS = 'userTasks';
@@ -259,19 +262,29 @@ export class TaskService {
             const tasksCollectionRef = collection(db, this.COLLECTION_TASKS);
             const taskId = doc(tasksCollectionRef).id;
 
-            const newTask: UserTask = {
+            const taskData = {
               id: taskId,
               userId,
               estudanteId: estudante.estudanteId,
               studentName: estudante.nome,
               studentClass: estudante.turma,
-              taskType: 'CONSELHO_TUTELAR',
+              taskType: 'CONSELHO_TUTELAR' as const,
               bimestre: currentBimester,
-              status: 'PENDING',
+              status: 'PENDING' as const,
               frequencyPercentage: Math.max(0, Math.min(100, frequencyPercentage)),
               absencesCount: faltasNaoJustificadas,
               isPCD: estudante.deficiencia?.estudanteComDeficiencia || false,
-              createdAt: new Date().toISOString()
+              priority: 'critical' as const,
+              recommendedAction: 'Encaminhar ao Conselho Tutelar',
+              createdAt: new Date().toISOString(),
+              createdBy: 'Sistema'
+            };
+
+            // Add audit and soft delete fields
+            const newTask: UserTask = {
+              ...taskData,
+              ...addCreationAudit({}, userId),
+              ...initializeSoftDelete(),
             };
 
             const taskRef = doc(db, this.COLLECTION_TASKS, taskId);
@@ -460,11 +473,14 @@ export class TaskService {
       const task = taskSnap.data() as UserTask;
       const completedAt = new Date().toISOString();
 
-      batch.update(taskRef, {
+      // Add update audit fields
+      const updateData = addUpdateAudit({
         status: 'COMPLETED',
         completedAt,
         interactionId
-      });
+      }, task.userId);
+
+      batch.update(taskRef, updateData);
 
       // 2. Criar registro de controle para evitar nova tarefa no mesmo bimestre
       const taskControlCollectionRef = collection(db, this.COLLECTION_TASK_CONTROL);
@@ -478,7 +494,13 @@ export class TaskService {
         completedAt
       };
 
-      batch.set(controlRef, controlData);
+      // Add audit and soft delete fields to control record
+      const controlDataWithAudit = {
+        ...addCreationAudit(controlData, task.userId),
+        ...initializeSoftDelete(),
+      };
+
+      batch.set(controlRef, controlDataWithAudit);
 
       // 3. Executar batch
       await batch.commit();

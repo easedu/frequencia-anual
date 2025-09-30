@@ -46,22 +46,18 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
     }
 
     try {
-      logger.info('🔧 Registrando Service Worker...');
-
       this.registration = await navigator.serviceWorker.register('/sw.js', {
         scope: '/',
         updateViaCache: 'none' // Sempre verificar atualizações
       });
 
       this.isRegistered = true;
-      logger.info('✅ Service Worker registrado com sucesso');
 
       // Verificar atualizações periodicamente
       this.scheduleUpdateChecks();
 
       // Escutar mudanças no SW
       this.registration.addEventListener('updatefound', () => {
-        logger.info('🔄 Nova versão do Service Worker encontrada');
         this.handleUpdateFound();
       });
 
@@ -83,7 +79,6 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
 
     try {
       const unregistered = await this.registration.unregister();
-      logger.info('🗑️ Service Worker desregistrado');
       return unregistered;
     } catch (error) {
       logger.error('❌ Erro ao desregistrar Service Worker:', error);
@@ -101,7 +96,6 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
 
     try {
       await this.registration.update();
-      logger.info('🔄 Verificação de atualização iniciada');
     } catch (error) {
       logger.error('❌ Erro na verificação de atualização:', error);
       throw error;
@@ -158,7 +152,6 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
     try {
       // Verificar se Service Worker está ativo
       if (!navigator.serviceWorker.controller) {
-        logger.info('Service Worker não está controlando a página ainda, usando fallback');
         return await this.getCacheStatusDirect();
       }
 
@@ -204,7 +197,6 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
   async clearCache(): Promise<void> {
     try {
       await this.sendMessage({ type: 'CLEAR_CACHE' });
-      logger.info('🧹 Cache limpo com sucesso');
     } catch (error) {
       logger.error('Erro ao limpar cache:', error);
       throw error;
@@ -221,7 +213,6 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
 
     try {
       await this.registration.sync.register(tag);
-      logger.info(`📡 Sync registrado: ${tag}`);
     } catch (error) {
       logger.error(`❌ Erro ao registrar sync: ${tag}`, error);
       throw error;
@@ -240,33 +231,25 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
 
       switch (type) {
         case 'SYNC_SUCCESS':
-          logger.info(`✅ Sincronização bem-sucedida: ${data}`);
           this.notifyApp('syncSuccess', data);
           break;
 
         case 'CACHE_UPDATED':
-          logger.info('📦 Cache atualizado');
           this.notifyApp('cacheUpdated', data);
           break;
 
         case 'OFFLINE_READY':
-          logger.info('🔌 App pronto para uso offline');
           this.notifyApp('offlineReady');
           break;
-
-        default:
-          logger.info('Mensagem do SW:', type, data);
       }
     });
 
     // Detectar mudanças de conectividade
     window.addEventListener('online', () => {
-      logger.info('🌐 Conexão restaurada');
       this.handleOnline();
     });
 
     window.addEventListener('offline', () => {
-      logger.info('🔌 Modo offline ativado');
       this.handleOffline();
     });
   }
@@ -283,12 +266,8 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
     newWorker.addEventListener('statechange', () => {
       if (newWorker.state === 'installed') {
         if (navigator.serviceWorker.controller) {
-          // Nova versão disponível
-          logger.info('🆕 Nova versão disponível');
           this.notifyApp('updateAvailable');
         } else {
-          // Primeira instalação
-          logger.info('✅ App instalado e pronto para uso offline');
           this.notifyApp('appInstalled');
         }
       }
@@ -360,17 +339,11 @@ export async function registerServiceWorker(): Promise<void> {
   }
 
   try {
-    logger.info('🔄 Iniciando registro do Service Worker...');
     const registration = await swManager.register();
-    
+
     if (registration) {
-      logger.info('✅ Service Worker registrado com sucesso');
-      
       // Aguardar o SW ficar ativo antes de tentar comunicação
-      if (registration.active) {
-        logger.info('🎯 Service Worker já está ativo');
-      } else if (registration.installing) {
-        logger.info('⏳ Service Worker sendo instalado...');
+      if (registration.installing) {
         await waitForServiceWorkerActivation(registration);
       }
     }
@@ -386,7 +359,6 @@ function waitForServiceWorkerActivation(registration: ServiceWorkerRegistration)
   return new Promise((resolve) => {
     const checkState = () => {
       if (registration.active) {
-        logger.info('✅ Service Worker ativado com sucesso');
         resolve();
       } else {
         setTimeout(checkState, 100);
@@ -447,8 +419,6 @@ export async function scheduleSync(type: 'attendance' | 'reports', data: any): P
     if (navigator.onLine) {
       await swManager.registerSync(`${type}-sync`);
     }
-
-    logger.info(`📋 Dados agendados para sincronização: ${type}`);
   } catch (error) {
     logger.error('Erro ao agendar sincronização:', error);
   }
@@ -479,7 +449,6 @@ export async function getOfflineStatus(): Promise<{
       cacheSize = cacheStatus?.cacheSize || 0;
       isOnline = cacheStatus?.isOnline ?? navigator.onLine;
     } catch (cacheError) {
-      logger.info('Usando fallback básico para status do cache');
       // Fallback: tentar verificar cache diretamente
       try {
         if ('caches' in window) {
@@ -488,7 +457,6 @@ export async function getOfflineStatus(): Promise<{
           cacheSize = keys.length;
         }
       } catch (directCacheError) {
-        logger.info('Cache não disponível, usando valor padrão');
         cacheSize = 0;
       }
     }
@@ -498,30 +466,25 @@ export async function getOfflineStatus(): Promise<{
     try {
       const pendingAttendance = JSON.parse(localStorage.getItem('pending_attendance') || '[]');
       const pendingReports = JSON.parse(localStorage.getItem('pending_reports') || '[]');
-      pendingSync = (Array.isArray(pendingAttendance) ? pendingAttendance.length : 0) + 
+      pendingSync = (Array.isArray(pendingAttendance) ? pendingAttendance.length : 0) +
                    (Array.isArray(pendingReports) ? pendingReports.length : 0);
     } catch (storageError) {
-      logger.info('Erro ao acessar localStorage, usando valor padrão');
       pendingSync = 0;
     }
-    
+
     let lastSync: string | undefined;
     try {
       lastSync = localStorage.getItem('lastSync') || undefined;
     } catch (syncError) {
-      logger.info('Erro ao acessar lastSync');
       lastSync = undefined;
     }
 
-    const result = {
+    return {
       isOnline,
       cacheSize,
       pendingSync,
       lastSync
     };
-
-    logger.info('Status offline obtido com sucesso:', result);
-    return result;
   } catch (error) {
     logger.error('Erro crítico ao obter status offline:', { error: error instanceof Error ? error.message : 'Unknown error' });
     return {
@@ -543,8 +506,6 @@ export async function clearOfflineData(): Promise<void> {
     localStorage.removeItem('pending_attendance');
     localStorage.removeItem('pending_reports');
     localStorage.removeItem('lastSync');
-    
-    logger.info('🧹 Dados offline limpos');
   } catch (error) {
     logger.error('Erro ao limpar dados offline:', error);
     throw error;

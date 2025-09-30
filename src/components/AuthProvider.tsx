@@ -78,9 +78,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           status: data.status || 'ativo'
         };
         setUserProfile(profile);
-        logger.info('👤 Perfil do usuário carregado:', { nome: profile.nome, perfil: profile.perfil });
       } else {
-        logger.warn('⚠️ Perfil do usuário não encontrado no Firestore');
         setUserProfile({
           nome: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
           email: firebaseUser.email || '',
@@ -100,8 +98,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   useEffect(() => {
-    logger.info('🔐 Inicializando AuthProvider...');
-
     let authStep = 0;
     let profileStep = 0;
 
@@ -127,12 +123,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       clearTimeout(timeoutId); // Cancelar timeout se auth resolver
       clearInterval(authProgressInterval);
       setAuthProgress(100);
-
-      logger.info('👤 Estado de autenticação mudou:', {
-        hasUser: !!firebaseUser,
-        uid: firebaseUser?.uid,
-        email: firebaseUser?.email
-      });
 
       setUser(firebaseUser);
 
@@ -179,7 +169,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       clearTimeout(timeoutId);
       clearInterval(authProgressInterval);
-      logger.info('🔐 Limpando listener de autenticação');
       unsubscribe();
     };
   }, [pathname, router]);
@@ -190,29 +179,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const isProtectedRoute = PROTECTED_ROUTES.some(route => currentPath.startsWith(route));
     
     if (!firebaseUser && isProtectedRoute) {
-      // Usuário não autenticado tentando acessar rota protegida
-      logger.info('🚫 Redirecionando usuário não autenticado para login');
       router.replace('/login');
     } else if (firebaseUser && (currentPath === '/login')) {
-      // Usuário autenticado tentando acessar login
-      logger.info('✅ Redirecionando usuário autenticado para home');
       router.replace('/home');
     } else if (firebaseUser && currentPath === '/') {
-      // Usuário autenticado na URL base - redirecionar para home
-      logger.info('🏠 Redirecionando usuário autenticado da URL base para home');
       router.replace('/home');
     } else if (!firebaseUser && currentPath === '/') {
-      // Usuário não autenticado na URL base - redirecionar para login
-      logger.info('🔑 Redirecionando usuário não autenticado da URL base para login');
       router.replace('/login');
     }
   };
 
   const signOut = async () => {
     try {
-      logger.info('🚪 Fazendo logout...');
       await auth.signOut();
-      logger.info('✅ Logout realizado com sucesso');
       router.replace('/login');
     } catch (error) {
       logger.error('❌ Erro no logout:', { error });

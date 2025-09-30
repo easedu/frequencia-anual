@@ -90,7 +90,7 @@ export default function MonitorarFaltasConsecutivasPage() {
   const [selectedAbsence, setSelectedAbsence] = useState<ConsecutiveAbsence | null>(null);
   const [showInteractionCard, setShowInteractionCard] = useState(false);
   const [interactionType, setInteractionType] = useState<string>("");
-  const [interactionDate, setInteractionDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
+  const [interactionDate, setInteractionDate] = useState<string>("");
   const [interactionDescription, setInteractionDescription] = useState<string>("");
   const [interactionSensitive, setInteractionSensitive] = useState<boolean>(false);
 
@@ -121,20 +121,17 @@ export default function MonitorarFaltasConsecutivasPage() {
     
     // Verificar se o cache ainda é válido
     if (academicYearCache && (now - academicYearCacheTime) < CACHE_TTL) {
-      console.log('Usando cache do ano letivo');
       return academicYearCache;
     }
-    
+
     try {
-      console.time('Busca ano letivo');
       const docRef = doc(db, '2025', 'ano_letivo');
       const docSnap = await getDoc(docRef);
-      
+
       if (docSnap.exists()) {
         const data = docSnap.data();
         setAcademicYearCache(data);
         setAcademicYearCacheTime(now);
-        console.timeEnd('Busca ano letivo');
         return data;
       }
       
@@ -158,13 +155,24 @@ export default function MonitorarFaltasConsecutivasPage() {
         
         for (const bimestre of bimestres) {
           if (data[bimestre]?.startDate && data[bimestre]?.endDate) {
-            const [startDay, startMonth, startYear] = data[bimestre].startDate.split('/').map(Number);
-            const [endDay, endMonth, endYear] = data[bimestre].endDate.split('/').map(Number);
-            
-            const startDate = new Date(startYear, startMonth - 1, startDay);
-            const endDate = new Date(endYear, endMonth - 1, endDay);
-            
-            if (hoje >= startDate && hoje <= endDate) {
+            const parseDate = (dateStr: string): Date | null => {
+              // Formato ISO (YYYY-MM-DD)
+              if (dateStr.includes('-')) {
+                const [year, month, day] = dateStr.split('-').map(Number);
+                return new Date(year, month - 1, day);
+              }
+              // Formato BR (DD/MM/YYYY)
+              if (dateStr.includes('/')) {
+                const [day, month, year] = dateStr.split('/').map(Number);
+                return new Date(year, month - 1, day);
+              }
+              return null;
+            };
+
+            const startDate = parseDate(data[bimestre].startDate);
+            const endDate = parseDate(data[bimestre].endDate);
+
+            if (startDate && endDate && hoje >= startDate && hoje <= endDate) {
               return bimestre;
             }
           }
@@ -179,15 +187,18 @@ export default function MonitorarFaltasConsecutivasPage() {
     }
   };
 
-  // Inicializar com bimestre atual
+  // Inicializar data de interação e bimestre atual
   useEffect(() => {
+    // Definir data atual no cliente
+    setInteractionDate(new Date().toLocaleDateString("pt-BR"));
+
     const initializeBimester = async () => {
       if (selectedBimesters.length === 0) {
         const currentBimester = await getCurrentBimester();
         setSelectedBimesters([currentBimester]);
       }
     };
-    
+
     initializeBimester();
   }, []);
 
@@ -206,27 +217,35 @@ export default function MonitorarFaltasConsecutivasPage() {
     
     // Verificar cache primeiro
     if (schoolDaysCache[cacheKey]) {
-      console.log('Usando dias letivos do cache para:', cacheKey);
       const cachedDays = schoolDaysCache[cacheKey];
       setTotalSchoolDays(cachedDays.length);
       setCurrentSchoolDays(cachedDays); // Salvar para detecção de períodos ativos
       return cachedDays;
     }
-    
+
     try {
-      console.time('Busca de dias letivos');
       const data = await loadAcademicYearData();
       
       if (data) {
         const allDays: SchoolDay[] = [];
-        
+
         // Extrair dias apenas dos bimestres selecionados
         selectedBimesters.forEach(bimester => {
           if (data[bimester]?.dates) {
-            allDays.push(...data[bimester].dates);
+            // Converter datas de ISO para DD/MM/YYYY se necessário
+            const normalizedDates = data[bimester].dates.map((day: SchoolDay) => {
+              let dateStr = day.date;
+              if (dateStr.includes('-')) {
+                // Formato ISO (YYYY-MM-DD) -> DD/MM/YYYY
+                const [year, month, dayNum] = dateStr.split('-');
+                dateStr = `${dayNum.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+              }
+              return { ...day, date: dateStr };
+            });
+            allDays.push(...normalizedDates);
           }
         });
-        
+
         const filteredDays = allDays.filter(day => day.isChecked).sort((a, b) => {
           const [dayA, monthA, yearA] = a.date.split('/').map(Number);
           const [dayB, monthB, yearB] = b.date.split('/').map(Number);
@@ -237,10 +256,9 @@ export default function MonitorarFaltasConsecutivasPage() {
         
         // Salvar no cache
         setSchoolDaysCache(prev => ({ ...prev, [cacheKey]: filteredDays }));
-        
+
         setTotalSchoolDays(filteredDays.length);
         setCurrentSchoolDays(filteredDays); // Salvar para detecção de períodos ativos
-        console.timeEnd('Busca de dias letivos');
         return filteredDays;
       }
       
@@ -257,44 +275,39 @@ export default function MonitorarFaltasConsecutivasPage() {
   // Carregar faltas de TODOS os estudantes em uma query batch otimizada
   const loadAllStudentAbsences = async (studentIds: string[], schoolDays: SchoolDay[]): Promise<Record<string, string[]>> => {
     try {
-      console.time('Carregamento de faltas - Total');
       const absencesRef = collection(db, FIREBASE_PATHS.absenceControl());
 
       // Otimizar batch size (máximo suportado pelo Firestore é 30 para 'in')
       const batchSize = 30;
       const batches: Promise<Record<string, string[]>>[] = [];
 
-      console.log(`Carregando faltas para ${studentIds.length} estudantes em batches de ${batchSize}`);
-
       for (let i = 0; i < studentIds.length; i += batchSize) {
         const batch = studentIds.slice(i, i + batchSize);
         const batchPromise = getBatchAbsences(absencesRef, batch, i / batchSize + 1, schoolDays);
         batches.push(batchPromise);
       }
-      
+
       // Executar todos os batches em paralelo com controle de concorrência
       const maxConcurrency = 5; // Limitar concorrência para evitar rate limiting
       const batchResults: Record<string, string[]>[] = [];
-      
+
       for (let i = 0; i < batches.length; i += maxConcurrency) {
         const concurrentBatches = batches.slice(i, i + maxConcurrency);
         const results = await Promise.all(concurrentBatches);
         batchResults.push(...results);
-        
+
         // Pequeno delay entre grupos de batches para evitar sobrecarga
         if (i + maxConcurrency < batches.length) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
-      
+
       // Combinar resultados
       const allAbsences: Record<string, string[]> = {};
       batchResults.forEach(batchResult => {
         Object.assign(allAbsences, batchResult);
       });
-      
-      console.timeEnd('Carregamento de faltas - Total');
-      console.log(`✓ Faltas carregadas para ${Object.keys(allAbsences).length} estudantes em ${batches.length} batches`);
+
       return allAbsences;
       
     } catch (error) {
@@ -305,8 +318,6 @@ export default function MonitorarFaltasConsecutivasPage() {
 
   // Função helper para processar um batch de estudantes
   const getBatchAbsences = async (absencesRef: any, studentIds: string[], batchNumber: number, schoolDays: SchoolDay[]): Promise<Record<string, string[]>> => {
-    console.time(`Batch ${batchNumber} (${studentIds.length} estudantes)`);
-
     const querySnapshot = await getDocs(query(absencesRef, where('estudanteId', 'in', studentIds)));
     const batchAbsences: Record<string, string[]> = {};
 
@@ -334,9 +345,6 @@ export default function MonitorarFaltasConsecutivasPage() {
         }
       }
     });
-
-    console.timeEnd(`Batch ${batchNumber} (${studentIds.length} estudantes)`);
-    console.log(`✓ Batch ${batchNumber}: ${querySnapshot.size} faltas encontradas`);
 
     return batchAbsences;
   };
@@ -424,12 +432,9 @@ export default function MonitorarFaltasConsecutivasPage() {
 
     try {
       setLoading(true);
-      
-      console.log('Iniciando análise com bimestres:', selectedBimesters);
-      
+
       // Carregar dias letivos
       const schoolDays = await loadSchoolDays();
-      console.log(`Encontrados ${schoolDays.length} dias letivos`);
       
       if (schoolDays.length === 0) {
         toast.error('Nenhum dia letivo encontrado para os bimestres selecionados.');
@@ -438,29 +443,21 @@ export default function MonitorarFaltasConsecutivasPage() {
 
       const activeStudents = students.filter(student => student.status === 'ATIVO');
       const studentIds = activeStudents.map(s => s.estudanteId);
-      console.log(`Analisando ${activeStudents.length} estudantes ativos`);
 
       // Carregar todas as faltas em batch (MUITO mais eficiente)
-      console.time('Busca de faltas batch');
       const allStudentAbsences = await loadAllStudentAbsences(studentIds, schoolDays);
-      console.timeEnd('Busca de faltas batch');
-      
+
       const results: ConsecutiveAbsence[] = [];
-      
+
       // Processar cada estudante com dados já carregados
-      console.time('Processamento de faltas consecutivas');
       for (const student of activeStudents) {
         const absences = allStudentAbsences[student.estudanteId] || [];
-        
-        if (absences.length === 0) continue; // Skip estudantes sem faltas
-        
-        const { consecutiveDays, startDate, endDate, allPeriods } = calculateConsecutiveAbsences(absences, schoolDays, minConsecutiveDays);
-        
-        if (consecutiveDays >= minConsecutiveDays) {
-          // Verificar se há pelo menos um período ativo para logs
-          const hasActivePeriod = allPeriods.some(period => isConsecutivePeriodActive(period, schoolDays));
-          console.log(`${student.nome}: ${consecutiveDays} dias consecutivos (${absences.length} faltas total) - ${hasActivePeriod ? 'ATIVO' : 'HISTÓRICO'}`);
 
+        if (absences.length === 0) continue; // Skip estudantes sem faltas
+
+        const { consecutiveDays, startDate, endDate, allPeriods } = calculateConsecutiveAbsences(absences, schoolDays, minConsecutiveDays);
+
+        if (consecutiveDays >= minConsecutiveDays) {
           results.push({
             estudanteId: student.estudanteId,
             studentName: student.nome,
@@ -477,9 +474,6 @@ export default function MonitorarFaltasConsecutivasPage() {
           });
         }
       }
-      console.timeEnd('Processamento de faltas consecutivas');
-
-      console.log(`Análise concluída: ${results.length} casos encontrados`);
 
       // Ordenar por dias consecutivos (maior primeiro)
       results.sort((a, b) => b.consecutiveDays - a.consecutiveDays);
@@ -524,7 +518,6 @@ export default function MonitorarFaltasConsecutivasPage() {
     });
 
     if (schoolDaysUntilYesterday.length === 0) {
-      console.log('Nenhum dia letivo encontrado até ontem para verificar período ativo');
       return false;
     }
 
@@ -537,17 +530,7 @@ export default function MonitorarFaltasConsecutivasPage() {
     const periodEnd = parseDateDDMMYYYY(period.end);
     const recentDay = parseDateDDMMYYYY(mostRecentSchoolDay.date);
 
-    const isActive = recentDay >= periodStart && recentDay <= periodEnd;
-
-    // Log para debug PCDs
-    if (period.start === '10/09/2025' && period.end === '25/09/2025') {
-      console.log('DEBUG PCD CATHARINA:');
-      console.log('- Período:', period.start, 'a', period.end);
-      console.log('- Dia letivo mais recente:', mostRecentSchoolDay.date);
-      console.log('- Período ativo?:', isActive);
-    }
-
-    return isActive;
+    return recentDay >= periodStart && recentDay <= periodEnd;
   };
 
   // Função para verificar se estudante tem períodos ativos
@@ -656,19 +639,17 @@ export default function MonitorarFaltasConsecutivasPage() {
   // Função para alternar seleção de bimestre
   const toggleBimester = (bimester: string) => {
     if (loading) return; // Bloquear interação durante análise
-    
+
     setSelectedBimesters(prev => {
-      const newSelection = prev.includes(bimester) 
+      const newSelection = prev.includes(bimester)
         ? prev.filter(b => b !== bimester)
         : [...prev, bimester];
-      
-      console.log('Bimestres selecionados:', newSelection);
-      
+
       // Marcar que filtros mudaram (apenas se já houve uma análise inicial)
       if (hasInitialAnalysis) {
         setFiltersChanged(true);
       }
-      
+
       return newSelection;
     });
   };

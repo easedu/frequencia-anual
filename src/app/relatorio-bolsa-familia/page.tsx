@@ -84,9 +84,23 @@ export default function RelatorioFaltasPage() {
     const [diasLetivos, setDiasLetivos] = useState<{ [key: number]: number }>({});
 
     const parseDate = (dateStr: string): Date | null => {
-        const [day, month, year] = dateStr.split('/').map(Number);
-        if (!day || !month || !year) return null;
-        return new Date(year, month - 1, day);
+        if (!dateStr) return null;
+
+        // Se está em formato ISO (YYYY-MM-DD)
+        if (dateStr.includes('-')) {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+            return new Date(year, month - 1, day);
+        }
+
+        // Se está em formato BR (DD/MM/YYYY)
+        if (dateStr.includes('/')) {
+            const [day, month, year] = dateStr.split('/').map(Number);
+            if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+            return new Date(year, month - 1, day);
+        }
+
+        return null;
     };
 
     const calculateDiasLetivos = useCallback(async () => {

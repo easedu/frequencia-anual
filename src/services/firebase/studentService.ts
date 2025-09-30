@@ -1,6 +1,10 @@
 /**
  * Student Service - Centralized Firebase operations for students
- * Eliminates duplicate Firebase calls and provides consistent API
+ *
+ * V2 MIGRATION: This service now uses the new collection-based structure
+ * Path: /{YEAR}/escola/students/{estudanteId}
+ *
+ * Falls back to old array structure if new structure doesn't exist
  */
 
 import { doc, getDoc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
@@ -8,44 +12,64 @@ import { db } from '@/firebase.config';
 import { logger } from '@/utils/logger';
 import { FIREBASE_PATHS } from '@/config/constants';
 import type { Estudante } from '@/types';
+import { StudentServiceV2 } from './studentServiceV2';
 
 export class StudentService {
   /**
    * Get all students from Firebase
+   * Uses V2 (collection-based) with fallback to V1 (array-based)
    */
   static async getStudents(): Promise<Estudante[]> {
     try {
+      // Try V2 first (collection-based)
+      const v2Students = await StudentServiceV2.getStudents();
+
+      if (v2Students.length > 0) {
+        return v2Students;
+      }
+
+      // If V2 returns 0, try V1 fallback
+      logger.warn('V2 retornou 0 estudantes, tentando fallback para V1');
+    } catch (error) {
+      logger.warn('V2 falhou, tentando fallback para V1', error as Error);
+    }
+
+    // Fallback to V1 (array-based)
+    try {
       const docRef = doc(db, FIREBASE_PATHS.students());
       const docSnap = await getDoc(docRef);
-      
+
       if (docSnap.exists()) {
         const data = docSnap.data();
-        return (data.estudantes || []).map((student: unknown) => {
-          // Type-safe student processing
+        const students = (data.estudantes || []).map((student: unknown) => {
           return StudentService.processStudentData(student);
         });
+        logger.info(`V1 fallback: ${students.length} estudantes carregados`);
+        return students;
       }
-      
+
       return [];
-    } catch (error) {
-      logger.error('Erro ao buscar estudantes', error as Error);
-      throw error;
+    } catch (fallbackError) {
+      logger.error('Erro ao buscar estudantes (V1 e V2 falharam)', fallbackError as Error);
+      throw fallbackError;
     }
   }
 
   /**
-   * Save students to Firebase
+   * Save students to Firebase (V1 - DEPRECATED)
+   * @deprecated Use StudentServiceV2.updateStudent() or StudentServiceV2.addStudent() instead
+   * This method saves to the old array structure and should not be used in new code
    */
   static async saveStudents(students: Estudante[]): Promise<void> {
+    logger.warn('saveStudents() is deprecated. Use StudentServiceV2.updateStudent() or addStudent() instead');
+
     try {
-      const cleanedStudents = students.map((student) => 
+      const cleanedStudents = students.map((student) =>
         StudentService.removeUndefined(student)
       );
-      
+
       const docRef = doc(db, FIREBASE_PATHS.students());
       await setDoc(docRef, { estudantes: cleanedStudents }, { merge: false });
-      
-      logger.info(`Salvos ${students.length} estudantes no Firebase`);
     } catch (error) {
       logger.error('Erro ao salvar estudantes no Firebase', error as Error);
       throw error;
@@ -54,129 +78,58 @@ export class StudentService {
 
   /**
    * Get student by ID
+   * Uses V2 (direct document access - fast!)
    */
   static async getStudentById(estudanteId: string): Promise<Estudante | null> {
-    try {
-      const students = await StudentService.getStudents();
-      return students.find(student => student.estudanteId === estudanteId) || null;
-    } catch (error) {
-      logger.error('Erro ao buscar estudante por ID', error as Error);
-      throw error;
-    }
+    return StudentServiceV2.getStudentById(estudanteId);
   }
 
   /**
    * Get students by class
+   * Uses V2 (Firestore query with index)
    */
   static async getStudentsByClass(turma: string): Promise<Estudante[]> {
-    try {
-      const students = await StudentService.getStudents();
-      return students.filter(student => student.turma === turma);
-    } catch (error) {
-      logger.error('Erro ao buscar estudantes por turma', error as Error);
-      throw error;
-    }
+    return StudentServiceV2.getStudentsByClass(turma);
   }
 
   /**
    * Get students with disabilities
+   * Uses V2 (Firestore query with index)
    */
   static async getStudentsWithDisabilities(): Promise<Estudante[]> {
-    try {
-      const students = await StudentService.getStudents();
-      return students.filter(student => 
-        student.deficiencia?.estudanteComDeficiencia === true
-      );
-    } catch (error) {
-      logger.error('Erro ao buscar estudantes com deficiência', error as Error);
-      throw error;
-    }
+    return StudentServiceV2.getStudentsWithDisabilities();
   }
 
   /**
    * Search students by name
+   * Uses V2
    */
   static async searchStudentsByName(searchTerm: string): Promise<Estudante[]> {
-    try {
-      const students = await StudentService.getStudents();
-      const normalizedSearch = searchTerm.toLowerCase().trim();
-      
-      return students.filter(student =>
-        student.nome.toLowerCase().includes(normalizedSearch)
-      );
-    } catch (error) {
-      logger.error('Erro ao buscar estudantes por nome', error as Error);
-      throw error;
-    }
+    return StudentServiceV2.searchStudentsByName(searchTerm);
   }
 
   /**
    * Update single student
+   * Uses V2 (direct document update - no need to fetch all!)
    */
   static async updateStudent(updatedStudent: Estudante): Promise<void> {
-    try {
-      const students = await StudentService.getStudents();
-      const index = students.findIndex(s => s.estudanteId === updatedStudent.estudanteId);
-      
-      if (index === -1) {
-        throw new Error(`Estudante com ID ${updatedStudent.estudanteId} não encontrado`);
-      }
-      
-      students[index] = updatedStudent;
-      await StudentService.saveStudents(students);
-      
-      logger.info(`Estudante ${updatedStudent.nome} atualizado com sucesso`);
-    } catch (error) {
-      logger.error('Erro ao atualizar estudante', error as Error);
-      throw error;
-    }
+    return StudentServiceV2.updateStudent(updatedStudent);
   }
 
   /**
    * Add new student
+   * Uses V2
    */
   static async addStudent(newStudent: Estudante): Promise<void> {
-    try {
-      const students = await StudentService.getStudents();
-      
-      // Check for duplicates
-      const exists = students.some(s => 
-        s.nome.toUpperCase() === newStudent.nome.toUpperCase() &&
-        s.turma.toUpperCase() === newStudent.turma.toUpperCase()
-      );
-      
-      if (exists) {
-        throw new Error(`Estudante ${newStudent.nome} já existe na turma ${newStudent.turma}`);
-      }
-      
-      students.push(newStudent);
-      await StudentService.saveStudents(students);
-      
-      logger.info(`Novo estudante ${newStudent.nome} adicionado com sucesso`);
-    } catch (error) {
-      logger.error('Erro ao adicionar novo estudante', error as Error);
-      throw error;
-    }
+    return StudentServiceV2.addStudent(newStudent);
   }
 
   /**
    * Delete student
+   * Uses V2
    */
   static async deleteStudent(estudanteId: string): Promise<void> {
-    try {
-      const students = await StudentService.getStudents();
-      const filteredStudents = students.filter(s => s.estudanteId !== estudanteId);
-      
-      if (students.length === filteredStudents.length) {
-        throw new Error(`Estudante com ID ${estudanteId} não encontrado`);
-      }
-      
-      await StudentService.saveStudents(filteredStudents);
-      logger.info(`Estudante removido com sucesso`);
-    } catch (error) {
-      logger.error('Erro ao remover estudante', error as Error);
-      throw error;
-    }
+    return StudentServiceV2.deleteStudent(estudanteId);
   }
 
   /**

@@ -3,11 +3,13 @@
  * Eliminates duplicate Firebase calls and provides consistent API
  */
 
-import { doc, getDoc, collection, getDocs, addDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, addDoc, deleteDoc, writeBatch, Timestamp } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import { logger } from '@/utils/logger';
 import { FIREBASE_PATHS } from '@/config/constants';
 import type { AbsenceRecord, BimesterDates } from '@/types';
+import { addCreationAudit, addUpdateAudit } from '@/utils/auditHelpers';
+import { initializeSoftDelete } from '@/utils/softDeleteHelpers';
 
 export class AttendanceService {
   /**
@@ -69,16 +71,23 @@ export class AttendanceService {
   /**
    * Add absence record
    */
-  static async addAbsenceRecord(record: Omit<AbsenceRecord, 'id'>): Promise<void> {
+  static async addAbsenceRecord(record: Omit<AbsenceRecord, 'id'>, userId?: string): Promise<void> {
     try {
-      await addDoc(collection(db, FIREBASE_PATHS.absenceControl()), {
+      const recordData = {
         estudanteId: record.estudanteId,
         data: record.data,
         justified: record.justified,
         atestadoId: record.atestadoId,
-        createdAt: new Date().toISOString(),
-      });
-      
+      };
+
+      // Add audit and soft delete fields
+      const dataToSave = {
+        ...addCreationAudit(recordData, userId),
+        ...initializeSoftDelete(),
+      };
+
+      await addDoc(collection(db, FIREBASE_PATHS.absenceControl()), dataToSave);
+
       logger.info(`Falta registrada para estudante ${record.estudanteId} em ${record.data}`);
     } catch (error) {
       logger.error('Erro ao registrar falta', error as Error);
@@ -89,22 +98,29 @@ export class AttendanceService {
   /**
    * Add multiple absence records (batch operation)
    */
-  static async addAbsenceRecords(records: Omit<AbsenceRecord, 'id'>[]): Promise<void> {
+  static async addAbsenceRecords(records: Omit<AbsenceRecord, 'id'>[], userId?: string): Promise<void> {
     try {
       const batch = writeBatch(db);
       const collectionRef = collection(db, FIREBASE_PATHS.absenceControl());
-      
+
       records.forEach((record) => {
         const docRef = doc(collectionRef);
-        batch.set(docRef, {
+        const recordData = {
           estudanteId: record.estudanteId,
           data: record.data,
           justified: record.justified,
           atestadoId: record.atestadoId,
-          createdAt: new Date().toISOString(),
-        });
+        };
+
+        // Add audit and soft delete fields
+        const dataToSave = {
+          ...addCreationAudit(recordData, userId),
+          ...initializeSoftDelete(),
+        };
+
+        batch.set(docRef, dataToSave);
       });
-      
+
       await batch.commit();
       logger.info(`${records.length} faltas registradas em lote`);
     } catch (error) {

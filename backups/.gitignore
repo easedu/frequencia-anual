@@ -1,0 +1,5 @@
+# Backups são locais e não devem ser commitados
+*.json
+
+# Mantém a pasta no git mas ignora conteúdo
+!.gitignore

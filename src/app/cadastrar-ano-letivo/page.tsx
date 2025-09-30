@@ -60,6 +60,24 @@ export default function CadastrarAnoLetivoPage() {
         setCardData(prev => ({ ...prev, [index]: data }));
     }
 
+    // Função auxiliar para converter data ISO para DD/MM/YYYY
+    function convertISOtoDDMMYYYY(dateStr: string): string {
+        if (!dateStr) return "";
+
+        // Se já está em DD/MM/YYYY, retorna
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+            return dateStr;
+        }
+
+        // Se está em YYYY-MM-DD (ISO), converte
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            const [year, month, day] = dateStr.split('-');
+            return `${day}/${month}/${year}`;
+        }
+
+        return dateStr;
+    }
+
     // Consulta os dados salvos no Firebase ao carregar a página
     useEffect(() => {
         async function fetchData() {
@@ -71,7 +89,19 @@ export default function CadastrarAnoLetivoPage() {
                     const newInitialData: { [key: number]: BimesterData } = {};
                     bimestres.forEach((bim, index) => {
                         if (data[bim]) {
-                            newInitialData[index] = data[bim];
+                            const bimData = data[bim];
+                            // Converte startDate e endDate se necessário
+                            const convertedData = {
+                                ...bimData,
+                                startDate: convertISOtoDDMMYYYY(bimData.startDate || ""),
+                                endDate: convertISOtoDDMMYYYY(bimData.endDate || ""),
+                                // Converte as datas no array dates também
+                                dates: bimData.dates?.map((d: any) => ({
+                                    ...d,
+                                    date: convertISOtoDDMMYYYY(d.date || "")
+                                })) || []
+                            };
+                            newInitialData[index] = convertedData;
                         }
                     });
                     setInitialData(newInitialData);

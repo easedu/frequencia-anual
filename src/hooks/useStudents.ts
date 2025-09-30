@@ -30,21 +30,9 @@ export const useStudents = () => {
         }
     };
 
-    // Função para salvar os estudantes usando o serviço centralizado
-    const saveStudents = async (newStudents: Estudante[]) => {
-        try {
-            await studentService.saveStudents(newStudents);
-            setStudents(newStudents);
-        } catch (err) {
-            logger.error("Erro ao salvar no Firebase", err as Error);
-            setError(err as Error);
-            throw err;
-        }
-    };
-
     useEffect(() => {
         fetchStudents();
     }, []);
 
-    return { students, loading, error, fetchStudents, saveStudents, setStudents };
+    return { students, loading, error, fetchStudents, setStudents };
 };

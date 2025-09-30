@@ -31,22 +31,17 @@ class Logger {
       error,
     };
 
-    // Em desenvolvimento, usar console
+    // Em desenvolvimento, mostrar apenas warn e error
     if (this.isDevelopment) {
       const formattedMessage = this.formatMessage(entry);
       switch (level) {
-        case 'debug':
-          console.debug(formattedMessage, error);
-          break;
-        case 'info':
-          console.info(formattedMessage);
-          break;
         case 'warn':
           console.warn(formattedMessage, error);
           break;
         case 'error':
           console.error(formattedMessage, error);
           break;
+        // debug e info são silenciados em desenvolvimento
       }
     }
 

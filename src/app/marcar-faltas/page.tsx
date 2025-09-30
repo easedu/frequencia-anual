@@ -86,6 +86,23 @@ function convertToISO(dateStr: string): string {
     return `${year}-${month}-${day}`;
 }
 
+// Função auxiliar para converter data para DD/MM/YYYY
+function convertDateToDDMMYYYY(dateStr: string): string {
+    // Se já está em DD/MM/YYYY, retorna
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+        return dateStr;
+    }
+
+    // Se está em YYYY-MM-DD (ISO), converte para DD/MM/YYYY
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [year, month, day] = dateStr.split('-');
+        return `${day}/${month}/${year}`;
+    }
+
+    // Formato desconhecido, retorna como está
+    return dateStr;
+}
+
 // Função para extrair as datas válidas (isChecked === true) do ano letivo
 function getValidDates(academicYearData: AcademicYearData | null, role: Role | null): string[] {
     if (!academicYearData) return [];
@@ -93,16 +110,25 @@ function getValidDates(academicYearData: AcademicYearData | null, role: Role | n
     const validDates: string[] = [];
     Object.values(academicYearData).forEach((bimData) => {
         bimData?.dates?.forEach((d) => {
-            if (d.isChecked) validDates.push(d.date);
+            if (d.isChecked) {
+                const formattedDate = convertDateToDDMMYYYY(d.date);
+                validDates.push(formattedDate);
+            }
         });
     });
 
     const today = new Date();
     const sortedDates = validDates
         .map((date) => {
-            const [day, month, year] = date.split("/").map(Number);
+            const parts = date.split("/");
+            if (parts.length !== 3) return null;
+
+            const [day, month, year] = parts.map(Number);
+            if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+
             return { date, timestamp: new Date(year, month - 1, day).getTime() };
         })
+        .filter((d): d is { date: string; timestamp: number } => d !== null)
         .sort((a, b) => a.timestamp - b.timestamp);
 
     const todayTimestamp = today.getTime();
@@ -146,7 +172,8 @@ export default function MarcarFaltasPage() {
                 const docRef = doc(db, ACADEMIC_YEAR, DOC_ACADEMIC_YEAR);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
-                    setAcademicYearData(docSnap.data() as AcademicYearData);
+                    const data = docSnap.data() as AcademicYearData;
+                    setAcademicYearData(data);
                 } else {
                     setErrorMessage("Dados do ano letivo não encontrados.");
                 }
@@ -170,9 +197,11 @@ export default function MarcarFaltasPage() {
             let valid = false;
             Object.values(academicYearData).forEach((bimData) => {
                 if (bimData?.dates) {
-                    const found = bimData.dates.find(
-                        (d) => d.date === selectedDate && d.isChecked
-                    );
+                    const found = bimData.dates.find((d) => {
+                        // Converte a data do Firebase (ISO) para DD/MM/YYYY antes de comparar
+                        const dateFormatted = convertDateToDDMMYYYY(d.date);
+                        return dateFormatted === selectedDate && d.isChecked;
+                    });
                     if (found) valid = true;
                 }
             });
@@ -249,6 +278,7 @@ export default function MarcarFaltasPage() {
                 students
                     .filter((est: Estudante) => est.status === "ATIVO")
                     .map((est: Estudante) => est.turma)
+                    .filter(turma => turma && turma.trim() !== '') // Remove turmas vazias
             )
         );
     }, [students]);

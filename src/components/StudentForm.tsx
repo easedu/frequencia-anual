@@ -245,6 +245,21 @@ const ContactField = memo(({
                     verified: true
                 });
 
+                // Salvar no Firebase (no cliente onde temos autenticação)
+                try {
+                    const { WhatsAppTrackingService } = await import('@/services/whatsappTrackingService');
+                    await WhatsAppTrackingService.markNumberAsVerified(
+                        cleanPhone,
+                        result.hasWhatsApp,
+                        undefined, // studentId será definido ao salvar o estudante
+                        form.getValues(`contatos.${index}.nome`) || result.whatsappName,
+                        'verified'
+                    );
+                } catch (saveError) {
+                    console.error('Erro ao salvar verificação:', saveError);
+                    // Não mostrar erro ao usuário - verificação foi feita com sucesso
+                }
+
                 if (result.hasWhatsApp) {
                     toast.success(`WhatsApp encontrado! ${result.whatsappName ? `(${result.whatsappName})` : ''}`);
                 } else {
@@ -293,7 +308,7 @@ const ContactField = memo(({
             if (cleanedValue.length >= 10) {
                 verifyWhatsApp(cleanedValue);
             }
-        }, 2000); // 2 segundos após parar de digitar
+        }, 1000); // 1 segundo após parar de digitar
 
         setPhoneDebounceTimer(newTimer);
 
@@ -462,7 +477,7 @@ export const StudentForm = memo(function StudentForm({
     // Memoizar o handler de busca de CEP
     const handleCepChange = useCallback((cepValue: string) => {
         setCepChangedManually(true);
-        
+
         const cleanedCep = cleanCep(cepValue);
         if (cleanedCep.length === 8) {
             fetchAddressFromCep(cleanedCep).then((address) => {
@@ -476,8 +491,8 @@ export const StudentForm = memo(function StudentForm({
                     toast.error("CEP não encontrado ou inválido.");
                 }
             });
-        } else if (cleanedCep.length > 0 && cleanedCep.length < 8) {
-            // Limpar campos quando CEP está incompleto
+        } else if (cleanedCep.length < 8) {
+            // Limpar campos quando CEP está incompleto ou vazio
             form.setValue("endereco.rua", "");
             form.setValue("endereco.numero", "");
             form.setValue("endereco.bairro", "");

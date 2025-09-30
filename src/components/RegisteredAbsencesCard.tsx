@@ -53,7 +53,9 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
     const [showDeleteDialog, setShowDeleteDialog] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    const filteredAbsences = absences.filter((absence) => getBimesterByDate(absence.data, bimesterDates) === bimester);
+    const filteredAbsences = absences.filter((absence) => {
+        return getBimesterByDate(absence.data, bimesterDates) === bimester;
+    });
     const justifiedCount = filteredAbsences.filter(absence => absence.justified).length;
     const unjustifiedCount = filteredAbsences.length - justifiedCount;
 

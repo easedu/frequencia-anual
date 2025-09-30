@@ -37,14 +37,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Verificar e salvar status do WhatsApp
-    const result = await WhatsAppVerificationService.checkAndSaveWhatsAppStatus(
-      phone,
-      studentId,
-      contactName
-    );
+    // Apenas verificar o WhatsApp (não salvar - isso será feito no cliente)
+    const result = await WhatsAppVerificationService.checkWhatsAppNumber(phone);
 
-    return NextResponse.json(result);
+    if (!result.success) {
+      return NextResponse.json({
+        success: false,
+        hasWhatsApp: false,
+        error: result.error,
+        verificationStatus: result.isApiUnavailable ? 'unavailable' : 'error'
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      hasWhatsApp: result.hasWhatsApp,
+      whatsappName: result.whatsappName,
+      jid: result.jid
+    });
 
   } catch (error) {
     console.error('Erro na API de verificação do WhatsApp:', error);
