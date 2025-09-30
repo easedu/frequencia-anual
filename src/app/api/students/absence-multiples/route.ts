@@ -224,6 +224,7 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
     const contactsByStudent: Record<string, VerifiedContact[]> = {};
     let totalDocuments = 0;
     let phoneToStudentMap: Record<string, string> = {};
+    let phoneToContactName: Record<string, string> = {}; // Mover para escopo global
     let documentsWithStudentId = 0;
     let documentsWithWhatsApp = 0;
 
@@ -267,7 +268,8 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
       const studentsData = studentsDocSnap.data();
       const allStudents = (studentsData.estudantes || []) as any[];
 
-      // Criar mapa de telefone -> estudanteId baseado nos dados dos estudantes
+      // Criar mapa de telefone -> estudanteId E nome do contato baseado nos dados dos estudantes
+
       allStudents.forEach(student => {
         if (student.contatos && student.contatos.length > 0) {
           student.contatos.forEach((contato: any) => {
@@ -275,6 +277,7 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
               const cleanPhone = contato.telefone.replace(/\D/g, '');
               if (cleanPhone.length >= 10 && verifiedNumbers.has(cleanPhone)) {
                 phoneToStudentMap[cleanPhone] = student.estudanteId;
+                phoneToContactName[cleanPhone] = contato.nome || 'Contato não identificado';
 
                 // Debug específico para EMANUELLY
                 if (student.estudanteId === 'ecce6b78-e3c6-40df-bc7f-2666aef65a1a') {
@@ -298,6 +301,7 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
     // ETAPA 3: Construir resultado final agrupado por studentId
     verifiedNumbers.forEach((phoneData, phoneNumber) => {
       const studentId = phoneToStudentMap[phoneNumber];
+      const contactName = phoneToContactName[phoneNumber];
 
       // Só incluir se tem WhatsApp e conseguimos mapear para um estudante
       if (phoneData.hasWhatsApp && studentId) {
@@ -306,7 +310,7 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
         }
 
         contactsByStudent[studentId].push({
-          nome: phoneData.contactName || 'Contato não identificado',
+          nome: contactName || phoneData.contactName || 'Contato não identificado',
           telefone: phoneNumber,
           hasWhatsApp: phoneData.hasWhatsApp,
           verificationStatus: 'verified'
