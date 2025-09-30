@@ -201,7 +201,7 @@ async function loadStudentAbsencesForMonth(
   }
 }
 
-// Função para buscar contatos verificados do WhatsApp
+// Função para buscar contatos verificados do WhatsApp (CORRIGIDA)
 async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedContact[]>> {
   const cacheKey = 'whatsapp-verified-contacts';
   const cached = apiCache.get(cacheKey) as Record<string, VerifiedContact[]> | undefined;
@@ -222,24 +222,102 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
     );
 
     const contactsByStudent: Record<string, VerifiedContact[]> = {};
+    let totalDocuments = 0;
+    let phoneToStudentMap: Record<string, string> = {};
+    let documentsWithStudentId = 0;
+    let documentsWithWhatsApp = 0;
+
+    // ETAPA 1: Mapear todos os números de telefone que têm WhatsApp
+    const verifiedNumbers = new Map<string, { hasWhatsApp: boolean; contactName?: string; studentId?: string }>();
 
     querySnapshot.forEach((docSnap) => {
+      totalDocuments++;
       const data = docSnap.data();
-      if (data.studentId && data.hasWhatsApp && data.verificationStatus === 'verified') {
-        if (!contactsByStudent[data.studentId]) {
-          contactsByStudent[data.studentId] = [];
+      const phoneNumber = docSnap.id; // A chave do documento é o número do telefone
+
+      // Guardar informações do telefone
+      verifiedNumbers.set(phoneNumber, {
+        hasWhatsApp: data.hasWhatsApp,
+        contactName: data.contactName,
+        studentId: data.studentId
+      });
+
+      if (data.studentId) {
+        documentsWithStudentId++;
+        phoneToStudentMap[phoneNumber] = data.studentId;
+      }
+
+      if (data.hasWhatsApp) {
+        documentsWithWhatsApp++;
+      }
+    });
+
+    console.log(`[DEBUG] Mapeamento inicial:`, {
+      totalDocuments,
+      documentsWithStudentId,
+      documentsWithWhatsApp,
+      phoneNumbersWithStudentId: Object.keys(phoneToStudentMap).length
+    });
+
+    // ETAPA 2: Buscar estudantes para fazer correspondência dos telefones sem studentId
+    const studentsDocRef = doc(db, FIREBASE_PATHS.students());
+    const studentsDocSnap = await getDoc(studentsDocRef);
+
+    if (studentsDocSnap.exists()) {
+      const studentsData = studentsDocSnap.data();
+      const allStudents = (studentsData.estudantes || []) as any[];
+
+      // Criar mapa de telefone -> estudanteId baseado nos dados dos estudantes
+      allStudents.forEach(student => {
+        if (student.contatos && student.contatos.length > 0) {
+          student.contatos.forEach((contato: any) => {
+            if (contato.telefone) {
+              const cleanPhone = contato.telefone.replace(/\D/g, '');
+              if (cleanPhone.length >= 10 && verifiedNumbers.has(cleanPhone)) {
+                phoneToStudentMap[cleanPhone] = student.estudanteId;
+
+                // Debug específico para EMANUELLY
+                if (student.estudanteId === 'ecce6b78-e3c6-40df-bc7f-2666aef65a1a') {
+                  console.log(`[DEBUG] Mapeamento encontrado para EMANUELLY:`, {
+                    telefone: `${cleanPhone.substring(0, 4)}****${cleanPhone.substring(cleanPhone.length - 4)}`,
+                    contatoNome: contato.nome,
+                    hasWhatsApp: verifiedNumbers.get(cleanPhone)?.hasWhatsApp
+                  });
+                }
+              }
+            }
+          });
+        }
+      });
+    }
+
+    console.log(`[DEBUG] Após mapeamento com estudantes:`, {
+      phoneNumbersWithStudentId: Object.keys(phoneToStudentMap).length
+    });
+
+    // ETAPA 3: Construir resultado final agrupado por studentId
+    verifiedNumbers.forEach((phoneData, phoneNumber) => {
+      const studentId = phoneToStudentMap[phoneNumber];
+
+      // Só incluir se tem WhatsApp e conseguimos mapear para um estudante
+      if (phoneData.hasWhatsApp && studentId) {
+        if (!contactsByStudent[studentId]) {
+          contactsByStudent[studentId] = [];
         }
 
-        contactsByStudent[data.studentId].push({
-          nome: data.contactName || 'Contato não identificado',
-          telefone: data.phone,
-          hasWhatsApp: data.hasWhatsApp,
-          verificationStatus: data.verificationStatus
+        contactsByStudent[studentId].push({
+          nome: phoneData.contactName || 'Contato não identificado',
+          telefone: phoneNumber,
+          hasWhatsApp: phoneData.hasWhatsApp,
+          verificationStatus: 'verified'
         });
       }
     });
 
-    console.log(`[DEBUG] Contatos WhatsApp carregados: ${Object.keys(contactsByStudent).length} estudantes`);
+    console.log(`[DEBUG] Resultado final:`, {
+      studentsWithContacts: Object.keys(contactsByStudent).length,
+      totalContactsWithWhatsApp: Object.values(contactsByStudent).reduce((acc, contacts) => acc + contacts.length, 0)
+    });
 
     // Cache por 45 minutos
     apiCache.set(cacheKey, contactsByStudent, 45);
@@ -424,6 +502,17 @@ export async function GET(request: NextRequest) {
     activeStudents.forEach(student => {
       const absencesCount = studentAbsences[student.estudanteId] || 0;
       if (absencesCount > 0) studentsWithAbsences++;
+
+      // Debug específico para o estudante mencionado
+      if (student.estudanteId === 'ecce6b78-e3c6-40df-bc7f-2666aef65a1a') {
+        console.log(`[DEBUG] Estudante EMANUELLY DE OLIVEIRA COUTINHO:`, {
+          estudanteId: student.estudanteId,
+          nome: student.nome,
+          absencesCount,
+          contatos: verifiedContacts[student.estudanteId] || [],
+          todasChaves: Object.keys(verifiedContacts).slice(0, 5), // Primeiras 5 chaves para verificar formato
+        });
+      }
 
       // Verificar se o número de faltas é múltiplo do valor especificado e maior que 0
       if (absencesCount > 0 && absencesCount % absenceMultiple === 0) {

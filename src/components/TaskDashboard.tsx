@@ -20,13 +20,15 @@ import {
   Users,
   AlertCircle,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Phone
 } from 'lucide-react';
 import { collection, getDocs, query, where, doc, deleteDoc, writeBatch, addDoc, updateDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/firebase.config';
+import { FIREBASE_PATHS } from '@/config/constants';
 import type { DashboardTask, TaskSection, TaskPriorityLevel } from '@/types/dashboardTasks';
 import type { UserTask } from '@/types/tasks';
-import type { FamilyInteraction } from '@/app/types';
+import type { FamilyInteraction, Student, Contato } from '@/app/types';
 import RegisterInteractionCard from './RegisterInteractionCard';
 import { toast } from 'sonner';
 import { logger } from '@/utils/logger';
@@ -47,6 +49,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [taskSections, setTaskSections] = useState<TaskSection[]>([]);
   const [clearingData, setClearingData] = useState(false);
+  const [studentContacts, setStudentContacts] = useState<Contato[]>([]);
 
   // Estados para controlar a visibilidade das seções resolvidas
   const [showResolvedSections, setShowResolvedSections] = useState<Record<TaskPriorityLevel, boolean>>({
@@ -58,6 +61,50 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   // Função para capitalizar primeira letra
   const capitalizeFirstLetter = (str: string) => {
     return str.charAt(0).toUpperCase() + str.slice(1);
+  };
+
+  // Função para formatar telefone com máscara
+  const formatPhoneNumber = (phone: string) => {
+    // Remove todos os caracteres não numéricos
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    // Aplica máscara baseada no tamanho
+    if (cleanPhone.length === 11) {
+      // Celular: (11) 91234-5678
+      return cleanPhone.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    } else if (cleanPhone.length === 10) {
+      // Fixo: (11) 1234-5678
+      return cleanPhone.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+    } else if (cleanPhone.length === 9) {
+      // Celular sem DDD: 91234-5678
+      return cleanPhone.replace(/(\d{5})(\d{4})/, '$1-$2');
+    } else if (cleanPhone.length === 8) {
+      // Fixo sem DDD: 1234-5678
+      return cleanPhone.replace(/(\d{4})(\d{4})/, '$1-$2');
+    }
+
+    // Retorna o número original se não se encaixa em nenhum padrão
+    return phone;
+  };
+
+  // Função para buscar dados completos do estudante
+  const getStudentData = async (estudanteId: string): Promise<Student | null> => {
+    try {
+      const studentsDocRef = doc(db, FIREBASE_PATHS.students());
+      const studentsDocSnap = await getDoc(studentsDocRef);
+
+      if (!studentsDocSnap.exists()) {
+        return null;
+      }
+
+      const studentsData = studentsDocSnap.data();
+      const allStudents = (studentsData.estudantes || []) as Student[];
+
+      return allStudents.find(student => student.estudanteId === estudanteId) || null;
+    } catch (error) {
+      logger.error('Erro ao buscar dados do estudante:', error as Error);
+      return null;
+    }
   };
 
   // Função para buscar dados atuais da interação
@@ -277,6 +324,16 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
+  // Função para copiar telefone
+  const copyPhoneToClipboard = async (phone: string, contactName: string) => {
+    try {
+      await navigator.clipboard.writeText(phone);
+      toast.success(`Telefone de ${contactName} copiado!`);
+    } catch (error) {
+      toast.error('Erro ao copiar telefone');
+    }
+  };
+
   // Carregar dados na inicialização
   useEffect(() => {
     loadTasks();
@@ -290,9 +347,18 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   };
 
   // Abrir modal de resolução
-  const handleResolveTask = (task: DashboardTask) => {
+  const handleResolveTask = async (task: DashboardTask) => {
     setSelectedTask(task);
     setShowInteractionModal(true);
+
+    // Buscar contatos do estudante
+    try {
+      const studentData = await getStudentData(task.estudanteId);
+      setStudentContacts(studentData?.contatos || []);
+    } catch (error) {
+      logger.error('Erro ao buscar contatos do estudante:', error as Error);
+      setStudentContacts([]);
+    }
 
     // Lista completa de tipos disponíveis (igual ao perfil-estudante)
     const allTypes = [
@@ -375,6 +441,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
       toast.success('Tarefa resolvida com sucesso!');
       setShowInteractionModal(false);
       setSelectedTask(null);
+      setStudentContacts([]); // Limpar contatos após resolução
 
       // Recarregar tarefas
       await loadTasks();
@@ -388,6 +455,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   const handleCancelInteraction = () => {
     setShowInteractionModal(false);
     setSelectedTask(null);
+    setStudentContacts([]); // Limpar contatos ao fechar modal
   };
 
   // Toggle para mostrar/ocultar seções resolvidas
@@ -522,7 +590,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                     <Clock className="w-5 h-5 text-gray-600" />
-                    À Fazer
+                    Resolver
                   </h3>
                   <Badge className="bg-orange-100 text-orange-800 border-orange-200">
                     {section.pendingTasks.length} tarefa{section.pendingTasks.length !== 1 ? 's' : ''}
@@ -634,6 +702,42 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
                       <Calendar className="w-3 h-3" />
                       {selectedTask.bimester}
                     </span>
+                  </div>
+                </div>
+
+                {/* Seção de Contatos Telefônicos */}
+                <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm mb-4 mt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Phone className="w-4 h-4 text-green-600" />
+                    <span className="text-xs font-semibold text-gray-700">Contatos</span>
+                    {studentContacts && studentContacts.length > 0 && (
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        {studentContacts.length}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {studentContacts && studentContacts.length > 0 ? (
+                      studentContacts.map((contato, index) => (
+                        <div key={index} className="group flex items-center gap-2 bg-gray-50 hover:bg-blue-50 px-3 py-2 rounded-lg border border-gray-200 hover:border-blue-200 transition-all duration-200 text-sm">
+                          {/* Nome e número */}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-medium text-gray-900 truncate">{contato.nome}:</span>
+                            <span className="text-gray-600 font-mono text-xs">
+                              {formatPhoneNumber(contato.telefone)}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-4 w-full">
+                        <div className="flex items-center justify-center gap-2 text-gray-500">
+                          <Phone className="w-4 h-4" />
+                          <span className="text-sm">Nenhum contato cadastrado</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
