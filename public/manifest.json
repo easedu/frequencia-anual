@@ -102,22 +102,7 @@
     }
   ],
   
-  "screenshots": [
-    {
-      "src": "/screenshot-home.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Tela inicial do sistema de gestão escolar"
-    },
-    {
-      "src": "/screenshot-attendance.png", 
-      "sizes": "640x1136",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Interface de controle de frequência" 
-    }
-  ],
+  "screenshots": [],
   
   "protocol_handlers": [
     {

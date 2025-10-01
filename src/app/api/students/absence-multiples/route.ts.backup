@@ -44,22 +44,26 @@ async function loadAcademicYearData(): Promise<any> {
 
   const cached = apiCache.get(cacheKey);
   if (cached) {
+    console.log('[DEBUG] Dados do ano letivo carregados do cache');
     return cached;
   }
 
   try {
+    console.log('[DEBUG] Carregando dados do ano letivo do Firebase...');
     const docRef = doc(db, '2025', 'ano_letivo');
-    const docSnap = await withTimeout(getDoc(docRef), 30000, 'Timeout loading academic year');
+    const docSnap = await withTimeout(getDoc(docRef), 8000, 'Timeout loading academic year');
 
     if (docSnap.exists()) {
       const data = docSnap.data();
+      console.log('[DEBUG] Dados do ano letivo carregados com sucesso');
       apiCache.set(cacheKey, data, 60); // Cache por 60 minutos
       return data;
     }
 
+    console.error('[ERROR] Documento do ano letivo não existe no Firebase');
     return null;
   } catch (error) {
-    console.error('Erro ao carregar ano letivo:', error);
+    console.error('[ERROR] Erro ao carregar ano letivo:', error);
     return null;
   }
 }
@@ -69,6 +73,7 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
   try {
     const data = await loadAcademicYearData();
     if (!data) {
+      console.error('[ERROR] Dados do ano letivo não carregados');
       return [];
     }
 
@@ -77,31 +82,48 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
 
     // Converter número do mês para formato MM
     const monthNumber = month.padStart(2, '0');
+    console.log(`[DEBUG] Buscando dias letivos para mês: ${month} (formatado: ${monthNumber})`);
 
     bimestres.forEach(bimestre => {
       if (data[bimestre]?.dates) {
+        console.log(`[DEBUG] Processando ${bimestre}, total de datas: ${data[bimestre].dates.length}`);
+
         const bimesterDays = data[bimestre].dates
           .filter((day: any) => day.isChecked) // Apenas dias letivos
           .map((day: any) => day.date)
           .filter((date: string) => {
-            // Filtrar apenas datas do mês especificado (formato: YYYY-MM-DD)
-            const parts = date.split('-');
+            // Filtrar apenas datas do mês especificado (formato: dd/mm/yyyy)
+            const parts = date.split('/');
             if (parts.length !== 3) return false;
 
-            const [yearPart, monthPart, dayPart] = parts;
-            return monthPart === monthNumber;
+            const [dayPart, monthPart, yearPart] = parts;
+            const match = monthPart === monthNumber;
+
+            if (match) {
+              console.log(`[DEBUG] Data encontrada no mês ${monthNumber}: ${date}`);
+            }
+
+            return match;
           });
 
+        console.log(`[DEBUG] ${bimestre}: ${bimesterDays.length} dias encontrados para mês ${monthNumber}`);
         allSchoolDays.push(...bimesterDays);
+      } else {
+        console.log(`[DEBUG] ${bimestre} não tem dados ou não tem campo 'dates'`);
       }
     });
 
+    console.log(`[DEBUG] Total de dias letivos encontrados para mês ${monthNumber}: ${allSchoolDays.length}`);
+
     return allSchoolDays.sort((a, b) => {
-      // Format: YYYY-MM-DD can be sorted directly as strings
-      return a.localeCompare(b);
+      const [dayA, monthA, yearA] = a.split('/').map(Number);
+      const [dayB, monthB, yearB] = b.split('/').map(Number);
+      const dateA = new Date(yearA, monthA - 1, dayA);
+      const dateB = new Date(yearB, monthB - 1, dayB);
+      return dateA.getTime() - dateB.getTime();
     });
   } catch (error) {
-    console.error('Erro ao carregar dias letivos do mês:', error);
+    console.error('[ERROR] Erro ao carregar dias letivos do mês:', error);
     return [];
   }
 }
@@ -115,6 +137,7 @@ async function loadStudentAbsencesForMonth(
   const cacheKey = `absences-month-${referenceMonth}-${studentIds.length}`;
   const cached = apiCache.get(cacheKey) as Record<string, number> | undefined;
   if (cached) {
+    console.log('[DEBUG] Faltas carregadas do cache');
     return cached;
   }
 
@@ -129,6 +152,7 @@ async function loadStudentAbsencesForMonth(
 
     // Criar set de datas do mês para filtro rápido
     const monthDatesSet = new Set(schoolDaysInMonth);
+    console.log(`[DEBUG] Processando ${studentIds.length} estudantes em batches menores e sequenciais`);
 
     // NOVA ESTRATÉGIA: Batches menores e sequenciais para evitar sobrecarga
     const batchSize = 10; // Reduzido drasticamente
@@ -144,6 +168,7 @@ async function loadStudentAbsencesForMonth(
 
         const batchPromise = (async () => {
           try {
+            console.log(`[DEBUG] Processando batch ${startIndex}-${startIndex + batch.length - 1}`);
             const querySnapshot = await withTimeout(
               getDocs(query(absencesRef, where('estudanteId', 'in', batch))),
               20000, // Aumentado para 20s por batch individual
@@ -153,8 +178,12 @@ async function loadStudentAbsencesForMonth(
             querySnapshot.forEach((docSnap) => {
               const data = docSnap.data();
               if (!data.justified && data.estudanteId && data.data) {
-                // Dates are now in YYYY-MM-DD format (no conversion needed)
-                const dateStr = data.data;
+                // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
+                let dateStr = data.data;
+                if (dateStr.includes('-')) {
+                  const [year, month, day] = dateStr.split('-');
+                  dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+                }
 
                 // Contar apenas faltas em dias letivos do mês especificado
                 if (monthDatesSet.has(dateStr)) {
@@ -162,8 +191,9 @@ async function loadStudentAbsencesForMonth(
                 }
               }
             });
+            console.log(`[DEBUG] Batch ${startIndex}-${startIndex + batch.length - 1} concluído`);
           } catch (error) {
-            console.warn(`Erro no batch ${startIndex}-${startIndex + batch.length - 1}:`, error);
+            console.warn(`[ERROR] Erro no batch ${startIndex}-${startIndex + batch.length - 1}:`, error);
           }
         })();
 
@@ -179,6 +209,9 @@ async function loadStudentAbsencesForMonth(
       }
     }
 
+    const totalWithAbsences = Object.values(absencesByStudent).filter(count => count > 0).length;
+    console.log(`[DEBUG] Faltas processadas: ${totalWithAbsences} estudantes com faltas`);
+
     // Cache por 30 minutos
     apiCache.set(cacheKey, absencesByStudent, 30);
     return absencesByStudent;
@@ -193,10 +226,12 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
   const cacheKey = 'whatsapp-verified-contacts';
   const cached = apiCache.get(cacheKey) as Record<string, VerifiedContact[]> | undefined;
   if (cached) {
+    console.log('[DEBUG] Contatos WhatsApp carregados do cache');
     return cached;
   }
 
   try {
+    console.log('[DEBUG] Carregando contatos WhatsApp do Firebase...');
     const verifiedContactsRef = collection(db, 'whatsapp_verified_numbers');
 
     // Reduzir timeout e adicionar fallback
@@ -208,8 +243,8 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
 
     const contactsByStudent: Record<string, VerifiedContact[]> = {};
     let totalDocuments = 0;
-    // Mudar para mapear um telefone para MÚLTIPLOS estudantes (um telefone pode pertencer a vários estudantes)
-    let phoneToStudents: Record<string, { studentId: string; contactName: string }[]> = {};
+    let phoneToStudentMap: Record<string, string> = {};
+    let phoneToContactName: Record<string, string> = {}; // Mover para escopo global
     let documentsWithStudentId = 0;
     let documentsWithWhatsApp = 0;
 
@@ -230,13 +265,19 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
 
       if (data.studentId) {
         documentsWithStudentId++;
-        // NÃO adicionar ao phoneToStudentMap aqui - os dados podem estar desatualizados
-        // O mapeamento correto será feito na ETAPA 2 baseado nos dados reais dos estudantes
+        phoneToStudentMap[phoneNumber] = data.studentId;
       }
 
       if (data.hasWhatsApp) {
         documentsWithWhatsApp++;
       }
+    });
+
+    console.log(`[DEBUG] Mapeamento inicial:`, {
+      totalDocuments,
+      documentsWithStudentId,
+      documentsWithWhatsApp,
+      phoneNumbersWithStudentId: Object.keys(phoneToStudentMap).length
     });
 
     // ETAPA 2: Buscar estudantes para fazer correspondência dos telefones sem studentId
@@ -254,19 +295,18 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
           student.contatos.forEach((contato: any) => {
             if (contato.telefone) {
               const cleanPhone = contato.telefone.replace(/\D/g, '');
-              // Filtrar apenas contatos que podem receber mensagem e estão verificados
-              // Se podeReceberMensagem não estiver definido, assumir true (retrocompatibilidade)
-              const podeReceber = contato.podeReceberMensagem !== false;
+              if (cleanPhone.length >= 10 && verifiedNumbers.has(cleanPhone)) {
+                phoneToStudentMap[cleanPhone] = student.estudanteId;
+                phoneToContactName[cleanPhone] = contato.nome || 'Contato não identificado';
 
-              if (cleanPhone.length >= 10 && verifiedNumbers.has(cleanPhone) && podeReceber) {
-                // Adicionar à lista de estudantes para este telefone (suporta múltiplos estudantes)
-                if (!phoneToStudents[cleanPhone]) {
-                  phoneToStudents[cleanPhone] = [];
+                // Debug específico para EMANUELLY
+                if (student.estudanteId === 'ecce6b78-e3c6-40df-bc7f-2666aef65a1a') {
+                  console.log(`[DEBUG] Mapeamento encontrado para EMANUELLY:`, {
+                    telefone: `${cleanPhone.substring(0, 4)}****${cleanPhone.substring(cleanPhone.length - 4)}`,
+                    contatoNome: contato.nome,
+                    hasWhatsApp: verifiedNumbers.get(cleanPhone)?.hasWhatsApp
+                  });
                 }
-                phoneToStudents[cleanPhone].push({
-                  studentId: student.estudanteId,
-                  contactName: contato.nome || 'Contato não identificado'
-                });
               }
             }
           });
@@ -274,35 +314,40 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
       });
     }
 
+    console.log(`[DEBUG] Após mapeamento com estudantes:`, {
+      phoneNumbersWithStudentId: Object.keys(phoneToStudentMap).length
+    });
+
     // ETAPA 3: Construir resultado final agrupado por studentId
-    // IMPORTANTE: Usar phoneToStudents (mapeado dos dados dos estudantes)
-    // ao invés do studentId da coleção whatsapp_verified_numbers
-    Object.entries(phoneToStudents).forEach(([phoneNumber, studentsList]) => {
-      const phoneData = verifiedNumbers.get(phoneNumber);
+    verifiedNumbers.forEach((phoneData, phoneNumber) => {
+      const studentId = phoneToStudentMap[phoneNumber];
+      const contactName = phoneToContactName[phoneNumber];
 
-      // Só incluir se tem WhatsApp verificado
-      if (phoneData?.hasWhatsApp) {
-        // Adicionar o contato para TODOS os estudantes que possuem este telefone
-        studentsList.forEach(({ studentId, contactName }) => {
-          if (!contactsByStudent[studentId]) {
-            contactsByStudent[studentId] = [];
-          }
+      // Só incluir se tem WhatsApp e conseguimos mapear para um estudante
+      if (phoneData.hasWhatsApp && studentId) {
+        if (!contactsByStudent[studentId]) {
+          contactsByStudent[studentId] = [];
+        }
 
-          contactsByStudent[studentId].push({
-            nome: contactName || phoneData.contactName || 'Contato não identificado',
-            telefone: phoneNumber,
-            hasWhatsApp: phoneData.hasWhatsApp,
-            verificationStatus: 'verified'
-          });
+        contactsByStudent[studentId].push({
+          nome: contactName || phoneData.contactName || 'Contato não identificado',
+          telefone: phoneNumber,
+          hasWhatsApp: phoneData.hasWhatsApp,
+          verificationStatus: 'verified'
         });
       }
+    });
+
+    console.log(`[DEBUG] Resultado final:`, {
+      studentsWithContacts: Object.keys(contactsByStudent).length,
+      totalContactsWithWhatsApp: Object.values(contactsByStudent).reduce((acc, contacts) => acc + contacts.length, 0)
     });
 
     // Cache por 45 minutos
     apiCache.set(cacheKey, contactsByStudent, 45);
     return contactsByStudent;
   } catch (error) {
-    console.error('Erro ao carregar contatos verificados do WhatsApp:', error);
+    console.error('[ERROR] Erro ao carregar contatos verificados do WhatsApp:', error);
     // Retorna objeto vazio em caso de erro para não bloquear a API
     return {} as Record<string, VerifiedContact[]>;
   }
@@ -315,12 +360,13 @@ async function loadVerifiedWhatsAppContactsSafe(): Promise<Record<string, Verifi
       loadVerifiedWhatsAppContacts(),
       new Promise<Record<string, VerifiedContact[]>>((resolve) => {
         setTimeout(() => {
+          console.log('[WARNING] WhatsApp contacts loading timed out, returning empty');
           resolve({} as Record<string, VerifiedContact[]>);
         }, 6000); // 6 segundos
       })
     ]);
   } catch (error) {
-    console.error('Failed to load WhatsApp contacts safely:', error);
+    console.error('[ERROR] Failed to load WhatsApp contacts safely:', error);
     return {} as Record<string, VerifiedContact[]>;
   }
 }
@@ -328,6 +374,11 @@ async function loadVerifiedWhatsAppContactsSafe(): Promise<Record<string, Verifi
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   const maxExecutionTime = 120000; // 2 minutos para produção
+
+  // Debug environment info
+  console.log(`[DEBUG] Environment - NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`[DEBUG] Current school year: ${process.env.NEXT_PUBLIC_SCHOOL_YEAR || 'default'}`);
+  console.log(`[DEBUG] Firebase paths - Students: ${FIREBASE_PATHS.students()}, Absences: ${FIREBASE_PATHS.absenceControl()}`);
 
   // Basic Authentication
   const authorization = request.headers.get('authorization');
@@ -375,6 +426,7 @@ export async function GET(request: NextRequest) {
     // Limpar cache se solicitado
     if (clearCache) {
       apiCache.clear();
+      console.log('Cache limpo por solicitação do usuário');
     }
 
     // Validação de parâmetros
@@ -393,20 +445,25 @@ export async function GET(request: NextRequest) {
       } as ApiResponse, { status: 400 });
     }
 
-    // Verificar timeout
+    // Verificar timeout com logs detalhados
     const checkTimeout = (step: string) => {
       const elapsed = Date.now() - startTime;
       if (elapsed > maxExecutionTime) {
+        console.error(`[TIMEOUT] Etapa: ${step}. Tempo decorrido: ${elapsed}ms`);
         throw new Error(`Timeout: Operação muito demorada na etapa ${step} após ${elapsed}ms`);
       }
+      console.log(`[TIMING] Etapa ${step} concluída em ${elapsed}ms`);
     };
 
     checkTimeout('início');
 
     // Carregar dias letivos do mês especificado
+    console.log(`[DEBUG] Carregando dias letivos para o mês: ${referenceMonth}`);
     const schoolDaysInMonth = await getSchoolDaysForMonth(referenceMonth);
+    console.log(`[DEBUG] Dias letivos encontrados: ${schoolDaysInMonth.length}`, schoolDaysInMonth);
 
     if (schoolDaysInMonth.length === 0) {
+      console.error(`[ERROR] Nenhum dia letivo encontrado para o mês ${referenceMonth}`);
       return NextResponse.json({
         success: false,
         error: `Nenhum dia letivo encontrado para o mês ${referenceMonth}`
@@ -432,10 +489,13 @@ export async function GET(request: NextRequest) {
 
     const studentsData = studentsDocSnap.data();
     const allStudents = (studentsData.estudantes || []) as Student[];
+    console.log(`[DEBUG] Total de estudantes na base: ${allStudents.length}`);
 
     const activeStudents = allStudents.filter(student => student.status === 'ATIVO');
+    console.log(`[DEBUG] Estudantes ativos: ${activeStudents.length}`);
 
     if (activeStudents.length === 0) {
+      console.error('[ERROR] Nenhum estudante ativo encontrado');
       return NextResponse.json({
         success: false,
         error: 'Nenhum estudante ativo encontrado'
@@ -446,20 +506,37 @@ export async function GET(request: NextRequest) {
 
     // Carregar faltas dos estudantes no mês especificado
     const studentIds = activeStudents.map(s => s.estudanteId);
+    console.log(`[DEBUG] IDs dos estudantes para carregar faltas: ${studentIds.length}`);
 
     const [studentAbsences, verifiedContacts] = await Promise.all([
       loadStudentAbsencesForMonth(studentIds, schoolDaysInMonth, referenceMonth),
       loadVerifiedWhatsAppContactsSafe()
     ]);
 
+    console.log(`[DEBUG] Faltas carregadas para ${Object.keys(studentAbsences).length} estudantes`);
+    console.log(`[DEBUG] Contatos verificados para ${Object.keys(verifiedContacts).length} estudantes`);
+
     checkTimeout('faltas e contatos carregados');
 
     // Filtrar estudantes que têm múltiplos da quantidade de faltas especificada
     const results: StudentWithAbsenceMultiples[] = [];
     let studentsWithTargetMultiples = 0;
+    let studentsWithAbsences = 0;
 
     activeStudents.forEach(student => {
       const absencesCount = studentAbsences[student.estudanteId] || 0;
+      if (absencesCount > 0) studentsWithAbsences++;
+
+      // Debug específico para o estudante mencionado
+      if (student.estudanteId === 'ecce6b78-e3c6-40df-bc7f-2666aef65a1a') {
+        console.log(`[DEBUG] Estudante EMANUELLY DE OLIVEIRA COUTINHO:`, {
+          estudanteId: student.estudanteId,
+          nome: student.nome,
+          absencesCount,
+          contatos: verifiedContacts[student.estudanteId] || [],
+          todasChaves: Object.keys(verifiedContacts).slice(0, 5), // Primeiras 5 chaves para verificar formato
+        });
+      }
 
       // Verificar se o número de faltas é múltiplo do valor especificado e maior que 0
       if (absencesCount > 0 && absencesCount % absenceMultiple === 0) {
@@ -478,6 +555,10 @@ export async function GET(request: NextRequest) {
         });
       }
     });
+
+    console.log(`[DEBUG] Estudantes com faltas: ${studentsWithAbsences}`);
+    console.log(`[DEBUG] Estudantes com múltiplos de ${absenceMultiple}: ${studentsWithTargetMultiples}`);
+    console.log(`[DEBUG] Resultados finais: ${results.length}`);
 
     // Ordenar por número de faltas (decrescente)
     results.sort((a, b) => b.absencesCount - a.absencesCount);

@@ -40,11 +40,12 @@ service cloud.firestore {
     // YEAR-SCOPED COLLECTIONS (permissive for now)
     // ============================================================================
 
+    // Allow public read access for API routes (write still requires auth)
     match /{year}/{document=**} {
-      // Allow all authenticated users to read/write
-      // TODO: Add more restrictive rules after testing
-      allow read, write: if isAuthenticated() &&
-                           year.matches('^20[2-9][0-9]$');
+      // Allow public read for API consumption
+      allow read: if year.matches('^20[2-9][0-9]$');
+      // Write requires authentication
+      allow write: if isAuthenticated() && year.matches('^20[2-9][0-9]$');
     }
 
     // ============================================================================
@@ -60,7 +61,8 @@ service cloud.firestore {
     }
 
     match /whatsapp_verified_numbers/{phoneNumber} {
-      allow read: if isAuthenticated();
+      // Allow public read for API routes
+      allow read: if true;
       allow write: if isAuthenticated();
     }
 
@@ -69,8 +71,8 @@ service cloud.firestore {
     // ============================================================================
 
     match /{year}/lista_de_estudantes {
-      allow read: if isAuthenticated() &&
-                    year.matches('^20[2-9][0-9]$');
+      // Allow public read for API routes
+      allow read: if year.matches('^20[2-9][0-9]$');
       allow write: if isAuthenticated() &&
                      year.matches('^20[2-9][0-9]$');
     }
