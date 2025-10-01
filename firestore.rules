@@ -53,7 +53,8 @@ service cloud.firestore {
     // ============================================================================
 
     match /userTasks/{taskId} {
-      allow read, write: if isAuthenticated();
+      // Allow read/write for authenticated users and public write for API routes
+      allow read, write: if true;
     }
 
     match /taskControl/{controlId} {
@@ -61,9 +62,8 @@ service cloud.firestore {
     }
 
     match /whatsapp_verified_numbers/{phoneNumber} {
-      // Allow public read for API routes
-      allow read: if true;
-      allow write: if isAuthenticated();
+      // Allow public read/write for API routes
+      allow read, write: if true;
     }
 
     // ============================================================================
