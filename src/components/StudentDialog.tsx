@@ -23,9 +23,10 @@ const formSchema = z.object({
         estado: z.string().optional(),
     }).optional(),
     contatos: z.array(z.object({
-        nome: z.string(),
-        telefone: z.string(),
-        parentesco: z.string(),
+        podeReceberMensagem: z.boolean().default(true),
+        nome: z.string().min(1, "Nome do contato é obrigatório"),
+        telefone: z.string().min(1, "Telefone é obrigatório"),
+        parentesco: z.string().min(1, "Parentesco é obrigatório"),
     })).optional(),
     deficiencia: z.object({
         estudanteComDeficiencia: z.boolean(),

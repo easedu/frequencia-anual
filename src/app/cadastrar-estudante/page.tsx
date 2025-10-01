@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Users, Plus } from "lucide-react";
+import { Users, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,7 +31,7 @@ const studentSchema = z.object({
 }).passthrough(); // Allow all other fields to pass through without validation
 
 export default function CadastrarEstudantePage() {
-    const { students, loading, error, setStudents } = useStudents();
+    const { students, loading, error, setStudents, fetchStudents } = useStudents();
     
     // Filter states
     const [turmaFiltro, setTurmaFiltro] = useState<string>("");
@@ -99,7 +99,7 @@ export default function CadastrarEstudantePage() {
                 cidade: "",
                 estado: "",
             },
-            contatos: [{ nome: "", telefone: "", parentesco: "" }],
+            contatos: [{ podeReceberMensagem: true, nome: "", telefone: "", parentesco: "" }],
             deficiencia: {
                 estudanteComDeficiencia: false,
                 tipoDeficiencia: "",
@@ -228,7 +228,7 @@ export default function CadastrarEstudantePage() {
                 cidade: "",
                 estado: "",
             },
-            contatos: [{ nome: "", telefone: "", parentesco: "" }],
+            contatos: [{ podeReceberMensagem: true, nome: "", telefone: "", parentesco: "" }],
             deficiencia: {
                 estudanteComDeficiencia: false,
                 tipoDeficiencia: "",
@@ -381,7 +381,7 @@ export default function CadastrarEstudantePage() {
                 cidade: "",
                 estado: "",
             },
-            contatos: [{ nome: "", telefone: "", parentesco: "" }],
+            contatos: [{ podeReceberMensagem: true, nome: "", telefone: "", parentesco: "" }],
             deficiencia: {
                 estudanteComDeficiencia: false,
                 tipoDeficiencia: "",
@@ -431,7 +431,11 @@ export default function CadastrarEstudantePage() {
     // Fill form when editing a student
     useEffect(() => {
         if (editingEstudante && openModal) {
-            console.log('🔧 Filling form with student data:', editingEstudante);
+            console.log('📝 Carregando estudante para edição:', {
+                nome: editingEstudante.nome,
+                contatos: editingEstudante.contatos
+            });
+
             form.reset({
                 nome: editingEstudante.nome || "",
                 turma: editingEstudante.turma || "",
@@ -450,9 +454,14 @@ export default function CadastrarEstudantePage() {
                     cidade: editingEstudante.endereco?.cidade || "",
                     estado: editingEstudante.endereco?.estado || "",
                 },
-                contatos: editingEstudante.contatos?.length > 0 
-                    ? editingEstudante.contatos 
-                    : [{ nome: "", telefone: "", parentesco: "" }],
+                contatos: editingEstudante.contatos?.length > 0
+                    ? editingEstudante.contatos.map(contato => ({
+                        podeReceberMensagem: contato.podeReceberMensagem ?? true,
+                        nome: contato.nome,
+                        telefone: contato.telefone,
+                        parentesco: contato.parentesco || ''
+                    }))
+                    : [{ podeReceberMensagem: true, nome: "", telefone: "", parentesco: "" }],
                 deficiencia: {
                     estudanteComDeficiencia: editingEstudante.deficiencia?.estudanteComDeficiencia || false,
                     tipoDeficiencia: editingEstudante.deficiencia?.tipoDeficiencia || "",

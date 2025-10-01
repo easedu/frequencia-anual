@@ -1,6 +1,7 @@
 export interface Contato {
     nome: string;
     telefone: string;
+    parentesco?: string;
 }
 
 export interface Endereco {

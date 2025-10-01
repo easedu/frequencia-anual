@@ -229,8 +229,19 @@ export class StudentServiceV2 {
         throw new Error(`Estudante com ID ${updatedStudent.estudanteId} não encontrado`);
       }
 
+      // Normalize contact data
+      const normalizedStudent = {
+        ...updatedStudent,
+        contatos: updatedStudent.contatos?.map(contato => ({
+          podeReceberMensagem: contato.podeReceberMensagem ?? true,
+          nome: StudentServiceV2.normalizeContactName(contato.nome),
+          telefone: contato.telefone,
+          parentesco: StudentServiceV2.normalizeParentesco(contato.parentesco || ''),
+        })) || [],
+      };
+
       // Add update audit fields
-      const cleanedData = StudentServiceV2.removeUndefined(updatedStudent);
+      const cleanedData = StudentServiceV2.removeUndefined(normalizedStudent);
       const dataToUpdate = addUpdateAudit(cleanedData as object, userId);
 
       await updateDoc(docRef, dataToUpdate);
@@ -260,8 +271,19 @@ export class StudentServiceV2 {
         throw new Error(`Estudante ${newStudent.nome} já existe na turma ${newStudent.turma}`);
       }
 
+      // Normalize contact data
+      const normalizedStudent = {
+        ...newStudent,
+        contatos: newStudent.contatos?.map(contato => ({
+          podeReceberMensagem: contato.podeReceberMensagem ?? true,
+          nome: StudentServiceV2.normalizeContactName(contato.nome),
+          telefone: contato.telefone,
+          parentesco: StudentServiceV2.normalizeParentesco(contato.parentesco || ''),
+        })) || [],
+      };
+
       // Add creation audit fields and soft delete initialization
-      const cleanedData = StudentServiceV2.removeUndefined(newStudent);
+      const cleanedData = StudentServiceV2.removeUndefined(normalizedStudent);
       const dataToSave = {
         ...addCreationAudit(cleanedData as object, userId),
         ...initializeSoftDelete(),
@@ -401,8 +423,10 @@ export class StudentServiceV2 {
       bolsaFamilia: s.bolsaFamilia || 'NÃO',
       matricula: s.matricula || '',
       contatos: s.contatos?.map((contato: any) => ({
+        podeReceberMensagem: contato.podeReceberMensagem ?? true,
         nome: contato.nome || '',
         telefone: contato.telefone || '',
+        parentesco: contato.parentesco || '',
       })) || [],
       email: s.email || '',
       endereco: s.endereco ? {
@@ -454,6 +478,62 @@ export class StudentServiceV2 {
         dataImportacao: prova.dataImportacao || '',
       })) || [],
     };
+  }
+
+  /**
+   * Private helper: Normalize contact name (capitalize first letter of each word)
+   */
+  private static normalizeContactName(name: string): string {
+    if (!name || typeof name !== 'string') return '';
+
+    return name
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  /**
+   * Private helper: Normalize parentesco with proper Portuguese accents
+   */
+  private static normalizeParentesco(parentesco: string): string {
+    if (!parentesco || typeof parentesco !== 'string') return '';
+
+    const normalized = parentesco.trim().toLowerCase();
+
+    // Mapa de normalizações comuns em português
+    const parentescoMap: Record<string, string> = {
+      'mae': 'Mãe',
+      'mãe': 'Mãe',
+      'pai': 'Pai',
+      'avo': 'Avó',
+      'avó': 'Avó',
+      'avô': 'Avô',
+      'avo masculino': 'Avô',
+      'avo feminino': 'Avó',
+      'tio': 'Tio',
+      'tia': 'Tia',
+      'irmao': 'Irmão',
+      'irmã': 'Irmã',
+      'irmão': 'Irmão',
+      'irma': 'Irmã',
+      'responsavel': 'Responsável',
+      'responsável': 'Responsável',
+      'tutor': 'Tutor',
+      'tutora': 'Tutora',
+      'padrasto': 'Padrasto',
+      'madrasta': 'Madrasta',
+      'outro': 'Outro',
+      'prima': 'Prima',
+      'primo': 'Primo',
+      'sobrinho': 'Sobrinho',
+      'sobrinha': 'Sobrinha',
+    };
+
+    // Retorna do mapa se encontrar, senão capitaliza a primeira letra
+    return parentescoMap[normalized] ||
+           (normalized.charAt(0).toUpperCase() + normalized.slice(1));
   }
 
   /**

@@ -149,6 +149,13 @@ export const StudentTable = memo(function StudentTable({
                 <table className="w-full">
                     <thead className="bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur-sm">
                         <tr>
+                            {visibleColumns.has("actions") && (
+                                <th className="px-6 py-4 text-left font-semibold text-slate-700 dark:text-slate-200">
+                                    <div className="flex items-center">
+                                        ✏️ <span className="ml-2">Editar</span>
+                                    </div>
+                                </th>
+                            )}
                             {visibleColumns.has("turma") && (
                                 <SortHeader 
                                     column="turma"
@@ -293,18 +300,29 @@ export const StudentTable = memo(function StudentTable({
                                     </div>
                                 </SortHeader>
                             )}
-                            {visibleColumns.has("actions") && (
-                                <th className="px-6 py-4 text-left font-semibold text-slate-700 dark:text-slate-200">
-                                    <div className="flex items-center">
-                                        ⚙️ <span className="ml-2">Ações</span>
-                                    </div>
-                                </th>
-                            )}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200/50 dark:divide-slate-600/50">
                         {currentRecords.map((est: Estudante, index: number) => (
                             <tr key={est.estudanteId || index} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-all duration-200">
+                                {visibleColumns.has("actions") && (
+                                    <td className="px-6 py-4">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                const originalIndex = students.findIndex(s => s.estudanteId === est.estudanteId);
+                                                setEditingEstudante(est);
+                                                setEditingIndex(originalIndex);
+                                                setOpenModal(true);
+                                            }}
+                                            className="text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-xl"
+                                        >
+                                            <Edit className="w-4 h-4 mr-2" />
+                                            Editar
+                                        </Button>
+                                    </td>
+                                )}
                                 {visibleColumns.has("turma") && (
                                     <td className="px-6 py-4">
                                         <div className="flex items-center">
@@ -394,7 +412,9 @@ export const StudentTable = memo(function StudentTable({
                                                     <div key={i} className="flex items-center text-sm">
                                                         <Phone className="w-3 h-3 mr-2 text-slate-500" />
                                                         <span className="text-slate-700 dark:text-slate-300 truncate">
-                                                            {contato.nome}: {formatPhoneNumber(contato.telefone)}
+                                                            {contato.nome}
+                                                            {contato.parentesco && <span className="text-slate-500"> ({contato.parentesco})</span>}
+                                                            : {formatPhoneNumber(contato.telefone)}
                                                         </span>
                                                     </div>
                                                 ))
@@ -500,32 +520,6 @@ export const StudentTable = memo(function StudentTable({
                                                     Nenhuma prova
                                                 </span>
                                             )}
-                                        </div>
-                                    </td>
-                                )}
-                                {visibleColumns.has("actions") && (
-                                    <td className="px-6 py-4">
-                                        <div className="flex justify-center">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => {
-                                                    const globalIndex = students.findIndex(
-                                                        (item) =>
-                                                            item.turma === est.turma &&
-                                                            item.nome === est.nome &&
-                                                            item.status === est.status &&
-                                                            item.bolsaFamilia === est.bolsaFamilia &&
-                                                            item.estudanteId === est.estudanteId
-                                                    );
-                                                    setEditingEstudante(est);
-                                                    setEditingIndex(globalIndex);
-                                                    setOpenModal(true);
-                                                }}
-                                                className="hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl p-2 transition-all duration-200"
-                                            >
-                                                <Edit className="w-4 h-4" />
-                                            </Button>
                                         </div>
                                     </td>
                                 )}

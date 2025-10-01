@@ -2,7 +2,7 @@ import React, { useEffect, useCallback, memo, useMemo, useState } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import Select, { MultiValue } from 'react-select';
-import { Trash2, Plus, User, Home, Phone, Heart, Save, X, MessageCircle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Trash2, Plus, User, Home, Phone, Heart, Save, X, MessageCircle, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select as ShadcnSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -16,6 +16,8 @@ import { Estudante } from '@/types';
 import { toast } from 'sonner';
 import { WhatsAppVerificationService } from '@/services/whatsappVerificationService';
 import { Badge } from '@/components/ui/badge';
+import { db } from '@/firebase.config';
+import { doc, getDoc } from 'firebase/firestore';
 
 // Types
 interface SelectOption {
@@ -43,9 +45,10 @@ const formSchema = z.object({
         estado: z.string().optional(),
     }).optional(),
     contatos: z.array(z.object({
-        nome: z.string().default(""),
-        telefone: z.string().default(""),
-        parentesco: z.string().default(""),
+        podeReceberMensagem: z.boolean().default(true),
+        nome: z.string().min(1, "Nome do contato é obrigatório"),
+        telefone: z.string().min(1, "Telefone é obrigatório"),
+        parentesco: z.string().min(1, "Parentesco é obrigatório"),
     })).optional(),
     deficiencia: z.object({
         estudanteComDeficiencia: z.boolean(),
@@ -203,6 +206,36 @@ const ContactField = memo(({
         verified: false
     });
 
+    // Verificar WhatsApp ao carregar contato existente (edição)
+    useEffect(() => {
+        const loadWhatsAppStatus = async () => {
+            const telefone = form.watch(`contatos.${index}.telefone`);
+            const cleanPhone = telefone?.replace(/\D/g, '');
+
+            // Só carregar se tiver telefone válido com 11 dígitos
+            if (!cleanPhone || cleanPhone.length !== 11) return;
+
+            try {
+                const docRef = doc(db, 'whatsapp_verified_numbers', cleanPhone);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    setWhatsappStatus({
+                        isVerifying: false,
+                        hasWhatsApp: data.hasWhatsApp,
+                        whatsappName: data.contactName,
+                        verified: true
+                    });
+                }
+            } catch (error) {
+                console.error('Erro ao carregar status do WhatsApp:', error);
+            }
+        };
+
+        loadWhatsAppStatus();
+    }, [form, index]);
+
     // Função para verificar WhatsApp quando telefone for alterado
     const verifyWhatsApp = useCallback(async (phone: string) => {
         const cleanPhone = phone.replace(/\D/g, '');
@@ -343,6 +376,29 @@ const ContactField = memo(({
             )}
         </div>
 
+        <div className="mb-4">
+            <FormField
+                control={form.control}
+                name={`contatos.${index}.podeReceberMensagem`}
+                render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                            <Checkbox
+                                checked={field.value ?? true}
+                                onCheckedChange={field.onChange}
+                                className="mt-1"
+                            />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                            <FormLabel className="text-base font-medium text-slate-700 dark:text-slate-300">
+                                Pode receber mensagem
+                            </FormLabel>
+                        </div>
+                    </FormItem>
+                )}
+            />
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <FormField
                 control={form.control}
@@ -350,7 +406,7 @@ const ContactField = memo(({
                 render={({ field }) => (
                     <FormItem>
                         <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
-                            Nome do Contato
+                            Nome do Contato <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormControl>
                             <Input
@@ -367,11 +423,32 @@ const ContactField = memo(({
 
             <FormField
                 control={form.control}
+                name={`contatos.${index}.parentesco`}
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                            Parentesco <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                            <Input
+                                {...field}
+                                value={field.value || ""}
+                                placeholder="Ex: Mãe, Pai, Responsável"
+                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                            />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+
+            <FormField
+                control={form.control}
                 name={`contatos.${index}.telefone`}
                 render={({ field }) => (
                     <FormItem>
                         <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                            Telefone
+                            Telefone <span className="text-red-500">*</span>
                             {whatsappStatus.isVerifying && (
                                 <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
                             )}
@@ -427,27 +504,6 @@ const ContactField = memo(({
                                 Nome no WhatsApp: {whatsappStatus.whatsappName}
                             </p>
                         )}
-                    </FormItem>
-                )}
-            />
-
-            <FormField
-                control={form.control}
-                name={`contatos.${index}.parentesco`}
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
-                            Parentesco
-                        </FormLabel>
-                        <FormControl>
-                            <Input
-                                {...field}
-                                value={field.value || ""}
-                                placeholder="Ex: Mãe, Pai, Responsável"
-                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
-                            />
-                        </FormControl>
-                        <FormMessage />
                     </FormItem>
                 )}
             />
@@ -520,7 +576,7 @@ export const StudentForm = memo(function StudentForm({
     // Memoizar handlers de contato
     const addContact = useCallback(() => {
         const currentContatos = form.getValues("contatos") || [];
-        form.setValue("contatos", [...currentContatos, { nome: "", telefone: "", parentesco: "" }]);
+        form.setValue("contatos", [...currentContatos, { podeReceberMensagem: true, nome: "", telefone: "", parentesco: "" }]);
     }, [form]);
 
     const removeContact = useCallback((index: number) => {
