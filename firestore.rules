@@ -40,12 +40,10 @@ service cloud.firestore {
     // YEAR-SCOPED COLLECTIONS (permissive for now)
     // ============================================================================
 
-    // Allow public read access for API routes (write still requires auth)
+    // Allow public read/write for API routes on year-scoped collections
     match /{year}/{document=**} {
-      // Allow public read for API consumption
-      allow read: if year.matches('^20[2-9][0-9]$');
-      // Write requires authentication
-      allow write: if isAuthenticated() && year.matches('^20[2-9][0-9]$');
+      // Allow public read and write for API consumption
+      allow read, write: if year.matches('^20[2-9][0-9]$');
     }
 
     // ============================================================================
@@ -71,10 +69,8 @@ service cloud.firestore {
     // ============================================================================
 
     match /{year}/lista_de_estudantes {
-      // Allow public read for API routes
-      allow read: if year.matches('^20[2-9][0-9]$');
-      allow write: if isAuthenticated() &&
-                     year.matches('^20[2-9][0-9]$');
+      // Allow public read/write for API routes
+      allow read, write: if year.matches('^20[2-9][0-9]$');
     }
   }
 }
