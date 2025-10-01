@@ -72,28 +72,48 @@ async function loadAcademicYearData(): Promise<any> {
 async function getSchoolDaysForMonth(month: string): Promise<string[]> {
   try {
     const data = await loadAcademicYearData();
-    if (!data) return [];
+    if (!data) {
+      console.error('[ERROR] Dados do ano letivo não carregados');
+      return [];
+    }
 
     const allSchoolDays: string[] = [];
     const bimestres = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
 
     // Converter número do mês para formato MM
     const monthNumber = month.padStart(2, '0');
+    console.log(`[DEBUG] Buscando dias letivos para mês: ${month} (formatado: ${monthNumber})`);
 
     bimestres.forEach(bimestre => {
       if (data[bimestre]?.dates) {
+        console.log(`[DEBUG] Processando ${bimestre}, total de datas: ${data[bimestre].dates.length}`);
+
         const bimesterDays = data[bimestre].dates
           .filter((day: any) => day.isChecked) // Apenas dias letivos
           .map((day: any) => day.date)
           .filter((date: string) => {
             // Filtrar apenas datas do mês especificado (formato: dd/mm/yyyy)
-            const [, monthPart] = date.split('/');
-            return monthPart === monthNumber;
+            const parts = date.split('/');
+            if (parts.length !== 3) return false;
+
+            const [dayPart, monthPart, yearPart] = parts;
+            const match = monthPart === monthNumber;
+
+            if (match) {
+              console.log(`[DEBUG] Data encontrada no mês ${monthNumber}: ${date}`);
+            }
+
+            return match;
           });
 
+        console.log(`[DEBUG] ${bimestre}: ${bimesterDays.length} dias encontrados para mês ${monthNumber}`);
         allSchoolDays.push(...bimesterDays);
+      } else {
+        console.log(`[DEBUG] ${bimestre} não tem dados ou não tem campo 'dates'`);
       }
     });
+
+    console.log(`[DEBUG] Total de dias letivos encontrados para mês ${monthNumber}: ${allSchoolDays.length}`);
 
     return allSchoolDays.sort((a, b) => {
       const [dayA, monthA, yearA] = a.split('/').map(Number);
@@ -103,7 +123,7 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
       return dateA.getTime() - dateB.getTime();
     });
   } catch (error) {
-    console.error('Erro ao carregar dias letivos do mês:', error);
+    console.error('[ERROR] Erro ao carregar dias letivos do mês:', error);
     return [];
   }
 }
