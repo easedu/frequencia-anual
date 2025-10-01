@@ -263,9 +263,14 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
                 if (!phoneToStudents[cleanPhone]) {
                   phoneToStudents[cleanPhone] = [];
                 }
+                // Limpar nome do contato removendo parentesco entre parênteses
+                const cleanContactName = (contato.nome || 'Contato não identificado')
+                  .replace(/\s*\([^)]*\)\s*/g, '')
+                  .trim();
+
                 phoneToStudents[cleanPhone].push({
                   studentId: student.estudanteId,
-                  contactName: contato.nome || 'Contato não identificado'
+                  contactName: cleanContactName
                 });
               }
             }
@@ -289,7 +294,7 @@ async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedCo
           }
 
           contactsByStudent[studentId].push({
-            nome: contactName || phoneData.contactName || 'Contato não identificado',
+            nome: contactName, // Usar sempre o nome dos dados reais do estudante
             telefone: phoneNumber,
             hasWhatsApp: phoneData.hasWhatsApp,
             verificationStatus: 'verified'

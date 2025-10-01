@@ -66,12 +66,13 @@ export class WhatsAppTrackingService {
 
     /**
      * Mark a phone number as verified with WhatsApp status
+     * NOTE: contactName is deprecated - names should always be fetched from student data
      */
     static async markNumberAsVerified(
         phone: string,
         hasWhatsApp: boolean,
         studentId?: string,
-        contactName?: string,
+        contactName?: string, // Deprecated - mantido para compatibilidade mas não será salvo
         verificationStatus: 'verified' | 'unavailable' | 'error' = 'verified'
     ): Promise<void> {
         try {
@@ -87,12 +88,10 @@ export class WhatsAppTrackingService {
                 verificationStatus
             };
 
-            // Só adicionar campos opcionais se tiverem valor definido
+            // Só adicionar studentId se tiver valor definido
+            // NÃO salvar contactName - deve ser buscado dos dados do estudante
             if (studentId !== undefined && studentId !== null && studentId !== "") {
                 verifiedNumber.studentId = studentId;
-            }
-            if (contactName !== undefined && contactName !== null && contactName !== "") {
-                verifiedNumber.contactName = contactName;
             }
 
             // Save to Firebase
