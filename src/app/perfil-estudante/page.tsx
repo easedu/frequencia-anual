@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from 'next/navigation';
 import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
@@ -58,6 +58,7 @@ export default function StudentProfilePage() {
     const [, setLoadingUserRole] = useState<boolean>(true);
     const [searchName, setSearchName] = useState<string>("");
     const [suggestions, setSuggestions] = useState<Student[]>([]);
+    const isSelectingStudent = useRef(false);
     const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});
     const [userRole, setUserRole] = useState<string | null>(null);
     const [editingInteraction, setEditingInteraction] = useState<FamilyInteraction | null>(null);
@@ -1110,8 +1111,20 @@ export default function StudentProfilePage() {
 
     const handleSearchName = (value: string) => {
         setSearchName(value);
+
+        // Se estamos limpando após seleção, não fazer nada mais
+        if (isSelectingStudent.current) {
+            isSelectingStudent.current = false;
+            return;
+        }
+
         setSelectedTurma("");
-        setSelectedStudentId("");
+
+        // Limpar o estudante selecionado quando o usuário digita
+        if (selectedStudentId) {
+            setSelectedStudentId("");
+        }
+
         if (value.length > 0) {
             const filtered = allStudents
                 .filter((student) => student.nome.toLowerCase().includes(value.toLowerCase()))
@@ -1123,8 +1136,9 @@ export default function StudentProfilePage() {
     };
 
     const handleSuggestionSelect = (studentId: string) => {
+        isSelectingStudent.current = true;
         setSelectedStudentId(studentId);
-        setSearchName(allStudents.find((s) => s.estudanteId === studentId)?.nome || "");
+        setSearchName(""); // Limpa o campo após seleção
         setSuggestions([]);
     };
 
@@ -1245,6 +1259,7 @@ export default function StudentProfilePage() {
                     suggestions={suggestions}
                     onSearchChange={handleSearchName}
                     onSuggestionSelect={handleSuggestionSelect}
+                    selectedStudentId={selectedStudentId}
                 />
                 <SearchByClassCard
                     selectedTurma={selectedTurma}

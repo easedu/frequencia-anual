@@ -10,6 +10,7 @@ interface SearchByNameCardProps {
     suggestions: Student[];
     onSearchChange: (value: string) => void;
     onSuggestionSelect: (studentId: string) => void;
+    selectedStudentId?: string;
 }
 
 export default function SearchByNameCard({
@@ -17,6 +18,7 @@ export default function SearchByNameCard({
     suggestions,
     onSearchChange,
     onSuggestionSelect,
+    selectedStudentId,
 }: SearchByNameCardProps) {
 
     return (
@@ -102,7 +104,7 @@ export default function SearchByNameCard({
                         )}
 
                         {/* No results message */}
-                        {searchName && suggestions.length === 0 && searchName.length > 2 && (
+                        {searchName && suggestions.length === 0 && searchName.length > 2 && !selectedStudentId && (
                             <div className="absolute z-50 bg-white border-2 border-gray-200 rounded-lg mt-1 w-full shadow-xl left-0 right-0">
                                 <div className="p-4 text-center">
                                     <Search className="w-8 h-8 text-gray-400 mx-auto mb-2" />
