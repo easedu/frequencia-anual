@@ -144,10 +144,12 @@ async function loadStudentAbsencesForMonth(
   try {
     const absencesRef = collection(db, FIREBASE_PATHS.absenceControl());
     const absencesByStudent: Record<string, number> = {};
+    const suspensionsByStudent: Record<string, number> = {};
 
-    // Inicializar todos os estudantes com 0 faltas
+    // Inicializar todos os estudantes com 0 faltas e 0 suspensões
     studentIds.forEach(id => {
       absencesByStudent[id] = 0;
+      suspensionsByStudent[id] = 0;
     });
 
     // Criar set de datas do mês para filtro rápido
@@ -188,6 +190,11 @@ async function loadStudentAbsencesForMonth(
                 // Contar apenas faltas em dias letivos do mês especificado
                 if (monthDatesSet.has(dateStr)) {
                   absencesByStudent[data.estudanteId] = (absencesByStudent[data.estudanteId] || 0) + 1;
+
+                  // Se a falta está marcada como suspensão, também contar separadamente
+                  if (data.suspensaoId) {
+                    suspensionsByStudent[data.estudanteId] = (suspensionsByStudent[data.estudanteId] || 0) + 1;
+                  }
                 }
               }
             });
@@ -209,8 +216,19 @@ async function loadStudentAbsencesForMonth(
       }
     }
 
+    // Descontar as suspensões do total de faltas
+    studentIds.forEach(id => {
+      const totalAbsences = absencesByStudent[id] || 0;
+      const totalSuspensions = suspensionsByStudent[id] || 0;
+      absencesByStudent[id] = totalAbsences - totalSuspensions;
+
+      if (totalSuspensions > 0) {
+        console.log(`[DEBUG] Estudante ${id}: ${totalAbsences} faltas - ${totalSuspensions} suspensões = ${absencesByStudent[id]} faltas efetivas`);
+      }
+    });
+
     const totalWithAbsences = Object.values(absencesByStudent).filter(count => count > 0).length;
-    console.log(`[DEBUG] Faltas processadas: ${totalWithAbsences} estudantes com faltas`);
+    console.log(`[DEBUG] Faltas processadas: ${totalWithAbsences} estudantes com faltas (após desconto de suspensões)`);
 
     // Cache por 30 minutos
     apiCache.set(cacheKey, absencesByStudent, 30);
