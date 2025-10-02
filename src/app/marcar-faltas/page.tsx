@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "@/firebase.config";
 import { logger } from "@/utils/logger";
+import { FIREBASE_PATHS } from "@/config/constants";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -47,7 +48,8 @@ import {
     CheckCircle2,
     Clock,
     User,
-    WifiOff
+    WifiOff,
+    FileText
 } from "lucide-react";
 
 // Constantes para coleções e documentos
@@ -66,6 +68,22 @@ interface AcademicYearData {
         endDate?: string;
         dates?: { date: string; isChecked: boolean }[];
     };
+}
+
+interface Atestado {
+    id: string;
+    startDate: string;
+    days: number;
+    description: string;
+    createdBy: string;
+}
+
+interface Suspensao {
+    id: string;
+    startDate: string;
+    days: number;
+    description: string;
+    createdBy: string;
 }
 
 // Funções auxiliares para datas
@@ -165,6 +183,51 @@ export default function MarcarFaltasPage() {
     // Estado para o perfil do usuário
     const [role, setRole] = useState<Role | null>(null);
 
+    // Estados para atestados e suspensões
+    const [atestados, setAtestados] = useState<Map<string, Atestado[]>>(new Map());
+    const [suspensoes, setSuspensoes] = useState<Map<string, Suspensao[]>>(new Map());
+
+    // Função helper para verificar se uma data está coberta por atestado ou suspensão
+    const checkCoverageForStudent = (studentId: string, dateStr: string): { hasAtestado: boolean; hasSuspensao: boolean; atestado?: Atestado; suspensao?: Suspensao } => {
+        const studentAtestados = atestados.get(studentId) || [];
+        const studentSuspensoes = suspensoes.get(studentId) || [];
+
+        // Converter data DD/MM/YYYY para Date
+        const [day, month, year] = dateStr.split('/').map(Number);
+        const checkDate = new Date(year, month - 1, day);
+        checkDate.setHours(0, 0, 0, 0);
+
+        // Verificar atestados
+        for (const atestado of studentAtestados) {
+            const [aDay, aMonth, aYear] = atestado.startDate.split('/').map(Number);
+            const startDate = new Date(aYear, aMonth - 1, aDay);
+            startDate.setHours(0, 0, 0, 0);
+
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + atestado.days - 1);
+
+            if (checkDate >= startDate && checkDate <= endDate) {
+                return { hasAtestado: true, hasSuspensao: false, atestado };
+            }
+        }
+
+        // Verificar suspensões
+        for (const suspensao of studentSuspensoes) {
+            const [sDay, sMonth, sYear] = suspensao.startDate.split('/').map(Number);
+            const startDate = new Date(sYear, sMonth - 1, sDay);
+            startDate.setHours(0, 0, 0, 0);
+
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + suspensao.days - 1);
+
+            if (checkDate >= startDate && checkDate <= endDate) {
+                return { hasAtestado: false, hasSuspensao: true, suspensao };
+            }
+        }
+
+        return { hasAtestado: false, hasSuspensao: false };
+    };
+
     // Carrega dados do ano letivo
     useEffect(() => {
         const fetchAcademicYearData = async () => {
@@ -238,6 +301,82 @@ export default function MarcarFaltasPage() {
 
         fetchUserRole();
     }, []);
+
+    // Carrega atestados e suspensões quando a turma for selecionada
+    useEffect(() => {
+        const loadAtestadosESuspensoes = async () => {
+            if (!selectedClass) return;
+
+            try {
+                const newAtestados = new Map<string, Atestado[]>();
+                const newSuspensoes = new Map<string, Suspensao[]>();
+
+                // Filtrar alunos da turma
+                const studentsInClass = students.filter(
+                    (est: Estudante) => est.status === "ATIVO" && est.turma === selectedClass
+                );
+
+                if (studentsInClass.length === 0) return;
+
+                // Buscar atestados e suspensões para cada aluno da turma
+                for (const student of studentsInClass) {
+                    // Buscar atestados
+                    const atestadosSnapshot = await getDocs(collection(db, FIREBASE_PATHS.medicalCertificates(student.estudanteId)));
+                    const studentAtestados: Atestado[] = atestadosSnapshot.docs.map((doc) => {
+                        const data = doc.data();
+                        // Converter de YYYY-MM-DD para DD/MM/YYYY
+                        const dateISO = data.startDate as string;
+                        let formattedDate = dateISO;
+                        if (dateISO.includes('-')) {
+                            const [year, month, day] = dateISO.split('-');
+                            formattedDate = `${day}/${month}/${year}`;
+                        }
+                        return {
+                            id: doc.id,
+                            startDate: formattedDate,
+                            days: data.days as number,
+                            description: data.description as string,
+                            createdBy: data.createdBy as string || "Não informado",
+                        };
+                    });
+
+                    // Buscar suspensões
+                    const suspensoesSnapshot = await getDocs(collection(db, FIREBASE_PATHS.suspensions(student.estudanteId)));
+                    const studentSuspensoes: Suspensao[] = suspensoesSnapshot.docs.map((doc) => {
+                        const data = doc.data();
+                        // Converter de YYYY-MM-DD para DD/MM/YYYY
+                        const dateISO = data.startDate as string;
+                        let formattedDate = dateISO;
+                        if (dateISO.includes('-')) {
+                            const [year, month, day] = dateISO.split('-');
+                            formattedDate = `${day}/${month}/${year}`;
+                        }
+                        return {
+                            id: doc.id,
+                            startDate: formattedDate,
+                            days: data.days as number,
+                            description: data.description as string,
+                            createdBy: data.createdBy as string || "Não informado",
+                        };
+                    });
+
+                    if (studentAtestados.length > 0) {
+                        newAtestados.set(student.estudanteId, studentAtestados);
+                    }
+                    if (studentSuspensoes.length > 0) {
+                        newSuspensoes.set(student.estudanteId, studentSuspensoes);
+                    }
+                }
+
+                setAtestados(newAtestados);
+                setSuspensoes(newSuspensoes);
+            } catch (error) {
+                logger.error("Erro ao carregar atestados e suspensões", error as Error);
+            }
+        };
+
+        loadAtestadosESuspensoes();
+    }, [selectedClass, students]);
 
     // Carrega faltas existentes sempre que turma ou data mudam
     useEffect(() => {
@@ -656,6 +795,7 @@ export default function MarcarFaltasPage() {
                                         .map((est: Estudante) => {
                                             const isLocked = role === "user" && existingAbsences[est.estudanteId];
                                             const isAbsent = markedAbsences[est.estudanteId];
+                                            const coverage = checkCoverageForStudent(est.estudanteId, selectedDate);
 
                                             return (
                                                 <div
@@ -682,12 +822,26 @@ export default function MarcarFaltasPage() {
                                                         />
                                                         <div>
                                                             <p className="font-medium text-gray-900">{est.nome}</p>
-                                                            {isLocked && (
-                                                                <p className="text-xs text-gray-500 flex items-center space-x-1">
-                                                                    <Clock className="w-3 h-3" />
-                                                                    <span>Já registrado</span>
-                                                                </p>
-                                                            )}
+                                                            <div className="flex items-center space-x-2 mt-1">
+                                                                {isLocked && (
+                                                                    <p className="text-xs text-gray-500 flex items-center space-x-1">
+                                                                        <Clock className="w-3 h-3" />
+                                                                        <span>Já registrado</span>
+                                                                    </p>
+                                                                )}
+                                                                {coverage.hasAtestado && (
+                                                                    <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 border-green-200">
+                                                                        <FileText className="w-3 h-3 mr-1" />
+                                                                        Atestado
+                                                                    </Badge>
+                                                                )}
+                                                                {coverage.hasSuspensao && (
+                                                                    <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800 border-orange-200">
+                                                                        <AlertCircle className="w-3 h-3 mr-1" />
+                                                                        Suspensão
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center space-x-2">

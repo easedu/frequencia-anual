@@ -15,6 +15,7 @@ export const FIREBASE_COLLECTIONS = {
   ABSENCES: `faltas`,
   ABSENCE_CONTROL: `controle`,
   MEDICAL_CERTIFICATES: `atestados`,
+  SUSPENSIONS: `suspensoes`,
   INTERACTIONS: `interactions`,
   USERS: `users`,
 } as const;
@@ -59,5 +60,6 @@ export const FIREBASE_PATHS = {
   academicYear: () => getFirebasePath(FIREBASE_COLLECTIONS.STUDENTS, FIREBASE_COLLECTIONS.ACADEMIC_YEAR),
   absenceControl: () => getFirebasePath(FIREBASE_COLLECTIONS.STUDENTS, FIREBASE_COLLECTIONS.ABSENCES, FIREBASE_COLLECTIONS.ABSENCE_CONTROL),
   medicalCertificates: (studentId: string) => getFirebasePath(FIREBASE_COLLECTIONS.STUDENTS, FIREBASE_COLLECTIONS.MEDICAL_CERTIFICATES, studentId),
+  suspensions: (studentId: string) => getFirebasePath(FIREBASE_COLLECTIONS.STUDENTS, FIREBASE_COLLECTIONS.SUSPENSIONS, studentId),
   interactions: (studentId: string) => getFirebasePath(FIREBASE_COLLECTIONS.STUDENTS, FIREBASE_COLLECTIONS.INTERACTIONS, studentId),
 } as const;

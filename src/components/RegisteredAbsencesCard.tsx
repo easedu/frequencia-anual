@@ -9,7 +9,7 @@ import {
     DialogTitle,
     DialogDescription,
 } from "@/components/ui/dialog";
-import { AbsenceRecord, Atestado, BimesterDates } from "../app/types";
+import { AbsenceRecord, Atestado, Suspensao, BimesterDates } from "../app/types";
 import { getBimesterByDate } from "../app/utils";
 import { Calendar, FileText, Clock, User, CheckCircle, XCircle, ChevronDown, ChevronRight, Trash2, AlertCircle } from "lucide-react";
 import { useState } from "react";
@@ -22,6 +22,7 @@ import { logger } from "@/utils/logger";
 interface RegisteredAbsencesCardProps {
     absences: AbsenceRecord[];
     atestados: Atestado[];
+    suspensoes: Suspensao[];
     bimesterDates: BimesterDates;
     userRole?: string | null;
     onAbsenceDeleted?: () => void;
@@ -33,6 +34,7 @@ interface BimestreAbsencesProps {
     bimester: number;
     absences: AbsenceRecord[];
     atestados: Atestado[];
+    suspensoes: Suspensao[];
     bimesterDates: BimesterDates;
     userRole?: string | null;
     onAbsenceDeleted?: () => void;
@@ -44,6 +46,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
     bimester,
     absences,
     atestados,
+    suspensoes,
     bimesterDates,
     userRole,
     onAbsenceDeleted,
@@ -266,11 +269,20 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                             </div>
 
                                             <div className="flex items-center space-x-2">
-                                                {absence.justified && (
+                                                {absence.justified && absence.atestadoId && (
                                                     <TooltipTrigger asChild>
                                                         <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-200 cursor-pointer">
                                                             <FileText className="w-3 h-3 mr-1" />
                                                             Atestado
+                                                        </Badge>
+                                                    </TooltipTrigger>
+                                                )}
+
+                                                {!absence.justified && absence.suspensaoId && (
+                                                    <TooltipTrigger asChild>
+                                                        <Badge variant="secondary" className="bg-orange-100 text-orange-800 hover:bg-orange-200 cursor-pointer">
+                                                            <AlertCircle className="w-3 h-3 mr-1" />
+                                                            Suspensão
                                                         </Badge>
                                                     </TooltipTrigger>
                                                 )}
@@ -327,6 +339,50 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                         <span className="font-medium text-gray-600">Adicionado por:</span>
                                                         <span className="text-gray-900">
                                                             {atestados.find(a => a.id === absence.atestadoId)?.createdBy || 'Não informado'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </TooltipContent>
+                                    )}
+
+                                    {!absence.justified && absence.suspensaoId && (
+                                        <TooltipContent className="p-4 max-w-[300px] bg-white border shadow-xl">
+                                            <div className="space-y-2">
+                                                <div className="flex items-center space-x-2 text-orange-600 font-medium">
+                                                    <AlertCircle className="w-4 h-4" />
+                                                    <span>Detalhes da Suspensão</span>
+                                                </div>
+
+                                                <div className="space-y-1 text-sm">
+                                                    <div className="flex items-start space-x-2">
+                                                        <span className="font-medium text-gray-600 min-w-[60px]">Descrição:</span>
+                                                        <span className="text-gray-900">
+                                                            {suspensoes.find(s => s.id === absence.suspensaoId)?.description || 'Sem descrição'}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex items-center space-x-2">
+                                                        <Calendar className="w-3 h-3 text-gray-500" />
+                                                        <span className="font-medium text-gray-600">Início:</span>
+                                                        <span className="text-gray-900">
+                                                            {formatDate(suspensoes.find(s => s.id === absence.suspensaoId)?.startDate || 'Não informado')}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex items-center space-x-2">
+                                                        <Clock className="w-3 h-3 text-gray-500" />
+                                                        <span className="font-medium text-gray-600">Dias:</span>
+                                                        <span className="text-gray-900">
+                                                            {suspensoes.find(s => s.id === absence.suspensaoId)?.days || 'Não informado'}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex items-center space-x-2">
+                                                        <User className="w-3 h-3 text-gray-500" />
+                                                        <span className="font-medium text-gray-600">Adicionado por:</span>
+                                                        <span className="text-gray-900">
+                                                            {suspensoes.find(s => s.id === absence.suspensaoId)?.createdBy || 'Não informado'}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -400,6 +456,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
 export default function RegisteredAbsencesCard({
     absences,
     atestados,
+    suspensoes,
     bimesterDates,
     userRole,
     onAbsenceDeleted,
@@ -444,6 +501,7 @@ export default function RegisteredAbsencesCard({
                             bimester={1}
                             absences={absences}
                             atestados={atestados}
+                            suspensoes={suspensoes}
                             bimesterDates={bimesterDates}
                             userRole={userRole}
                             onAbsenceDeleted={onAbsenceDeleted}
@@ -454,6 +512,7 @@ export default function RegisteredAbsencesCard({
                             bimester={2}
                             absences={absences}
                             atestados={atestados}
+                            suspensoes={suspensoes}
                             bimesterDates={bimesterDates}
                             userRole={userRole}
                             onAbsenceDeleted={onAbsenceDeleted}
@@ -464,6 +523,7 @@ export default function RegisteredAbsencesCard({
                             bimester={3}
                             absences={absences}
                             atestados={atestados}
+                            suspensoes={suspensoes}
                             bimesterDates={bimesterDates}
                             userRole={userRole}
                             onAbsenceDeleted={onAbsenceDeleted}
@@ -474,6 +534,7 @@ export default function RegisteredAbsencesCard({
                             bimester={4}
                             absences={absences}
                             atestados={atestados}
+                            suspensoes={suspensoes}
                             bimesterDates={bimesterDates}
                             userRole={userRole}
                             onAbsenceDeleted={onAbsenceDeleted}

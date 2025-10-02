@@ -16,11 +16,13 @@ import FrequencyNoJustifiedCard from "../../components/FrequencyNoJustifiedCard"
 import RegisteredAbsencesCard from "../../components/RegisteredAbsencesCard";
 import RegisterAtestadoCard from "../../components/RegisterAtestadoCard";
 import AtestadoHistoryCard from "../../components/AtestadoHistoryCard";
+import RegisterSuspensaoCard from "../../components/RegisterSuspensaoCard";
+import SuspensaoHistoryCard from "../../components/SuspensaoHistoryCard";
 import RegisterInteractionCard from "../../components/RegisterInteractionCard";
 import InteractionHistoryCard from "../../components/InteractionHistoryCard";
 import ProvaSaoPauloCard from "../../components/ProvaSaoPauloCard";
 import WhatsAppModal from "../../components/WhatsAppModal";
-import { Student, StudentRecord, FamilyInteraction, Atestado, AbsenceRecord, BimesterDates, AnoLetivoData, Contato } from "../types";
+import { Student, StudentRecord, FamilyInteraction, Atestado, Suspensao, AbsenceRecord, BimesterDates, AnoLetivoData, Contato } from "../types";
 import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate, getDiasLetivosNoPeriodo } from "../utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +39,7 @@ export default function StudentProfilePage() {
     const [studentRecordWithoutJustified, setStudentRecordWithoutJustified] = useState<StudentRecord | null>(null);
     const [absences, setAbsences] = useState<AbsenceRecord[]>([]);
     const [atestados, setAtestados] = useState<Atestado[]>([]);
+    const [suspensoes, setSuspensoes] = useState<Suspensao[]>([]);
     const [interactions, setInteractions] = useState<FamilyInteraction[]>([]);
     const [interactionType, setInteractionType] = useState<string>("");
     const [interactionDate, setInteractionDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
@@ -46,6 +49,10 @@ export default function StudentProfilePage() {
     const [atestadoDays, setAtestadoDays] = useState<string>("");
     const [atestadoDescription, setAtestadoDescription] = useState<string>("");
     const [editingAtestado, setEditingAtestado] = useState<Atestado | null>(null);
+    const [suspensaoStartDate, setSuspensaoStartDate] = useState<string>("");
+    const [suspensaoDays, setSuspensaoDays] = useState<string>("");
+    const [suspensaoDescription, setSuspensaoDescription] = useState<string>("");
+    const [editingSuspensao, setEditingSuspensao] = useState<Suspensao | null>(null);
     const [, setLoadingStudents] = useState<boolean>(true);
     const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
     const [, setLoadingUserRole] = useState<boolean>(true);
@@ -56,6 +63,7 @@ export default function StudentProfilePage() {
     const [editingInteraction, setEditingInteraction] = useState<FamilyInteraction | null>(null);
     const [showDeleteDialog, setShowDeleteDialog] = useState<string | null>(null);
     const [showDeleteAtestadoDialog, setShowDeleteAtestadoDialog] = useState<string | null>(null);
+    const [showDeleteSuspensaoDialog, setShowDeleteSuspensaoDialog] = useState<string | null>(null);
     
     // WhatsApp states
     const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
@@ -77,6 +85,19 @@ export default function StudentProfilePage() {
             setAtestadoDescription("");
         }
     }, [editingAtestado]);
+
+    // Sync form fields with editingSuspensao
+    useEffect(() => {
+        if (editingSuspensao) {
+            setSuspensaoStartDate(editingSuspensao.startDate);
+            setSuspensaoDays(editingSuspensao.days.toString());
+            setSuspensaoDescription(editingSuspensao.description);
+        } else {
+            setSuspensaoStartDate("");
+            setSuspensaoDays("");
+            setSuspensaoDescription("");
+        }
+    }, [editingSuspensao]);
 
     // Fetch user role by email
     useEffect(() => {
@@ -209,6 +230,7 @@ export default function StudentProfilePage() {
                     data: formatFirebaseDate(doc.data().data as string),
                     justified: doc.data().justified || false,
                     atestadoId: doc.data().atestadoId || undefined,
+                    suspensaoId: doc.data().suspensaoId || undefined,
                 }))
                 .filter((record: AbsenceRecord) => record.estudanteId === studentId)
                 .sort((a, b) => (parseDateToFirebase(a.data)?.localeCompare(parseDateToFirebase(b.data) || "") || 0));
@@ -225,6 +247,17 @@ export default function StudentProfilePage() {
                 createdBy: doc.data().createdBy as string || "Não informado",
             })).sort((a, b) => (parseDateToFirebase(b.startDate)?.localeCompare(parseDateToFirebase(a.startDate) || "") || 0));
             setAtestados(atestadoRecords);
+
+            // Fetch suspensoes
+            const suspensoesSnapshot = await getDocs(collection(db, FIREBASE_PATHS.suspensions(studentId)));
+            const suspensaoRecords: Suspensao[] = suspensoesSnapshot.docs.map((doc) => ({
+                id: doc.id,
+                startDate: formatFirebaseDate(doc.data().startDate as string),
+                days: doc.data().days as number,
+                description: doc.data().description as string,
+                createdBy: doc.data().createdBy as string || "Não informado",
+            })).sort((a, b) => (parseDateToFirebase(b.startDate)?.localeCompare(parseDateToFirebase(a.startDate) || "") || 0));
+            setSuspensoes(suspensaoRecords);
 
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -301,39 +334,19 @@ export default function StudentProfilePage() {
             };
             setStudentRecordWithoutJustified(aggregatedNoJustified);
 
-            // Fetch interactions from both collections for compatibility
-            const newInteractionsSnapshot = await getDocs(collection(db, FIREBASE_PATHS.interactions(studentId)));
-            const oldInteractionsSnapshot = await getDocs(collection(db, FIREBASE_PATHS.interactions(studentId)));
+            // Fetch interactions from the main collection
+            const interactionsSnapshot = await getDocs(collection(db, FIREBASE_PATHS.interactions(studentId)));
 
-            const interactionRecords: FamilyInteraction[] = [];
-
-            // Mapear interações da collection nova
-            newInteractionsSnapshot.docs.forEach(doc => {
-                const interaction = {
-                    id: doc.id,
-                    type: doc.data().type as string,
-                    date: formatFirebaseDate(doc.data().date as string),
-                    description: doc.data().description as string,
-                    createdBy: doc.data().createdBy as string || "Não informado",
-                    sensitive: doc.data().sensitive as boolean || false,
-                    _collection: 'interacoes_familia' // Indicador da collection
-                } as FamilyInteraction & { _collection: string };
-                interactionRecords.push(interaction);
-            });
-
-            // Mapear interações da collection antiga
-            oldInteractionsSnapshot.docs.forEach(doc => {
-                const interaction = {
-                    id: doc.id,
-                    type: doc.data().type as string,
-                    date: formatFirebaseDate(doc.data().date as string),
-                    description: doc.data().description as string,
-                    createdBy: doc.data().createdBy as string || "Não informado",
-                    sensitive: doc.data().sensitive as boolean || false,
-                    _collection: 'interactions' // Indicador da collection
-                } as FamilyInteraction & { _collection: string };
-                interactionRecords.push(interaction);
-            });
+            const interactionRecords: FamilyInteraction[] = interactionsSnapshot.docs.map(doc => ({
+                id: doc.id,
+                type: doc.data().type as string,
+                date: formatFirebaseDate(doc.data().date as string),
+                description: doc.data().description as string,
+                createdBy: doc.data().createdBy as string || "Não informado",
+                sensitive: doc.data().sensitive as boolean || false,
+                studentId: studentId,
+                _collection: 'interactions'
+            } as FamilyInteraction & { _collection: string }));
 
             // Ordenar por data
             interactionRecords.sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
@@ -404,6 +417,7 @@ export default function StudentProfilePage() {
             const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
             const interactionData: Omit<FamilyInteraction, "id"> = {
+                studentId: selectedStudentId,
                 type: interactionType,
                 date: formattedDate,
                 description: interactionDescription,
@@ -411,7 +425,7 @@ export default function StudentProfilePage() {
                 sensitive: interactionSensitive,
             };
 
-            await addDoc(collection(db, "2025", "interacoes_familia", selectedStudentId), interactionData);
+            await addDoc(collection(db, FIREBASE_PATHS.interactions(selectedStudentId)), interactionData);
             setInteractionType("");
             setInteractionDate(new Date().toLocaleDateString("pt-BR"));
             setInteractionDescription("");
@@ -441,11 +455,7 @@ export default function StudentProfilePage() {
         }
 
         try {
-            // Determinar a collection correta baseada no indicador
-            const interactionWithCollection = editingInteraction as FamilyInteraction & { _collection?: string };
-            const collectionName = interactionWithCollection._collection || "interacoes_familia"; // Default para nova
-
-            const interactionRef = doc(db, "2025", collectionName, selectedStudentId, editingInteraction.id);
+            const interactionRef = doc(db, FIREBASE_PATHS.interactions(selectedStudentId), editingInteraction.id);
             await updateDoc(interactionRef, {
                 type: interactionType,
                 date: formattedDate,
@@ -469,11 +479,7 @@ export default function StudentProfilePage() {
     const handleDeleteInteraction = async (interactionId: string): Promise<void> => {
         if (!selectedStudentId) return;
         try {
-            // Encontrar a interação para determinar a collection
-            const interactionToDelete = interactions.find(i => i.id === interactionId) as FamilyInteraction & { _collection?: string };
-            const collectionName = interactionToDelete?._collection || "interacoes_familia"; // Default para nova
-
-            const interactionRef = doc(db, "2025", collectionName, selectedStudentId, interactionId);
+            const interactionRef = doc(db, FIREBASE_PATHS.interactions(selectedStudentId), interactionId);
             await deleteDoc(interactionRef);
             await fetchStudentData(selectedStudentId);
             toast.success("Interação excluída com sucesso!");
@@ -737,6 +743,252 @@ export default function StudentProfilePage() {
             toast.error("Erro ao excluir atestado. Tente novamente.");
         } finally {
             setShowDeleteAtestadoDialog(null);
+        }
+    };
+
+    const handleAddSuspensao = async (): Promise<void> => {
+        if (!selectedStudentId || !suspensaoStartDate || !suspensaoDays || !suspensaoDescription) {
+            toast.error("Preencha todos os campos para adicionar uma suspensão.");
+            return;
+        }
+
+        const formattedDate = parseDateToFirebase(suspensaoStartDate);
+        const days = parseInt(suspensaoDays);
+        if (!formattedDate) {
+            toast.error("Data inválida. Use o formato DD/MM/YYYY.");
+            return;
+        }
+        if (isNaN(days) || days < 1) {
+            toast.error("Número de dias inválido.");
+            return;
+        }
+
+        try {
+            const startDate = parseDate(suspensaoStartDate);
+            if (!startDate) throw new Error("Data inválida");
+            const endDate = new Date(startDate);
+            endDate.setDate(startDate.getDate() + days - 1);
+
+            const suspensaoData: Omit<Suspensao, "id"> = {
+                startDate: formattedDate,
+                days,
+                description: suspensaoDescription,
+                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
+            };
+
+            const suspensaoRef = await addDoc(collection(db, FIREBASE_PATHS.suspensions(selectedStudentId)), suspensaoData);
+            const suspensaoId = suspensaoRef.id;
+
+            // Obter os dias letivos no período da suspensão
+            const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
+
+            // Obter as faltas já existentes para o aluno
+            const faltasSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
+            const faltasExistentes = new Map();
+
+            faltasSnapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.estudanteId === selectedStudentId) {
+                    const dataFormatada = formatFirebaseDate(data.data);
+                    faltasExistentes.set(dataFormatada, {
+                        id: doc.id,
+                        justified: data.justified || false,
+                        suspensaoId: data.suspensaoId
+                    });
+                }
+            });
+
+            // Criar ou atualizar registros de faltas para os dias letivos (NÃO justificadas)
+            const batch = writeBatch(db);
+            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
+
+            for (const dataLetiva of diasLetivos) {
+                let dataFirebase: string;
+
+                if (dataLetiva.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    dataFirebase = dataLetiva;
+                } else {
+                    const converted = parseDateToFirebase(dataLetiva);
+                    if (!converted) continue;
+                    dataFirebase = converted;
+                }
+
+                const dataBrasileira = formatFirebaseDate(dataFirebase);
+                const faltaExistente = faltasExistentes.get(dataBrasileira);
+
+                if (faltaExistente) {
+                    // Atualizar falta existente (NÃO justificada)
+                    const faltaRef = doc(db, FIREBASE_PATHS.absenceControl(), faltaExistente.id);
+                    batch.update(faltaRef, {
+                        justified: false,
+                        suspensaoId
+                    });
+                } else {
+                    // Criar nova falta NÃO justificada
+                    const newFaltaRef = doc(controleColRef);
+                    batch.set(newFaltaRef, {
+                        estudanteId: selectedStudentId,
+                        data: dataFirebase,
+                        turma: student?.turma || "",
+                        justified: false,
+                        suspensaoId
+                    });
+                }
+            }
+
+            await batch.commit();
+
+            setSuspensaoStartDate("");
+            setSuspensaoDays("");
+            setSuspensaoDescription("");
+            await fetchStudentData(selectedStudentId);
+
+            document.getElementById("suspensao-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+            toast.success("Suspensão salva com sucesso!");
+        } catch (error) {
+            logger.error("Erro ao cadastrar suspensão", error as Error);
+            toast.error("Erro ao salvar suspensão. Tente novamente.");
+        }
+    };
+
+    const handleEditSuspensao = async (): Promise<void> => {
+        if (!editingSuspensao || !selectedStudentId || !suspensaoStartDate || !suspensaoDays || !suspensaoDescription) {
+            toast.error("Preencha todos os campos para editar a suspensão.");
+            return;
+        }
+
+        const formattedDate = parseDateToFirebase(suspensaoStartDate);
+        const days = parseInt(suspensaoDays);
+        if (!formattedDate) {
+            toast.error("Data inválida. Use o formato DD/MM/YYYY.");
+            return;
+        }
+        if (isNaN(days) || days < 1) {
+            toast.error("Número de dias inválido.");
+            return;
+        }
+
+        try {
+            const suspensaoRef = doc(db, FIREBASE_PATHS.suspensions(selectedStudentId), editingSuspensao.id);
+            await updateDoc(suspensaoRef, {
+                startDate: formattedDate,
+                days,
+                description: suspensaoDescription,
+                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
+            });
+
+            // Reset absences previously marked by this suspensao
+            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
+            const batch = writeBatch(db);
+
+            // Primeiro, remover as marcações das faltas anteriores
+            for (const doc of absenceSnapshot.docs) {
+                if (doc.data().suspensaoId === editingSuspensao.id) {
+                    batch.update(doc.ref, {
+                        suspensaoId: deleteField(),
+                    });
+                }
+            }
+
+            // Update absences within the new suspensao period
+            const startDate = parseDate(suspensaoStartDate);
+            if (!startDate) throw new Error("Data inválida");
+            const endDate = new Date(startDate);
+            endDate.setDate(startDate.getDate() + days - 1);
+
+            // Obter os dias letivos no período da suspensão atualizada
+            const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
+
+            // Mapear as faltas existentes
+            const faltasExistentes = new Map();
+            absenceSnapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.estudanteId === selectedStudentId) {
+                    const dataFormatada = formatFirebaseDate(data.data);
+                    faltasExistentes.set(dataFormatada, {
+                        id: doc.id,
+                        ref: doc.ref
+                    });
+                }
+            });
+
+            // Criar ou atualizar registros de faltas para os dias letivos no novo período
+            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
+
+            for (const dataLetiva of diasLetivos) {
+                let dataFirebase: string;
+
+                if (dataLetiva.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    dataFirebase = dataLetiva;
+                } else {
+                    const converted = parseDateToFirebase(dataLetiva);
+                    if (!converted) continue;
+                    dataFirebase = converted;
+                }
+
+                const dataBrasileira = formatFirebaseDate(dataFirebase);
+                const faltaExistente = faltasExistentes.get(dataBrasileira);
+
+                if (faltaExistente) {
+                    // Atualizar falta existente (NÃO justificada)
+                    batch.update(faltaExistente.ref, {
+                        justified: false,
+                        suspensaoId: editingSuspensao.id
+                    });
+                } else {
+                    // Criar nova falta NÃO justificada
+                    const newFaltaRef = doc(controleColRef);
+                    batch.set(newFaltaRef, {
+                        estudanteId: selectedStudentId,
+                        data: dataFirebase,
+                        turma: student?.turma || "",
+                        justified: false,
+                        suspensaoId: editingSuspensao.id
+                    });
+                }
+            }
+
+            await batch.commit();
+
+            setEditingSuspensao(null);
+            setSuspensaoStartDate("");
+            setSuspensaoDays("");
+            setSuspensaoDescription("");
+            await fetchStudentData(selectedStudentId);
+            toast.success("Suspensão atualizada com sucesso!");
+        } catch (error) {
+            logger.error("Erro ao atualizar suspensão", error as Error);
+            toast.error("Erro ao atualizar suspensão. Tente novamente.");
+        }
+    };
+
+    const handleDeleteSuspensao = async (suspensaoId: string): Promise<void> => {
+        if (!selectedStudentId) return;
+        try {
+            const suspensaoRef = doc(db, FIREBASE_PATHS.suspensions(selectedStudentId), suspensaoId);
+            await deleteDoc(suspensaoRef);
+
+            // Remove absences marked by this suspensao
+            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
+            const batch = writeBatch(db);
+
+            for (const doc of absenceSnapshot.docs) {
+                if (doc.data().suspensaoId === suspensaoId) {
+                    batch.update(doc.ref, {
+                        suspensaoId: deleteField(),
+                    });
+                }
+            }
+
+            await batch.commit();
+            await fetchStudentData(selectedStudentId);
+            toast.success("Suspensão excluída com sucesso!");
+        } catch (error) {
+            logger.error("Erro ao excluir suspensão", error as Error);
+            toast.error("Erro ao excluir suspensão. Tente novamente.");
+        } finally {
+            setShowDeleteSuspensaoDialog(null);
         }
     };
 
@@ -1034,6 +1286,7 @@ export default function StudentProfilePage() {
                     <RegisteredAbsencesCard
                         absences={absences}
                         atestados={atestados}
+                        suspensoes={suspensoes}
                         bimesterDates={bimesterDates}
                         userRole={userRole}
                         onAbsenceDeleted={handleAbsenceDeleted}
@@ -1059,6 +1312,27 @@ export default function StudentProfilePage() {
                         setShowDeleteAtestadoDialog={setShowDeleteAtestadoDialog}
                         setEditingAtestado={setEditingAtestado}
                         onDeleteAtestado={handleDeleteAtestado}
+                    />
+                    <RegisterSuspensaoCard
+                        suspensaoStartDate={suspensaoStartDate}
+                        suspensaoDays={suspensaoDays}
+                        suspensaoDescription={suspensaoDescription}
+                        editingSuspensao={editingSuspensao}
+                        setSuspensaoStartDate={setSuspensaoStartDate}
+                        setSuspensaoDays={setSuspensaoDays}
+                        setSuspensaoDescription={setSuspensaoDescription}
+                        setEditingSuspensao={setEditingSuspensao}
+                        onAddSuspensao={handleAddSuspensao}
+                        onEditSuspensao={handleEditSuspensao}
+                        id="suspensao-card"
+                    />
+                    <SuspensaoHistoryCard
+                        suspensoes={suspensoes}
+                        userRole={userRole}
+                        showDeleteSuspensaoDialog={showDeleteSuspensaoDialog}
+                        setShowDeleteSuspensaoDialog={setShowDeleteSuspensaoDialog}
+                        setEditingSuspensao={setEditingSuspensao}
+                        onDeleteSuspensao={handleDeleteSuspensao}
                     />
                     <RegisterInteractionCard
                         interactionType={interactionType}

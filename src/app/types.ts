@@ -98,11 +98,20 @@ export interface Atestado {
     createdBy: string;
 }
 
+export interface Suspensao {
+    id: string;
+    startDate: string;
+    days: number;
+    description: string;
+    createdBy: string;
+}
+
 export interface AbsenceRecord {
     estudanteId: string;
     data: string;
     justified: boolean;
     atestadoId?: string;
+    suspensaoId?: string;
 }
 
 export interface BimesterDate {
