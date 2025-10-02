@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHeader, TableRow, TableHead } from "@/components/ui/table";
@@ -179,25 +179,39 @@ export default function RelatorioFaltasPage() {
         calculateDiasLetivos();
     }, [calculateDiasLetivos]);
 
-    const getAbsencesByMonth = (estudanteId: string, monthIndex: number): number => {
-        return absenceRecords.filter(record => {
-            const recordDate = new Date(record.data);
-            return (
-                record.estudanteId === estudanteId &&
-                recordDate.getMonth() === monthIndex &&
-                (!excludeJustified || !record.justified)
-            );
-        }).length;
-    };
+    // Memoizar cálculos de faltas por estudante/mês para evitar recalcular sempre
+    const absencesByStudentMonth = useMemo(() => {
+        const cache: Record<string, Record<number, number>> = {};
 
-    const getPercentageByMonth = (estudanteId: string, monthIndex: number): string => {
+        students.forEach(student => {
+            cache[student.estudanteId] = {};
+            months.forEach((_, monthIndex) => {
+                cache[student.estudanteId][monthIndex] = absenceRecords.filter(record => {
+                    const recordDate = new Date(record.data);
+                    return (
+                        record.estudanteId === student.estudanteId &&
+                        recordDate.getMonth() === monthIndex &&
+                        (!excludeJustified || !record.justified)
+                    );
+                }).length;
+            });
+        });
+
+        return cache;
+    }, [students, absenceRecords, excludeJustified]);
+
+    const getAbsencesByMonth = useCallback((estudanteId: string, monthIndex: number): number => {
+        return absencesByStudentMonth[estudanteId]?.[monthIndex] || 0;
+    }, [absencesByStudentMonth]);
+
+    const getPercentageByMonth = useCallback((estudanteId: string, monthIndex: number): string => {
         const absences = getAbsencesByMonth(estudanteId, monthIndex);
         const diasLetivosMes = diasLetivos[monthIndex] || 0;
         const frequency = diasLetivosMes > 0 ? (1 - absences / diasLetivosMes) * 100 : 100;
         return frequency.toFixed(1) + "%";
-    };
+    }, [getAbsencesByMonth, diasLetivos]);
 
-    const hasLowFrequency = (estudanteId: string): boolean => {
+    const hasLowFrequency = useCallback((estudanteId: string): boolean => {
         return months.some((month, index) => {
             if (selectedMonths.has(month) && showFrequency) {
                 const absences = getAbsencesByMonth(estudanteId, index);
@@ -207,19 +221,21 @@ export default function RelatorioFaltasPage() {
             }
             return false;
         });
-    };
+    }, [selectedMonths, showFrequency, getAbsencesByMonth, diasLetivos]);
 
-    const filteredStudents = students
-        .filter(student => {
-            const matchesSearch = searchFilter === "" ||
-                student.turma.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                student.nome.toLowerCase().includes(searchFilter.toLowerCase());
-            
-            const matchesFrequencyFilter = !showOnlyLowFrequency || hasLowFrequency(student.estudanteId);
-            
-            return matchesSearch && matchesFrequencyFilter;
-        })
-        .sort((a, b) => a.nome.localeCompare(b.nome));
+    const filteredStudents = useMemo(() => {
+        return students
+            .filter(student => {
+                const matchesSearch = searchFilter === "" ||
+                    student.turma.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                    student.nome.toLowerCase().includes(searchFilter.toLowerCase());
+
+                const matchesFrequencyFilter = !showOnlyLowFrequency || hasLowFrequency(student.estudanteId);
+
+                return matchesSearch && matchesFrequencyFilter;
+            })
+            .sort((a, b) => a.nome.localeCompare(b.nome));
+    }, [students, searchFilter, showOnlyLowFrequency, hasLowFrequency]);
 
     const totalRecords = filteredStudents.length;
     const totalPages = Math.ceil(totalRecords / recordsPerPage);
@@ -235,6 +251,22 @@ export default function RelatorioFaltasPage() {
             newSelectedMonths.add(month);
         }
         setSelectedMonths(newSelectedMonths);
+    };
+
+    const handleShowAbsencesChange = (checked: boolean): void => {
+        setShowAbsences(checked);
+    };
+
+    const handleShowFrequencyChange = (checked: boolean): void => {
+        setShowFrequency(checked);
+    };
+
+    const handleExcludeJustifiedChange = (checked: boolean): void => {
+        setExcludeJustified(checked);
+    };
+
+    const handleShowOnlyLowFrequencyChange = (checked: boolean): void => {
+        setShowOnlyLowFrequency(checked);
     };
 
     const handleRecordsPerPageChange = (value: string): void => {
@@ -472,7 +504,7 @@ export default function RelatorioFaltasPage() {
                                     <Checkbox
                                         id="showAbsences"
                                         checked={showAbsences}
-                                        onCheckedChange={(checked) => setShowAbsences(checked as boolean)}
+                                        onCheckedChange={(checked) => handleShowAbsencesChange(checked as boolean)}
                                         className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                     />
                                     <label htmlFor="showAbsences" className="text-sm font-medium cursor-pointer flex items-center gap-1">
@@ -485,7 +517,7 @@ export default function RelatorioFaltasPage() {
                                     <Checkbox
                                         id="showFrequency"
                                         checked={showFrequency}
-                                        onCheckedChange={(checked) => setShowFrequency(checked as boolean)}
+                                        onCheckedChange={(checked) => handleShowFrequencyChange(checked as boolean)}
                                         className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                     />
                                     <label htmlFor="showFrequency" className="text-sm font-medium cursor-pointer flex items-center gap-1">
@@ -498,7 +530,7 @@ export default function RelatorioFaltasPage() {
                                     <Checkbox
                                         id="excludeJustified"
                                         checked={excludeJustified}
-                                        onCheckedChange={(checked) => setExcludeJustified(checked as boolean)}
+                                        onCheckedChange={(checked) => handleExcludeJustifiedChange(checked as boolean)}
                                         className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                     />
                                     <label htmlFor="excludeJustified" className="text-sm font-medium cursor-pointer flex items-center gap-1">
@@ -511,7 +543,7 @@ export default function RelatorioFaltasPage() {
                                     <Checkbox
                                         id="showOnlyLowFrequency"
                                         checked={showOnlyLowFrequency}
-                                        onCheckedChange={(checked) => setShowOnlyLowFrequency(checked as boolean)}
+                                        onCheckedChange={(checked) => handleShowOnlyLowFrequencyChange(checked as boolean)}
                                         className="data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
                                     />
                                     <label htmlFor="showOnlyLowFrequency" className="text-sm font-medium cursor-pointer flex items-center gap-1 text-red-700">
@@ -525,29 +557,29 @@ export default function RelatorioFaltasPage() {
                         {/* Tabela */}
                         <div className="rounded-lg border border-slate-200 overflow-hidden">
                             <Table>
-                                <TableHeader className="bg-slate-50">
-                                    <TableRow>
-                                        <TableHead className="font-semibold text-slate-800 text-center border-r border-slate-200">Turma</TableHead>
-                                        <TableHead className="font-semibold text-slate-800 border-r border-slate-200">Nome do Estudante</TableHead>
-                                        {months.map((month, index) => (
-                                            selectedMonths.has(month) && (
-                                                <TableHead key={month} className="font-semibold text-slate-800 text-center border-r border-slate-200 last:border-r-0">
-                                                    <div className="space-y-1">
-                                                        <div>{month}</div>
-                                                        <div className="text-xs font-normal text-slate-600">
-                                                            ({diasLetivos[index] || 0} dias)
+                                    <TableHeader className="bg-slate-50">
+                                        <TableRow>
+                                            <TableHead className="font-semibold text-slate-800 text-center border-r border-slate-200">Turma</TableHead>
+                                            <TableHead className="font-semibold text-slate-800 border-r border-slate-200">Nome do Estudante</TableHead>
+                                            {months.map((month, index) => (
+                                                selectedMonths.has(month) && (
+                                                    <TableHead key={month} className="font-semibold text-slate-800 text-center border-r border-slate-200 last:border-r-0">
+                                                        <div className="space-y-1">
+                                                            <div>{month}</div>
+                                                            <div className="text-xs font-normal text-slate-600">
+                                                                ({diasLetivos[index] || 0} dias)
+                                                            </div>
+                                                            <div className="text-xs font-normal text-slate-600">
+                                                                {(showAbsences && showFrequency) ? "Faltas | %" : showAbsences ? "Faltas" : "%"}
+                                                            </div>
                                                         </div>
-                                                        <div className="text-xs font-normal text-slate-600">
-                                                            {(showAbsences && showFrequency) ? "Faltas | %" : showAbsences ? "Faltas" : "%"}
-                                                        </div>
-                                                    </div>
-                                                </TableHead>
-                                            )
-                                        ))}
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {currentRecords.length === 0 ? (
+                                                    </TableHead>
+                                                )
+                                            ))}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {currentRecords.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={2 + selectedMonths.size} className="text-center py-12">
                                                 <div className="flex flex-col items-center gap-3">
