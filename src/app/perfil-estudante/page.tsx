@@ -25,6 +25,7 @@ import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDat
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import WhatsAppTrackingService from "../../services/whatsappTrackingService";
+import { FIREBASE_PATHS } from "@/config/constants";
 
 export default function StudentProfilePage() {
     const searchParams = useSearchParams();
@@ -201,7 +202,7 @@ export default function StudentProfilePage() {
             if (foundStudent) setStudent(foundStudent);
 
             // Fetch absences
-            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
             const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs
                 .map((doc) => ({
                     estudanteId: doc.data().estudanteId as string,
@@ -215,7 +216,7 @@ export default function StudentProfilePage() {
             setAbsences(absenceRecords);
 
             // Fetch atestados
-            const atestadosSnapshot = await getDocs(collection(db, "2025", "atestados", studentId));
+            const atestadosSnapshot = await getDocs(collection(db, FIREBASE_PATHS.medicalCertificates(studentId)));
             const atestadoRecords: Atestado[] = atestadosSnapshot.docs.map((doc) => ({
                 id: doc.id,
                 startDate: formatFirebaseDate(doc.data().startDate as string),
@@ -301,8 +302,8 @@ export default function StudentProfilePage() {
             setStudentRecordWithoutJustified(aggregatedNoJustified);
 
             // Fetch interactions from both collections for compatibility
-            const newInteractionsSnapshot = await getDocs(collection(db, "2025", "interacoes_familia", studentId));
-            const oldInteractionsSnapshot = await getDocs(collection(db, "2025", "interactions", studentId));
+            const newInteractionsSnapshot = await getDocs(collection(db, FIREBASE_PATHS.interactions(studentId)));
+            const oldInteractionsSnapshot = await getDocs(collection(db, FIREBASE_PATHS.interactions(studentId)));
 
             const interactionRecords: FamilyInteraction[] = [];
 
@@ -514,14 +515,14 @@ export default function StudentProfilePage() {
                 createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
             };
 
-            const atestadoRef = await addDoc(collection(db, "2025", "atestados", selectedStudentId), atestadoData);
+            const atestadoRef = await addDoc(collection(db, FIREBASE_PATHS.medicalCertificates(selectedStudentId)), atestadoData);
             const atestadoId = atestadoRef.id;
 
             // Obter os dias letivos no período do atestado
             const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
 
             // Obter as faltas já existentes para o aluno
-            const faltasSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const faltasSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
             const faltasExistentes = new Map();
 
             faltasSnapshot.docs.forEach(doc => {
@@ -538,17 +539,30 @@ export default function StudentProfilePage() {
 
             // Criar ou atualizar registros de faltas para os dias letivos
             const batch = writeBatch(db);
-            const controleColRef = collection(db, "2025", "faltas", "controle");
+            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
 
             for (const dataLetiva of diasLetivos) {
-                const dataFirebase = parseDateToFirebase(dataLetiva);
-                if (!dataFirebase) continue;
+                // dataLetiva vem em formato ISO (YYYY-MM-DD) de getDiasLetivosNoPeriodo
+                // Precisamos garantir que está no formato correto para o Firebase
+                let dataFirebase: string;
 
-                const faltaExistente = faltasExistentes.get(dataLetiva);
+                // Se já está em formato YYYY-MM-DD, usar direto
+                if (dataLetiva.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    dataFirebase = dataLetiva;
+                } else {
+                    // Se está em formato DD/MM/YYYY, converter
+                    const converted = parseDateToFirebase(dataLetiva);
+                    if (!converted) continue;
+                    dataFirebase = converted;
+                }
+
+                // Converter para formato brasileiro para buscar no Map
+                const dataBrasileira = formatFirebaseDate(dataFirebase);
+                const faltaExistente = faltasExistentes.get(dataBrasileira);
 
                 if (faltaExistente) {
                     // Atualizar falta existente
-                    const faltaRef = doc(db, "2025", "faltas", "controle", faltaExistente.id);
+                    const faltaRef = doc(db, FIREBASE_PATHS.absenceControl(), faltaExistente.id);
                     batch.update(faltaRef, {
                         justified: true,
                         atestadoId
@@ -600,7 +614,7 @@ export default function StudentProfilePage() {
         }
 
         try {
-            const atestadoRef = doc(db, "2025", "atestados", selectedStudentId, editingAtestado.id);
+            const atestadoRef = doc(db, FIREBASE_PATHS.medicalCertificates(selectedStudentId), editingAtestado.id);
             await updateDoc(atestadoRef, {
                 startDate: formattedDate,
                 days,
@@ -609,7 +623,7 @@ export default function StudentProfilePage() {
             });
 
             // Reset absences previously justified by this atestado
-            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
             const batch = writeBatch(db);
 
             // Primeiro, remover as justificativas das faltas anteriores
@@ -645,13 +659,23 @@ export default function StudentProfilePage() {
             });
 
             // Criar ou atualizar registros de faltas para os dias letivos no novo período
-            const controleColRef = collection(db, "2025", "faltas", "controle");
+            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
 
             for (const dataLetiva of diasLetivos) {
-                const dataFirebase = parseDateToFirebase(dataLetiva);
-                if (!dataFirebase) continue;
+                // dataLetiva vem em formato ISO (YYYY-MM-DD) de getDiasLetivosNoPeriodo
+                let dataFirebase: string;
 
-                const faltaExistente = faltasExistentes.get(dataLetiva);
+                if (dataLetiva.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    dataFirebase = dataLetiva;
+                } else {
+                    const converted = parseDateToFirebase(dataLetiva);
+                    if (!converted) continue;
+                    dataFirebase = converted;
+                }
+
+                // Converter para formato brasileiro para buscar no Map
+                const dataBrasileira = formatFirebaseDate(dataFirebase);
+                const faltaExistente = faltasExistentes.get(dataBrasileira);
 
                 if (faltaExistente) {
                     // Atualizar falta existente
@@ -689,11 +713,11 @@ export default function StudentProfilePage() {
     const handleDeleteAtestado = async (atestadoId: string): Promise<void> => {
         if (!selectedStudentId) return;
         try {
-            const atestadoRef = doc(db, "2025", "atestados", selectedStudentId, atestadoId);
+            const atestadoRef = doc(db, FIREBASE_PATHS.medicalCertificates(selectedStudentId), atestadoId);
             await deleteDoc(atestadoRef);
 
             // Reset absences justified by this atestado
-            const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
+            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
             const batch = writeBatch(db);
 
             for (const doc of absenceSnapshot.docs) {
