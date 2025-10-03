@@ -4,7 +4,7 @@ import { db } from '@/firebase.config';
 import { FIREBASE_PATHS } from '@/config/constants';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // 5 minutos
+export const maxDuration = 60; // 5 minutos
 
 interface MigrateDataResult {
   success: boolean;
