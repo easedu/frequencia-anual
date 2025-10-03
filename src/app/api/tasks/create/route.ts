@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collection, doc, getDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import { FIREBASE_PATHS } from '@/config/constants';
 import { logger } from '@/utils/logger';
 import type { Student, FamilyInteraction } from '@/app/types';
 import type { UserTask, TaskType } from '@/types/tasks';
+import { getStudent } from '@/services/studentDataService';
 
 /**
  * Interface para os dados de entrada da API
@@ -123,24 +124,65 @@ async function getBimesterFromDate(month: number, year: number): Promise<string>
 }
 
 /**
- * Função para buscar dados completos do estudante
+ * FASE 3: Função para buscar dados completos do estudante com DUAL-READ
  */
 async function getStudentData(estudanteId: string): Promise<Student | null> {
   try {
-    const studentsDocRef = doc(db, FIREBASE_PATHS.students());
-    const studentsDocSnap = await getDoc(studentsDocRef);
+    console.log(`[TASKS-CREATE] Buscando estudante ${estudanteId} com dual-read...`);
 
-    if (!studentsDocSnap.exists()) {
+    const result = await getStudent(estudanteId);
+
+    if (!result.student) {
+      logger.warn(`Estudante ${estudanteId} não encontrado`);
       return null;
     }
 
-    const studentsData = studentsDocSnap.data();
-    const allStudents = (studentsData.estudantes || []) as Student[];
-
-    return allStudents.find(student => student.estudanteId === estudanteId) || null;
+    console.log(`[TASKS-CREATE] ✅ Estudante encontrado - Fonte: ${result._dataSource.source.toUpperCase()}`);
+    return result.student;
   } catch (error) {
     logger.error('Erro ao buscar dados do estudante:', error as Error);
     return null;
+  }
+}
+
+/**
+ * FASE 3: Função para salvar interação em AMBAS estruturas (dual-write)
+ */
+async function saveInteractionDualWrite(
+  batch: ReturnType<typeof writeBatch>,
+  estudanteId: string,
+  interactionData: Omit<FamilyInteraction, "id">
+): Promise<{ id: string; savedInOld: boolean; savedInNew: boolean }> {
+  const interactionId = doc(collection(db, 'temp')).id; // Gerar ID único
+
+  try {
+    // 1. ESTRUTURA ANTIGA: 2025/interactions/{estudanteId}/collection
+    const oldInteractionRef = doc(collection(db, FIREBASE_PATHS.interactions(estudanteId)));
+    batch.set(oldInteractionRef, interactionData);
+
+    // 2. ESTRUTURA NOVA: students/{id}/interactions
+    const newInteractionRef = doc(db, 'students', estudanteId, 'interactions', interactionId);
+    batch.set(newInteractionRef, {
+      ...interactionData,
+      createdAt: serverTimestamp(),
+      anoLetivo: '2025'
+    });
+
+    console.log(`[TASKS-CREATE] 💾 Interação configurada para dual-write (ID: ${interactionId})`);
+
+    return {
+      id: interactionId,
+      savedInOld: true,
+      savedInNew: true
+    };
+  } catch (error) {
+    logger.error('Erro ao configurar dual-write de interação:', error as Error);
+    // Mesmo com erro, continuar (batch ainda não foi committed)
+    return {
+      id: interactionId,
+      savedInOld: false,
+      savedInNew: false
+    };
   }
 }
 
@@ -312,11 +354,8 @@ export async function POST(request: NextRequest) {
 
     batch.set(taskRef, newTask);
 
-    // Se tarefa está resolvida, criar interação
+    // FASE 3: Se tarefa está resolvida, criar interação com DUAL-WRITE
     if (taskData.is_resolved && taskData.action_taken && taskData.action_description) {
-      const interactionRef = doc(collection(db, FIREBASE_PATHS.interactions(taskData.estudante_id)));
-      interactionId = interactionRef.id;
-
       const interactionData: Omit<FamilyInteraction, "id"> = {
         studentId: taskData.estudante_id,
         type: taskData.action_taken,
@@ -326,10 +365,19 @@ export async function POST(request: NextRequest) {
         sensitive: false
       };
 
-      batch.set(interactionRef, interactionData);
+      // Salvar em AMBAS estruturas usando dual-write
+      const interactionResult = await saveInteractionDualWrite(
+        batch,
+        taskData.estudante_id,
+        interactionData
+      );
+
+      interactionId = interactionResult.id;
 
       // Atualizar tarefa com ID da interação
       batch.update(taskRef, { interactionId });
+
+      console.log(`[TASKS-CREATE] ✅ Interação dual-write configurada: old=${interactionResult.savedInOld}, new=${interactionResult.savedInNew}`);
     }
 
     // Executar transação

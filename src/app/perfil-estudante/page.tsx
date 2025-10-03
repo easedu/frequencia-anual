@@ -221,7 +221,52 @@ export default function StudentProfilePage() {
         try {
             setLoadingProfile(true);
             const foundStudent = allStudents.find((s: Student) => s.estudanteId === studentId);
-            if (foundStudent) setStudent(foundStudent);
+
+            // Buscar contatos da NOVA estrutura (students/{id}/contacts)
+            // A nova estrutura tem nome e parentesco separados, além de campo podeReceberWhatsapp
+            let studentWithContacts = foundStudent;
+            if (foundStudent) {
+                try {
+                    const contactsRef = collection(db, 'students', studentId, 'contacts');
+                    const contactsSnap = await getDocs(contactsRef);
+
+                    if (!contactsSnap.empty) {
+                        // Mapear contatos da nova estrutura para o formato esperado
+                        // Estrutura nova: { nome: "Valeria", parentesco: "Mãe", podeReceberWhatsapp: true }
+                        // Estrutura antiga: { nome: "Valeria (mãe)", podeReceberMensagem: true }
+                        const newContacts: Contato[] = contactsSnap.docs.map(doc => {
+                            const data = doc.data();
+                            return {
+                                nome: data.nome || '',
+                                telefone: data.telefoneNumerico || data.telefone || '',
+                                parentesco: data.parentesco || '',
+                                podeReceberMensagem: data.podeReceberWhatsapp !== false
+                            };
+                        });
+
+                        // Criar novo objeto com contatos da nova estrutura
+                        studentWithContacts = {
+                            ...foundStudent,
+                            contatos: newContacts
+                        };
+
+                        logger.info('Contatos carregados da nova estrutura', {
+                            estudanteId: studentId,
+                            totalContatos: newContacts.length
+                        });
+                    } else {
+                        // Fallback: usar contatos da estrutura antiga
+                        logger.info('Usando contatos da estrutura antiga (fallback)', {
+                            estudanteId: studentId
+                        });
+                    }
+                } catch (error) {
+                    logger.error('Erro ao buscar contatos da nova estrutura, usando fallback', error as Error);
+                    // Em caso de erro, usar contatos da estrutura antiga
+                }
+
+                setStudent(studentWithContacts);
+            }
 
             // Fetch absences
             const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));

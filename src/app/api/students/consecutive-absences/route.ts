@@ -3,6 +3,7 @@ import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firesto
 import { db } from '@/firebase.config';
 import { FIREBASE_PATHS } from '@/config/constants';
 import { apiCache, withTimeout, processInChunks } from '@/utils/apiOptimization';
+import { getStudentsByYear } from '@/services/studentDataService';
 
 interface SchoolDay {
   date: string;
@@ -387,20 +388,22 @@ export async function GET(request: NextRequest) {
 
     checkTimeout();
 
-    // Carregar estudantes
-    const docRef = doc(db, FIREBASE_PATHS.students());
-    const docSnap = await getDoc(docRef);
+    // FASE 3: Carregar estudantes com DUAL-READ
+    console.log('[CONSECUTIVE-ABSENCES] Carregando estudantes com dual-read...');
+    const studentsResult = await getStudentsByYear('2025');
 
-    if (!docSnap.exists()) {
+    if (!studentsResult.students || studentsResult.students.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'Dados de estudantes não encontrados'
       } as ApiResponse, { status: 404 });
     }
 
-    const data = docSnap.data();
-    const students = (data.estudantes || []) as any[];
+    const students = studentsResult.students as any[];
     const activeStudents = students.filter((student: any) => student.status === 'ATIVO');
+
+    console.log(`[CONSECUTIVE-ABSENCES] ✅ ${students.length} estudantes carregados (${activeStudents.length} ativos)`);
+    console.log(`[CONSECUTIVE-ABSENCES] 📊 Fonte de dados: ${studentsResult._dataSource.source.toUpperCase()}`);
 
     if (activeStudents.length === 0) {
       return NextResponse.json({

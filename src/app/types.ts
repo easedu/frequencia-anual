@@ -2,6 +2,7 @@ export interface Contato {
     nome: string;
     telefone: string;
     parentesco?: string;
+    podeReceberMensagem?: boolean;
 }
 
 export interface Endereco {

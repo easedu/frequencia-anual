@@ -243,7 +243,12 @@ export default function StudentInfoCard({
                                         <div key={index} className="group flex items-center gap-2 bg-gray-50 hover:bg-blue-50 px-3 py-2 rounded-lg border border-gray-200 hover:border-blue-200 transition-all duration-200 text-sm">
                                             {/* Nome e número */}
                                             <div className="flex items-center gap-2 min-w-0">
-                                                <span className="font-medium text-gray-900 truncate">{contato.nome}:</span>
+                                                <span className="font-medium text-gray-900 truncate">
+                                                    {contato.nome}
+                                                    {contato.parentesco && (
+                                                        <span className="text-xs text-gray-500 ml-1">({contato.parentesco})</span>
+                                                    )}:
+                                                </span>
                                                 <span className="text-gray-600 font-mono text-xs">
                                                     {formatPhoneNumber(contato.telefone)}
                                                 </span>

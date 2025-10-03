@@ -32,7 +32,35 @@ const studentSchema = z.object({
 
 export default function CadastrarEstudantePage() {
     const { students, loading, error, setStudents, fetchStudents } = useStudents();
-    
+
+    // DEBUG: Log dos primeiros 3 registros da coleção StudentServiceV2
+    useEffect(() => {
+        const debugCollection = async () => {
+            try {
+                console.log('[DEBUG-CADASTRO] 🔍 Buscando dados da coleção StudentServiceV2...');
+                const allStudents = await StudentServiceV2.getStudents();
+                const first3 = allStudents.slice(0, 3);
+
+                console.log('[DEBUG-CADASTRO] 📊 Total de estudantes na coleção:', allStudents.length);
+                console.log('[DEBUG-CADASTRO] 📝 Primeiros 3 registros:', JSON.stringify(first3, null, 2));
+
+                if (first3.length > 0) {
+                    console.log('[DEBUG-CADASTRO] 📍 Exemplo de estudante:', {
+                        estudanteId: first3[0].estudanteId,
+                        nome: first3[0].nome,
+                        turma: first3[0].turma,
+                        status: first3[0].status,
+                        contatos: first3[0].contatos?.length || 0
+                    });
+                }
+            } catch (error) {
+                console.error('[DEBUG-CADASTRO] ❌ Erro ao buscar dados:', error);
+            }
+        };
+
+        debugCollection();
+    }, []);
+
     // Filter states
     const [turmaFiltro, setTurmaFiltro] = useState<string>("");
     const [nomeFiltro, setNomeFiltro] = useState<string>("");

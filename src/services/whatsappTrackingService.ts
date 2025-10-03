@@ -1,13 +1,14 @@
 import { db } from "@/firebase.config";
-import { 
-    collection, 
-    doc, 
-    getDoc, 
-    setDoc, 
-    getDocs, 
-    query, 
-    where, 
-    serverTimestamp 
+import {
+    collection,
+    doc,
+    getDoc,
+    setDoc,
+    getDocs,
+    query,
+    where,
+    serverTimestamp,
+    updateDoc
 } from "firebase/firestore";
 import { logger } from "@/utils/logger";
 
@@ -67,13 +68,16 @@ export class WhatsAppTrackingService {
     /**
      * Mark a phone number as verified with WhatsApp status
      * NOTE: contactName is deprecated - names should always be fetched from student data
+     *
+     * FASE 3: Implementa DUAL-WRITE (salva em ambas estruturas)
      */
     static async markNumberAsVerified(
         phone: string,
         hasWhatsApp: boolean,
         studentId?: string,
         contactName?: string, // Deprecated - mantido para compatibilidade mas não será salvo
-        verificationStatus: 'verified' | 'unavailable' | 'error' = 'verified'
+        verificationStatus: 'verified' | 'unavailable' | 'error' = 'verified',
+        contactId?: string // NOVO: ID do contato na nova estrutura
     ): Promise<void> {
         try {
             const cleanPhone = this.cleanPhoneNumber(phone);
@@ -94,25 +98,62 @@ export class WhatsAppTrackingService {
                 verifiedNumber.studentId = studentId;
             }
 
-            // Save to Firebase
-            const docRef = doc(db, this.COLLECTION_PATH, cleanPhone);
-            await setDoc(docRef, verifiedNumber, { merge: true });
-            
-            // Update cache
-            this.cache.set(cleanPhone, verifiedNumber);
-            this.cacheExpiry.set(cleanPhone, Date.now() + this.CACHE_DURATION);
-            
-            logger.info("Number marked as verified", {
-                phone: `${cleanPhone.substring(0, 4)}****${cleanPhone.substring(cleanPhone.length - 4)}`,
+            // DUAL-WRITE: Salvar em AMBAS estruturas
+            const errors: string[] = [];
+
+            const [oldResult, newResult] = await Promise.allSettled([
+                // 1. Estrutura ANTIGA (whatsapp_verified_numbers)
+                setDoc(doc(db, this.COLLECTION_PATH, cleanPhone), verifiedNumber, { merge: true }),
+
+                // 2. Estrutura NOVA (students/{id}/contacts/{contactId}) - SE tiver os IDs
+                studentId && contactId
+                    ? updateDoc(doc(db, 'students', studentId, 'contacts', contactId), {
+                        'whatsapp.verified': true,
+                        'whatsapp.exists': hasWhatsApp,
+                        'whatsapp.number': cleanPhone,
+                        'whatsapp.verifiedAt': serverTimestamp(),
+                        'whatsapp.verificationStatus': verificationStatus
+                    })
+                    : Promise.resolve() // Skip se não tiver IDs necessários
+            ]);
+
+            // Verificar resultados
+            if (oldResult.status === 'rejected') {
+                errors.push(`Estrutura antiga falhou: ${oldResult.reason}`);
+                logger.error("Failed to save to old structure", { phone: cleanPhone }, oldResult.reason as Error);
+            } else {
+                logger.info("Saved to old structure (whatsapp_verified_numbers)", { phone: `${cleanPhone.substring(0, 4)}****` });
+            }
+
+            if (newResult.status === 'rejected') {
+                errors.push(`Estrutura nova falhou: ${newResult.reason}`);
+                logger.error("Failed to save to new structure", { phone: cleanPhone, studentId, contactId }, newResult.reason as Error);
+            } else if (studentId && contactId) {
+                logger.info("Saved to new structure (students/contacts)", { phone: `${cleanPhone.substring(0, 4)}****`, studentId, contactId });
+            }
+
+            // Se pelo menos UMA estrutura funcionou = sucesso
+            if (oldResult.status === 'fulfilled' || newResult.status === 'fulfilled') {
+                // Update cache
+                this.cache.set(cleanPhone, verifiedNumber);
+                this.cacheExpiry.set(cleanPhone, Date.now() + this.CACHE_DURATION);
+
+                logger.info("Number marked as verified (dual-write)", {
+                    phone: `${cleanPhone.substring(0, 4)}****${cleanPhone.substring(cleanPhone.length - 4)}`,
+                    hasWhatsApp,
+                    studentId,
+                    savedInOld: oldResult.status === 'fulfilled',
+                    savedInNew: newResult.status === 'fulfilled'
+                });
+            } else {
+                throw new Error(`Ambas estruturas falharam: ${errors.join('; ')}`);
+            }
+
+        } catch (error) {
+            logger.error("Error marking number as verified", {
+                phone,
                 hasWhatsApp,
                 studentId
-            });
-            
-        } catch (error) {
-            logger.error("Error marking number as verified", { 
-                phone, 
-                hasWhatsApp, 
-                studentId 
             }, error as Error);
             throw error;
         }

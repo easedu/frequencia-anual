@@ -4,6 +4,7 @@ import { db } from '@/firebase.config';
 import { FIREBASE_PATHS } from '@/config/constants';
 import { apiCache, withTimeout } from '@/utils/apiOptimization';
 import { Student } from '@/app/types';
+import { getStudentContacts } from '@/services/studentDataService';
 
 interface VerifiedContact {
   nome: string;
@@ -188,7 +189,91 @@ async function loadStudentAbsencesForMonth(
   }
 }
 
-// Função para buscar contatos verificados do WhatsApp (CORRIGIDA)
+// FASE 3: Função com DUAL-READ OTIMIZADO para contatos WhatsApp
+// Detecta rapidamente qual estrutura usar sem fazer 735 queries
+async function loadVerifiedWhatsAppContactsDualRead(activeStudents: Student[]): Promise<Record<string, VerifiedContact[]>> {
+  const cacheKey = 'whatsapp-verified-contacts-dual';
+  const cached = apiCache.get(cacheKey) as Record<string, VerifiedContact[]> | undefined;
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    console.log('[DUAL-READ] Verificando qual estrutura usar...');
+    const startTime = Date.now();
+
+    // OTIMIZAÇÃO: Testar APENAS 1 estudante para detectar qual estrutura usar
+    // Isso evita fazer 735 queries desnecessárias
+    if (activeStudents.length > 0) {
+      try {
+        const testResult = await getStudentContacts(activeStudents[0].estudanteId);
+
+        // Se primeira query retornou da NOVA estrutura com dados reais
+        if (testResult._dataSource.source === 'new' &&
+            testResult.contacts.length > 0 &&
+            !testResult.contacts[0]._placeholder) {
+
+          console.log('[DUAL-READ] ✅ Nova estrutura detectada, carregando TODOS os contatos...');
+
+          // Carregar todos em paralelo (batch)
+          const contactsByStudent: Record<string, VerifiedContact[]> = {};
+
+          // Processar em chunks para não sobrecarregar
+          const chunkSize = 50;
+          for (let i = 0; i < activeStudents.length; i += chunkSize) {
+            const chunk = activeStudents.slice(i, i + chunkSize);
+            const promises = chunk.map(student => getStudentContacts(student.estudanteId));
+            const results = await Promise.allSettled(promises);
+
+            results.forEach((result, index) => {
+              if (result.status === 'fulfilled' && result.value._dataSource.source === 'new') {
+                const verifiedContacts: VerifiedContact[] = result.value.contacts
+                  .filter((contact: any) =>
+                    contact.whatsapp?.verified &&
+                    contact.whatsapp?.exists &&
+                    contact.podeReceberWhatsapp !== false
+                  )
+                  .map((contact: any) => ({
+                    nome: contact.nome || 'Contato não identificado',
+                    telefone: contact.telefoneNumerico || contact.telefone,
+                    hasWhatsApp: contact.whatsapp.exists,
+                    verificationStatus: contact.whatsapp.verificationStatus || 'verified'
+                  }));
+
+                if (verifiedContacts.length > 0) {
+                  contactsByStudent[chunk[index].estudanteId] = verifiedContacts;
+                }
+              }
+            });
+          }
+
+          const elapsed = Date.now() - startTime;
+          console.log(`[DUAL-READ] ✅ ${Object.keys(contactsByStudent).length} estudantes com contatos da NOVA estrutura (${elapsed}ms)`);
+
+          apiCache.set(cacheKey, contactsByStudent, 30);
+          return contactsByStudent;
+        }
+      } catch (error) {
+        console.warn('[DUAL-READ] Erro ao testar nova estrutura:', error);
+      }
+    }
+
+    // FALLBACK: Se chegou aqui, usar estrutura ANTIGA (mais rápido)
+    console.log('[DUAL-READ] 📦 Usando estrutura ANTIGA (fallback rápido)...');
+    const oldContacts = await loadVerifiedWhatsAppContacts();
+    const elapsed = Date.now() - startTime;
+    console.log(`[DUAL-READ] ✅ ${Object.keys(oldContacts).length} estudantes da estrutura ANTIGA (${elapsed}ms)`);
+
+    apiCache.set(cacheKey, oldContacts, 30);
+    return oldContacts;
+
+  } catch (error) {
+    console.error('[DUAL-READ] Erro ao carregar contatos:', error);
+    return {} as Record<string, VerifiedContact[]>;
+  }
+}
+
+// Função para buscar contatos verificados do WhatsApp (ANTIGA - mantida para fallback)
 async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedContact[]>> {
   const cacheKey = 'whatsapp-verified-contacts';
   const cached = apiCache.get(cacheKey) as Record<string, VerifiedContact[]> | undefined;
@@ -452,9 +537,10 @@ export async function GET(request: NextRequest) {
     // Carregar faltas dos estudantes no mês especificado
     const studentIds = activeStudents.map(s => s.estudanteId);
 
+    // FASE 3: Usar DUAL-READ para contatos WhatsApp
     const [studentAbsences, verifiedContacts] = await Promise.all([
       loadStudentAbsencesForMonth(studentIds, schoolDaysInMonth, referenceMonth),
-      loadVerifiedWhatsAppContactsSafe()
+      loadVerifiedWhatsAppContactsDualRead(activeStudents)
     ]);
 
     checkTimeout('faltas e contatos carregados');

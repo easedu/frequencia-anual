@@ -1,7 +1,7 @@
 // Service Worker para Sistema de Frequência Escolar
-// Versão: 1.0.0
+// Versão: 1.0.1 - Fix: Não interceptar requisições POST
 
-const CACHE_NAME = 'frequencia-escolar-v1.0.0';
+const CACHE_NAME = 'frequencia-escolar-v1.0.1';
 const OFFLINE_URL = '/offline';
 
 // Recursos essenciais para funcionamento offline
@@ -115,26 +115,32 @@ self.addEventListener('fetch', (event) => {
 
 async function handleRequest(request) {
   const url = new URL(request.url);
-  
+
+  // IMPORTANTE: Não interceptar requisições POST, PUT, DELETE, PATCH
+  // Deixar essas requisições irem direto para o servidor
+  if (request.method !== 'GET') {
+    return fetch(request);
+  }
+
   try {
     // 1. ESTRATÉGIA: Network First para dados críticos (sempre tentar buscar online primeiro)
     if (isCriticalData(url)) {
       return await networkFirstStrategy(request);
     }
-    
+
     // 2. ESTRATÉGIA: Cache First para recursos estáticos (CSS, JS, imagens)
     if (isStaticResource(url)) {
       return await cacheFirstStrategy(request);
     }
-    
+
     // 3. ESTRATÉGIA: Stale While Revalidate para páginas HTML
     if (isHTMLPage(url)) {
       return await staleWhileRevalidateStrategy(request);
     }
-    
+
     // 4. ESTRATÉGIA padrão: Network First
     return await networkFirstStrategy(request);
-    
+
   } catch (error) {
     console.error('❌ Service Worker: Erro ao processar requisição:', error);
     return await getFallbackResponse(request);

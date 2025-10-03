@@ -130,11 +130,13 @@ export class WhatsAppVerificationService {
 
     /**
      * Verifica e salva automaticamente o status do WhatsApp para um número
+     * FASE 3: Suporta dual-write passando contactId
      */
     static async checkAndSaveWhatsAppStatus(
         phone: string,
         studentId?: string,
-        contactName?: string
+        contactName?: string,
+        contactId?: string // NOVO: Para dual-write na nova estrutura
     ): Promise<{
         success: boolean;
         hasWhatsApp: boolean;
@@ -150,13 +152,14 @@ export class WhatsAppVerificationService {
                 // Determinar o status baseado no tipo de erro
                 const verificationStatus = (checkResult as any).isApiUnavailable ? 'unavailable' : 'error';
 
-                // Salvar como verificação indisponível ou erro
+                // Salvar como verificação indisponível ou erro (DUAL-WRITE)
                 await WhatsAppTrackingService.markNumberAsVerified(
                     phone,
                     false, // hasWhatsApp = false quando há erro
                     studentId || undefined,
                     contactName || undefined,
-                    verificationStatus
+                    verificationStatus,
+                    contactId || undefined // FASE 3: Para dual-write
                 );
 
                 return {
@@ -167,14 +170,15 @@ export class WhatsAppVerificationService {
                 };
             }
 
-            // Salvar no Firebase usando o serviço existente
+            // Salvar no Firebase usando o serviço existente (DUAL-WRITE)
             // Só passar studentId e contactName se não forem undefined
             await WhatsAppTrackingService.markNumberAsVerified(
                 phone,
                 checkResult.hasWhatsApp,
                 studentId || undefined,
                 contactName || checkResult.whatsappName || undefined,
-                'verified'
+                'verified',
+                contactId || undefined // FASE 3: Para dual-write
             );
 
             logger.info("WhatsApp status saved to database", {

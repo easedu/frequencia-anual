@@ -72,5 +72,19 @@ service cloud.firestore {
       // Allow public read/write for API routes
       allow read, write: if year.matches('^20[2-9][0-9]$');
     }
+
+    // ============================================================================
+    // NEW STUDENT COLLECTION STRUCTURE (Phase 1 migration)
+    // ============================================================================
+
+    match /students/{studentId} {
+      // Allow public read/write for migration and API routes
+      allow read, write: if true;
+
+      // Allow subcollections (contacts, etc)
+      match /{document=**} {
+        allow read, write: if true;
+      }
+    }
   }
 }

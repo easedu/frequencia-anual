@@ -27,6 +27,7 @@ import { db } from '@/firebase.config';
 import * as XLSX from 'xlsx';
 import WhatsAppModal from '@/components/WhatsAppModal';
 import { logger } from '@/utils/logger';
+import { getStudentContacts } from '@/services/studentDataService';
 
 interface PhoneContact {
   telefone: string;
@@ -88,26 +89,76 @@ export default function TelefonesPage() {
     return uniqueContacts.sort((a, b) => a.telefone.localeCompare(b.telefone));
   }, [students]);
 
-  // Carregar dados de verificação do WhatsApp
+  // FASE 3: Carregar dados de verificação do WhatsApp com DUAL-READ OTIMIZADO
   const loadWhatsAppVerificationData = async () => {
     try {
       setLoadingWhatsAppData(true);
 
-      // Carregar todos os números verificados
+      // Mapa de telefones verificados
       const verifiedNumbers = new Map<string, { hasWhatsApp: boolean; verifiedAt: string }>();
+      const startTime = Date.now();
 
-      const querySnapshot = await getDocs(collection(db, 'whatsapp_verified_numbers'));
+      console.log('[TELEFONES-DUAL-READ] Verificando qual estrutura usar...');
 
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        const docId = doc.id;
+      // OTIMIZAÇÃO: Testar APENAS 1 estudante para detectar qual estrutura
+      if (students.length > 0) {
+        try {
+          const testResult = await getStudentContacts(students[0].estudanteId);
 
-        // Usar o doc.id como chave (que é como o Firebase salva)
-        verifiedNumbers.set(docId, {
-          hasWhatsApp: data.hasWhatsApp,
-          verifiedAt: data.verifiedAt?.toDate?.()?.toISOString() || new Date().toISOString()
-        });
-      });
+          // Se primeira query retornou da NOVA estrutura com dados reais
+          if (testResult._dataSource.source === 'new' &&
+              testResult.contacts.length > 0 &&
+              !testResult.contacts[0]._placeholder) {
+
+            console.log('[TELEFONES-DUAL-READ] ✅ Nova estrutura detectada, carregando em paralelo...');
+
+            // Carregar todos em paralelo (chunks de 50)
+            const chunkSize = 50;
+            for (let i = 0; i < students.length; i += chunkSize) {
+              const chunk = students.slice(i, i + chunkSize);
+              const promises = chunk.map(s => getStudentContacts(s.estudanteId));
+              const results = await Promise.allSettled(promises);
+
+              results.forEach((result) => {
+                if (result.status === 'fulfilled' && result.value._dataSource.source === 'new') {
+                  result.value.contacts.forEach((contact: any) => {
+                    if (contact.whatsapp?.verified && contact.telefoneNumerico) {
+                      verifiedNumbers.set(contact.telefoneNumerico, {
+                        hasWhatsApp: contact.whatsapp.exists || false,
+                        verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || new Date().toISOString()
+                      });
+                    }
+                  });
+                }
+              });
+            }
+
+            const elapsed = Date.now() - startTime;
+            console.log(`[TELEFONES-DUAL-READ] ✅ ${verifiedNumbers.size} números da NOVA estrutura (${elapsed}ms)`);
+          } else {
+            // FALLBACK: Estrutura antiga
+            throw new Error('Nova estrutura vazia, usar fallback');
+          }
+        } catch (error) {
+          // FALLBACK: Usar estrutura ANTIGA
+          console.log('[TELEFONES-DUAL-READ] 📦 Usando estrutura ANTIGA (fallback rápido)...');
+
+          const querySnapshot = await getDocs(collection(db, 'whatsapp_verified_numbers'));
+
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            const docId = doc.id;
+
+            verifiedNumbers.set(docId, {
+              hasWhatsApp: data.hasWhatsApp,
+              verifiedAt: data.verifiedAt?.toDate?.()?.toISOString() || new Date().toISOString()
+            });
+          });
+
+          const elapsed = Date.now() - startTime;
+          console.log(`[TELEFONES-DUAL-READ] ✅ ${verifiedNumbers.size} números da estrutura ANTIGA (${elapsed}ms)`);
+        }
+      }
 
       // Atualizar contatos com dados de verificação
       const updatedContacts = extractPhoneContacts.map(contact => {
@@ -172,13 +223,24 @@ export default function TelefonesPage() {
     return phone;
   };
 
-  // Função para verificar WhatsApp usando a API real
+  // FASE 3: Função para verificar WhatsApp e SALVAR no Firestore (dual-write)
   const verifyWhatsApp = async (phone: string) => {
     setVerifyingPhone(phone);
 
     try {
       // Encontrar o contato para obter informações do estudante
       const contact = phoneContacts.find(c => c.telefone === phone);
+
+      if (!contact) {
+        toast.error('Contato não encontrado');
+        return;
+      }
+
+      console.log('[TELEFONES-VERIFY] Iniciando verificação:', {
+        phone: `${phone.substring(0, 4)}****`,
+        estudanteId: contact.estudanteId,
+        nome: contact.nome
+      });
 
       // Usar API route em vez de chamar o serviço diretamente
       const response = await fetch('/api/whatsapp/verify', {
@@ -193,33 +255,72 @@ export default function TelefonesPage() {
         })
       });
 
+      // Verificar se a resposta é válida
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Erro na resposta da API:', errorText);
+        throw new Error(`Erro HTTP: ${response.status}`);
+      }
+
       const result = await response.json();
 
-      // Atualizar estado local
-      setPhoneContacts(prev => prev.map(c =>
-        c.telefone === phone
-          ? {
-              ...c,
-              hasWhatsApp: result.hasWhatsApp,
-              whatsAppVerified: true,
-              lastVerified: new Date().toISOString()
-            }
-          : c
-      ));
-
       if (result.success) {
-        toast.success(
-          result.hasWhatsApp
-            ? `WhatsApp encontrado! ${result.whatsappName ? `(${result.whatsappName})` : ''}`
-            : "Número verificado - WhatsApp não encontrado"
+        console.log('[TELEFONES-VERIFY] ✅ Verificação bem-sucedida, salvando no Firestore...');
+
+        // FASE 3: SALVAR NO FIRESTORE com dual-write
+        // Buscar contactId do estudante
+        const studentData = students.find(s => s.estudanteId === contact.estudanteId);
+        const contactIndex = studentData?.contatos?.findIndex(c =>
+          c.telefone?.replace(/\D/g, '') === phone
         );
+        const contactId = contactIndex !== undefined && contactIndex >= 0
+          ? `contact_${contactIndex + 1}`
+          : undefined;
+
+        try {
+          // Salvar usando WhatsAppTrackingService (dual-write automático)
+          await WhatsAppTrackingService.markNumberAsVerified(
+            phone,
+            result.hasWhatsApp,
+            contact.estudanteId,
+            contact.nome,
+            'verified',
+            contactId // FASE 3: Para dual-write na nova estrutura
+          );
+
+          console.log('[TELEFONES-VERIFY] ✅ Salvo no Firestore com dual-write');
+          console.log(`[TELEFONES-VERIFY] contactId: ${contactId || 'não encontrado'}`);
+
+          // Atualizar estado local
+          setPhoneContacts(prev => prev.map(c =>
+            c.telefone === phone
+              ? {
+                  ...c,
+                  hasWhatsApp: result.hasWhatsApp,
+                  whatsAppVerified: true,
+                  lastVerified: new Date().toISOString()
+                }
+              : c
+          ));
+
+          toast.success(
+            result.hasWhatsApp
+              ? `WhatsApp encontrado e salvo! ${result.whatsappName ? `(${result.whatsappName})` : ''}`
+              : "Número verificado e salvo - WhatsApp não encontrado"
+          );
+        } catch (saveError) {
+          console.error('[TELEFONES-VERIFY] ❌ Erro ao salvar no Firestore:', saveError);
+          toast.error('Verificação OK, mas erro ao salvar. Tente novamente.');
+          throw saveError;
+        }
       } else {
-        toast.error(`Erro: ${result.error}`);
+        toast.error(`Erro: ${result.error || 'Erro desconhecido'}`);
       }
 
     } catch (error) {
-      console.error('Erro ao verificar WhatsApp:', error);
-      toast.error('Erro ao verificar WhatsApp');
+      console.error('[TELEFONES-VERIFY] Erro ao verificar WhatsApp:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error(`Falha na verificação: ${errorMessage}`);
     } finally {
       setVerifyingPhone(null);
     }
