@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "sonner";
 import { Estudante } from "@/types";
-import { StudentServiceV2 } from "@/services/firebase/studentServiceV2";
+import { StudentDataService } from "@/services/studentDataService";
 
 // Student form schema - Minimal validation for debugging
 const studentSchema = z.object({
@@ -33,12 +33,12 @@ const studentSchema = z.object({
 export default function CadastrarEstudantePage() {
     const { students, loading, error, setStudents, fetchStudents } = useStudents();
 
-    // DEBUG: Log dos primeiros 3 registros da coleção StudentServiceV2
+    // DEBUG: Log dos primeiros 3 registros da coleção (usando StudentDataService V3)
     useEffect(() => {
         const debugCollection = async () => {
             try {
-                console.log('[DEBUG-CADASTRO] 🔍 Buscando dados da coleção StudentServiceV2...');
-                const allStudents = await StudentServiceV2.getStudents();
+                console.log('[DEBUG-CADASTRO] 🔍 Buscando dados da coleção (V3 com fallback V2)...');
+                const allStudents = await StudentDataService.getStudents();
                 const first3 = allStudents.slice(0, 3);
 
                 console.log('[DEBUG-CADASTRO] 📊 Total de estudantes na coleção:', allStudents.length);
@@ -339,8 +339,9 @@ export default function CadastrarEstudantePage() {
             };
             
             if (editingEstudante) {
-                // Atualizar apenas um estudante usando V2
-                await StudentServiceV2.updateStudent(processedData);
+                // Atualizar estudante usando DUAL-WRITE (V2 + V3)
+                console.log('[DUAL-WRITE] Atualizando estudante:', processedData.estudanteId);
+                await StudentDataService.updateStudent(processedData);
 
                 // Atualizar o estado local
                 const updatedStudents = students.map((student) => {
@@ -362,8 +363,9 @@ export default function CadastrarEstudantePage() {
                     return;
                 }
 
-                // Adicionar novo estudante usando V2
-                await StudentServiceV2.addStudent(processedData);
+                // Adicionar novo estudante usando DUAL-WRITE (V2 + V3)
+                console.log('[DUAL-WRITE] Adicionando novo estudante:', processedData.estudanteId);
+                await StudentDataService.addStudent(processedData);
 
                 // Atualizar o estado local
                 setStudents([...students, processedData]);

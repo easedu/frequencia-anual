@@ -178,3 +178,105 @@ export async function saveWhatsAppVerificationBatch(
     errors
   };
 }
+
+/**
+ * QUERY FUNCTIONS - V3 Structure
+ * Funções para consultar dados WhatsApp na estrutura V3
+ */
+
+import { collection, getDocs, query, where, orderBy, limit, getDoc } from 'firebase/firestore';
+import { FIREBASE_PATHS_V3 } from '@/config/constants';
+
+export interface ContactWithWhatsAppStatus {
+  contactId: string;
+  nome: string;
+  parentesco: string;
+  telefone: string;
+  telefoneNumerico: string;
+  podeReceberWhatsapp: boolean;
+  whatsapp?: {
+    verified: boolean;
+    exists: boolean;
+    jid?: string | null;
+    name?: string | null;
+    number?: string;
+    verifiedAt?: any;
+    verificationStatus?: string;
+  };
+}
+
+/**
+ * Buscar contatos de um estudante com status WhatsApp
+ * Lê da estrutura V3: students/{id}/contacts
+ */
+export async function getStudentContactsWithWhatsApp(
+  studentId: string
+): Promise<ContactWithWhatsAppStatus[]> {
+  try {
+    console.log(`[WHATSAPP-SERVICE] 📖 Buscando contatos do estudante ${studentId}...`);
+
+    const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(studentId));
+    const contactsSnap = await getDocs(contactsRef);
+
+    const contacts: ContactWithWhatsAppStatus[] = contactsSnap.docs.map(doc => {
+      const data = doc.data();
+      return {
+        contactId: doc.id,
+        nome: data.nome || '',
+        parentesco: data.parentesco || '',
+        telefone: data.telefone || '',
+        telefoneNumerico: data.telefoneNumerico || '',
+        podeReceberWhatsapp: data.podeReceberWhatsapp !== false,
+        whatsapp: data.whatsapp,
+      };
+    });
+
+    console.log(`[WHATSAPP-SERVICE] ✅ ${contacts.length} contatos encontrados`);
+    return contacts;
+
+  } catch (error) {
+    console.error('[WHATSAPP-SERVICE] ❌ Erro ao buscar contatos:', error);
+    return [];
+  }
+}
+
+/**
+ * Buscar contatos elegíveis para receber WhatsApp
+ * (podeReceberWhatsapp = true AND whatsapp.exists = true)
+ */
+export async function getEligibleContactsForWhatsApp(
+  studentId: string
+): Promise<ContactWithWhatsAppStatus[]> {
+  const allContacts = await getStudentContactsWithWhatsApp(studentId);
+
+  return allContacts.filter(
+    contact =>
+      contact.podeReceberWhatsapp === true &&
+      contact.whatsapp?.exists === true &&
+      contact.whatsapp?.verified === true
+  );
+}
+
+/**
+ * Verificar se um telefone específico tem WhatsApp (estrutura V3)
+ */
+export async function checkWhatsAppStatusV3(
+  studentId: string,
+  contactId: string
+): Promise<boolean | null> {
+  try {
+    const contactRef = doc(db, FIREBASE_PATHS_V3.contact(studentId, contactId));
+    const contactSnap = await getDoc(contactRef);
+
+    if (!contactSnap.exists()) {
+      return null;
+    }
+
+    const data = contactSnap.data();
+    return data.whatsapp?.exists === true && data.whatsapp?.verified === true;
+
+  } catch (error) {
+    console.error('[WHATSAPP-SERVICE] ❌ Erro ao verificar status WhatsApp:', error);
+    return null;
+  }
+}

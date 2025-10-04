@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
 import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where, deleteField, writeBatch } from "firebase/firestore";
+import { StudentDataService } from "@/services/studentDataService";
 import { getAuth } from "firebase/auth";
 import { logger } from "@/utils/logger";
 import { headerImageBase64 } from "@/assets/headerImage";
@@ -177,18 +178,21 @@ export default function StudentProfilePage() {
     const fetchAllStudents = useCallback(async (): Promise<void> => {
         try {
             setLoadingStudents(true);
-            const studentDoc = await getDoc(doc(db, process.env.NEXT_PUBLIC_SCHOOL_YEAR || "2025", "lista_de_estudantes"));
-            if (studentDoc.exists()) {
-                const studentData = studentDoc.data() as { estudantes: Student[] };
-                const activeStudents = studentData.estudantes
-                    .filter(s => s.status === "ATIVO")
-                    .map(student => ({
-                        ...student,
-                        contatos: student.contatos || [],
-                        provaSaoPaulo: student.provaSaoPaulo || [], // Garantir que o array existe
-                    }));
-                setAllStudents(activeStudents.sort((a, b) => a.nome.localeCompare(b.nome)));
-            }
+            console.log('[PERFIL-ESTUDANTE] 📖 Buscando estudantes via StudentDataService (V3 com fallback V2)...');
+
+            // Usar StudentDataService que implementa leitura V3 com fallback V2
+            const allStudentsData = await StudentDataService.getStudents();
+
+            const activeStudents = allStudentsData
+                .filter(s => s.status === "ATIVO")
+                .map(student => ({
+                    ...student,
+                    contatos: student.contatos || [],
+                    provaSaoPaulo: student.provaSaoPaulo || [],
+                }));
+
+            setAllStudents(activeStudents.sort((a, b) => a.nome.localeCompare(b.nome)));
+            console.log(`[PERFIL-ESTUDANTE] ✅ ${activeStudents.length} estudantes ativos carregados`);
         } catch (error) {
             logger.error("Erro ao buscar lista de estudantes", error as Error);
         } finally {
@@ -220,52 +224,27 @@ export default function StudentProfilePage() {
 
         try {
             setLoadingProfile(true);
-            const foundStudent = allStudents.find((s: Student) => s.estudanteId === studentId);
+            console.log(`[PERFIL-ESTUDANTE] 📖 Buscando estudante ${studentId}...`);
 
-            // Buscar contatos da NOVA estrutura (students/{id}/contacts)
-            // A nova estrutura tem nome e parentesco separados, além de campo podeReceberWhatsapp
-            let studentWithContacts = foundStudent;
-            if (foundStudent) {
-                try {
-                    const contactsRef = collection(db, 'students', studentId, 'contacts');
-                    const contactsSnap = await getDocs(contactsRef);
+            // Buscar do cache local primeiro
+            let foundStudent = allStudents.find((s: Student) => s.estudanteId === studentId);
 
-                    if (!contactsSnap.empty) {
-                        // Mapear contatos da nova estrutura para o formato esperado
-                        // Estrutura nova: { nome: "Valeria", parentesco: "Mãe", podeReceberWhatsapp: true }
-                        // Estrutura antiga: { nome: "Valeria (mãe)", podeReceberMensagem: true }
-                        const newContacts: Contato[] = contactsSnap.docs.map(doc => {
-                            const data = doc.data();
-                            return {
-                                nome: data.nome || '',
-                                telefone: data.telefoneNumerico || data.telefone || '',
-                                parentesco: data.parentesco || '',
-                                podeReceberMensagem: data.podeReceberWhatsapp !== false
-                            };
-                        });
-
-                        // Criar novo objeto com contatos da nova estrutura
-                        studentWithContacts = {
-                            ...foundStudent,
-                            contatos: newContacts
-                        };
-
-                        logger.info('Contatos carregados da nova estrutura', {
-                            estudanteId: studentId,
-                            totalContatos: newContacts.length
-                        });
-                    } else {
-                        // Fallback: usar contatos da estrutura antiga
-                        logger.info('Usando contatos da estrutura antiga (fallback)', {
-                            estudanteId: studentId
-                        });
-                    }
-                } catch (error) {
-                    logger.error('Erro ao buscar contatos da nova estrutura, usando fallback', error as Error);
-                    // Em caso de erro, usar contatos da estrutura antiga
+            // Se não encontrou no cache, buscar direto via StudentDataService
+            if (!foundStudent) {
+                console.log('[PERFIL-ESTUDANTE] Estudante não no cache, buscando via StudentDataService...');
+                const studentData = await StudentDataService.getStudentById(studentId);
+                if (studentData) {
+                    foundStudent = studentData;
+                    console.log('[PERFIL-ESTUDANTE] ✅ Estudante encontrado via StudentDataService');
                 }
+            }
 
-                setStudent(studentWithContacts);
+            if (foundStudent) {
+                setStudent(foundStudent);
+                console.log('[PERFIL-ESTUDANTE] ✅ Estudante carregado:', {
+                    nome: foundStudent.nome,
+                    contatos: foundStudent.contatos?.length || 0
+                });
             }
 
             // Fetch absences
@@ -1373,27 +1352,6 @@ export default function StudentProfilePage() {
                         setEditingAtestado={setEditingAtestado}
                         onDeleteAtestado={handleDeleteAtestado}
                     />
-                    <RegisterSuspensaoCard
-                        suspensaoStartDate={suspensaoStartDate}
-                        suspensaoDays={suspensaoDays}
-                        suspensaoDescription={suspensaoDescription}
-                        editingSuspensao={editingSuspensao}
-                        setSuspensaoStartDate={setSuspensaoStartDate}
-                        setSuspensaoDays={setSuspensaoDays}
-                        setSuspensaoDescription={setSuspensaoDescription}
-                        setEditingSuspensao={setEditingSuspensao}
-                        onAddSuspensao={handleAddSuspensao}
-                        onEditSuspensao={handleEditSuspensao}
-                        id="suspensao-card"
-                    />
-                    <SuspensaoHistoryCard
-                        suspensoes={suspensoes}
-                        userRole={userRole}
-                        showDeleteSuspensaoDialog={showDeleteSuspensaoDialog}
-                        setShowDeleteSuspensaoDialog={setShowDeleteSuspensaoDialog}
-                        setEditingSuspensao={setEditingSuspensao}
-                        onDeleteSuspensao={handleDeleteSuspensao}
-                    />
                     <RegisterInteractionCard
                         interactionType={interactionType}
                         interactionDate={interactionDate}
@@ -1420,6 +1378,27 @@ export default function StudentProfilePage() {
                         setEditingInteraction={setEditingInteraction}
                         onDeleteInteraction={handleDeleteInteraction}
                         onPrintReport={handlePrintReport}
+                    />
+                    <RegisterSuspensaoCard
+                        suspensaoStartDate={suspensaoStartDate}
+                        suspensaoDays={suspensaoDays}
+                        suspensaoDescription={suspensaoDescription}
+                        editingSuspensao={editingSuspensao}
+                        setSuspensaoStartDate={setSuspensaoStartDate}
+                        setSuspensaoDays={setSuspensaoDays}
+                        setSuspensaoDescription={setSuspensaoDescription}
+                        setEditingSuspensao={setEditingSuspensao}
+                        onAddSuspensao={handleAddSuspensao}
+                        onEditSuspensao={handleEditSuspensao}
+                        id="suspensao-card"
+                    />
+                    <SuspensaoHistoryCard
+                        suspensoes={suspensoes}
+                        userRole={userRole}
+                        showDeleteSuspensaoDialog={showDeleteSuspensaoDialog}
+                        setShowDeleteSuspensaoDialog={setShowDeleteSuspensaoDialog}
+                        setEditingSuspensao={setEditingSuspensao}
+                        onDeleteSuspensao={handleDeleteSuspensao}
                     />
                     {userRole === "admin" && <ProvaSaoPauloCard student={student} />}
                 </>
