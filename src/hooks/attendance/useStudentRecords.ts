@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { attendanceService } from '@/services/firebase/attendanceService';
-import { studentService } from '@/services/firebase/studentService';
+import { StudentDataService } from '@/services/studentDataService';
 import { logger } from '@/utils/logger';
 import type { StudentRecord, Estudante } from '@/types';
 
@@ -103,8 +103,8 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       setLoading(true);
       setError(null);
 
-      // Get all students
-      let students = await studentService.getStudents();
+      // Get all students (V3 only)
+      let students = await StudentDataService.getStudents();
 
       // Apply filters
       if (turmaFilter) {

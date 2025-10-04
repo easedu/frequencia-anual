@@ -1,26 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { studentService } from "@/services/firebase/studentService";
+import { StudentDataService } from "@/services/studentDataService";
 import { logger } from "@/utils/logger";
 import type { Estudante } from "@/types";
-
-// Função para determinar o turno com base na turma
-const determinarTurno = (turma: string): "MANHÃ" | "TARDE" => {
-    const primeiroCaractere = turma.trim().charAt(0).toUpperCase();
-    return ["1", "2", "3", "4"].includes(primeiroCaractere) ? "TARDE" : "MANHÃ";
-};
 
 export const useStudents = () => {
     const [students, setStudents] = useState<Estudante[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 
-    // Função para buscar os estudantes usando o serviço centralizado
+    // Fetch students using V3 unified service
     const fetchStudents = async () => {
         setLoading(true);
         try {
-            const fetchedStudents = await studentService.getStudents();
+            const fetchedStudents = await StudentDataService.getStudents();
             setStudents(fetchedStudents);
         } catch (err) {
             logger.error("Erro ao buscar estudantes", err as Error);
