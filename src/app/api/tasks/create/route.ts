@@ -124,21 +124,21 @@ async function getBimesterFromDate(month: number, year: number): Promise<string>
 }
 
 /**
- * FASE 3: Função para buscar dados completos do estudante com DUAL-READ
+ * FASE 3: Função para buscar dados completos do estudante
  */
 async function getStudentData(estudanteId: string): Promise<Student | null> {
   try {
-    console.log(`[TASKS-CREATE] Buscando estudante ${estudanteId} com dual-read...`);
+    console.log(`[TASKS-CREATE] Buscando estudante ${estudanteId}...`);
 
-    const result = await getStudent(estudanteId);
+    const student = await getStudent(estudanteId);
 
-    if (!result.student) {
+    if (!student) {
       logger.warn(`Estudante ${estudanteId} não encontrado`);
       return null;
     }
 
-    console.log(`[TASKS-CREATE] ✅ Estudante encontrado - Fonte: ${result._dataSource.source.toUpperCase()}`);
-    return result.student;
+    console.log(`[TASKS-CREATE] ✅ Estudante encontrado: ${student.nome}`);
+    return student;
   } catch (error) {
     logger.error('Erro ao buscar dados do estudante:', error as Error);
     return null;
