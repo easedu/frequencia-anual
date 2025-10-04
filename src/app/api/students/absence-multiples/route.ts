@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase.config';
-import { FIREBASE_PATHS } from '@/config/constants';
+import { FIREBASE_PATHS, FIREBASE_PATHS_V3 } from '@/config/constants';
 import { apiCache, withTimeout } from '@/utils/apiOptimization';
 import { Student } from '@/app/types';
-import { getStudentContacts } from '@/services/studentDataService';
+import { StudentDataService } from '@/services/studentDataService';
 
 interface VerifiedContact {
   nome: string;
   telefone: string;
-  hasWhatsApp: boolean;
-  verificationStatus: 'verified' | 'unavailable' | 'error';
 }
 
 interface StudentWithAbsenceMultiples {
@@ -65,6 +63,75 @@ async function loadAcademicYearData(): Promise<any> {
   }
 }
 
+/**
+ * Carrega suspensões de todos os estudantes e retorna um Set de datas suspensas por estudante
+ * OTIMIZAÇÃO: Queries paralelas massivas (100 por vez) ao invés de sequenciais
+ */
+async function loadStudentSuspensions(studentIds: string[]): Promise<Map<string, Set<string>>> {
+  const suspensionsByStudent = new Map<string, Set<string>>();
+
+  try {
+    const startTime = Date.now();
+
+    // OTIMIZAÇÃO: Executar todas as queries em paralelo com Promise.all()
+    // Processar em chunks grandes (100 por vez) para máxima paralelização
+    const chunkSize = 100;
+
+    for (let i = 0; i < studentIds.length; i += chunkSize) {
+      const chunk = studentIds.slice(i, i + chunkSize);
+
+      // Executar TODAS as queries do chunk em paralelo simultaneamente
+      const promises = chunk.map(async (studentId) => {
+        try {
+          const suspensionsRef = collection(db, FIREBASE_PATHS.suspensions(studentId));
+          const suspensionsSnap = await getDocs(suspensionsRef);
+
+          const suspendedDates = new Set<string>();
+
+          suspensionsSnap.docs.forEach((doc) => {
+            const data = doc.data();
+            const startDate = new Date(data.startDate);
+            const days = data.days || 0;
+
+            // Gerar todas as datas do período de suspensão
+            for (let d = 0; d < days; d++) {
+              const suspensionDate = new Date(startDate);
+              suspensionDate.setDate(suspensionDate.getDate() + d);
+
+              // Formatar como YYYY-MM-DD
+              const dateStr = suspensionDate.toISOString().split('T')[0];
+              suspendedDates.add(dateStr);
+            }
+          });
+
+          return { studentId, suspendedDates };
+        } catch (error) {
+          console.warn(`Erro ao carregar suspensões do estudante ${studentId}:`, error);
+          return { studentId, suspendedDates: new Set<string>() };
+        }
+      });
+
+      // Aguardar TODAS as queries do chunk em paralelo
+      const results = await Promise.all(promises);
+
+      // Processar resultados
+      results.forEach(({ studentId, suspendedDates }) => {
+        if (suspendedDates.size > 0) {
+          suspensionsByStudent.set(studentId, suspendedDates);
+        }
+      });
+    }
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[SUSPENSIONS] ${suspensionsByStudent.size} estudantes com suspensões (${elapsed}ms - ${studentIds.length} queries paralelas)`);
+    return suspensionsByStudent;
+
+  } catch (error) {
+    console.error('[ERROR] Erro ao carregar suspensões:', error);
+    return new Map();
+  }
+}
+
 // Função para extrair dias letivos de um mês específico
 async function getSchoolDaysForMonth(month: string): Promise<string[]> {
   try {
@@ -111,7 +178,8 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
 async function loadStudentAbsencesForMonth(
   studentIds: string[],
   schoolDaysInMonth: string[],
-  referenceMonth: string
+  referenceMonth: string,
+  suspensionsByStudent: Map<string, Set<string>>
 ): Promise<Record<string, number>> {
   const cacheKey = `absences-month-${referenceMonth}-${studentIds.length}`;
   const cached = apiCache.get(cacheKey) as Record<string, number> | undefined;
@@ -147,7 +215,7 @@ async function loadStudentAbsencesForMonth(
           try {
             const querySnapshot = await withTimeout(
               getDocs(query(absencesRef, where('estudanteId', 'in', batch))),
-              20000, // Aumentado para 20s por batch individual
+              45000, // 45 segundos por batch para coleções grandes
               'Timeout loading absences batch'
             );
 
@@ -157,8 +225,12 @@ async function loadStudentAbsencesForMonth(
                 // Dates are now in YYYY-MM-DD format (no conversion needed)
                 const dateStr = data.data;
 
-                // Contar apenas faltas em dias letivos do mês especificado
-                if (monthDatesSet.has(dateStr)) {
+                // Verificar se a data está em suspensão
+                const studentSuspensions = suspensionsByStudent.get(data.estudanteId);
+                const isSuspended = studentSuspensions?.has(dateStr) || false;
+
+                // Contar apenas faltas em dias letivos do mês especificado E que NÃO sejam suspensões
+                if (monthDatesSet.has(dateStr) && !isSuspended) {
                   absencesByStudent[data.estudanteId] = (absencesByStudent[data.estudanteId] || 0) + 1;
                 }
               }
@@ -189,228 +261,79 @@ async function loadStudentAbsencesForMonth(
   }
 }
 
-// FASE 3: Função com DUAL-READ OTIMIZADO para contatos WhatsApp
-// Detecta rapidamente qual estrutura usar sem fazer 735 queries
-async function loadVerifiedWhatsAppContactsDualRead(activeStudents: Student[]): Promise<Record<string, VerifiedContact[]>> {
-  const cacheKey = 'whatsapp-verified-contacts-dual';
+/**
+ * Carrega contatos verificados do WhatsApp (V3 Structure Only)
+ * OTIMIZAÇÃO: Queries paralelas massivas (100 por vez) usando StudentDataService
+ */
+async function loadVerifiedWhatsAppContacts(activeStudents: Student[]): Promise<Record<string, VerifiedContact[]>> {
+  const cacheKey = 'whatsapp-verified-contacts-v3';
   const cached = apiCache.get(cacheKey) as Record<string, VerifiedContact[]> | undefined;
   if (cached) {
     return cached;
   }
 
   try {
-    console.log('[DUAL-READ] Verificando qual estrutura usar...');
+    console.log('[V3] Carregando contatos verificados do WhatsApp...');
     const startTime = Date.now();
 
-    // OTIMIZAÇÃO: Testar APENAS 1 estudante para detectar qual estrutura usar
-    // Isso evita fazer 735 queries desnecessárias
-    if (activeStudents.length > 0) {
-      try {
-        const testResult = await getStudentContacts(activeStudents[0].estudanteId);
-
-        // Se primeira query retornou da NOVA estrutura com dados reais
-        if (testResult._dataSource.source === 'new' &&
-            testResult.contacts.length > 0 &&
-            !testResult.contacts[0]._placeholder) {
-
-          console.log('[DUAL-READ] ✅ Nova estrutura detectada, carregando TODOS os contatos...');
-
-          // Carregar todos em paralelo (batch)
-          const contactsByStudent: Record<string, VerifiedContact[]> = {};
-
-          // Processar em chunks para não sobrecarregar
-          const chunkSize = 50;
-          for (let i = 0; i < activeStudents.length; i += chunkSize) {
-            const chunk = activeStudents.slice(i, i + chunkSize);
-            const promises = chunk.map(student => getStudentContacts(student.estudanteId));
-            const results = await Promise.allSettled(promises);
-
-            results.forEach((result, index) => {
-              if (result.status === 'fulfilled' && result.value._dataSource.source === 'new') {
-                const verifiedContacts: VerifiedContact[] = result.value.contacts
-                  .filter((contact: any) =>
-                    contact.whatsapp?.verified &&
-                    contact.whatsapp?.exists &&
-                    contact.podeReceberWhatsapp !== false
-                  )
-                  .map((contact: any) => ({
-                    nome: contact.nome || 'Contato não identificado',
-                    telefone: contact.telefoneNumerico || contact.telefone,
-                    hasWhatsApp: contact.whatsapp.exists,
-                    verificationStatus: contact.whatsapp.verificationStatus || 'verified'
-                  }));
-
-                if (verifiedContacts.length > 0) {
-                  contactsByStudent[chunk[index].estudanteId] = verifiedContacts;
-                }
-              }
-            });
-          }
-
-          const elapsed = Date.now() - startTime;
-          console.log(`[DUAL-READ] ✅ ${Object.keys(contactsByStudent).length} estudantes com contatos da NOVA estrutura (${elapsed}ms)`);
-
-          apiCache.set(cacheKey, contactsByStudent, 30);
-          return contactsByStudent;
-        }
-      } catch (error) {
-        console.warn('[DUAL-READ] Erro ao testar nova estrutura:', error);
-      }
-    }
-
-    // FALLBACK: Se chegou aqui, usar estrutura ANTIGA (mais rápido)
-    console.log('[DUAL-READ] 📦 Usando estrutura ANTIGA (fallback rápido)...');
-    const oldContacts = await loadVerifiedWhatsAppContacts();
-    const elapsed = Date.now() - startTime;
-    console.log(`[DUAL-READ] ✅ ${Object.keys(oldContacts).length} estudantes da estrutura ANTIGA (${elapsed}ms)`);
-
-    apiCache.set(cacheKey, oldContacts, 30);
-    return oldContacts;
-
-  } catch (error) {
-    console.error('[DUAL-READ] Erro ao carregar contatos:', error);
-    return {} as Record<string, VerifiedContact[]>;
-  }
-}
-
-// Função para buscar contatos verificados do WhatsApp (ANTIGA - mantida para fallback)
-async function loadVerifiedWhatsAppContacts(): Promise<Record<string, VerifiedContact[]>> {
-  const cacheKey = 'whatsapp-verified-contacts';
-  const cached = apiCache.get(cacheKey) as Record<string, VerifiedContact[]> | undefined;
-  if (cached) {
-    return cached;
-  }
-
-  try {
-    const verifiedContactsRef = collection(db, 'whatsapp_verified_numbers');
-
-    // Reduzir timeout e adicionar fallback
-    const querySnapshot = await withTimeout(
-      getDocs(verifiedContactsRef),
-      8000, // Reduzido de 15000 para 8000
-      'Timeout loading WhatsApp verified contacts'
-    );
-
     const contactsByStudent: Record<string, VerifiedContact[]> = {};
-    let totalDocuments = 0;
-    // Mudar para mapear um telefone para MÚLTIPLOS estudantes (um telefone pode pertencer a vários estudantes)
-    let phoneToStudents: Record<string, { studentId: string; contactName: string }[]> = {};
-    let documentsWithStudentId = 0;
-    let documentsWithWhatsApp = 0;
 
-    // ETAPA 1: Mapear todos os números de telefone que têm WhatsApp
-    const verifiedNumbers = new Map<string, { hasWhatsApp: boolean; contactName?: string; studentId?: string }>();
+    // OTIMIZAÇÃO: Executar queries em paralelo massivo (100 por vez)
+    const chunkSize = 100;
 
-    querySnapshot.forEach((docSnap) => {
-      totalDocuments++;
-      const data = docSnap.data();
-      const phoneNumber = docSnap.id; // A chave do documento é o número do telefone
+    for (let i = 0; i < activeStudents.length; i += chunkSize) {
+      const chunk = activeStudents.slice(i, i + chunkSize);
 
-      // Guardar informações do telefone
-      verifiedNumbers.set(phoneNumber, {
-        hasWhatsApp: data.hasWhatsApp,
-        contactName: data.contactName,
-        studentId: data.studentId
-      });
+      // Executar TODAS as queries do chunk em paralelo simultaneamente
+      const promises = chunk.map(async (student) => {
+        try {
+          const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(student.estudanteId));
+          const contactsSnap = await getDocs(contactsRef);
 
-      if (data.studentId) {
-        documentsWithStudentId++;
-        // NÃO adicionar ao phoneToStudentMap aqui - os dados podem estar desatualizados
-        // O mapeamento correto será feito na ETAPA 2 baseado nos dados reais dos estudantes
-      }
+          const verifiedContacts: VerifiedContact[] = [];
 
-      if (data.hasWhatsApp) {
-        documentsWithWhatsApp++;
-      }
-    });
+          contactsSnap.docs.forEach((docSnap) => {
+            const contact = docSnap.data();
 
-    // ETAPA 2: Buscar estudantes para fazer correspondência dos telefones sem studentId
-    const studentsDocRef = doc(db, FIREBASE_PATHS.students());
-    const studentsDocSnap = await getDoc(studentsDocRef);
-
-    if (studentsDocSnap.exists()) {
-      const studentsData = studentsDocSnap.data();
-      const allStudents = (studentsData.estudantes || []) as any[];
-
-      // Criar mapa de telefone -> estudanteId E nome do contato baseado nos dados dos estudantes
-
-      allStudents.forEach(student => {
-        if (student.contatos && student.contatos.length > 0) {
-          student.contatos.forEach((contato: any) => {
-            if (contato.telefone) {
-              const cleanPhone = contato.telefone.replace(/\D/g, '');
-              // Filtrar apenas contatos que podem receber mensagem e estão verificados
-              // Se podeReceberMensagem não estiver definido, assumir true (retrocompatibilidade)
-              const podeReceber = contato.podeReceberMensagem !== false;
-
-              if (cleanPhone.length >= 10 && verifiedNumbers.has(cleanPhone) && podeReceber) {
-                // Adicionar à lista de estudantes para este telefone (suporta múltiplos estudantes)
-                if (!phoneToStudents[cleanPhone]) {
-                  phoneToStudents[cleanPhone] = [];
-                }
-                // Limpar nome do contato removendo parentesco entre parênteses
-                const cleanContactName = (contato.nome || 'Contato não identificado')
-                  .replace(/\s*\([^)]*\)\s*/g, '')
-                  .trim();
-
-                phoneToStudents[cleanPhone].push({
-                  studentId: student.estudanteId,
-                  contactName: cleanContactName
-                });
-              }
+            // Aplicar filtros: WhatsApp verificado + pode receber mensagem
+            if (
+              contact.whatsapp?.verified &&
+              contact.whatsapp?.exists &&
+              contact.podeReceberWhatsapp !== false
+            ) {
+              verifiedContacts.push({
+                nome: contact.nome || 'Contato não identificado',
+                telefone: contact.telefoneNumerico || contact.telefone,
+              });
             }
           });
+
+          return { studentId: student.estudanteId, verifiedContacts };
+        } catch (error) {
+          console.warn(`Erro ao carregar contatos do estudante ${student.estudanteId}:`, error);
+          return { studentId: student.estudanteId, verifiedContacts: [] };
+        }
+      });
+
+      // Aguardar TODAS as queries do chunk em paralelo
+      const results = await Promise.all(promises);
+
+      // Processar resultados
+      results.forEach(({ studentId, verifiedContacts }) => {
+        if (verifiedContacts.length > 0) {
+          contactsByStudent[studentId] = verifiedContacts;
         }
       });
     }
 
-    // ETAPA 3: Construir resultado final agrupado por studentId
-    // IMPORTANTE: Usar phoneToStudents (mapeado dos dados dos estudantes)
-    // ao invés do studentId da coleção whatsapp_verified_numbers
-    Object.entries(phoneToStudents).forEach(([phoneNumber, studentsList]) => {
-      const phoneData = verifiedNumbers.get(phoneNumber);
+    const elapsed = Date.now() - startTime;
+    console.log(`[V3] ✅ ${Object.keys(contactsByStudent).length} estudantes com contatos verificados (${elapsed}ms - ${activeStudents.length} queries paralelas)`);
 
-      // Só incluir se tem WhatsApp verificado
-      if (phoneData?.hasWhatsApp) {
-        // Adicionar o contato para TODOS os estudantes que possuem este telefone
-        studentsList.forEach(({ studentId, contactName }) => {
-          if (!contactsByStudent[studentId]) {
-            contactsByStudent[studentId] = [];
-          }
-
-          contactsByStudent[studentId].push({
-            nome: contactName, // Usar sempre o nome dos dados reais do estudante
-            telefone: phoneNumber,
-            hasWhatsApp: phoneData.hasWhatsApp,
-            verificationStatus: 'verified'
-          });
-        });
-      }
-    });
-
-    // Cache por 45 minutos
-    apiCache.set(cacheKey, contactsByStudent, 45);
+    apiCache.set(cacheKey, contactsByStudent, 30);
     return contactsByStudent;
-  } catch (error) {
-    console.error('Erro ao carregar contatos verificados do WhatsApp:', error);
-    // Retorna objeto vazio em caso de erro para não bloquear a API
-    return {} as Record<string, VerifiedContact[]>;
-  }
-}
 
-// Função alternativa para carregar contatos sem bloquear a API principal
-async function loadVerifiedWhatsAppContactsSafe(): Promise<Record<string, VerifiedContact[]>> {
-  try {
-    return await Promise.race([
-      loadVerifiedWhatsAppContacts(),
-      new Promise<Record<string, VerifiedContact[]>>((resolve) => {
-        setTimeout(() => {
-          resolve({} as Record<string, VerifiedContact[]>);
-        }, 6000); // 6 segundos
-      })
-    ]);
   } catch (error) {
-    console.error('Failed to load WhatsApp contacts safely:', error);
+    console.error('[V3] Erro ao carregar contatos:', error);
     return {} as Record<string, VerifiedContact[]>;
   }
 }
@@ -505,23 +428,12 @@ export async function GET(request: NextRequest) {
 
     checkTimeout('dias letivos carregados');
 
-    // Carregar estudantes ativos
-    const studentsDocRef = doc(db, FIREBASE_PATHS.students());
-    const studentsDocSnap = await withTimeout(
-      getDoc(studentsDocRef),
-      10000,
-      'Timeout loading students'
+    // Carregar estudantes ativos da estrutura V3
+    const allStudents = await withTimeout(
+      StudentDataService.getStudents(false, false), // includeDeleted: false, includeContacts: false
+      15000,
+      'Timeout loading students from V3'
     );
-
-    if (!studentsDocSnap.exists()) {
-      return NextResponse.json({
-        success: false,
-        error: 'Dados de estudantes não encontrados'
-      } as ApiResponse, { status: 404 });
-    }
-
-    const studentsData = studentsDocSnap.data();
-    const allStudents = (studentsData.estudantes || []) as Student[];
 
     const activeStudents = allStudents.filter(student => student.status === 'ATIVO');
 
@@ -537,10 +449,15 @@ export async function GET(request: NextRequest) {
     // Carregar faltas dos estudantes no mês especificado
     const studentIds = activeStudents.map(s => s.estudanteId);
 
-    // FASE 3: Usar DUAL-READ para contatos WhatsApp
+    // 1. Primeiro carregar suspensões
+    const suspensionsByStudent = await loadStudentSuspensions(studentIds);
+
+    checkTimeout('suspensões carregadas');
+
+    // 2. Carregar faltas (já com filtro de suspensões) e contatos WhatsApp verificados (V3 Structure)
     const [studentAbsences, verifiedContacts] = await Promise.all([
-      loadStudentAbsencesForMonth(studentIds, schoolDaysInMonth, referenceMonth),
-      loadVerifiedWhatsAppContactsDualRead(activeStudents)
+      loadStudentAbsencesForMonth(studentIds, schoolDaysInMonth, referenceMonth, suspensionsByStudent),
+      loadVerifiedWhatsAppContacts(activeStudents)
     ]);
 
     checkTimeout('faltas e contatos carregados');

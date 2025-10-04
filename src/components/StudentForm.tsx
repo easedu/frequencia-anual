@@ -156,26 +156,26 @@ const ModernFormField = memo(({
     icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
     required?: boolean;
 }) => (
-    <div className="space-y-4">
-        <div className="flex items-center space-x-3">
+    <div className="space-y-2">
+        <div className="flex items-center space-x-2">
             {Icon && (
-                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                    <Icon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                    <Icon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
             )}
             <div>
-                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center">
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center">
                     {title}
                     {required && <span className="text-red-500 ml-1">*</span>}
                 </h3>
                 {description && (
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                         {description}
                     </p>
                 )}
             </div>
         </div>
-        <div className="bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
+        <div className="bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-xl p-4 border border-slate-200/50 dark:border-slate-600/50">
             {children}
         </div>
     </div>
@@ -358,9 +358,9 @@ const ContactField = memo(({
     }, [phoneDebounceTimer]);
 
     return (
-    <div className="bg-white/60 dark:bg-slate-700/60 rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
-        <div className="flex items-center justify-between mb-4">
-            <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+    <div className="bg-white/60 dark:bg-slate-700/60 rounded-xl p-4 border border-slate-200/50 dark:border-slate-600/50">
+        <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                 Contato {index + 1}
             </h4>
             {canRemove && (
@@ -369,28 +369,28 @@ const ContactField = memo(({
                     variant="ghost"
                     size="sm"
                     onClick={onRemove}
-                    className="text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl p-2"
+                    className="text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg p-1.5 h-7 w-7"
                 >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                 </Button>
             )}
         </div>
 
-        <div className="mb-4">
+        <div className="mb-3">
             <FormField
                 control={form.control}
                 name={`contatos.${index}.podeReceberMensagem`}
                 render={({ field }) => (
-                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                    <FormItem className="flex flex-row items-start space-x-2 space-y-0">
                         <FormControl>
                             <Checkbox
                                 checked={field.value ?? true}
                                 onCheckedChange={field.onChange}
-                                className="mt-1"
+                                className="mt-0.5"
                             />
                         </FormControl>
-                        <div className="space-y-1 leading-none">
-                            <FormLabel className="text-base font-medium text-slate-700 dark:text-slate-300">
+                        <div className="space-y-0.5 leading-none">
+                            <FormLabel className="text-sm font-medium text-slate-700 dark:text-slate-300">
                                 Pode receber mensagem
                             </FormLabel>
                         </div>
@@ -399,13 +399,13 @@ const ContactField = memo(({
             />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <FormField
                 control={form.control}
                 name={`contatos.${index}.nome`}
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                        <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                             Nome do Contato <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormControl>
@@ -413,7 +413,7 @@ const ContactField = memo(({
                                 {...field}
                                 value={field.value || ""}
                                 placeholder="Nome completo"
-                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                             />
                         </FormControl>
                         <FormMessage />
@@ -426,7 +426,7 @@ const ContactField = memo(({
                 name={`contatos.${index}.parentesco`}
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                        <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                             Parentesco <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormControl>
@@ -434,7 +434,7 @@ const ContactField = memo(({
                                 {...field}
                                 value={field.value || ""}
                                 placeholder="Ex: Mãe, Pai, Responsável"
-                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                             />
                         </FormControl>
                         <FormMessage />
@@ -447,7 +447,7 @@ const ContactField = memo(({
                 name={`contatos.${index}.telefone`}
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                        <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                             Telefone <span className="text-red-500">*</span>
                             {whatsappStatus.isVerifying && (
                                 <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
@@ -483,7 +483,7 @@ const ContactField = memo(({
                                         const cleanedValue = handlePhoneChange(inputValue);
                                         field.onChange(cleanedValue || "");
                                     }}
-                                    className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 pr-10"
+                                    className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 pr-10"
                                 />
                                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                                     {whatsappStatus.isVerifying ? (
@@ -592,54 +592,49 @@ export const StudentForm = memo(function StudentForm({
 
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleFormSubmit, onError)} className="space-y-8">
-                <div className="text-center bg-blue-50/50 dark:bg-blue-900/20 rounded-2xl p-4 border border-blue-200/50 dark:border-blue-800/50">
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
+            <form onSubmit={form.handleSubmit(handleFormSubmit, onError)} className="space-y-4">
+                <div className="text-center bg-blue-50/50 dark:bg-blue-900/20 rounded-xl p-2 border border-blue-200/50 dark:border-blue-800/50">
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
                         Campos marcados com <span className="text-red-500 font-bold">*</span> são obrigatórios
                     </p>
                 </div>
 
                 <Tabs defaultValue="pessoais" className="w-full">
-                    <TabsList className="grid w-full grid-cols-4 bg-slate-100/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-1 border border-slate-200/50 dark:border-slate-600/50">
-                        <TabsTrigger value="pessoais" className="rounded-xl font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
-                            <User className="w-4 h-4 mr-2" />
+                    <TabsList className="grid w-full grid-cols-4 bg-slate-100/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-1 border border-slate-200/50 dark:border-slate-600/50">
+                        <TabsTrigger value="pessoais" className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
+                            <User className="w-3.5 h-3.5 mr-1.5" />
                             Pessoais
                         </TabsTrigger>
-                        <TabsTrigger value="endereco" className="rounded-xl font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
-                            <Home className="w-4 h-4 mr-2" />
+                        <TabsTrigger value="endereco" className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
+                            <Home className="w-3.5 h-3.5 mr-1.5" />
                             Endereço
                         </TabsTrigger>
-                        <TabsTrigger value="contatos" className="rounded-xl font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
-                            <Phone className="w-4 h-4 mr-2" />
+                        <TabsTrigger value="contatos" className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
+                            <Phone className="w-3.5 h-3.5 mr-1.5" />
                             Contatos
                         </TabsTrigger>
-                        <TabsTrigger value="deficiencia" className="rounded-xl font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
-                            <Heart className="w-4 h-4 mr-2" />
+                        <TabsTrigger value="deficiencia" className="rounded-lg text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-md transition-all duration-200">
+                            <Heart className="w-3.5 h-3.5 mr-1.5" />
                             Deficiência
                         </TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="pessoais" className="mt-8">
-                        <ModernFormField
-                            title="Informações Pessoais"
-                            description="Dados básicos do estudante"
-                            icon={User}
-                            required
-                        >
-                            <div className="space-y-6">
+                    <TabsContent value="pessoais" className="mt-4">
+                        <div className="bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-xl p-4 border border-slate-200/50 dark:border-slate-600/50">
+                            <div className="space-y-4">
                                 <FormField
                                     control={form.control}
                                     name="nome"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                            <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                 Nome Completo <span className="text-red-500">*</span>
                                             </FormLabel>
                                             <FormControl>
                                                 <Input
                                                     {...field}
                                                     placeholder="Digite o nome completo do estudante"
-                                                    className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                 />
                                             </FormControl>
                                             <FormMessage />
@@ -647,20 +642,20 @@ export const StudentForm = memo(function StudentForm({
                                     )}
                                 />
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <FormField
                                         control={form.control}
                                         name="turma"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Turma <span className="text-red-500">*</span>
                                                 </FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         {...field}
                                                         placeholder="Ex: 1ºA, 2ºB"
-                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
@@ -673,14 +668,14 @@ export const StudentForm = memo(function StudentForm({
                                         name="matricula"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Matrícula
                                                 </FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         {...field}
                                                         placeholder="Número da matrícula"
-                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
@@ -693,12 +688,12 @@ export const StudentForm = memo(function StudentForm({
                                         name="bolsaFamilia"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Bolsa Família <span className="text-red-500">*</span>
                                                 </FormLabel>
                                                 <FormControl>
                                                     <ShadcnSelect onValueChange={field.onChange} value={field.value}>
-                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                        <SelectTrigger className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
                                                             <SelectValue placeholder="Selecione" />
                                                         </SelectTrigger>
                                                         <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
@@ -713,18 +708,18 @@ export const StudentForm = memo(function StudentForm({
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <FormField
                                         control={form.control}
                                         name="status"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Status <span className="text-red-500">*</span>
                                                 </FormLabel>
                                                 <FormControl>
                                                     <ShadcnSelect onValueChange={field.onChange} value={field.value}>
-                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                        <SelectTrigger className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
                                                             <SelectValue placeholder="Selecione o Status" />
                                                         </SelectTrigger>
                                                         <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
@@ -743,12 +738,12 @@ export const StudentForm = memo(function StudentForm({
                                         name="turno"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Turno <span className="text-red-500">*</span>
                                                 </FormLabel>
                                                 <FormControl>
                                                     <ShadcnSelect onValueChange={field.onChange} value={field.value}>
-                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                        <SelectTrigger className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
                                                             <SelectValue placeholder="Selecione o Turno" />
                                                         </SelectTrigger>
                                                         <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
@@ -763,13 +758,13 @@ export const StudentForm = memo(function StudentForm({
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <FormField
                                         control={form.control}
                                         name="dataNascimento"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Data de Nascimento
                                                 </FormLabel>
                                                 <FormControl>
@@ -781,7 +776,7 @@ export const StudentForm = memo(function StudentForm({
                                                             const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
                                                             field.onChange(cleanedValue);
                                                         }}
-                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
@@ -794,7 +789,7 @@ export const StudentForm = memo(function StudentForm({
                                         name="email"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     E-mail
                                                 </FormLabel>
                                                 <FormControl>
@@ -802,7 +797,7 @@ export const StudentForm = memo(function StudentForm({
                                                         {...field}
                                                         type="email"
                                                         placeholder="email@exemplo.com"
-                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
@@ -811,22 +806,22 @@ export const StudentForm = memo(function StudentForm({
                                     />
                                 </div>
                             </div>
-                        </ModernFormField>
+                        </div>
                     </TabsContent>
 
-                    <TabsContent value="endereco" className="mt-8">
+                    <TabsContent value="endereco" className="mt-4">
                         <ModernFormField
                             title="Endereço Residencial"
                             description="Informações de localização do estudante"
                             icon={Home}
                         >
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                                 <FormField
                                     control={form.control}
                                     name="endereco.cep"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                            <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                 CEP
                                             </FormLabel>
                                             <FormControl>
@@ -839,7 +834,7 @@ export const StudentForm = memo(function StudentForm({
                                                         field.onChange(cleanedValue);
                                                         setCepChangedManually(true);
                                                     }}
-                                                    className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                    className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                 />
                                             </FormControl>
                                             <FormMessage />
@@ -847,21 +842,21 @@ export const StudentForm = memo(function StudentForm({
                                     )}
                                 />
 
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div className="md:col-span-2">
                                         <FormField
                                             control={form.control}
                                             name="endereco.rua"
                                             render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                    <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                         Rua/Logradouro
                                                     </FormLabel>
                                                     <FormControl>
                                                         <Input
                                                             {...field}
                                                             placeholder="Nome da rua"
-                                                            className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                            className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                         />
                                                     </FormControl>
                                                     <FormMessage />
@@ -875,14 +870,14 @@ export const StudentForm = memo(function StudentForm({
                                         name="endereco.numero"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Número
                                                 </FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         {...field}
                                                         placeholder="123"
-                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
@@ -895,14 +890,14 @@ export const StudentForm = memo(function StudentForm({
                                         name="endereco.complemento"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Complemento
                                                 </FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         {...field}
                                                         placeholder="Apto, bloco..."
-                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
@@ -911,20 +906,20 @@ export const StudentForm = memo(function StudentForm({
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <FormField
                                         control={form.control}
                                         name="endereco.bairro"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Bairro
                                                 </FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         {...field}
                                                         placeholder="Nome do bairro"
-                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
@@ -937,14 +932,14 @@ export const StudentForm = memo(function StudentForm({
                                         name="endereco.cidade"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Cidade
                                                 </FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         {...field}
                                                         placeholder="Nome da cidade"
-                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
@@ -957,14 +952,14 @@ export const StudentForm = memo(function StudentForm({
                                         name="endereco.estado"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                     Estado
                                                 </FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         {...field}
                                                         placeholder="SP"
-                                                        className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                        className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
@@ -976,13 +971,13 @@ export const StudentForm = memo(function StudentForm({
                         </ModernFormField>
                     </TabsContent>
 
-                    <TabsContent value="contatos" className="mt-8">
+                    <TabsContent value="contatos" className="mt-4">
                         <ModernFormField
                             title="Contatos de Emergência"
                             description="Números de telefone para contato"
                             icon={Phone}
                         >
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                                 {contatos.map((_, index) => (
                                     <ContactField
                                         key={index}
@@ -1006,13 +1001,13 @@ export const StudentForm = memo(function StudentForm({
                         </ModernFormField>
                     </TabsContent>
 
-                    <TabsContent value="deficiencia" className="mt-8">
+                    <TabsContent value="deficiencia" className="mt-4">
                         <ModernFormField
                             title="Informações sobre Deficiência"
                             description="Dados de acessibilidade e necessidades especiais"
                             icon={Heart}
                         >
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                                 <FormField
                                     control={form.control}
                                     name="deficiencia.estudanteComDeficiencia"
@@ -1055,24 +1050,24 @@ export const StudentForm = memo(function StudentForm({
                                 />
 
                                 {form.watch("deficiencia.estudanteComDeficiencia") && (
-                                    <div className="space-y-8 animate-in slide-in-from-top-4 duration-300">
+                                    <div className="space-y-4 animate-in slide-in-from-top-4 duration-300">
                                         {/* Informações Gerais */}
                                         <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-2 border-slate-200/50 dark:border-slate-600/50 rounded-2xl overflow-hidden">
-                                            <CardHeader className="bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 pb-4">
-                                                <CardTitle className="text-lg font-semibold text-purple-800 dark:text-purple-200">
+                                            <CardHeader className="bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 pb-2">
+                                                <CardTitle className="text-sm font-semibold text-purple-800 dark:text-purple-200">
                                                     Informações Gerais
                                                 </CardTitle>
                                                 <CardDescription className="text-purple-600 dark:text-purple-300">
                                                     Tipo de deficiência e características
                                                 </CardDescription>
                                             </CardHeader>
-                                            <CardContent className="p-6 space-y-6">
+                                            <CardContent className="p-4 space-y-4">
                                                 <FormField
                                                     control={form.control}
                                                     name="deficiencia.tipoDeficiencia"
                                                     render={({ field }) => (
                                                         <FormItem>
-                                                            <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                            <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                                 Tipo de Deficiência <span className="text-red-500">*</span>
                                                             </FormLabel>
                                                             <FormControl>
@@ -1135,27 +1130,27 @@ export const StudentForm = memo(function StudentForm({
 
                                         {/* Atendimento Educacional */}
                                         <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-2 border-slate-200/50 dark:border-slate-600/50 rounded-2xl overflow-hidden">
-                                            <CardHeader className="bg-gradient-to-r from-green-100 to-teal-100 dark:from-green-900/30 dark:to-teal-900/30 pb-4">
-                                                <CardTitle className="text-lg font-semibold text-green-800 dark:text-green-200">
+                                            <CardHeader className="bg-gradient-to-r from-green-100 to-teal-100 dark:from-green-900/30 dark:to-teal-900/30 pb-2">
+                                                <CardTitle className="text-sm font-semibold text-green-800 dark:text-green-200">
                                                     Atendimento Educacional
                                                 </CardTitle>
                                                 <CardDescription className="text-green-600 dark:text-green-300">
                                                     Informações sobre apoio educacional
                                                 </CardDescription>
                                             </CardHeader>
-                                            <CardContent className="p-6 space-y-6">
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            <CardContent className="p-4 space-y-4">
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                     <FormField
                                                         control={form.control}
                                                         name="deficiencia.aee"
                                                         render={({ field }) => (
                                                             <FormItem>
-                                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                                     A.E.E.
                                                                 </FormLabel>
                                                                 <FormControl>
                                                                     <ShadcnSelect onValueChange={field.onChange} value={field.value}>
-                                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                                        <SelectTrigger className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
                                                                             <SelectValue placeholder="Selecione" />
                                                                         </SelectTrigger>
                                                                         <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
@@ -1174,12 +1169,12 @@ export const StudentForm = memo(function StudentForm({
                                                         name="deficiencia.instituicao"
                                                         render={({ field }) => (
                                                             <FormItem>
-                                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                                     Instituição
                                                                 </FormLabel>
                                                                 <FormControl>
                                                                     <ShadcnSelect onValueChange={field.onChange} value={field.value}>
-                                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                                        <SelectTrigger className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
                                                                             <SelectValue placeholder="Selecione" />
                                                                         </SelectTrigger>
                                                                         <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
@@ -1201,12 +1196,12 @@ export const StudentForm = memo(function StudentForm({
                                                         name="deficiencia.horarioAtendimento"
                                                         render={({ field }) => (
                                                             <FormItem>
-                                                                <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                                     Horário de Atendimento
                                                                 </FormLabel>
                                                                 <FormControl>
                                                                     <ShadcnSelect onValueChange={field.onChange} value={field.value}>
-                                                                        <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                                        <SelectTrigger className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
                                                                             <SelectValue placeholder="Selecione" />
                                                                         </SelectTrigger>
                                                                         <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
@@ -1227,7 +1222,7 @@ export const StudentForm = memo(function StudentForm({
                                                     name="deficiencia.atendimentoSaude"
                                                     render={({ field }) => (
                                                         <FormItem>
-                                                            <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                            <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                                 Atendimento de Saúde
                                                             </FormLabel>
                                                             <FormControl>
@@ -1266,15 +1261,15 @@ export const StudentForm = memo(function StudentForm({
 
                                         {/* Apoio e Estágio */}
                                         <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-2 border-slate-200/50 dark:border-slate-600/50 rounded-2xl overflow-hidden">
-                                            <CardHeader className="bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900/30 dark:to-red-900/30 pb-4">
-                                                <CardTitle className="text-lg font-semibold text-orange-800 dark:text-orange-200">
+                                            <CardHeader className="bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900/30 dark:to-red-900/30 pb-2">
+                                                <CardTitle className="text-sm font-semibold text-orange-800 dark:text-orange-200">
                                                     Apoio e Estágio
                                                 </CardTitle>
                                                 <CardDescription className="text-orange-600 dark:text-orange-300">
                                                     Informações sobre estagiários e AVE
                                                 </CardDescription>
                                             </CardHeader>
-                                            <CardContent className="p-6 space-y-6">
+                                            <CardContent className="p-4 space-y-4">
                                                 <FormField
                                                     control={form.control}
                                                     name="deficiencia.possuiEstagiario"
@@ -1313,14 +1308,14 @@ export const StudentForm = memo(function StudentForm({
                                                                 name="deficiencia.nomeEstagiario"
                                                                 render={({ field }) => (
                                                                     <FormItem>
-                                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                        <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                                             Nome do(a) Estagiário(a)
                                                                         </FormLabel>
                                                                         <FormControl>
                                                                             <Input
                                                                                 {...field}
                                                                                 placeholder="Nome completo do estagiário"
-                                                                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                                                className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                                             />
                                                                         </FormControl>
                                                                         <FormMessage />
@@ -1333,12 +1328,12 @@ export const StudentForm = memo(function StudentForm({
                                                                 name="deficiencia.justificativaEstagiario"
                                                                 render={({ field }) => (
                                                                     <FormItem>
-                                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                        <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                                             Justificativa
                                                                         </FormLabel>
                                                                         <FormControl>
                                                                             <ShadcnSelect onValueChange={field.onChange} value={field.value}>
-                                                                                <SelectTrigger className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                                                                <SelectTrigger className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
                                                                                     <SelectValue placeholder="Selecione a justificativa" />
                                                                                 </SelectTrigger>
                                                                                 <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
@@ -1393,14 +1388,14 @@ export const StudentForm = memo(function StudentForm({
                                                                 name="deficiencia.nomeAve"
                                                                 render={({ field }) => (
                                                                     <FormItem>
-                                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                        <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                                             Nome do(a) AVE
                                                                         </FormLabel>
                                                                         <FormControl>
                                                                             <Input
                                                                                 {...field}
                                                                                 placeholder="Nome completo do AVE"
-                                                                                className="h-12 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                                                                                className="h-9 text-sm rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                                                                             />
                                                                         </FormControl>
                                                                         <FormMessage />
@@ -1413,7 +1408,7 @@ export const StudentForm = memo(function StudentForm({
                                                                 name="deficiencia.justificativaAve"
                                                                 render={({ field }) => (
                                                                     <FormItem>
-                                                                        <FormLabel className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                                                                        <FormLabel className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                                                             Justificativa
                                                                         </FormLabel>
                                                                         <FormControl>
@@ -1460,30 +1455,30 @@ export const StudentForm = memo(function StudentForm({
                 </Tabs>
 
                 {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t border-slate-200/50 dark:border-slate-600/50">
+                <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-3 pt-4 border-t border-slate-200/50 dark:border-slate-600/50">
                     <Button
                         type="button"
                         variant="outline"
                         onClick={handleCancel}
                         disabled={isSaving}
-                        className="h-12 px-8 text-base rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="h-9 px-6 text-sm rounded-lg border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        <X className="w-5 h-5 mr-2" />
+                        <X className="w-4 h-4 mr-1.5" />
                         Cancelar
                     </Button>
                     <Button
                         type="submit"
                         disabled={isSaving}
-                        className="h-12 px-8 text-base rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
+                        className="h-9 px-6 text-sm rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
                     >
                         {isSaving ? (
                             <>
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1.5"></div>
                                 {isEditing ? 'Atualizando...' : 'Salvando...'}
                             </>
                         ) : (
                             <>
-                                <Save className="w-5 h-5 mr-2" />
+                                <Save className="w-4 h-4 mr-1.5" />
                                 {isEditing ? 'Atualizar' : 'Salvar'} Estudante
                             </>
                         )}

@@ -34,6 +34,7 @@ import {
   updateDoc,
   writeBatch,
   addDoc,
+  collectionGroup,
 } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import { logger } from '@/utils/logger';
@@ -297,33 +298,104 @@ export class StudentDataService {
       }
 
       const snapshot = await getDocs(q);
-      const students: Estudante[] = [];
 
-      for (const docSnap of snapshot.docs) {
-        const studentData = docSnap.data() as StudentV3;
+      if (!includeContacts) {
+        // Sem contatos, processar direto (super rápido - 1 query)
+        const students = snapshot.docs.map(docSnap => {
+          const studentData = docSnap.data() as StudentV3;
+          return StudentDataService.convertV3ToEstudante(studentData, []);
+        });
+        return students;
+      }
 
-        let contatos: any[] = [];
+      // OTIMIZAÇÃO: Tentar Collection Group Query primeiro, fallback para paralelo
+      try {
+        logger.info('🚀 [PERFORMANCE] Tentando Collection Group Query para contatos...');
 
-        // PERFORMANCE OPTIMIZATION: Only fetch contacts if explicitly requested
-        if (includeContacts) {
+        const contactsGroupQuery = collectionGroup(db, 'contacts');
+        const allContactsSnap = await getDocs(contactsGroupQuery);
+
+        // Mapear contatos por estudanteId (extraído do path)
+        const contactsByStudent = new Map<string, any[]>();
+
+        allContactsSnap.docs.forEach(contactDoc => {
+          // Path format: students/{estudanteId}/contacts/{contactId}
+          const pathParts = contactDoc.ref.path.split('/');
+          const estudanteId = pathParts[1]; // Index 1 é o estudanteId
+
+          const contact = contactDoc.data() as any; // Usar any para acessar whatsapp
+          const contatoData = {
+            nome: contact.nome || '',
+            parentesco: contact.parentesco || '',
+            telefone: contact.telefone || '',
+            podeReceberMensagem: contact.podeReceberWhatsapp ?? true,
+            // INCLUIR dados de WhatsApp se existirem (estrutura nested)
+            whatsapp: contact.whatsapp ? {
+              verified: contact.whatsapp.verified || false,
+              exists: contact.whatsapp.exists || false,
+              verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || null,
+              name: contact.whatsapp.name || null,
+              number: contact.whatsapp.number || null,
+            } : undefined,
+          };
+
+          if (!contactsByStudent.has(estudanteId)) {
+            contactsByStudent.set(estudanteId, []);
+          }
+          contactsByStudent.get(estudanteId)!.push(contatoData);
+        });
+
+        logger.info(`✅ [PERFORMANCE] ${allContactsSnap.docs.length} contatos carregados em 1 query (Collection Group)!`);
+
+        // Combinar estudantes com seus contatos
+        const students = snapshot.docs.map(docSnap => {
+          const studentData = docSnap.data() as StudentV3;
+          const contatos = contactsByStudent.get(docSnap.id) || [];
+          return StudentDataService.convertV3ToEstudante(studentData, contatos);
+        });
+
+        return students;
+
+      } catch (collectionGroupError: any) {
+        // FALLBACK: Se Collection Group falhar (permission-denied), usar queries paralelas
+        if (collectionGroupError?.code === 'permission-denied') {
+          logger.warn('⚠️  Collection Group Query sem permissão, usando fallback paralelo...');
+        } else {
+          logger.warn('⚠️  Collection Group Query falhou, usando fallback paralelo...', collectionGroupError);
+        }
+
+        // FALLBACK: Buscar contatos em paralelo (rápido, mas mais queries)
+        const studentsWithContactsPromises = snapshot.docs.map(async (docSnap) => {
+          const studentData = docSnap.data() as StudentV3;
+
           const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(docSnap.id));
           const contactsSnap = await getDocs(contactsRef);
 
-          contatos = contactsSnap.docs.map(contactDoc => {
-            const contact = contactDoc.data() as ContactV3;
+          const contatos = contactsSnap.docs.map(contactDoc => {
+            const contact = contactDoc.data() as any; // Usar any para acessar whatsapp
             return {
               nome: contact.nome || '',
               parentesco: contact.parentesco || '',
               telefone: contact.telefone || '',
-              podeReceberMensagem: contact.podeReceberWhatsapp !== false,
+              podeReceberMensagem: contact.podeReceberWhatsapp ?? true,
+              // INCLUIR dados de WhatsApp se existirem (estrutura nested)
+              whatsapp: contact.whatsapp ? {
+                verified: contact.whatsapp.verified || false,
+                exists: contact.whatsapp.exists || false,
+                verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || null,
+                name: contact.whatsapp.name || null,
+                number: contact.whatsapp.number || null,
+              } : undefined,
             };
           });
-        }
 
-        students.push(StudentDataService.convertV3ToEstudante(studentData, contatos));
+          return StudentDataService.convertV3ToEstudante(studentData, contatos);
+        });
+
+        const students = await Promise.all(studentsWithContactsPromises);
+        logger.info(`✅ [PERFORMANCE] ${students.length} estudantes carregados com queries paralelas`);
+        return students;
       }
-
-      return students;
 
     } catch (error: any) {
       // Handle index errors with fallback
@@ -332,32 +404,50 @@ export class StudentDataService {
 
         const studentsRef = collection(db, FIREBASE_PATHS_V3.students());
         const snapshot = await getDocs(studentsRef);
-        const students: Estudante[] = [];
 
-        for (const docSnap of snapshot.docs) {
+        // Filtrar estudantes deletados (se necessário)
+        const filteredDocs = snapshot.docs.filter(docSnap => {
           const studentData = docSnap.data() as StudentV3;
+          return includeDeleted || studentData.deleted !== true;
+        });
 
-          if (includeDeleted || studentData.deleted !== true) {
-            let contatos: any[] = [];
+        // PERFORMANCE: Carregar contatos em PARALELO (não sequencial)
+        let students: Estudante[];
 
-            // PERFORMANCE OPTIMIZATION: Only fetch contacts if explicitly requested
-            if (includeContacts) {
-              const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(docSnap.id));
-              const contactsSnap = await getDocs(contactsRef);
+        if (includeContacts) {
+          const studentsWithContactsPromises = filteredDocs.map(async (docSnap) => {
+            const studentData = docSnap.data() as StudentV3;
 
-              contatos = contactsSnap.docs.map(contactDoc => {
-                const contact = contactDoc.data() as ContactV3;
-                return {
-                  nome: contact.nome || '',
-                  parentesco: contact.parentesco || '',
-                  telefone: contact.telefone || '',
-                  podeReceberMensagem: contact.podeReceberWhatsapp !== false,
-                };
-              });
-            }
+            const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(docSnap.id));
+            const contactsSnap = await getDocs(contactsRef);
 
-            students.push(StudentDataService.convertV3ToEstudante(studentData, contatos));
-          }
+            const contatos = contactsSnap.docs.map(contactDoc => {
+              const contact = contactDoc.data() as any; // Usar any para acessar whatsapp
+              return {
+                nome: contact.nome || '',
+                parentesco: contact.parentesco || '',
+                telefone: contact.telefone || '',
+                podeReceberMensagem: contact.podeReceberWhatsapp ?? true,
+                // INCLUIR dados de WhatsApp se existirem (estrutura nested)
+                whatsapp: contact.whatsapp ? {
+                  verified: contact.whatsapp.verified || false,
+                  exists: contact.whatsapp.exists || false,
+                  verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || null,
+                  name: contact.whatsapp.name || null,
+                  number: contact.whatsapp.number || null,
+                } : undefined,
+              };
+            });
+
+            return StudentDataService.convertV3ToEstudante(studentData, contatos);
+          });
+
+          students = await Promise.all(studentsWithContactsPromises);
+        } else {
+          students = filteredDocs.map(docSnap => {
+            const studentData = docSnap.data() as StudentV3;
+            return StudentDataService.convertV3ToEstudante(studentData, []);
+          });
         }
 
         students.sort((a, b) => a.nome.localeCompare(b.nome));
@@ -387,12 +477,20 @@ export class StudentDataService {
       const contactsSnap = await getDocs(contactsRef);
 
       const contatos = contactsSnap.docs.map(contactDoc => {
-        const contact = contactDoc.data() as ContactV3;
+        const contact = contactDoc.data() as any; // Usar any para acessar whatsapp
         return {
           nome: contact.nome || '',
           parentesco: contact.parentesco || '',
           telefone: contact.telefone || '',
-          podeReceberMensagem: contact.podeReceberWhatsapp !== false,
+          podeReceberMensagem: contact.podeReceberWhatsapp ?? true,
+          // INCLUIR dados de WhatsApp se existirem (estrutura nested)
+          whatsapp: contact.whatsapp ? {
+            verified: contact.whatsapp.verified || false,
+            exists: contact.whatsapp.exists || false,
+            verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || null,
+            name: contact.whatsapp.name || null,
+            number: contact.whatsapp.number || null,
+          } : undefined,
         };
       });
 
@@ -420,7 +518,8 @@ export class StudentDataService {
         parentesco: StudentDataService.normalizeParentesco(contato.parentesco || ''),
         telefone: contato.telefone || '',
         telefoneNumerico: StudentDataService.extractNumericPhone(contato.telefone || ''),
-        podeReceberWhatsapp: contato.podeReceberMensagem !== false,
+        // Garantir que seja boolean: se undefined ou null, default é true
+        podeReceberWhatsapp: contato.podeReceberMensagem ?? true,
         ...addCreationAudit({} as object, userId),
       };
 

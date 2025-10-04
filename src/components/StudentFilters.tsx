@@ -124,83 +124,88 @@ export function StudentFilters({
     ];
 
     return (
-        <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 dark:border-slate-700/20 overflow-hidden">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 px-8 py-6 border-b border-slate-200/50 dark:border-slate-600/50">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200/50 dark:border-slate-700 overflow-hidden">
+            {/* Compact Header with Gradient */}
+            <div className="bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 px-4 py-3 border-b border-slate-300/50 dark:border-slate-600/50">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                        <div className="p-3 bg-blue-500/20 rounded-2xl">
-                            <Filter className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-500/20 rounded-lg">
+                            <Filter className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                         </div>
-                        <div>
-                            <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-                                Filtros Avançados
-                            </h3>
-                            <p className="text-slate-600 dark:text-slate-400 mt-1">
-                                Refine sua pesquisa com filtros inteligentes
-                            </p>
-                        </div>
+                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            Filtros
+                        </h3>
+                        {activeFiltersCount > 0 && (
+                            <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs px-2 py-0.5">
+                                {activeFiltersCount}
+                            </Badge>
+                        )}
                     </div>
 
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center gap-2">
                         {activeFiltersCount > 0 && (
-                            <div className="flex items-center space-x-2">
-                                <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-3 py-1">
-                                    {activeFiltersCount} filtro{activeFiltersCount > 1 ? 's' : ''} ativo{activeFiltersCount > 1 ? 's' : ''}
-                                </Badge>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={clearAllFilters}
-                                    className="text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-600/50 rounded-xl"
-                                >
-                                    <X className="w-4 h-4 mr-1" />
-                                    Limpar
-                                </Button>
-                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={clearAllFilters}
+                                className="h-8 text-xs"
+                            >
+                                <X className="w-3 h-3 mr-1" />
+                                Limpar
+                            </Button>
                         )}
 
                         <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setShowColumnSettings(!showColumnSettings)}
-                            className="text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-600/50 rounded-xl"
+                            className="h-8 text-xs"
                         >
-                            <Settings className="w-4 h-4 mr-1" />
+                            <Settings className="w-3 h-3 mr-1" />
                             Colunas
+                        </Button>
+
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowAdvanced(!showAdvanced)}
+                            className="h-8 text-xs"
+                        >
+                            <Sliders className="w-3 h-3 mr-1" />
+                            {showAdvanced ? 'Menos' : 'Mais'}
                         </Button>
                     </div>
                 </div>
             </div>
 
-            {/* Main Filters */}
-            <div className="p-8">
+            {/* Compact Filters */}
+            <div className="p-4">
                 {/* Quick Search */}
-                <div className="mb-8">
+                <div className="mb-3">
                     <div className="relative">
-                        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
                         <Input
-                            placeholder="Pesquisar por nome do estudante..."
+                            placeholder="Pesquisar por nome..."
                             value={nomeFiltro}
                             onChange={(e) => setNomeFiltro(e.target.value)}
-                            className="pl-12 h-14 text-lg rounded-2xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                            className="pl-9 h-9 text-sm"
                         />
                     </div>
                 </div>
 
                 {/* Primary Filters Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
                     {/* Turma */}
-                    <div className="space-y-3">
-                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                            🏫 Turma
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            Turma
                         </label>
                         <Select value={turmaFiltro} onValueChange={setTurmaFiltro}>
-                            <SelectTrigger className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
-                                <SelectValue placeholder="Todas as turmas" />
+                            <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder="Todas" />
                             </SelectTrigger>
-                            <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
-                                <SelectItem value="all">Todas as turmas</SelectItem>
+                            <SelectContent>
+                                <SelectItem value="all">Todas</SelectItem>
                                 {turmasUnicas.map((turma) => (
                                     <SelectItem key={turma} value={turma}>
                                         {turma}
@@ -211,16 +216,16 @@ export function StudentFilters({
                     </div>
 
                     {/* Status */}
-                    <div className="space-y-3">
-                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                            ✅ Status
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            Status
                         </label>
                         <Select value={statusFiltro} onValueChange={setStatusFiltro}>
-                            <SelectTrigger className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
-                                <SelectValue placeholder="Todos os status" />
+                            <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder="Todos" />
                             </SelectTrigger>
-                            <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
-                                <SelectItem value="all">Todos os status</SelectItem>
+                            <SelectContent>
+                                <SelectItem value="all">Todos</SelectItem>
                                 <SelectItem value="ATIVO">ATIVO</SelectItem>
                                 <SelectItem value="INATIVO">INATIVO</SelectItem>
                             </SelectContent>
@@ -228,16 +233,16 @@ export function StudentFilters({
                     </div>
 
                     {/* Turno */}
-                    <div className="space-y-3">
-                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                            ⏰ Turno
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            Turno
                         </label>
                         <Select value={turnoFiltro} onValueChange={setTurnoFiltro}>
-                            <SelectTrigger className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
-                                <SelectValue placeholder="Todos os turnos" />
+                            <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder="Todos" />
                             </SelectTrigger>
-                            <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
-                                <SelectItem value="all">Todos os turnos</SelectItem>
+                            <SelectContent>
+                                <SelectItem value="all">Todos</SelectItem>
                                 <SelectItem value="MANHÃ">MANHÃ</SelectItem>
                                 <SelectItem value="TARDE">TARDE</SelectItem>
                             </SelectContent>
@@ -245,15 +250,15 @@ export function StudentFilters({
                     </div>
 
                     {/* Bolsa Família */}
-                    <div className="space-y-3">
-                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                            💰 Bolsa Família
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            Bolsa Família
                         </label>
                         <Select value={bolsaFamiliaFiltro} onValueChange={setBolsaFamiliaFiltro}>
-                            <SelectTrigger className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                            <SelectTrigger className="h-9 text-sm">
                                 <SelectValue placeholder="Todos" />
                             </SelectTrigger>
-                            <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                            <SelectContent>
                                 <SelectItem value="all">Todos</SelectItem>
                                 <SelectItem value="SIM">SIM</SelectItem>
                                 <SelectItem value="NÃO">NÃO</SelectItem>
@@ -262,79 +267,66 @@ export function StudentFilters({
                     </div>
                 </div>
 
-                {/* Advanced Filters Toggle */}
-                <div className="flex justify-center mb-6">
-                    <Button
-                        variant="ghost"
-                        onClick={() => setShowAdvanced(!showAdvanced)}
-                        className="text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-600/50 rounded-xl px-6 py-3"
-                    >
-                        <Sliders className="w-4 h-4 mr-2" />
-                        {showAdvanced ? 'Ocultar' : 'Mostrar'} Filtros Avançados
-                        <ChevronDown className={`w-4 h-4 ml-2 transition-transform duration-200 ${showAdvanced ? 'rotate-180' : ''}`} />
-                    </Button>
-                </div>
-
                 {/* Advanced Filters */}
                 {showAdvanced && (
-                    <div className="bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             {/* Matrícula */}
-                            <div className="space-y-3">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                                    🎓 Matrícula
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                                    Matrícula
                                 </label>
                                 <Input
                                     placeholder="Número da matrícula"
                                     value={matriculaFiltro}
                                     onChange={(e) => setMatriculaFiltro(e.target.value)}
-                                    className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 transition-all duration-200"
+                                    className="h-9 text-sm"
                                 />
                             </div>
 
                             {/* Email */}
-                            <div className="space-y-3">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                                    ✉️ E-mail
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                                    E-mail
                                 </label>
                                 <Input
                                     placeholder="E-mail do estudante"
                                     value={emailFiltro}
                                     onChange={(e) => setEmailFiltro(e.target.value)}
-                                    className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 transition-all duration-200"
+                                    className="h-9 text-sm"
                                 />
                             </div>
 
                             {/* Contato */}
-                            <div className="space-y-3">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                                    📞 Contato
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                                    Contato
                                 </label>
                                 <Input
                                     placeholder="Nome ou telefone"
                                     value={contatoFiltro}
                                     onChange={(e) => setContatoFiltro(e.target.value)}
-                                    className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 transition-all duration-200"
+                                    className="h-9 text-sm"
                                 />
                             </div>
 
                             {/* Endereço */}
-                            <div className="space-y-3">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                                    🏠 Endereço
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                                    Endereço
                                 </label>
                                 <Input
                                     placeholder="Rua, número, bairro..."
                                     value={enderecoFiltro}
                                     onChange={(e) => setEnderecoFiltro(e.target.value)}
-                                    className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 transition-all duration-200"
+                                    className="h-9 text-sm"
                                 />
                             </div>
 
                             {/* Data de Nascimento */}
-                            <div className="space-y-3">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                                    📅 Data de Nascimento
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                                    Data Nascimento
                                 </label>
                                 <Input
                                     placeholder="dd/mm/aaaa"
@@ -344,20 +336,20 @@ export function StudentFilters({
                                         const cleanedValue = cleanDataNascimento(inputValue).slice(0, 8);
                                         setDataNascimentoFiltro(cleanedValue);
                                     }}
-                                    className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm focus:border-blue-500 transition-all duration-200"
+                                    className="h-9 text-sm"
                                 />
                             </div>
 
                             {/* Deficiência */}
-                            <div className="space-y-3">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                                    ♿ Com Deficiência
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                                    Com Deficiência
                                 </label>
                                 <Select value={comDeficienciaFiltro} onValueChange={setComDeficienciaFiltro}>
-                                    <SelectTrigger className="h-12 rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm hover:border-blue-400 transition-all duration-200">
+                                    <SelectTrigger className="h-9 text-sm">
                                         <SelectValue placeholder="Todos" />
                                     </SelectTrigger>
-                                    <SelectContent className="rounded-xl border-2 border-slate-200/50 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                                    <SelectContent>
                                         <SelectItem value="all">Todos</SelectItem>
                                         <SelectItem value="SIM">SIM</SelectItem>
                                         <SelectItem value="NÃO">NÃO</SelectItem>
@@ -370,14 +362,14 @@ export function StudentFilters({
 
                 {/* Column Settings */}
                 {showColumnSettings && (
-                    <div className="mt-6 bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-600/50">
-                        <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center">
-                            <Settings className="w-5 h-5 mr-2" />
-                            Configurar Colunas Visíveis
+                    <div className="mt-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
+                        <h4 className="text-sm font-medium text-slate-900 dark:text-white mb-3 flex items-center">
+                            <Settings className="w-4 h-4 mr-2" />
+                            Colunas Visíveis
                         </h4>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                             {columnOptions.map((option) => (
-                                <div key={option.key} className="flex items-center space-x-3 p-3 bg-white/60 dark:bg-slate-700/60 rounded-xl hover:bg-white/80 dark:hover:bg-slate-700/80 transition-all duration-200">
+                                <div key={option.key} className="flex items-center space-x-2 p-2 bg-white dark:bg-slate-800 rounded-lg">
                                     <Checkbox
                                         id={option.key}
                                         checked={visibleColumns.has(option.key)}
@@ -391,7 +383,7 @@ export function StudentFilters({
                                             setVisibleColumns(newColumns);
                                         }}
                                     />
-                                    <label htmlFor={option.key} className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer flex items-center">
+                                    <label htmlFor={option.key} className="text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer flex items-center">
                                         <span className="mr-2">{option.icon}</span>
                                         {option.label}
                                     </label>

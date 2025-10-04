@@ -73,21 +73,21 @@ export const StudentDialog = memo(function StudentDialog({
 
     return (
         <Dialog open={openModal} onOpenChange={handleOpenChange}>
-            <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-2 border-white/20 dark:border-slate-700/20 rounded-3xl shadow-2xl p-0">
-                <DialogHeader className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-8 py-6 rounded-t-3xl">
-                    <div className="flex items-center space-x-4">
-                        <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
+            <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-0">
+                <DialogHeader className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-3 border-b border-blue-700">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
                             {isEditing ? (
-                                <Edit className="w-7 h-7 text-white" />
+                                <Edit className="w-5 h-5 text-white" />
                             ) : (
-                                <Plus className="w-7 h-7 text-white" />
+                                <Plus className="w-5 h-5 text-white" />
                             )}
                         </div>
                         <div className="text-left">
-                            <DialogTitle className="text-2xl font-bold text-white">
+                            <DialogTitle className="text-lg font-semibold text-white">
                                 {isEditing ? 'Editar Estudante' : 'Novo Estudante'}
                             </DialogTitle>
-                            <DialogDescription className="text-blue-100 mt-1 text-lg">
+                            <DialogDescription className="text-blue-100 text-xs">
                                 {isEditing
                                     ? 'Atualize as informações do estudante'
                                     : 'Preencha os dados do novo estudante'
@@ -97,7 +97,7 @@ export const StudentDialog = memo(function StudentDialog({
                     </div>
                 </DialogHeader>
 
-                <div className="p-8 overflow-y-auto max-h-[calc(90vh-120px)]">
+                <div className="p-4 overflow-y-auto max-h-[calc(90vh-100px)]">
                     <StudentForm
                         form={form}
                         editingEstudante={editingEstudante}

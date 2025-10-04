@@ -7,6 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Phone,
   Search,
   MessageCircle,
@@ -17,12 +24,16 @@ import {
   Copy,
   ExternalLink,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Filter,
+  Smartphone,
+  PhoneCall,
+  GraduationCap
 } from 'lucide-react';
 import { useStudents } from '@/hooks/useStudents';
 import { toast } from 'sonner';
 import { WhatsAppTrackingService } from '@/services/whatsappTrackingService';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import * as XLSX from 'xlsx';
 import WhatsAppModal from '@/components/WhatsAppModal';
@@ -32,6 +43,7 @@ import { getStudentContacts } from '@/services/studentDataService';
 interface PhoneContact {
   telefone: string;
   nome: string;
+  parentesco?: string;
   estudanteNome: string;
   estudanteId: string;
   turma: string;
@@ -42,7 +54,8 @@ interface PhoneContact {
 }
 
 export default function TelefonesPage() {
-  const { students, loading: studentsLoading } = useStudents();
+  // PERFORMANCE: includeContacts=true (página PRECISA de contatos para extrair telefones)
+  const { students, loading: studentsLoading } = useStudents(false, true);
 
   const [phoneContacts, setPhoneContacts] = useState<PhoneContact[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -51,18 +64,24 @@ export default function TelefonesPage() {
   const [uploading, setUploading] = useState(false);
   const [processingFile, setProcessingFile] = useState(false);
 
+  // Smart Filters
+  const [selectedTurma, setSelectedTurma] = useState<string>('all');
+  const [selectedVerificationStatus, setSelectedVerificationStatus] = useState<string>('all');
+  const [selectedPhoneType, setSelectedPhoneType] = useState<string>('all');
+  const [selectedWhatsAppStatus, setSelectedWhatsAppStatus] = useState<string>('all');
+
   // Estados para o modal do WhatsApp
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<PhoneContact | null>(null);
   const [verifiedWhatsAppNumbers, setVerifiedWhatsAppNumbers] = useState<Set<string>>(new Set());
 
-  // Extrair todos os telefones dos estudantes
+  // Extrair todos os telefones dos estudantes COM dados de WhatsApp já incluídos
   const extractPhoneContacts = useMemo(() => {
     const contacts: PhoneContact[] = [];
 
     students.forEach(student => {
       if (student.contatos && student.contatos.length > 0) {
-        student.contatos.forEach(contato => {
+        student.contatos.forEach((contato: any) => {
           if (contato.telefone && contato.telefone.trim()) {
             // Limpar e normalizar número
             const cleanPhone = contato.telefone.replace(/\D/g, '');
@@ -70,10 +89,15 @@ export default function TelefonesPage() {
               contacts.push({
                 telefone: cleanPhone,
                 nome: contato.nome,
+                parentesco: contato.parentesco,
                 estudanteNome: student.nome,
                 estudanteId: student.estudanteId,
                 turma: student.turma,
-                turno: student.turno
+                turno: student.turno,
+                // INCLUIR dados de WhatsApp que já vêm do StudentDataService
+                whatsAppVerified: contato.whatsappVerified || false,
+                hasWhatsApp: contato.hasWhatsApp || false,
+                lastVerified: contato.whatsappVerifiedAt || undefined,
               });
             }
           }
@@ -89,129 +113,101 @@ export default function TelefonesPage() {
     return uniqueContacts.sort((a, b) => a.telefone.localeCompare(b.telefone));
   }, [students]);
 
-  // FASE 3: Carregar dados de verificação do WhatsApp com DUAL-READ OTIMIZADO
-  const loadWhatsAppVerificationData = async () => {
-    try {
-      setLoadingWhatsAppData(true);
+  // PERFORMANCE OTIMIZADA: Dados já vêm da estrutura V3 (sem query extra!)
+  useEffect(() => {
+    if (extractPhoneContacts.length > 0) {
+      console.log('[TELEFONES] ✅ Dados de WhatsApp já incluídos nos contatos V3!');
+      setPhoneContacts(extractPhoneContacts);
 
-      // Mapa de telefones verificados
-      const verifiedNumbers = new Map<string, { hasWhatsApp: boolean; verifiedAt: string }>();
-      const startTime = Date.now();
-
-      console.log('[TELEFONES-DUAL-READ] Verificando qual estrutura usar...');
-
-      // OTIMIZAÇÃO: Testar APENAS 1 estudante para detectar qual estrutura
-      if (students.length > 0) {
-        try {
-          const testResult = await getStudentContacts(students[0].estudanteId);
-
-          // Se primeira query retornou da NOVA estrutura com dados reais
-          if (testResult._dataSource.source === 'new' &&
-              testResult.contacts.length > 0 &&
-              !testResult.contacts[0]._placeholder) {
-
-            console.log('[TELEFONES-DUAL-READ] ✅ Nova estrutura detectada, carregando em paralelo...');
-
-            // Carregar todos em paralelo (chunks de 50)
-            const chunkSize = 50;
-            for (let i = 0; i < students.length; i += chunkSize) {
-              const chunk = students.slice(i, i + chunkSize);
-              const promises = chunk.map(s => getStudentContacts(s.estudanteId));
-              const results = await Promise.allSettled(promises);
-
-              results.forEach((result) => {
-                if (result.status === 'fulfilled' && result.value._dataSource.source === 'new') {
-                  result.value.contacts.forEach((contact: any) => {
-                    if (contact.whatsapp?.verified && contact.telefoneNumerico) {
-                      verifiedNumbers.set(contact.telefoneNumerico, {
-                        hasWhatsApp: contact.whatsapp.exists || false,
-                        verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || new Date().toISOString()
-                      });
-                    }
-                  });
-                }
-              });
-            }
-
-            const elapsed = Date.now() - startTime;
-            console.log(`[TELEFONES-DUAL-READ] ✅ ${verifiedNumbers.size} números da NOVA estrutura (${elapsed}ms)`);
-          } else {
-            // FALLBACK: Estrutura antiga
-            throw new Error('Nova estrutura vazia, usar fallback');
-          }
-        } catch (error) {
-          // FALLBACK: Usar estrutura ANTIGA
-          console.log('[TELEFONES-DUAL-READ] 📦 Usando estrutura ANTIGA (fallback rápido)...');
-
-          const querySnapshot = await getDocs(collection(db, 'whatsapp_verified_numbers'));
-
-          querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            const docId = doc.id;
-
-            verifiedNumbers.set(docId, {
-              hasWhatsApp: data.hasWhatsApp,
-              verifiedAt: data.verifiedAt?.toDate?.()?.toISOString() || new Date().toISOString()
-            });
-          });
-
-          const elapsed = Date.now() - startTime;
-          console.log(`[TELEFONES-DUAL-READ] ✅ ${verifiedNumbers.size} números da estrutura ANTIGA (${elapsed}ms)`);
-        }
-      }
-
-      // Atualizar contatos com dados de verificação
-      const updatedContacts = extractPhoneContacts.map(contact => {
-        const verification = verifiedNumbers.get(contact.telefone);
-        const hasVerification = !!verification;
-
-        return {
-          ...contact,
-          hasWhatsApp: verification?.hasWhatsApp,
-          whatsAppVerified: hasVerification,
-          lastVerified: verification?.verifiedAt
-        };
-      });
-
-      setPhoneContacts(updatedContacts);
-
-      // Atualizar conjunto de números verificados com WhatsApp
+      // Atualizar conjunto de números verificados
       const numbersWithWhatsApp = new Set<string>();
-      verifiedNumbers.forEach((data, phone) => {
-        if (data.hasWhatsApp) {
-          numbersWithWhatsApp.add(phone);
+      extractPhoneContacts.forEach(contact => {
+        if (contact.hasWhatsApp) {
+          numbersWithWhatsApp.add(contact.telefone);
         }
       });
       setVerifiedWhatsAppNumbers(numbersWithWhatsApp);
-
-    } catch (error) {
-      console.error('Erro ao carregar dados de verificação:', error);
-      toast.error('Erro ao carregar dados de verificação do WhatsApp');
-      // Mesmo com erro, carregar os contatos básicos
-      setPhoneContacts(extractPhoneContacts);
-    } finally {
       setLoadingWhatsAppData(false);
-    }
-  };
-
-  useEffect(() => {
-    if (extractPhoneContacts.length > 0) {
-      loadWhatsAppVerificationData();
     }
   }, [extractPhoneContacts]);
 
-  // Filtrar telefones baseado na busca
-  const filteredPhones = useMemo(() => {
-    if (!searchTerm.trim()) return phoneContacts;
+  // Extrair turmas únicas para o filtro
+  const uniqueTurmas = useMemo(() => {
+    const turmas = new Set(phoneContacts.map(c => c.turma));
+    return Array.from(turmas).sort((a, b) => {
+      const matchA = a.match(/(\d+)([A-Z]+)/);
+      const matchB = b.match(/(\d+)([A-Z]+)/);
+      if (!matchA || !matchB) return 0;
+      const [, numA, letterA] = matchA;
+      const [, numB, letterB] = matchB;
+      const numCompare = Number(numA) - Number(numB);
+      if (numCompare !== 0) return numCompare;
+      return letterA.localeCompare(letterB);
+    });
+  }, [phoneContacts]);
 
-    const term = searchTerm.toLowerCase();
-    return phoneContacts.filter(contact =>
-      contact.telefone.includes(term) ||
-      contact.nome.toLowerCase().includes(term) ||
-      contact.estudanteNome.toLowerCase().includes(term) ||
-      contact.turma.toLowerCase().includes(term)
-    );
-  }, [phoneContacts, searchTerm]);
+  // Filtrar telefones com SMART FILTERS e ordenar por turma e nome do estudante
+  const filteredPhones = useMemo(() => {
+    let filtered = [...phoneContacts];
+
+    // Filtro de busca por texto
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(contact =>
+        contact.telefone.includes(term) ||
+        contact.nome.toLowerCase().includes(term) ||
+        contact.estudanteNome.toLowerCase().includes(term) ||
+        contact.turma.toLowerCase().includes(term)
+      );
+    }
+
+    // Filtro por turma
+    if (selectedTurma !== 'all') {
+      filtered = filtered.filter(c => c.turma === selectedTurma);
+    }
+
+    // Filtro por status de verificação
+    if (selectedVerificationStatus === 'verified') {
+      filtered = filtered.filter(c => c.whatsAppVerified);
+    } else if (selectedVerificationStatus === 'not-verified') {
+      filtered = filtered.filter(c => !c.whatsAppVerified);
+    }
+
+    // Filtro por tipo de telefone (fixo/celular)
+    if (selectedPhoneType === 'mobile') {
+      filtered = filtered.filter(c => c.telefone.length === 11); // Celular tem 11 dígitos
+    } else if (selectedPhoneType === 'landline') {
+      filtered = filtered.filter(c => c.telefone.length === 10); // Fixo tem 10 dígitos
+    }
+
+    // Filtro por status do WhatsApp
+    if (selectedWhatsAppStatus === 'has-whatsapp') {
+      filtered = filtered.filter(c => c.hasWhatsApp === true);
+    } else if (selectedWhatsAppStatus === 'no-whatsapp') {
+      filtered = filtered.filter(c => c.whatsAppVerified && c.hasWhatsApp === false);
+    }
+
+    // ORDENAR: Primeiro por turma (1A, 1B, 2A...), depois por nome do estudante
+    return filtered.sort((a, b) => {
+      // Comparar turmas
+      const matchA = a.turma.match(/(\d+)([A-Z]+)/);
+      const matchB = b.turma.match(/(\d+)([A-Z]+)/);
+
+      if (matchA && matchB) {
+        const [, numA, letterA] = matchA;
+        const [, numB, letterB] = matchB;
+
+        const numCompare = Number(numA) - Number(numB);
+        if (numCompare !== 0) return numCompare;
+
+        const letterCompare = letterA.localeCompare(letterB);
+        if (letterCompare !== 0) return letterCompare;
+      }
+
+      // Se turmas iguais, ordenar por nome do estudante
+      return a.estudanteNome.localeCompare(b.estudanteNome);
+    });
+  }, [phoneContacts, searchTerm, selectedTurma, selectedVerificationStatus, selectedPhoneType, selectedWhatsAppStatus]);
 
   // Função para formatar telefone para exibição
   const formatPhone = (phone: string) => {
@@ -224,6 +220,27 @@ export default function TelefonesPage() {
   };
 
   // FASE 3: Função para verificar WhatsApp e SALVAR no Firestore (dual-write)
+  // Helper: Buscar o ID real do contato no Firestore
+  const getContactId = async (studentId: string, phone: string): Promise<string | undefined> => {
+    try {
+      const contactsRef = collection(db, 'students', studentId, 'contacts');
+      const contactsSnap = await getDocs(contactsRef);
+
+      for (const doc of contactsSnap.docs) {
+        const data = doc.data();
+        const cleanPhone = data.telefone?.replace(/\D/g, '');
+        if (cleanPhone === phone) {
+          return doc.id;
+        }
+      }
+
+      return undefined;
+    } catch (error) {
+      console.error('[TELEFONES] Erro ao buscar contactId:', error);
+      return undefined;
+    }
+  };
+
   const verifyWhatsApp = async (phone: string) => {
     setVerifyingPhone(phone);
 
@@ -267,15 +284,10 @@ export default function TelefonesPage() {
       if (result.success) {
         console.log('[TELEFONES-VERIFY] ✅ Verificação bem-sucedida, salvando no Firestore...');
 
-        // FASE 3: SALVAR NO FIRESTORE com dual-write
-        // Buscar contactId do estudante
-        const studentData = students.find(s => s.estudanteId === contact.estudanteId);
-        const contactIndex = studentData?.contatos?.findIndex(c =>
-          c.telefone?.replace(/\D/g, '') === phone
-        );
-        const contactId = contactIndex !== undefined && contactIndex >= 0
-          ? `contact_${contactIndex + 1}`
-          : undefined;
+        // BUSCAR O ID REAL DO CONTATO NO FIRESTORE
+        const contactId = await getContactId(contact.estudanteId, phone);
+
+        console.log('[TELEFONES-VERIFY] contactId encontrado:', contactId || 'não encontrado');
 
         try {
           // Salvar usando WhatsAppTrackingService (dual-write automático)
@@ -285,11 +297,10 @@ export default function TelefonesPage() {
             contact.estudanteId,
             contact.nome,
             'verified',
-            contactId // FASE 3: Para dual-write na nova estrutura
+            contactId // ID REAL do documento no Firestore
           );
 
           console.log('[TELEFONES-VERIFY] ✅ Salvo no Firestore com dual-write');
-          console.log(`[TELEFONES-VERIFY] contactId: ${contactId || 'não encontrado'}`);
 
           // Atualizar estado local
           setPhoneContacts(prev => prev.map(c =>
@@ -478,8 +489,8 @@ export default function TelefonesPage() {
       // Limpar cache do WhatsAppTrackingService para forçar nova busca
       WhatsAppTrackingService.clearCache();
 
-      // Atualizar dados locais
-      await loadWhatsAppVerificationData();
+      // Recarregar página para pegar novos dados
+      window.location.reload();
 
       const message = `Importação concluída!
         ✅ ${processedCount} números processados
@@ -639,152 +650,298 @@ export default function TelefonesPage() {
           </Card>
         </div>
 
-        {/* Filtros */}
+        {/* Smart Filters */}
         <Card className="border-0 shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5 text-blue-600" />
-              Buscar Telefones
+              <Filter className="h-5 w-5 text-blue-600" />
+              Filtros Inteligentes
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <Label htmlFor="search">Buscar por telefone, nome ou turma</Label>
-                <Input
-                  id="search"
-                  placeholder="Digite para buscar..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="mt-1"
-                />
+          <CardContent className="space-y-4">
+            {/* Busca por texto */}
+            <div>
+              <Label htmlFor="search" className="flex items-center gap-2 mb-2">
+                <Search className="h-4 w-4 text-gray-500" />
+                Buscar por telefone, nome ou estudante
+              </Label>
+              <Input
+                id="search"
+                placeholder="Digite para buscar..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
+            {/* Filtros em grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Filtro por Turma */}
+              <div>
+                <Label className="flex items-center gap-2 mb-2">
+                  <GraduationCap className="h-4 w-4 text-gray-500" />
+                  Turma
+                </Label>
+                <Select value={selectedTurma} onValueChange={setSelectedTurma}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Todas as turmas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as turmas</SelectItem>
+                    {uniqueTurmas.map(turma => (
+                      <SelectItem key={turma} value={turma}>{turma}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex items-end gap-2">
+
+              {/* Filtro por Status de Verificação */}
+              <div>
+                <Label className="flex items-center gap-2 mb-2">
+                  <CheckCircle className="h-4 w-4 text-gray-500" />
+                  Verificação
+                </Label>
+                <Select value={selectedVerificationStatus} onValueChange={setSelectedVerificationStatus}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="verified">✓ Verificados</SelectItem>
+                    <SelectItem value="not-verified">○ Não verificados</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro por Tipo de Telefone */}
+              <div>
+                <Label className="flex items-center gap-2 mb-2">
+                  <Smartphone className="h-4 w-4 text-gray-500" />
+                  Tipo de Telefone
+                </Label>
+                <Select value={selectedPhoneType} onValueChange={setSelectedPhoneType}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="mobile">📱 Celular</SelectItem>
+                    <SelectItem value="landline">☎️ Fixo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro por WhatsApp */}
+              <div>
+                <Label className="flex items-center gap-2 mb-2">
+                  <MessageCircle className="h-4 w-4 text-gray-500" />
+                  WhatsApp
+                </Label>
+                <Select value={selectedWhatsAppStatus} onValueChange={setSelectedWhatsAppStatus}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="has-whatsapp">✓ Com WhatsApp</SelectItem>
+                    <SelectItem value="no-whatsapp">✗ Sem WhatsApp</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Botões de ação */}
+            <div className="flex items-center justify-between pt-4 border-t">
+              <div className="text-sm text-gray-600">
+                <strong>{filteredPhones.length}</strong> de <strong>{phoneContacts.length}</strong> telefones
+              </div>
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={loadWhatsAppVerificationData}
-                  disabled={loadingWhatsAppData}
+                  size="sm"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setSelectedTurma('all');
+                    setSelectedVerificationStatus('all');
+                    setSelectedPhoneType('all');
+                    setSelectedWhatsAppStatus('all');
+                  }}
+                  className="text-gray-600"
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Limpar Filtros
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.location.reload()}
                   className="text-blue-600 border-blue-600 hover:bg-blue-50"
                 >
-                  {loadingWhatsAppData ? (
-                    <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                  )}
+                  <RefreshCw className="h-4 w-4 mr-2" />
                   Atualizar
                 </Button>
-
                 <Button
-                  variant="default"
+                  size="sm"
                   onClick={exportToExcel}
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   <Download className="h-4 w-4 mr-2" />
-                  Exportar Excel
+                  Exportar
                 </Button>
-
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Lista de Telefones */}
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-blue-600" />
-                Telefones Encontrados ({filteredPhones.length})
-              </div>
-              <div className="text-sm font-normal text-gray-600">
-              </div>
+        {/* Lista de Telefones - Tabela Moderna */}
+        <Card className="border-0 shadow-lg overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-blue-600" />
+              Resultados ({filteredPhones.length} {filteredPhones.length === 1 ? 'telefone' : 'telefones'})
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {filteredPhones.map((contact, index) => (
-                <div
-                  key={`${contact.telefone}-${index}`}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-lg font-semibold text-gray-900">
-                        {formatPhone(contact.telefone)}
-                      </span>
-                      {contact.whatsAppVerified && (
-                        <Badge
-                          variant={contact.hasWhatsApp ? "default" : "secondary"}
-                          className={contact.hasWhatsApp ? "bg-green-600" : "bg-gray-500"}
-                        >
-                          {contact.hasWhatsApp ? "WhatsApp ✓" : "Sem WhatsApp"}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium">{contact.nome}</span> - {contact.estudanteNome}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Turma: {contact.turma} | Turno: {contact.turno}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyPhone(contact.telefone)}
-                      title="Copiar telefone"
-                    >
-                      <Copy className="h-4 w-4 mr-1" />
-                      Copiar
-                    </Button>
-
-                    {contact.hasWhatsApp && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openWhatsAppModal(contact)}
-                        className="text-green-600 border-green-600 hover:bg-green-50"
-                        title="Enviar mensagem via WhatsApp"
-                      >
-                        <MessageCircle className="h-4 w-4 mr-1" />
+          <CardContent className="p-0">
+            {filteredPhones.length === 0 ? (
+              <div className="text-center py-16 text-gray-500">
+                <Phone className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                <p className="text-lg font-medium">Nenhum telefone encontrado</p>
+                <p className="text-sm mt-2">Ajuste os filtros para encontrar resultados</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Turma
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Estudante
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Contato
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Parentesco
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Telefone
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         WhatsApp
-                      </Button>
-                    )}
-
-                    {(!contact.whatsAppVerified || (contact.whatsAppVerified && !contact.hasWhatsApp)) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => verifyWhatsApp(contact.telefone)}
-                        disabled={verifyingPhone === contact.telefone}
-                        className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Ações
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredPhones.map((contact, index) => (
+                      <tr
+                        key={`${contact.telefone}-${index}`}
+                        className="hover:bg-blue-50/50 transition-colors duration-150"
                       >
-                        {verifyingPhone === contact.telefone ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 animate-spin mr-1" />
-                            Verificando...
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle className="h-4 w-4 mr-1" />
-                            {contact.whatsAppVerified && !contact.hasWhatsApp ? 'Reverificar' : 'Verificar'}
-                          </>
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                              <GraduationCap className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div className="ml-3">
+                              <div className="text-sm font-bold text-gray-900">{contact.turma}</div>
+                              <div className="text-xs text-gray-500">{contact.turno}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-medium text-gray-900">{contact.estudanteNome}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-900">{contact.nome}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-600">
+                            {contact.parentesco || <span className="text-gray-400 italic">N/A</span>}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4 text-gray-400" />
+                            <span className="font-mono text-sm font-medium text-gray-900">
+                              {formatPhone(contact.telefone)}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => copyPhone(contact.telefone)}
+                              className="h-6 w-6 p-0 hover:bg-blue-100"
+                            >
+                              <Copy className="h-3 w-3 text-gray-500" />
+                            </Button>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center justify-center">
+                            {contact.whatsAppVerified ? (
+                              contact.hasWhatsApp ? (
+                                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-100" title="WhatsApp verificado e disponível">
+                                  <MessageCircle className="h-4 w-4 text-green-600" />
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gray-100" title="Verificado - sem WhatsApp">
+                                  <XCircle className="h-4 w-4 text-gray-500" />
+                                </div>
+                              )
+                            ) : (
+                              <div className="flex items-center justify-center h-8 w-8 rounded-full bg-orange-100" title="Não verificado">
+                                <RefreshCw className="h-4 w-4 text-orange-500" />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex items-center justify-end gap-2">
+                            {contact.hasWhatsApp && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openWhatsAppModal(contact)}
+                                className="text-green-600 border-green-200 hover:bg-green-50"
+                              >
+                                <MessageCircle className="h-4 w-4 mr-1" />
+                                Enviar
+                              </Button>
+                            )}
 
-              {filteredPhones.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <Phone className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>Nenhum telefone encontrado</p>
-                </div>
-              )}
-            </div>
+                            {(!contact.whatsAppVerified || (contact.whatsAppVerified && !contact.hasWhatsApp)) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => verifyWhatsApp(contact.telefone)}
+                                disabled={verifyingPhone === contact.telefone}
+                                className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                              >
+                                {verifyingPhone === contact.telefone ? (
+                                  <>
+                                    <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+                                    Verificando
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="h-4 w-4 mr-1" />
+                                    {contact.whatsAppVerified && !contact.hasWhatsApp ? 'Reverificar' : 'Verificar'}
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
 

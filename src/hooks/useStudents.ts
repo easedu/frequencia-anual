@@ -5,7 +5,13 @@ import { StudentDataService } from "@/services/studentDataService";
 import { logger } from "@/utils/logger";
 import type { Estudante } from "@/types";
 
-export const useStudents = () => {
+/**
+ * Hook para carregar estudantes do Firebase
+ *
+ * @param includeDeleted - Incluir estudantes deletados (soft-delete)
+ * @param includeContacts - Incluir subcoleção de contatos (PERFORMANCE: false = 1 query, true = N queries)
+ */
+export const useStudents = (includeDeleted: boolean = false, includeContacts: boolean = true) => {
     const [students, setStudents] = useState<Estudante[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
@@ -14,7 +20,8 @@ export const useStudents = () => {
     const fetchStudents = async () => {
         setLoading(true);
         try {
-            const fetchedStudents = await StudentDataService.getStudents();
+            // PERFORMANCE: Passar parâmetro includeContacts
+            const fetchedStudents = await StudentDataService.getStudents(includeDeleted, includeContacts);
             setStudents(fetchedStudents);
         } catch (err) {
             logger.error("Erro ao buscar estudantes", err as Error);
@@ -26,7 +33,7 @@ export const useStudents = () => {
 
     useEffect(() => {
         fetchStudents();
-    }, []);
+    }, [includeDeleted, includeContacts]);
 
     return { students, loading, error, fetchStudents, setStudents };
 };

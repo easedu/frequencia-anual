@@ -50,31 +50,31 @@ const BolsaFamiliaBadge = memo(({ bolsa }: { bolsa: string }) => {
 });
 BolsaFamiliaBadge.displayName = 'BolsaFamiliaBadge';
 
-const SortHeader = memo(({ 
-    column, 
-    children, 
-    className = "", 
-    sortColumn, 
-    sortDirection, 
-    onSort 
-}: { 
-    column: string; 
-    children: React.ReactNode; 
+const SortHeader = memo(({
+    column,
+    children,
+    className = "",
+    sortColumn,
+    sortDirection,
+    onSort
+}: {
+    column: string;
+    children: React.ReactNode;
     className?: string;
     sortColumn: string;
     sortDirection: "asc" | "desc";
     onSort: (column: string) => void;
 }) => (
     <th
-        className={`px-6 py-4 text-left font-semibold text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-all duration-200 ${className}`}
+        className={`px-4 py-2.5 text-center text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${className}`}
         onClick={() => onSort(column)}
     >
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-center space-x-1.5">
             <span>{children}</span>
             {sortColumn === column && (
                 sortDirection === "asc" ?
-                    <ChevronUp className="w-4 h-4 text-blue-500" /> :
-                    <ChevronDown className="w-4 h-4 text-blue-500" />
+                    <ChevronUp className="w-3 h-3 text-blue-500" /> :
+                    <ChevronDown className="w-3 h-3 text-blue-500" />
             )}
         </div>
     </th>
@@ -107,15 +107,15 @@ export const StudentTable = memo(function StudentTable({
 
     if (currentRecords.length === 0) {
         return (
-            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 dark:border-slate-700/20 overflow-hidden">
-                <div className="p-16 text-center">
-                    <div className="w-24 h-24 mx-auto mb-6 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                        <User className="w-12 h-12 text-slate-400" />
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="p-12 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
+                        <User className="w-8 h-8 text-slate-400" />
                     </div>
-                    <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">
+                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-1">
                         Nenhum estudante encontrado
                     </h3>
-                    <p className="text-slate-600 dark:text-slate-400 text-lg">
+                    <p className="text-slate-600 dark:text-slate-400 text-sm">
                         Ajuste os filtros para encontrar os estudantes desejados
                     </p>
                 </div>
@@ -124,22 +124,20 @@ export const StudentTable = memo(function StudentTable({
     }
 
     return (
-        <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 dark:border-slate-700/20 overflow-hidden">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 px-8 py-6 border-b border-slate-200/50 dark:border-slate-600/50">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                        <div className="p-3 bg-green-500/20 rounded-2xl">
-                            <User className="w-6 h-6 text-green-600 dark:text-green-400" />
-                        </div>
-                        <div>
-                            <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-                                Lista de Estudantes
-                            </h3>
-                            <p className="text-slate-600 dark:text-slate-400 mt-1">
-                                {currentRecords.length} estudante{currentRecords.length !== 1 ? 's' : ''} encontrado{currentRecords.length !== 1 ? 's' : ''}
-                            </p>
-                        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200/50 dark:border-slate-700 overflow-hidden">
+            {/* Compact Header */}
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 px-4 py-3 border-b border-green-200/50 dark:border-green-800/50">
+                <div className="flex items-center gap-3">
+                    <div className="p-1.5 bg-green-500/20 rounded-lg">
+                        <User className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                            Lista de Estudantes
+                        </h3>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                            {currentRecords.length} estudante{currentRecords.length !== 1 ? 's' : ''} encontrado{currentRecords.length !== 1 ? 's' : ''}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -147,12 +145,12 @@ export const StudentTable = memo(function StudentTable({
             {/* Table */}
             <div className="overflow-x-auto">
                 <table className="w-full">
-                    <thead className="bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur-sm">
+                    <thead className="bg-slate-50 dark:bg-slate-900/50">
                         <tr>
                             {visibleColumns.has("actions") && (
-                                <th className="px-6 py-4 text-left font-semibold text-slate-700 dark:text-slate-200">
-                                    <div className="flex items-center">
-                                        ✏️ <span className="ml-2">Editar</span>
+                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                        ✏️ <span>Editar</span>
                                     </div>
                                 </th>
                             )}
@@ -302,11 +300,11 @@ export const StudentTable = memo(function StudentTable({
                             )}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200/50 dark:divide-slate-600/50">
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                         {currentRecords.map((est: Estudante, index: number) => (
-                            <tr key={est.estudanteId || index} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-all duration-200">
+                            <tr key={est.estudanteId || index} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                 {visibleColumns.has("actions") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <Button
                                             variant="ghost"
                                             size="sm"
@@ -316,18 +314,18 @@ export const StudentTable = memo(function StudentTable({
                                                 setEditingIndex(originalIndex);
                                                 setOpenModal(true);
                                             }}
-                                            className="text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-xl"
+                                            className="h-8 w-8 p-0 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                                            title="Editar estudante"
                                         >
-                                            <Edit className="w-4 h-4 mr-2" />
-                                            Editar
+                                            <Edit className="w-4 h-4" />
                                         </Button>
                                     </td>
                                 )}
                                 {visibleColumns.has("turma") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="flex items-center">
-                                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mr-3">
-                                                <span className="text-blue-600 dark:text-blue-400 font-bold text-sm">
+                                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                                                <span className="text-blue-600 dark:text-blue-400 font-bold text-xs">
                                                     {est.turma.slice(0, 2)}
                                                 </span>
                                             </div>
@@ -335,30 +333,21 @@ export const StudentTable = memo(function StudentTable({
                                     </td>
                                 )}
                                 {visibleColumns.has("nome") && (
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center">
-                                            <div>
-                                                <div className="font-semibold text-slate-800 dark:text-slate-200">
-                                                    {est.nome}
-                                                </div>
-                                                {est.matricula && (
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                                                        Mat: {est.matricula}
-                                                    </div>
-                                                )}
-                                            </div>
+                                    <td className="px-4 py-2.5">
+                                        <div className="text-xs font-medium text-slate-800 dark:text-slate-200">
+                                            {est.nome}
                                         </div>
                                     </td>
                                 )}
                                 {visibleColumns.has("matricula") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="text-center">
                                             {est.matricula ? (
-                                                <Badge variant="outline" className="bg-slate-100 dark:bg-slate-700">
+                                                <Badge variant="outline" className="bg-slate-100 dark:bg-slate-700 text-xs">
                                                     {est.matricula}
                                                 </Badge>
                                             ) : (
-                                                <span className="text-slate-400 dark:text-slate-500 text-sm">
+                                                <span className="text-slate-400 dark:text-slate-500 text-xs">
                                                     Não informada
                                                 </span>
                                             )}
@@ -366,17 +355,17 @@ export const StudentTable = memo(function StudentTable({
                                     </td>
                                 )}
                                 {visibleColumns.has("dataNascimento") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="text-center">
                                             {est.dataNascimento ? (
-                                                <div className="flex items-center justify-center">
-                                                    <Calendar className="w-4 h-4 mr-2 text-slate-500" />
-                                                    <span className="text-slate-700 dark:text-slate-300">
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <Calendar className="w-3 h-3 text-slate-500" />
+                                                    <span className="text-sm text-slate-700 dark:text-slate-300">
                                                         {formatDate(est.dataNascimento)}
                                                     </span>
                                                 </div>
                                             ) : (
-                                                <span className="text-slate-400 dark:text-slate-500 text-sm">
+                                                <span className="text-slate-400 dark:text-slate-500 text-xs">
                                                     Não informada
                                                 </span>
                                             )}
@@ -384,28 +373,28 @@ export const StudentTable = memo(function StudentTable({
                                     </td>
                                 )}
                                 {visibleColumns.has("turno") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="flex justify-center">
                                             <TurnoBadge turno={est.turno} />
                                         </div>
                                     </td>
                                 )}
                                 {visibleColumns.has("bolsaFamilia") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="flex justify-center">
                                             <BolsaFamiliaBadge bolsa={est.bolsaFamilia} />
                                         </div>
                                     </td>
                                 )}
                                 {visibleColumns.has("status") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="flex justify-center">
                                             <StatusBadge status={est.status} />
                                         </div>
                                     </td>
                                 )}
                                 {visibleColumns.has("contatos") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="space-y-1">
                                             {est.contatos && est.contatos.length > 0 ? (
                                                 est.contatos.slice(0, 2).map((contato: Contato, i: number) => (
@@ -432,17 +421,17 @@ export const StudentTable = memo(function StudentTable({
                                     </td>
                                 )}
                                 {visibleColumns.has("email") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="text-center">
                                             {est.email ? (
-                                                <div className="flex items-center justify-center">
-                                                    <Mail className="w-4 h-4 mr-2 text-slate-500" />
-                                                    <span className="text-slate-700 dark:text-slate-300 truncate max-w-48">
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <Mail className="w-3 h-3 text-slate-500" />
+                                                    <span className="text-sm text-slate-700 dark:text-slate-300 truncate max-w-48">
                                                         {est.email}
                                                     </span>
                                                 </div>
                                             ) : (
-                                                <span className="text-slate-400 dark:text-slate-500 text-sm">
+                                                <span className="text-slate-400 dark:text-slate-500 text-xs">
                                                     Não informado
                                                 </span>
                                             )}
@@ -450,22 +439,21 @@ export const StudentTable = memo(function StudentTable({
                                     </td>
                                 )}
                                 {visibleColumns.has("endereco") && (
-                                    <td className="px-6 py-4">
-                                        <div className="text-center">
+                                    <td className="px-4 py-2.5">
+                                        <div className="text-left">
                                             {est.endereco ? (
-                                                <div className="flex items-center justify-center">
-                                                    <MapPin className="w-4 h-4 mr-2 text-slate-500 flex-shrink-0" />
-                                                    <span className="text-slate-700 dark:text-slate-300 text-sm truncate max-w-48">
-                                                        {est.endereco.rua}, {est.endereco.numero}
-                                                        {est.endereco.complemento && `, ${est.endereco.complemento}`}
-                                                        <br />
-                                                        {est.endereco.bairro}, {est.endereco.cidade}-{est.endereco.estado}
-                                                        <br />
-                                                        {formatCep(est.endereco.cep)}
-                                                    </span>
+                                                <div className="flex items-start gap-1.5">
+                                                    <MapPin className="w-3 h-3 text-slate-500 flex-shrink-0 mt-0.5" />
+                                                    <div className="text-xs text-slate-700 dark:text-slate-300">
+                                                        <div>{est.endereco.rua}, {est.endereco.numero}</div>
+                                                        {est.endereco.complemento && <div>{est.endereco.complemento}</div>}
+                                                        <div>{est.endereco.bairro}</div>
+                                                        <div>{est.endereco.cidade}-{est.endereco.estado}</div>
+                                                        <div className="text-slate-500">{formatCep(est.endereco.cep)}</div>
+                                                    </div>
                                                 </div>
                                             ) : (
-                                                <span className="text-slate-400 dark:text-slate-500 text-sm">
+                                                <span className="text-slate-400 dark:text-slate-500 text-xs">
                                                     Não informado
                                                 </span>
                                             )}
@@ -473,7 +461,7 @@ export const StudentTable = memo(function StudentTable({
                                     </td>
                                 )}
                                 {visibleColumns.has("deficiencia") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="text-center">
                                             {est.deficiencia?.estudanteComDeficiencia ? (
                                                 <div className="space-y-1">
@@ -495,7 +483,7 @@ export const StudentTable = memo(function StudentTable({
                                     </td>
                                 )}
                                 {visibleColumns.has("provaSaoPaulo") && (
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 py-2.5">
                                         <div className="text-center">
                                             {est.provaSaoPaulo && est.provaSaoPaulo.length > 0 ? (
                                                 <div className="space-y-1">

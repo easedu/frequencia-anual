@@ -193,17 +193,32 @@ export default function CadastrarEstudantePage() {
     
     // Sorted data
     const sortedData = useMemo(() => {
-        if (!sortColumn) return filteredStudents;
-        
         return [...filteredStudents].sort((a, b) => {
+            // Se não há coluna de ordenação customizada, ordenar por turma e depois por nome
+            if (!sortColumn) {
+                // Primeiro por turma (ordem crescente)
+                const turmaA = (a.turma || "").toLowerCase();
+                const turmaB = (b.turma || "").toLowerCase();
+
+                if (turmaA !== turmaB) {
+                    return turmaA > turmaB ? 1 : -1;
+                }
+
+                // Se turmas são iguais, ordenar por nome (ordem crescente)
+                const nomeA = (a.nome || "").toLowerCase();
+                const nomeB = (b.nome || "").toLowerCase();
+                return nomeA > nomeB ? 1 : -1;
+            }
+
+            // Ordenação customizada por coluna clicada
             let aVal = a[sortColumn] || "";
             let bVal = b[sortColumn] || "";
-            
+
             if (typeof aVal === 'string' && typeof bVal === 'string') {
                 aVal = aVal.toLowerCase();
                 bVal = bVal.toLowerCase();
             }
-            
+
             if (sortDirection === 'asc') {
                 return aVal > bVal ? 1 : -1;
             } else {
@@ -530,39 +545,37 @@ export default function CadastrarEstudantePage() {
             <Toaster />
 
             {/* Main Content */}
-            <div className="container mx-auto p-6 max-w-[1400px]">
-                {/* Header Card */}
-                <div className="mb-8 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 dark:border-slate-700/20 overflow-hidden">
-                    <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-8">
-                        <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
-                            <div className="flex items-center space-x-4">
-                                <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-sm">
-                                    <Users className="w-8 h-8 text-white" />
-                                </div>
-                                <div>
-                                    <h1 className="text-3xl font-bold text-white">
-                                        Gerenciamento de Estudantes
-                                    </h1>
-                                    <p className="text-blue-100 mt-2 text-lg">
-                                        {students.length} estudantes cadastrados • {totalRecords} resultados
-                                    </p>
-                                </div>
+            <div className="container mx-auto p-4 max-w-[1400px]">
+                {/* Compact Header with Gradient */}
+                <div className="mb-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl shadow-lg overflow-hidden">
+                    <div className="flex items-center justify-between px-6 py-3">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                                <Users className="w-5 h-5 text-white" />
                             </div>
-
-                            <Button
-                                size="lg"
-                                className="bg-white/20 hover:bg-white/30 text-white border-white/30 hover:border-white/40 backdrop-blur-sm transition-all duration-300 shadow-lg hover:shadow-xl px-8 py-6 text-lg rounded-2xl"
-                                onClick={handleNewStudent}
-                            >
-                                <Plus className="w-6 h-6 mr-3" />
-                                Novo Estudante
-                            </Button>
+                            <div>
+                                <h1 className="text-lg font-semibold text-white">
+                                    Gerenciamento de Estudantes
+                                </h1>
+                                <p className="text-xs text-blue-100">
+                                    {students.length} cadastrados • {totalRecords} resultados
+                                </p>
+                            </div>
                         </div>
+
+                        <Button
+                            size="sm"
+                            className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
+                            onClick={handleNewStudent}
+                        >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Novo Estudante
+                        </Button>
                     </div>
                 </div>
 
                 {/* Content Grid */}
-                <div className="space-y-8">
+                <div className="space-y-4">
                     {/* Filters */}
                     <StudentFilters
                         students={students}
