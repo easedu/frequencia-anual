@@ -605,14 +605,14 @@ export default function MarcarFaltasPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-3">
             <Toaster />
 
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="max-w-4xl mx-auto space-y-4">
                 {/* Header */}
                 <div className="text-center">
-                    <h1 className="text-3xl font-bold text-gray-800 mb-2">Marcação de Faltas</h1>
-                    <p className="text-gray-600">Gerencie a presença dos estudantes</p>
+                    <h1 className="text-2xl font-bold text-gray-800 mb-1">Marcação de Faltas</h1>
+                    <p className="text-sm text-gray-600">Gerencie a presença dos estudantes</p>
                     
                     {/* Indicador de modo offline */}
                     {!isOnline && (
@@ -624,15 +624,15 @@ export default function MarcarFaltasPage() {
                 </div>
 
                 {/* Controles */}
-                <Card className="shadow-lg border-0">
-                    <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-t-lg">
-                        <CardTitle className="text-lg flex items-center space-x-2">
-                            <School className="w-5 h-5" />
+                <Card className="shadow-md border-0">
+                    <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-t-lg py-3">
+                        <CardTitle className="text-base flex items-center space-x-2">
+                            <School className="w-4 h-4" />
                             <span>Controles de Marcação</span>
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="p-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <CardContent className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {/* Seletor de Data */}
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
@@ -644,7 +644,9 @@ export default function MarcarFaltasPage() {
                                         <SelectValue placeholder="Selecione a data" />
                                     </SelectTrigger>
                                     <SelectContent className="max-h-60">
-                                        {getValidDates(academicYearData, role).map((date) => (
+                                        {getValidDates(academicYearData, role)
+                                            .reverse()
+                                            .map((date) => (
                                             <SelectItem key={date} value={date} className="py-2 text-sm">
                                                 <div className="flex items-center space-x-2">
                                                     <Calendar className="w-3 h-3 text-gray-500" />
@@ -698,75 +700,36 @@ export default function MarcarFaltasPage() {
                     </Card>
                 )}
 
-                {/* Estatísticas Compactas */}
-                {isValidDay && selectedClass && filteredStudents.length > 0 && (
-                    <Card className="shadow-lg border-0">
-                        <CardContent className="p-4">
-                            <div className="flex items-center justify-center space-x-8">
-                                <div className="text-center">
-                                    <div className="flex items-center justify-center space-x-2 mb-1">
-                                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                            <Users className="w-4 h-4 text-blue-600" />
-                                        </div>
-                                        <span className="text-xl font-bold text-gray-800">{totalStudents}</span>
-                                    </div>
-                                    <p className="text-xs text-gray-600">Total</p>
-                                </div>
-
-                                <div className="text-center">
-                                    <div className="flex items-center justify-center space-x-2 mb-1">
-                                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                                            <UserCheck className="w-4 h-4 text-green-600" />
-                                        </div>
-                                        <span className="text-xl font-bold text-gray-800">{presentStudents}</span>
-                                    </div>
-                                    <p className="text-xs text-gray-600">Presentes</p>
-                                </div>
-
-                                <div className="text-center">
-                                    <div className="flex items-center justify-center space-x-2 mb-1">
-                                        <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                                            <UserX className="w-4 h-4 text-red-600" />
-                                        </div>
-                                        <span className="text-xl font-bold text-gray-800">{absentStudents}</span>
-                                    </div>
-                                    <p className="text-xs text-gray-600">Ausentes</p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
-
                 {/* Estatísticas */}
                 {isValidDay && selectedClass && filteredStudents.length > 0 && (
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-3 gap-3">
                         <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-                            <CardContent className="p-4 text-center">
-                                <div className="flex items-center justify-center space-x-2 mb-2">
-                                    <Users className="w-5 h-5" />
-                                    <span className="text-2xl font-bold">{totalStudents}</span>
+                            <CardContent className="p-3 text-center">
+                                <div className="flex items-center justify-center space-x-1 mb-1">
+                                    <Users className="w-4 h-4" />
+                                    <span className="text-xl font-bold">{totalStudents}</span>
                                 </div>
-                                <p className="text-sm text-blue-100">Total de Alunos</p>
+                                <p className="text-xs text-blue-100">Total</p>
                             </CardContent>
                         </Card>
 
                         <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-                            <CardContent className="p-4 text-center">
-                                <div className="flex items-center justify-center space-x-2 mb-2">
-                                    <UserCheck className="w-5 h-5" />
-                                    <span className="text-2xl font-bold">{presentStudents}</span>
+                            <CardContent className="p-3 text-center">
+                                <div className="flex items-center justify-center space-x-1 mb-1">
+                                    <UserCheck className="w-4 h-4" />
+                                    <span className="text-xl font-bold">{presentStudents}</span>
                                 </div>
-                                <p className="text-sm text-green-100">Presentes</p>
+                                <p className="text-xs text-green-100">Presentes</p>
                             </CardContent>
                         </Card>
 
                         <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white">
-                            <CardContent className="p-4 text-center">
-                                <div className="flex items-center justify-center space-x-2 mb-2">
-                                    <UserX className="w-5 h-5" />
-                                    <span className="text-2xl font-bold">{absentStudents}</span>
+                            <CardContent className="p-3 text-center">
+                                <div className="flex items-center justify-center space-x-1 mb-1">
+                                    <UserX className="w-4 h-4" />
+                                    <span className="text-xl font-bold">{absentStudents}</span>
                                 </div>
-                                <p className="text-sm text-red-100">Ausentes</p>
+                                <p className="text-xs text-red-100">Ausentes</p>
                             </CardContent>
                         </Card>
                     </div>
@@ -774,14 +737,14 @@ export default function MarcarFaltasPage() {
 
                 {/* Lista de Alunos */}
                 {isValidDay && selectedClass && (
-                    <Card className="shadow-lg border-0">
-                        <CardHeader className="bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-t-lg">
-                            <CardTitle className="text-lg flex items-center space-x-2">
-                                <User className="w-5 h-5" />
+                    <Card className="shadow-md border-0">
+                        <CardHeader className="bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-t-lg py-3">
+                            <CardTitle className="text-base flex items-center space-x-2">
+                                <User className="w-4 h-4" />
                                 <span>Lista de Presença - {selectedClass}</span>
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="p-6">
+                        <CardContent className="p-4">
                             {filteredStudents.length === 0 ? (
                                 <div className="text-center py-8 text-gray-500">
                                     <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
@@ -789,7 +752,7 @@ export default function MarcarFaltasPage() {
                                     <p className="text-xs text-gray-500">Não há alunos cadastrados para esta turma com status &quot;ATIVO&quot;</p>
                                 </div>
                             ) : (
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     {filteredStudents
                                         .sort((a, b) => a.nome.localeCompare(b.nome))
                                         .map((est: Estudante) => {
@@ -801,7 +764,7 @@ export default function MarcarFaltasPage() {
                                                 <div
                                                     key={est.estudanteId}
                                                     className={`
-                                                        flex items-center justify-between p-4 rounded-lg border-2 transition-all duration-200
+                                                        flex items-center justify-between p-3 rounded-lg border-2 transition-all duration-200
                                                         ${isAbsent
                                                             ? 'bg-red-50 border-red-200 hover:bg-red-100'
                                                             : 'bg-green-50 border-green-200 hover:bg-green-100'
@@ -873,9 +836,9 @@ export default function MarcarFaltasPage() {
                             onClick={() => setOpenDialog(true)}
                             disabled={!canSave || isSaving}
                             className={`
-                                px-6 py-3 text-white font-medium rounded-lg transition-all duration-200
+                                px-5 py-2 text-white font-medium rounded-lg transition-all duration-200
                                 ${canSave && !isSaving
-                                    ? 'bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl'
+                                    ? 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'
                                     : 'bg-gray-400 cursor-not-allowed'
                                 }
                             `}

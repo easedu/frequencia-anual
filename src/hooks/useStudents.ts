@@ -5,6 +5,9 @@ import { StudentDataService } from "@/services/studentDataService";
 import { logger } from "@/utils/logger";
 import type { Estudante } from "@/types";
 
+// Re-exporta o tipo para uso externo
+export type { Estudante };
+
 /**
  * Hook para carregar estudantes do Firebase
  *
