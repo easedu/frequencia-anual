@@ -1,20 +1,21 @@
 /**
  * Student Data Service - V3 Unified Structure
  *
- * FASE 1: Dual-Write Strategy
- * - Writes go to BOTH V2 (2025/escola/students) AND V3 (students)
- * - Reads prefer V3 with fallback to V2
- * - Zero downtime migration
+ * PHASE 3: V3 Authoritative (Cutover Complete)
+ * - ALL operations use V3 ONLY
+ * - V2 fallback REMOVED
+ * - Dual-write REMOVED
+ * - V3 is now the single source of truth
  *
  * Structure V3:
  * students/{studentId}
- *   ├── (root fields)
+ *   ├── (root fields: id, nome, turma, status, turno, etc.)
  *   └── contacts/{contactId}
  *       ├── nome
  *       ├── parentesco
  *       ├── telefone
  *       ├── telefoneNumerico
- *       ├── podeReceberWhatsapp
+ *       └── podeReceberWhatsapp
  */
 
 import {
@@ -87,23 +88,16 @@ interface StudentV3 {
 export class StudentDataService {
   /**
    * Get all students
-   * Read from V3 first, fallback to V2 if needed
+   * PHASE 3: Read from V3 only (no fallback)
    */
   static async getStudents(includeDeleted: boolean = false): Promise<Estudante[]> {
     try {
       logger.info('📖 [V3] Lendo estudantes...');
 
-      // Try V3 first
       const v3Students = await StudentDataService.getStudentsFromV3(includeDeleted);
 
-      if (v3Students.length > 0) {
-        logger.info(`✅ [V3] ${v3Students.length} estudantes encontrados`);
-        return v3Students;
-      }
-
-      // Fallback to V2
-      logger.warn('⚠️  [V3] Vazio, usando fallback V2');
-      return await StudentDataService.getStudentsFromV2(includeDeleted);
+      logger.info(`✅ [V3] ${v3Students.length} estudantes encontrados`);
+      return v3Students;
 
     } catch (error) {
       logger.error('❌ Erro ao buscar estudantes', error as Error);
@@ -113,23 +107,21 @@ export class StudentDataService {
 
   /**
    * Get student by ID
-   * Read from V3 first, fallback to V2
+   * PHASE 3: Read from V3 only (no fallback)
    */
   static async getStudentById(estudanteId: string): Promise<Estudante | null> {
     try {
       logger.info(`📖 [V3] Lendo estudante ${estudanteId}...`);
 
-      // Try V3 first
       const v3Student = await StudentDataService.getStudentFromV3(estudanteId);
 
       if (v3Student) {
         logger.info(`✅ [V3] Estudante encontrado`);
-        return v3Student;
+      } else {
+        logger.warn(`⚠️  [V3] Estudante ${estudanteId} não encontrado`);
       }
 
-      // Fallback to V2
-      logger.warn(`⚠️  [V3] Não encontrado, usando fallback V2`);
-      return await StudentDataService.getStudentFromV2(estudanteId);
+      return v3Student;
 
     } catch (error) {
       logger.error('❌ Erro ao buscar estudante por ID', error as Error);
@@ -139,32 +131,16 @@ export class StudentDataService {
 
   /**
    * Add new student
-   * DUAL WRITE: Writes to BOTH V2 and V3
+   * PHASE 3: Write to V3 only (no dual-write)
    */
   static async addStudent(newStudent: Estudante, userId?: string): Promise<string> {
     try {
-      logger.info('💾 [DUAL-WRITE] Adicionando estudante...');
-
-      const batch = writeBatch(db);
+      logger.info('💾 [V3] Adicionando estudante...');
 
       // Normalize data
       const normalizedStudent = StudentDataService.normalizeStudent(newStudent);
 
-      // 1. Write to V2 (2025/escola/students)
-      const v2Path = FIREBASE_PATHS_V2.student(newStudent.estudanteId);
-      const v2Ref = doc(db, v2Path);
-
-      const v2Data = {
-        ...normalizedStudent,
-        contatos: normalizedStudent.contatos || [],
-        ...addCreationAudit(normalizedStudent as object, userId),
-        ...initializeSoftDelete(),
-      };
-
-      batch.set(v2Ref, StudentDataService.removeUndefined(v2Data) as any);
-      logger.info(`  ✓ V2: ${v2Path}`);
-
-      // 2. Write to V3 (students/{id})
+      // Write to V3 (students/{id})
       const v3Ref = doc(db, FIREBASE_PATHS_V3.student(newStudent.estudanteId));
 
       const v3StudentData: StudentV3 = {
@@ -184,13 +160,10 @@ export class StudentDataService {
         ...initializeSoftDelete(),
       };
 
-      batch.set(v3Ref, StudentDataService.removeUndefined(v3StudentData) as any);
+      await setDoc(v3Ref, StudentDataService.removeUndefined(v3StudentData) as any);
       logger.info(`  ✓ V3: students/${newStudent.estudanteId}`);
 
-      // Commit batch
-      await batch.commit();
-
-      // 3. Write contacts to V3 subcollection (after batch to avoid conflicts)
+      // Write contacts to V3 subcollection
       if (normalizedStudent.contatos && normalizedStudent.contatos.length > 0) {
         await StudentDataService.writeContactsToV3(
           newStudent.estudanteId,
@@ -199,7 +172,7 @@ export class StudentDataService {
         );
       }
 
-      logger.info(`✅ [DUAL-WRITE] Estudante ${newStudent.nome} adicionado com sucesso`);
+      logger.info(`✅ [V3] Estudante ${newStudent.nome} adicionado com sucesso`);
       return newStudent.estudanteId;
 
     } catch (error) {
@@ -210,27 +183,15 @@ export class StudentDataService {
 
   /**
    * Update student
-   * DUAL WRITE: Updates BOTH V2 and V3
+   * PHASE 3: Update V3 only (no dual-write)
    */
   static async updateStudent(updatedStudent: Estudante, userId?: string): Promise<void> {
     try {
-      logger.info(`💾 [DUAL-WRITE] Atualizando estudante ${updatedStudent.estudanteId}...`);
+      logger.info(`💾 [V3] Atualizando estudante ${updatedStudent.estudanteId}...`);
 
       const normalizedStudent = StudentDataService.normalizeStudent(updatedStudent);
-      const batch = writeBatch(db);
 
-      // 1. Update V2
-      const v2Ref = doc(db, FIREBASE_PATHS_V2.student(updatedStudent.estudanteId));
-      const v2Data = {
-        ...normalizedStudent,
-        contatos: normalizedStudent.contatos || [],
-        ...addUpdateAudit({} as object, userId),
-      };
-
-      batch.update(v2Ref, StudentDataService.removeUndefined(v2Data) as any);
-      logger.info(`  ✓ V2 atualizado`);
-
-      // 2. Update V3 (root document)
+      // Update V3 (root document)
       const v3Ref = doc(db, FIREBASE_PATHS_V3.student(updatedStudent.estudanteId));
 
       const v3StudentData: Partial<StudentV3> = {
@@ -248,13 +209,10 @@ export class StudentDataService {
         ...addUpdateAudit({} as object, userId),
       };
 
-      batch.update(v3Ref, StudentDataService.removeUndefined(v3StudentData) as any);
-      logger.info(`  ✓ V3 raiz atualizado`);
+      await updateDoc(v3Ref, StudentDataService.removeUndefined(v3StudentData) as any);
+      logger.info(`  ✓ V3 atualizado`);
 
-      // Commit batch
-      await batch.commit();
-
-      // 3. Update V3 contacts subcollection
+      // Update V3 contacts subcollection
       if (normalizedStudent.contatos && normalizedStudent.contatos.length > 0) {
         await StudentDataService.syncContactsToV3(
           updatedStudent.estudanteId,
@@ -263,7 +221,7 @@ export class StudentDataService {
         );
       }
 
-      logger.info(`✅ [DUAL-WRITE] Estudante atualizado com sucesso`);
+      logger.info(`✅ [V3] Estudante atualizado com sucesso`);
 
     } catch (error) {
       logger.error('❌ Erro ao atualizar estudante', error as Error);
@@ -273,26 +231,19 @@ export class StudentDataService {
 
   /**
    * Delete student (soft delete)
-   * DUAL WRITE: Marks as deleted in BOTH V2 and V3
+   * PHASE 3: Soft delete in V3 only (no dual-write)
    */
   static async deleteStudent(estudanteId: string, userId?: string, reason?: string): Promise<void> {
     try {
-      logger.info(`🗑️  [DUAL-WRITE] Soft delete estudante ${estudanteId}...`);
+      logger.info(`🗑️  [V3] Soft delete estudante ${estudanteId}...`);
 
-      const batch = writeBatch(db);
       const deleteFields = markAsDeleted(userId, reason);
 
-      // 1. Soft delete V2
-      const v2Ref = doc(db, FIREBASE_PATHS_V2.student(estudanteId));
-      batch.update(v2Ref, deleteFields as any);
-
-      // 2. Soft delete V3
+      // Soft delete V3
       const v3Ref = doc(db, FIREBASE_PATHS_V3.student(estudanteId));
-      batch.update(v3Ref, deleteFields as any);
+      await updateDoc(v3Ref, deleteFields as any);
 
-      await batch.commit();
-
-      logger.info(`✅ [DUAL-WRITE] Estudante marcado como deletado`);
+      logger.info(`✅ [V3] Estudante marcado como deletado`);
 
     } catch (error) {
       logger.error('❌ Erro ao deletar estudante', error as Error);
@@ -302,26 +253,19 @@ export class StudentDataService {
 
   /**
    * Restore deleted student
-   * DUAL WRITE: Restores in BOTH V2 and V3
+   * PHASE 3: Restore in V3 only (no dual-write)
    */
   static async restoreStudent(estudanteId: string, userId?: string): Promise<void> {
     try {
-      logger.info(`♻️  [DUAL-WRITE] Restaurando estudante ${estudanteId}...`);
+      logger.info(`♻️  [V3] Restaurando estudante ${estudanteId}...`);
 
-      const batch = writeBatch(db);
       const restoreFields = restoreDeleted();
 
-      // 1. Restore V2
-      const v2Ref = doc(db, FIREBASE_PATHS_V2.student(estudanteId));
-      batch.update(v2Ref, { ...restoreFields, updatedAt: Timestamp.now(), ...(userId && { updatedBy: userId }) });
-
-      // 2. Restore V3
+      // Restore V3
       const v3Ref = doc(db, FIREBASE_PATHS_V3.student(estudanteId));
-      batch.update(v3Ref, { ...restoreFields, updatedAt: Timestamp.now(), ...(userId && { updatedBy: userId }) });
+      await updateDoc(v3Ref, { ...restoreFields, updatedAt: Timestamp.now(), ...(userId && { updatedBy: userId }) });
 
-      await batch.commit();
-
-      logger.info(`✅ [DUAL-WRITE] Estudante restaurado com sucesso`);
+      logger.info(`✅ [V3] Estudante restaurado com sucesso`);
 
     } catch (error) {
       logger.error('❌ Erro ao restaurar estudante', error as Error);
