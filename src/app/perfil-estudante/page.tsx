@@ -178,10 +178,10 @@ export default function StudentProfilePage() {
     const fetchAllStudents = useCallback(async (): Promise<void> => {
         try {
             setLoadingStudents(true);
-            console.log('[PERFIL-ESTUDANTE] 📖 Buscando estudantes via StudentDataService (V3 com fallback V2)...');
+            console.log('[PERFIL-ESTUDANTE] 📖 Buscando estudantes via StudentDataService (V3)...');
 
-            // Usar StudentDataService que implementa leitura V3 com fallback V2
-            const allStudentsData = await StudentDataService.getStudents();
+            // PERFORMANCE: Não carregar contatos na listagem inicial (false = 1 query vs 736 queries)
+            const allStudentsData = await StudentDataService.getStudents(false, false);
 
             const activeStudents = allStudentsData
                 .filter(s => s.status === "ATIVO")
@@ -226,25 +226,20 @@ export default function StudentProfilePage() {
             setLoadingProfile(true);
             console.log(`[PERFIL-ESTUDANTE] 📖 Buscando estudante ${studentId}...`);
 
-            // Buscar do cache local primeiro
-            let foundStudent = allStudents.find((s: Student) => s.estudanteId === studentId);
+            // SEMPRE buscar estudante completo COM contatos via StudentDataService
+            // (O cache inicial não tem contatos para performance)
+            console.log('[PERFIL-ESTUDANTE] Buscando estudante completo COM contatos...');
+            const studentData = await StudentDataService.getStudentById(studentId);
 
-            // Se não encontrou no cache, buscar direto via StudentDataService
-            if (!foundStudent) {
-                console.log('[PERFIL-ESTUDANTE] Estudante não no cache, buscando via StudentDataService...');
-                const studentData = await StudentDataService.getStudentById(studentId);
-                if (studentData) {
-                    foundStudent = studentData;
-                    console.log('[PERFIL-ESTUDANTE] ✅ Estudante encontrado via StudentDataService');
-                }
-            }
-
-            if (foundStudent) {
-                setStudent(foundStudent);
+            if (studentData) {
+                setStudent(studentData);
                 console.log('[PERFIL-ESTUDANTE] ✅ Estudante carregado:', {
-                    nome: foundStudent.nome,
-                    contatos: foundStudent.contatos?.length || 0
+                    nome: studentData.nome,
+                    contatos: studentData.contatos?.length || 0
                 });
+            } else {
+                console.log('[PERFIL-ESTUDANTE] ⚠️ Estudante não encontrado');
+                return;
             }
 
             // Fetch absences
@@ -303,8 +298,8 @@ export default function StudentProfilePage() {
 
             const aggregated: StudentRecord = {
                 estudanteId: studentId,
-                turma: foundStudent?.turma || "",
-                nome: foundStudent?.nome || "",
+                turma: studentData.turma || "",
+                nome: studentData.nome || "",
                 faltasB1,
                 faltasB2,
                 faltasB3,
@@ -338,8 +333,8 @@ export default function StudentProfilePage() {
 
             const aggregatedNoJustified: StudentRecord = {
                 estudanteId: studentId,
-                turma: foundStudent?.turma || "",
-                nome: foundStudent?.nome || "",
+                turma: studentData.turma || "",
+                nome: studentData.nome || "",
                 faltasB1: faltasB1NoJustified,
                 faltasB2: faltasB2NoJustified,
                 faltasB3: faltasB3NoJustified,

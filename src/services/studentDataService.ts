@@ -64,7 +64,8 @@ interface StudentV3 {
   estudanteId: string;
   nome: string;
   turma: string;
-  status: string;
+  status: string; // Campo de controle de migração
+  statusEstudante: string; // Campo real do status do estudante (ATIVO/INATIVO)
   turno: 'MANHÃ' | 'TARDE';
   bolsaFamilia: string;
   matricula?: string;
@@ -87,12 +88,15 @@ export class StudentDataService {
   /**
    * Get all students
    * PHASE 3: Read from V3 only (no fallback)
+   *
+   * @param includeDeleted - Include soft-deleted students
+   * @param includeContacts - Include contacts subcollection (default: true for backward compatibility)
    */
-  static async getStudents(includeDeleted: boolean = false): Promise<Estudante[]> {
+  static async getStudents(includeDeleted: boolean = false, includeContacts: boolean = true): Promise<Estudante[]> {
     try {
       logger.info('📖 [V3] Lendo estudantes...');
 
-      const v3Students = await StudentDataService.getStudentsFromV3(includeDeleted);
+      const v3Students = await StudentDataService.getStudentsFromV3(includeDeleted, includeContacts);
 
       logger.info(`✅ [V3] ${v3Students.length} estudantes encontrados`);
       return v3Students;
@@ -145,7 +149,8 @@ export class StudentDataService {
         estudanteId: normalizedStudent.estudanteId,
         nome: normalizedStudent.nome,
         turma: normalizedStudent.turma,
-        status: normalizedStudent.status,
+        status: 'active', // Campo de controle interno
+        statusEstudante: normalizedStudent.status, // Campo real do status do estudante
         turno: normalizedStudent.turno,
         bolsaFamilia: normalizedStudent.bolsaFamilia,
         matricula: normalizedStudent.matricula,
@@ -195,7 +200,7 @@ export class StudentDataService {
       const v3StudentData: Partial<StudentV3> = {
         nome: normalizedStudent.nome,
         turma: normalizedStudent.turma,
-        status: normalizedStudent.status,
+        statusEstudante: normalizedStudent.status, // Atualizar o campo correto
         turno: normalizedStudent.turno,
         bolsaFamilia: normalizedStudent.bolsaFamilia,
         matricula: normalizedStudent.matricula,
@@ -277,8 +282,11 @@ export class StudentDataService {
 
   /**
    * Get all students from V3
+   *
+   * @param includeDeleted - Include soft-deleted students
+   * @param includeContacts - Include contacts subcollection (PERFORMANCE: set false for lists)
    */
-  private static async getStudentsFromV3(includeDeleted: boolean = false): Promise<Estudante[]> {
+  private static async getStudentsFromV3(includeDeleted: boolean = false, includeContacts: boolean = true): Promise<Estudante[]> {
     try {
       const studentsRef = collection(db, FIREBASE_PATHS_V3.students());
 
@@ -294,19 +302,23 @@ export class StudentDataService {
       for (const docSnap of snapshot.docs) {
         const studentData = docSnap.data() as StudentV3;
 
-        // Fetch contacts from subcollection
-        const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(docSnap.id));
-        const contactsSnap = await getDocs(contactsRef);
+        let contatos: any[] = [];
 
-        const contatos = contactsSnap.docs.map(contactDoc => {
-          const contact = contactDoc.data() as ContactV3;
-          return {
-            nome: contact.nome || '',
-            parentesco: contact.parentesco || '',
-            telefone: contact.telefone || '',
-            podeReceberMensagem: contact.podeReceberWhatsapp !== false,
-          };
-        });
+        // PERFORMANCE OPTIMIZATION: Only fetch contacts if explicitly requested
+        if (includeContacts) {
+          const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(docSnap.id));
+          const contactsSnap = await getDocs(contactsRef);
+
+          contatos = contactsSnap.docs.map(contactDoc => {
+            const contact = contactDoc.data() as ContactV3;
+            return {
+              nome: contact.nome || '',
+              parentesco: contact.parentesco || '',
+              telefone: contact.telefone || '',
+              podeReceberMensagem: contact.podeReceberWhatsapp !== false,
+            };
+          });
+        }
 
         students.push(StudentDataService.convertV3ToEstudante(studentData, contatos));
       }
@@ -326,18 +338,23 @@ export class StudentDataService {
           const studentData = docSnap.data() as StudentV3;
 
           if (includeDeleted || studentData.deleted !== true) {
-            const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(docSnap.id));
-            const contactsSnap = await getDocs(contactsRef);
+            let contatos: any[] = [];
 
-            const contatos = contactsSnap.docs.map(contactDoc => {
-              const contact = contactDoc.data() as ContactV3;
-              return {
-                nome: contact.nome || '',
-                parentesco: contact.parentesco || '',
-                telefone: contact.telefone || '',
-                podeReceberMensagem: contact.podeReceberWhatsapp !== false,
-              };
-            });
+            // PERFORMANCE OPTIMIZATION: Only fetch contacts if explicitly requested
+            if (includeContacts) {
+              const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(docSnap.id));
+              const contactsSnap = await getDocs(contactsRef);
+
+              contatos = contactsSnap.docs.map(contactDoc => {
+                const contact = contactDoc.data() as ContactV3;
+                return {
+                  nome: contact.nome || '',
+                  parentesco: contact.parentesco || '',
+                  telefone: contact.telefone || '',
+                  podeReceberMensagem: contact.podeReceberWhatsapp !== false,
+                };
+              });
+            }
 
             students.push(StudentDataService.convertV3ToEstudante(studentData, contatos));
           }
@@ -449,7 +466,8 @@ export class StudentDataService {
       estudanteId: studentData.estudanteId,
       nome: studentData.nome,
       turma: studentData.turma,
-      status: studentData.status,
+      // IMPORTANTE: Usar statusEstudante (campo real do estudante), não status (campo de migração)
+      status: studentData.statusEstudante || studentData.status,
       turno: studentData.turno,
       bolsaFamilia: studentData.bolsaFamilia,
       matricula: studentData.matricula,
