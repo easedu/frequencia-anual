@@ -33,34 +33,6 @@ const studentSchema = z.object({
 export default function CadastrarEstudantePage() {
     const { students, loading, error, setStudents, fetchStudents } = useStudents();
 
-    // DEBUG: Log dos primeiros 3 registros da coleção (usando StudentDataService V3)
-    useEffect(() => {
-        const debugCollection = async () => {
-            try {
-                console.log('[DEBUG-CADASTRO] 🔍 Buscando dados da coleção (V3 com fallback V2)...');
-                const allStudents = await StudentDataService.getStudents();
-                const first3 = allStudents.slice(0, 3);
-
-                console.log('[DEBUG-CADASTRO] 📊 Total de estudantes na coleção:', allStudents.length);
-                console.log('[DEBUG-CADASTRO] 📝 Primeiros 3 registros:', JSON.stringify(first3, null, 2));
-
-                if (first3.length > 0) {
-                    console.log('[DEBUG-CADASTRO] 📍 Exemplo de estudante:', {
-                        estudanteId: first3[0].estudanteId,
-                        nome: first3[0].nome,
-                        turma: first3[0].turma,
-                        status: first3[0].status,
-                        contatos: first3[0].contatos?.length || 0
-                    });
-                }
-            } catch (error) {
-                console.error('[DEBUG-CADASTRO] ❌ Erro ao buscar dados:', error);
-            }
-        };
-
-        debugCollection();
-    }, []);
-
     // Filter states
     const [turmaFiltro, setTurmaFiltro] = useState<string>("");
     const [nomeFiltro, setNomeFiltro] = useState<string>("");
@@ -355,7 +327,6 @@ export default function CadastrarEstudantePage() {
             
             if (editingEstudante) {
                 // Atualizar estudante usando DUAL-WRITE (V2 + V3)
-                console.log('[DUAL-WRITE] Atualizando estudante:', processedData.estudanteId);
                 await StudentDataService.updateStudent(processedData);
 
                 // Atualizar o estado local
@@ -379,7 +350,6 @@ export default function CadastrarEstudantePage() {
                 }
 
                 // Adicionar novo estudante usando DUAL-WRITE (V2 + V3)
-                console.log('[DUAL-WRITE] Adicionando novo estudante:', processedData.estudanteId);
                 await StudentDataService.addStudent(processedData);
 
                 // Atualizar o estado local
@@ -476,11 +446,6 @@ export default function CadastrarEstudantePage() {
     // Fill form when editing a student
     useEffect(() => {
         if (editingEstudante && openModal) {
-            console.log('📝 Carregando estudante para edição:', {
-                nome: editingEstudante.nome,
-                contatos: editingEstudante.contatos
-            });
-
             form.reset({
                 nome: editingEstudante.nome || "",
                 turma: editingEstudante.turma || "",
