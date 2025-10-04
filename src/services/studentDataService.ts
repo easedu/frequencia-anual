@@ -161,7 +161,7 @@ export class StudentDataService {
         ...initializeSoftDelete(),
       };
 
-      batch.set(v2Ref, StudentDataService.removeUndefined(v2Data));
+      batch.set(v2Ref, StudentDataService.removeUndefined(v2Data) as any);
       logger.info(`  ✓ V2: ${v2Path}`);
 
       // 2. Write to V3 (students/{id})
@@ -184,7 +184,7 @@ export class StudentDataService {
         ...initializeSoftDelete(),
       };
 
-      batch.set(v3Ref, StudentDataService.removeUndefined(v3StudentData));
+      batch.set(v3Ref, StudentDataService.removeUndefined(v3StudentData) as any);
       logger.info(`  ✓ V3: students/${newStudent.estudanteId}`);
 
       // Commit batch
@@ -227,7 +227,7 @@ export class StudentDataService {
         ...addUpdateAudit({} as object, userId),
       };
 
-      batch.update(v2Ref, StudentDataService.removeUndefined(v2Data));
+      batch.update(v2Ref, StudentDataService.removeUndefined(v2Data) as any);
       logger.info(`  ✓ V2 atualizado`);
 
       // 2. Update V3 (root document)
@@ -248,7 +248,7 @@ export class StudentDataService {
         ...addUpdateAudit({} as object, userId),
       };
 
-      batch.update(v3Ref, StudentDataService.removeUndefined(v3StudentData));
+      batch.update(v3Ref, StudentDataService.removeUndefined(v3StudentData) as any);
       logger.info(`  ✓ V3 raiz atualizado`);
 
       // Commit batch
@@ -284,11 +284,11 @@ export class StudentDataService {
 
       // 1. Soft delete V2
       const v2Ref = doc(db, FIREBASE_PATHS_V2.student(estudanteId));
-      batch.update(v2Ref, deleteFields);
+      batch.update(v2Ref, deleteFields as any);
 
       // 2. Soft delete V3
       const v3Ref = doc(db, FIREBASE_PATHS_V3.student(estudanteId));
-      batch.update(v3Ref, deleteFields);
+      batch.update(v3Ref, deleteFields as any);
 
       await batch.commit();
 
@@ -465,7 +465,7 @@ export class StudentDataService {
         ...addCreationAudit({} as object, userId),
       };
 
-      await addDoc(contactsRef, StudentDataService.removeUndefined(contactData));
+      await addDoc(contactsRef, StudentDataService.removeUndefined(contactData) as any);
     }
 
     logger.info(`  ✓ V3: ${contatos.length} contatos adicionados`);
