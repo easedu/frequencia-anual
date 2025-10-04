@@ -1,21 +1,24 @@
 /**
  * Student Data Service - V3 Unified Structure
  *
- * PHASE 3: V3 Authoritative (Cutover Complete)
- * - ALL operations use V3 ONLY
- * - V2 fallback REMOVED
- * - Dual-write REMOVED
- * - V3 is now the single source of truth
+ * PHASE 4: Cleanup Complete - Production Ready
+ * - V3 ONLY operations (100% clean code)
+ * - All V2 legacy code REMOVED
+ * - All V2 fallback logic REMOVED
+ * - Optimized imports and bundle size
+ * - Production-ready, maintainable codebase
  *
- * Structure V3:
+ * Firebase V3 Structure:
  * students/{studentId}
- *   ├── (root fields: id, nome, turma, status, turno, etc.)
+ *   ├── estudanteId, nome, turma, status, turno
+ *   ├── bolsaFamilia, matricula, email, dataNascimento
+ *   ├── endereco, deficiencia, provaSaoPaulo
+ *   ├── createdAt, updatedAt, createdBy, updatedBy
+ *   ├── deleted, deletedAt, deletedBy, deletionReason
  *   └── contacts/{contactId}
- *       ├── nome
- *       ├── parentesco
- *       ├── telefone
- *       ├── telefoneNumerico
- *       └── podeReceberWhatsapp
+ *       ├── nome, parentesco, telefone
+ *       ├── telefoneNumerico, podeReceberWhatsapp
+ *       └── createdAt, updatedAt
  */
 
 import {
@@ -27,7 +30,6 @@ import {
   query,
   where,
   orderBy,
-  deleteDoc,
   Timestamp,
   updateDoc,
   writeBatch,
@@ -36,11 +38,7 @@ import {
 import { db } from '@/firebase.config';
 import { logger } from '@/utils/logger';
 import type { Estudante } from '@/types';
-import {
-  FIREBASE_PATHS_V2,
-  FIREBASE_PATHS_V3,
-  CURRENT_SCHOOL_YEAR
-} from '@/config/constants';
+import { FIREBASE_PATHS_V3 } from '@/config/constants';
 import { addCreationAudit, addUpdateAudit } from '@/utils/auditHelpers';
 import { markAsDeleted, restoreDeleted, initializeSoftDelete } from '@/utils/softDeleteHelpers';
 
@@ -440,75 +438,6 @@ export class StudentDataService {
   }
 
   // ============================================
-  // V2 FALLBACK OPERATIONS
-  // ============================================
-
-  /**
-   * Get all students from V2 (fallback)
-   */
-  private static async getStudentsFromV2(includeDeleted: boolean = false): Promise<Estudante[]> {
-    try {
-      const studentsRef = collection(db, FIREBASE_PATHS_V2.students());
-
-      let q = query(studentsRef, orderBy('nome'));
-
-      if (!includeDeleted) {
-        q = query(studentsRef, where('deleted', '==', false), orderBy('nome'));
-      }
-
-      const snapshot = await getDocs(q);
-      const students: Estudante[] = [];
-
-      snapshot.forEach((doc) => {
-        students.push(StudentDataService.processStudentData({ id: doc.id, ...doc.data() }));
-      });
-
-      return students;
-
-    } catch (error: any) {
-      if (error?.code === 'failed-precondition') {
-        logger.warn('Index V2 não disponível, usando fallback');
-
-        const studentsRef = collection(db, FIREBASE_PATHS_V2.students());
-        const snapshot = await getDocs(studentsRef);
-        let students: Estudante[] = [];
-
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          if (includeDeleted || data.deleted !== true) {
-            students.push(StudentDataService.processStudentData({ id: doc.id, ...data }));
-          }
-        });
-
-        students.sort((a, b) => a.nome.localeCompare(b.nome));
-        return students;
-      }
-
-      throw error;
-    }
-  }
-
-  /**
-   * Get single student from V2 (fallback)
-   */
-  private static async getStudentFromV2(estudanteId: string): Promise<Estudante | null> {
-    try {
-      const docRef = doc(db, FIREBASE_PATHS_V2.student(estudanteId));
-      const docSnap = await getDoc(docRef);
-
-      if (!docSnap.exists()) {
-        return null;
-      }
-
-      return StudentDataService.processStudentData({ id: docSnap.id, ...docSnap.data() });
-
-    } catch (error) {
-      logger.error('Erro ao buscar estudante V2', error as Error);
-      return null;
-    }
-  }
-
-  // ============================================
   // HELPER METHODS
   // ============================================
 
@@ -610,54 +539,6 @@ export class StudentDataService {
    */
   private static extractNumericPhone(telefone: string): string {
     return telefone.replace(/\D/g, '');
-  }
-
-  /**
-   * Process raw student data from V2 (compatibility)
-   */
-  private static processStudentData(rawStudent: any): Estudante {
-    const s = rawStudent;
-
-    return {
-      estudanteId: s.estudanteId || s.id || '',
-      turma: s.turma || '',
-      nome: s.nome || '',
-      status: s.status || 'ATIVO',
-      turno: s.turno || StudentDataService.determineTurno(s.turma || ''),
-      bolsaFamilia: s.bolsaFamilia || 'NÃO',
-      matricula: s.matricula || '',
-      contatos: s.contatos?.map((contato: any) => ({
-        podeReceberMensagem: contato.podeReceberMensagem ?? true,
-        nome: contato.nome || '',
-        telefone: contato.telefone || '',
-        parentesco: contato.parentesco || '',
-      })) || [],
-      email: s.email || '',
-      endereco: s.endereco,
-      dataNascimento: s.dataNascimento || '',
-      deficiencia: s.deficiencia || {
-        estudanteComDeficiencia: false,
-        tipoDeficiencia: [],
-        possuiBarreiras: true,
-        horarioAtendimento: 'NENHUM',
-        atendimentoSaude: [],
-        possuiEstagiario: false,
-        nomeEstagiario: 'NÃO NECESSITA',
-        justificativaEstagiario: 'SEM BARREIRAS',
-        ave: false,
-        nomeAve: '',
-        justificativaAve: [],
-      },
-      provaSaoPaulo: s.provaSaoPaulo || [],
-    };
-  }
-
-  /**
-   * Determine turno from class
-   */
-  private static determineTurno(turma: string): 'MANHÃ' | 'TARDE' {
-    const firstChar = turma.trim().charAt(0).toUpperCase();
-    return ['1', '2', '3', '4'].includes(firstChar) ? 'TARDE' : 'MANHÃ';
   }
 
   /**
