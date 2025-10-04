@@ -5,7 +5,7 @@ import { FIREBASE_PATHS } from '@/config/constants';
 import { logger } from '@/utils/logger';
 import type { Student, FamilyInteraction } from '@/app/types';
 import type { UserTask, TaskType } from '@/types/tasks';
-import { getStudent } from '@/services/studentDataService';
+import { getStudentByIdFast } from '@/services/studentDataService';
 
 /**
  * Interface para os dados de entrada da API
@@ -84,53 +84,26 @@ function convertISOToFirebaseDate(isoString: string): string {
 }
 
 /**
- * Função para determinar o bimestre baseado no mês e ano
+ * Função para determinar o bimestre baseado no mês (otimizada - sem leitura do Firebase)
+ * PERFORMANCE: Removida busca ao Firebase - usa lógica baseada em mês
  */
-async function getBimesterFromDate(month: number, year: number): Promise<string> {
-  try {
-    const docRef = doc(db, year.toString(), 'ano_letivo');
-    const docSnap = await getDoc(docRef);
-
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      const targetDate = new Date(year, month - 1, 15); // Usar meio do mês como referência
-
-      const bimestres = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
-
-      for (const bimestre of bimestres) {
-        if (data[bimestre]?.startDate && data[bimestre]?.endDate) {
-          const [startDay, startMonth, startYear] = data[bimestre].startDate.split('/').map(Number);
-          const [endDay, endMonth, endYear] = data[bimestre].endDate.split('/').map(Number);
-
-          const startDate = new Date(startYear, startMonth - 1, startDay);
-          const endDate = new Date(endYear, endMonth - 1, endDay);
-
-          if (targetDate >= startDate && targetDate <= endDate) {
-            return bimestre;
-          }
-        }
-      }
-    }
-
-    // Fallback baseado no mês
-    if (month <= 3) return '1º Bimestre';
-    if (month <= 6) return '2º Bimestre';
-    if (month <= 9) return '3º Bimestre';
-    return '4º Bimestre';
-  } catch (error) {
-    logger.error('Erro ao determinar bimestre:', error as Error);
-    return '1º Bimestre';
-  }
+function getBimesterFromMonth(month: number): string {
+  // Lógica simplificada baseada no calendário escolar padrão
+  if (month <= 3) return '1º Bimestre';
+  if (month <= 6) return '2º Bimestre';
+  if (month <= 9) return '3º Bimestre';
+  return '4º Bimestre';
 }
 
 /**
  * FASE 3: Função para buscar dados completos do estudante
+ * OTIMIZADO: Usa getStudentByIdFast para evitar carregar contatos (performance)
  */
 async function getStudentData(estudanteId: string): Promise<Student | null> {
   try {
     console.log(`[TASKS-CREATE] Buscando estudante ${estudanteId}...`);
 
-    const student = await getStudent(estudanteId);
+    const student = await getStudentByIdFast(estudanteId);
 
     if (!student) {
       logger.warn(`Estudante ${estudanteId} não encontrado`);
@@ -146,21 +119,18 @@ async function getStudentData(estudanteId: string): Promise<Student | null> {
 }
 
 /**
- * FASE 3: Função para salvar interação em AMBAS estruturas (dual-write)
+ * FASE 3: Função para salvar interação APENAS na estrutura V3 (otimizada)
+ * PERFORMANCE: Removido dual-write - escreve apenas em students/{id}/interactions
  */
-async function saveInteractionDualWrite(
+function saveInteractionV3Only(
   batch: ReturnType<typeof writeBatch>,
   estudanteId: string,
   interactionData: Omit<FamilyInteraction, "id">
-): Promise<{ id: string; savedInOld: boolean; savedInNew: boolean }> {
+): string {
   const interactionId = doc(collection(db, 'temp')).id; // Gerar ID único
 
   try {
-    // 1. ESTRUTURA ANTIGA: 2025/interactions/{estudanteId}/collection
-    const oldInteractionRef = doc(collection(db, FIREBASE_PATHS.interactions(estudanteId)));
-    batch.set(oldInteractionRef, interactionData);
-
-    // 2. ESTRUTURA NOVA: students/{id}/interactions
+    // ESTRUTURA V3 APENAS: students/{id}/interactions
     const newInteractionRef = doc(db, 'students', estudanteId, 'interactions', interactionId);
     batch.set(newInteractionRef, {
       ...interactionData,
@@ -168,21 +138,12 @@ async function saveInteractionDualWrite(
       anoLetivo: '2025'
     });
 
-    console.log(`[TASKS-CREATE] 💾 Interação configurada para dual-write (ID: ${interactionId})`);
+    console.log(`[TASKS-CREATE] 💾 Interação V3 configurada (ID: ${interactionId})`);
 
-    return {
-      id: interactionId,
-      savedInOld: true,
-      savedInNew: true
-    };
+    return interactionId;
   } catch (error) {
-    logger.error('Erro ao configurar dual-write de interação:', error as Error);
-    // Mesmo com erro, continuar (batch ainda não foi committed)
-    return {
-      id: interactionId,
-      savedInOld: false,
-      savedInNew: false
-    };
+    logger.error('Erro ao configurar interação V3:', error as Error);
+    return interactionId;
   }
 }
 
@@ -309,8 +270,8 @@ export async function POST(request: NextRequest) {
       } as CreateTaskResponse, { status: 404 });
     }
 
-    // Determinar bimestre
-    const bimestre = await getBimesterFromDate(taskData.reference_month, taskData.reference_year);
+    // Determinar bimestre (otimizado - sem leitura do Firebase)
+    const bimestre = getBimesterFromMonth(taskData.reference_month);
 
     // Calcular frequência (usando 22 como aproximação de dias letivos por mês)
     const estimatedSchoolDays = 22;
@@ -321,12 +282,32 @@ export async function POST(request: NextRequest) {
 
     // Usar transação para garantir consistência
     const batch = writeBatch(db);
-    let taskId: string;
     let interactionId: string | undefined;
 
-    // Criar tarefa
+    // FASE 3: Se tarefa está resolvida, criar interação PRIMEIRO (V3 apenas)
+    if (taskData.is_resolved && taskData.action_taken && taskData.action_description) {
+      const interactionData: Omit<FamilyInteraction, "id"> = {
+        studentId: taskData.estudante_id,
+        type: taskData.action_taken,
+        description: taskData.action_description,
+        date: convertISOToFirebaseDate(taskData.processed_at || new Date().toISOString()),
+        createdBy: taskData.solved_by || taskData.created_by, // Usar solved_by se fornecido, senão created_by
+        sensitive: false
+      };
+
+      // Salvar APENAS na estrutura V3 (otimizado)
+      interactionId = saveInteractionV3Only(
+        batch,
+        taskData.estudante_id,
+        interactionData
+      );
+
+      console.log(`[TASKS-CREATE] ✅ Interação V3 configurada (ID: ${interactionId})`);
+    }
+
+    // Criar tarefa JÁ COM interactionId (evita batch.update adicional)
     const taskRef = doc(collection(db, 'userTasks'));
-    taskId = taskRef.id;
+    const taskId = taskRef.id;
 
     // Criar objeto da tarefa, removendo campos undefined
     const newTask: Omit<UserTask, 'id'> = {
@@ -341,46 +322,21 @@ export async function POST(request: NextRequest) {
       absencesCount: taskData.absences_count,
       isPCD: studentData.deficiencia?.estudanteComDeficiencia || false,
       createdAt: taskData.created_at,
-      createdBy: taskData.created_by, // Salvar quem criou a tarefa
+      createdBy: taskData.created_by,
       priority: priorityLevel,
-      recommendedAction: taskData.recommended_action || taskData.action_taken || 'Ação não especificada' // Salvar a ação recomendada original
+      recommendedAction: taskData.recommended_action || taskData.action_taken || 'Ação não especificada',
+      ...(interactionId && { interactionId }), // Incluir interactionId se existir
     };
 
     // Adicionar campos opcionais apenas se não forem undefined
     if (taskData.is_resolved && taskData.processed_at) {
       newTask.completedAt = taskData.processed_at;
-      newTask.resolvedBy = taskData.solved_by || taskData.created_by; // Usar solved_by se fornecido, senão created_by
+      newTask.resolvedBy = taskData.solved_by || taskData.created_by;
     }
 
     batch.set(taskRef, newTask);
 
-    // FASE 3: Se tarefa está resolvida, criar interação com DUAL-WRITE
-    if (taskData.is_resolved && taskData.action_taken && taskData.action_description) {
-      const interactionData: Omit<FamilyInteraction, "id"> = {
-        studentId: taskData.estudante_id,
-        type: taskData.action_taken,
-        description: taskData.action_description,
-        date: convertISOToFirebaseDate(taskData.processed_at || new Date().toISOString()),
-        createdBy: taskData.solved_by || taskData.created_by, // Usar solved_by se fornecido, senão created_by
-        sensitive: false
-      };
-
-      // Salvar em AMBAS estruturas usando dual-write
-      const interactionResult = await saveInteractionDualWrite(
-        batch,
-        taskData.estudante_id,
-        interactionData
-      );
-
-      interactionId = interactionResult.id;
-
-      // Atualizar tarefa com ID da interação
-      batch.update(taskRef, { interactionId });
-
-      console.log(`[TASKS-CREATE] ✅ Interação dual-write configurada: old=${interactionResult.savedInOld}, new=${interactionResult.savedInNew}`);
-    }
-
-    // Executar transação
+    // Executar transação (OTIMIZADO: menos operações)
     await batch.commit();
 
     logger.info(`Tarefa criada com sucesso: ${taskId}`, {

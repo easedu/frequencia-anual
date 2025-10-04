@@ -686,6 +686,53 @@ export class StudentDataService {
 export const getStudent = StudentDataService.getStudentById;
 
 /**
+ * Get student by ID without contacts (faster for APIs)
+ */
+export async function getStudentByIdFast(estudanteId: string): Promise<Estudante | null> {
+  try {
+    const docRef = doc(db, FIREBASE_PATHS_V3.student(estudanteId));
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      return null;
+    }
+
+    const studentData = docSnap.data() as any;
+
+    return {
+      estudanteId: studentData.estudanteId,
+      nome: studentData.nome,
+      turma: studentData.turma,
+      status: studentData.statusEstudante || studentData.status,
+      turno: studentData.turno,
+      bolsaFamilia: studentData.bolsaFamilia,
+      matricula: studentData.matricula,
+      email: studentData.email,
+      dataNascimento: studentData.dataNascimento,
+      contatos: [], // Sem contatos para performance
+      endereco: studentData.endereco,
+      deficiencia: studentData.deficiencia || {
+        estudanteComDeficiencia: false,
+        tipoDeficiencia: [],
+        possuiBarreiras: true,
+        horarioAtendimento: 'NENHUM',
+        atendimentoSaude: [],
+        possuiEstagiario: false,
+        nomeEstagiario: 'NÃO NECESSITA',
+        justificativaEstagiario: 'SEM BARREIRAS',
+        ave: false,
+        nomeAve: '',
+        justificativaAve: [],
+      },
+      provaSaoPaulo: studentData.provaSaoPaulo || [],
+    };
+  } catch (error) {
+    logger.error('Erro ao buscar estudante (fast)', error as Error);
+    return null;
+  }
+}
+
+/**
  * Get students by year (backward compatibility)
  */
 export const getStudentsByYear = (year?: string) => StudentDataService.getStudents();
