@@ -71,6 +71,18 @@ export const SECURITY_CONFIG = {
   MAX_UPLOAD_FILES: 1,
 } as const;
 
+// Feature Flags - Controle de migração V2 → V3
+export const FEATURE_FLAGS = {
+  // FASE 5: Ler de V3 ao invés de V2
+  // OFF (padrão): Usa V2 (estrutura legada) - PRODUÇÃO ATUAL
+  // ON: Usa V3 (subcoleções) - NOVO (60% mais rápido)
+  USE_V3_READS: process.env.NEXT_PUBLIC_USE_V3_READS === 'true',
+
+  // FASE 6: Escrever apenas em V3 (desligar dual-write)
+  // SEMPRE FALSE por enquanto - manter dual-write ativo
+  USE_V3_WRITES_ONLY: false,
+} as const;
+
 // Helper functions para Firebase paths
 export const getFirebasePath = (...segments: string[]) => segments.join('/');
 
@@ -98,6 +110,14 @@ export const FIREBASE_PATHS_V3 = {
   // Subcoleção de faltas
   absences: (studentId: string) =>
     getFirebasePath(FIREBASE_COLLECTIONS_V3.STUDENTS, studentId, FIREBASE_COLLECTIONS_V3.ABSENCES),
+
+  // Subcoleção de resumos mensais de faltas
+  absenceSummary: (studentId: string) =>
+    getFirebasePath(FIREBASE_COLLECTIONS_V3.STUDENTS, studentId, 'absence_summary'),
+
+  // Documento de resumo mensal específico
+  absenceSummaryMonth: (studentId: string, month: string) =>
+    getFirebasePath(FIREBASE_COLLECTIONS_V3.STUDENTS, studentId, 'absence_summary', month),
 
   // Subcoleção de atestados médicos
   medicalCertificates: (studentId: string) =>
