@@ -199,9 +199,9 @@ async function loadStudentAbsencesForMonth(
     // Criar set de datas do mês para filtro rápido
     const monthDatesSet = new Set(schoolDaysInMonth);
 
-    // NOVA ESTRATÉGIA: Batches menores e sequenciais para evitar sobrecarga
-    const batchSize = 10; // Reduzido drasticamente
-    const maxConcurrentBatches = 3; // Máximo 3 queries simultâneas
+    // FASE 1: Otimização com batches maiores e mais paralelismo
+    const batchSize = 30; // Máximo permitido pelo Firestore 'in' operator
+    const maxConcurrentBatches = 5; // Aumentado para mais paralelismo
 
     for (let i = 0; i < studentIds.length; i += batchSize * maxConcurrentBatches) {
       const concurrentBatches: Promise<void>[] = [];
@@ -246,10 +246,7 @@ async function loadStudentAbsencesForMonth(
       // Aguardar conclusão dos batches atuais antes de prosseguir
       await Promise.all(concurrentBatches);
 
-      // Pequena pausa entre grupos de batches para evitar rate limiting
-      if (i + batchSize * maxConcurrentBatches < studentIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      // FASE 1: Removido delay - com batches maiores não há risco de rate limiting
     }
 
     // Cache por 30 minutos
