@@ -228,9 +228,12 @@ export async function POST(request: NextRequest) {
     const taskData: CreateTaskRequest = rawData;
 
     // 🔍 LOG DETALHADO: Verificar dados recebidos (especialmente WhatsApp)
-    if (taskData.action_type === "Contato digital") {
+    const receivedActionType = taskData.action_type || taskData.action_taken;
+    if (receivedActionType === "Contato digital") {
       logger.info(`[TASKS-CREATE] 🔍 DIAGNÓSTICO - Dados WhatsApp recebidos:`, {
         action_type: taskData.action_type,
+        action_taken: taskData.action_taken,
+        resolvedActionType: receivedActionType,
         whatsapp_message: taskData.whatsapp_message,
         whatsapp_message_type: typeof taskData.whatsapp_message,
         whatsapp_message_length: taskData.whatsapp_message?.length,
@@ -347,22 +350,28 @@ export async function POST(request: NextRequest) {
 
       // Criar interação se tiver pelo menos action_type OU action_description
       if (taskData.action_type || taskData.action_description) {
+        // Determinar o tipo da ação (aceita action_type OU action_taken)
+        const actionType = taskData.action_type || taskData.action_taken || 'Ação não especificada';
+        const isContatoDigital = actionType === "Contato digital";
+
         const interactionData: Omit<FamilyInteraction, "id"> = {
           studentId: taskData.estudante_id,
-          type: taskData.action_type || taskData.action_taken || 'Ação não especificada',
+          type: actionType,
           description: taskData.action_description || taskData.action_taken || 'Descrição não fornecida',
           date: convertISOToFirebaseDate(taskData.processed_at || new Date().toISOString()),
           createdBy: taskData.solved_by || taskData.created_by,
           sensitive: false,
-          ...(taskData.action_type === "Contato digital" && taskData.whatsapp_message && {
+          // ✅ CORREÇÃO: Verificar se é Contato digital usando a variável (aceita action_type OU action_taken)
+          ...(isContatoDigital && taskData.whatsapp_message && {
             whatsappMessage: taskData.whatsapp_message,
             whatsappPhones: taskData.whatsapp_phones || [] // Telefones que receberam mensagem
           })
         };
 
         // 🔍 LOG: Verificar interactionData antes de salvar
-        if (taskData.action_type === "Contato digital") {
+        if (isContatoDigital) {
           logger.info(`[TASKS-CREATE] 🔍 DIAGNÓSTICO - interactionData criado:`, {
+            actionType,
             hasWhatsappMessage: !!interactionData.whatsappMessage,
             whatsappMessage: interactionData.whatsappMessage?.substring(0, 50),
             hasWhatsappPhones: !!interactionData.whatsappPhones,
