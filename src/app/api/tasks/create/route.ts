@@ -22,7 +22,9 @@ interface CreateTaskRequest {
   solved_by?: string; // Nome de quem resolveu a tarefa (obrigatório se is_resolved = true)
   recommended_action?: string; // Obrigatório se is_resolved = false
   action_taken?: string; // Obrigatório se is_resolved = true
-  action_description?: string;
+  action_type?: string; // Tipo da interação quando resolvida (ex: "Contato telefônico", "Visita domiciliar")
+  action_description?: string; // Descrição detalhada da ação tomada
+  whatsapp_message?: string; // Mensagem do WhatsApp (obrigatório para action_type "Contato digital")
   is_resolved: boolean;
 }
 
@@ -119,10 +121,13 @@ async function getStudentData(estudanteId: string): Promise<Student | null> {
 }
 
 /**
- * FASE 3: Função para salvar interação APENAS na estrutura V3 (otimizada)
- * PERFORMANCE: Removido dual-write - escreve apenas em students/{id}/interactions
+ * FASE 3: Função para salvar interação com DUAL-WRITE (V1 + V3)
+ * SEGURANÇA: Salva em ambas estruturas para garantir compatibilidade
+ *
+ * V1 (ATUAL/PRODUÇÃO): 2025/interactions/{studentId}/{docId}
+ * V3 (FUTURO): students/{studentId}/interactions/{docId}
  */
-function saveInteractionV3Only(
+function saveInteractionDualWrite(
   batch: ReturnType<typeof writeBatch>,
   estudanteId: string,
   interactionData: Omit<FamilyInteraction, "id">
@@ -130,19 +135,29 @@ function saveInteractionV3Only(
   const interactionId = doc(collection(db, 'temp')).id; // Gerar ID único
 
   try {
-    // ESTRUTURA V3 APENAS: students/{id}/interactions
-    const newInteractionRef = doc(db, 'students', estudanteId, 'interactions', interactionId);
-    batch.set(newInteractionRef, {
+    // ✅ V1 (PRODUÇÃO ATUAL): 2025/interactions/{studentId}/{docId}
+    const v1InteractionRef = doc(db, '2025', 'interactions', estudanteId, interactionId);
+    batch.set(v1InteractionRef, {
+      ...interactionData,
+      createdAt: serverTimestamp(),
+      studentId: estudanteId, // V1 precisa do studentId explícito
+    });
+
+    // ✅ V3 (FUTURO): students/{studentId}/interactions/{docId}
+    const v3InteractionRef = doc(db, 'students', estudanteId, 'interactions', interactionId);
+    batch.set(v3InteractionRef, {
       ...interactionData,
       createdAt: serverTimestamp(),
       anoLetivo: '2025'
     });
 
-    console.log(`[TASKS-CREATE] 💾 Interação V3 configurada (ID: ${interactionId})`);
+    console.log(`[TASKS-CREATE] 💾 Interação DUAL-WRITE configurada (ID: ${interactionId})`);
+    console.log(`[TASKS-CREATE] ✅ V1: 2025/interactions/${estudanteId}/${interactionId}`);
+    console.log(`[TASKS-CREATE] ✅ V3: students/${estudanteId}/interactions/${interactionId}`);
 
     return interactionId;
   } catch (error) {
-    logger.error('Erro ao configurar interação V3:', error as Error);
+    logger.error('Erro ao configurar interação dual-write:', error as Error);
     return interactionId;
   }
 }
@@ -252,6 +267,15 @@ export async function POST(request: NextRequest) {
           error: 'Para tarefas resolvidas, solved_by é obrigatório'
         } as CreateTaskResponse, { status: 400 });
       }
+      // Validação específica para "Contato digital"
+      if (taskData.action_type === "Contato digital") {
+        if (!taskData.whatsapp_message?.trim()) {
+          return NextResponse.json({
+            success: false,
+            error: 'Para interações do tipo "Contato digital", whatsapp_message é obrigatório'
+          } as CreateTaskResponse, { status: 400 });
+        }
+      }
     } else {
       if (!taskData.recommended_action) {
         return NextResponse.json({
@@ -284,25 +308,46 @@ export async function POST(request: NextRequest) {
     const batch = writeBatch(db);
     let interactionId: string | undefined;
 
-    // FASE 3: Se tarefa está resolvida, criar interação PRIMEIRO (V3 apenas)
-    if (taskData.is_resolved && taskData.action_taken && taskData.action_description) {
-      const interactionData: Omit<FamilyInteraction, "id"> = {
-        studentId: taskData.estudante_id,
-        type: taskData.action_taken,
-        description: taskData.action_description,
-        date: convertISOToFirebaseDate(taskData.processed_at || new Date().toISOString()),
-        createdBy: taskData.solved_by || taskData.created_by, // Usar solved_by se fornecido, senão created_by
-        sensitive: false
-      };
+    // FASE 3: Se tarefa está resolvida, criar interação PRIMEIRO (Dual-Write V1+V3)
+    if (taskData.is_resolved) {
+      // Validação: Se resolvida, DEVE ter action_type e action_description
+      if (!taskData.action_type || !taskData.action_description) {
+        logger.warn('[TASKS-CREATE] ⚠️  Tarefa resolvida sem action_type/action_description completos', {
+          estudanteId: taskData.estudante_id,
+          hasActionType: !!taskData.action_type,
+          hasActionDescription: !!taskData.action_description
+        });
+      }
 
-      // Salvar APENAS na estrutura V3 (otimizado)
-      interactionId = saveInteractionV3Only(
-        batch,
-        taskData.estudante_id,
-        interactionData
-      );
+      // Criar interação se tiver pelo menos action_type OU action_description
+      if (taskData.action_type || taskData.action_description) {
+        const interactionData: Omit<FamilyInteraction, "id"> = {
+          studentId: taskData.estudante_id,
+          type: taskData.action_type || taskData.action_taken || 'Ação não especificada',
+          description: taskData.action_description || taskData.action_taken || 'Descrição não fornecida',
+          date: convertISOToFirebaseDate(taskData.processed_at || new Date().toISOString()),
+          createdBy: taskData.solved_by || taskData.created_by,
+          sensitive: false,
+          ...(taskData.action_type === "Contato digital" && taskData.whatsapp_message && {
+            whatsappMessage: taskData.whatsapp_message
+          })
+        };
 
-      console.log(`[TASKS-CREATE] ✅ Interação V3 configurada (ID: ${interactionId})`);
+        // Salvar com DUAL-WRITE (V1 + V3) para garantir compatibilidade
+        interactionId = saveInteractionDualWrite(
+          batch,
+          taskData.estudante_id,
+          interactionData
+        );
+
+        logger.info(`[TASKS-CREATE] ✅ Interação DUAL-WRITE configurada`, {
+          interactionId,
+          estudanteId: taskData.estudante_id,
+          type: interactionData.type,
+          v1Path: `2025/interactions/${taskData.estudante_id}/${interactionId}`,
+          v3Path: `students/${taskData.estudante_id}/interactions/${interactionId}`
+        });
+      }
     }
 
     // Criar tarefa JÁ COM interactionId (evita batch.update adicional)
@@ -332,18 +377,48 @@ export async function POST(request: NextRequest) {
     if (taskData.is_resolved && taskData.processed_at) {
       newTask.completedAt = taskData.processed_at;
       newTask.resolvedBy = taskData.solved_by || taskData.created_by;
+
+      // ✅ CORREÇÃO: Preencher interactionType e interactionDescription
+      if (taskData.action_type) {
+        newTask.interactionType = taskData.action_type;
+      }
+      if (taskData.action_description) {
+        newTask.interactionDescription = taskData.action_description;
+      }
     }
 
     batch.set(taskRef, newTask);
 
-    // Executar transação (OTIMIZADO: menos operações)
-    await batch.commit();
+    // Executar transação batch
+    try {
+      await batch.commit();
 
-    logger.info(`Tarefa criada com sucesso: ${taskId}`, {
-      estudanteId: taskData.estudante_id,
-      isResolved: taskData.is_resolved,
-      interactionId
-    });
+      // ✅ LOGGING DETALHADO PÓS-COMMIT
+      logger.info(`[TASKS-CREATE] ✅ BATCH COMMIT CONCLUÍDO COM SUCESSO`, {
+        taskId,
+        estudanteId: taskData.estudante_id,
+        studentName: studentData.nome,
+        isResolved: taskData.is_resolved,
+        interactionId,
+        interactionType: newTask.interactionType,
+        interactionDescription: newTask.interactionDescription?.substring(0, 50),
+        paths: {
+          task: `userTasks/${taskId}`,
+          ...(interactionId && {
+            interactionV1: `2025/interactions/${taskData.estudante_id}/${interactionId}`,
+            interactionV3: `students/${taskData.estudante_id}/interactions/${interactionId}`
+          })
+        }
+      });
+
+    } catch (commitError) {
+      logger.error('[TASKS-CREATE] ❌ ERRO NO BATCH COMMIT', {
+        error: commitError,
+        taskId,
+        estudanteId: taskData.estudante_id
+      });
+      throw commitError;
+    }
 
     return NextResponse.json({
       success: true,

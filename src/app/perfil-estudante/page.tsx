@@ -73,6 +73,10 @@ export default function StudentProfilePage() {
     const [verifiedWhatsAppNumbers, setVerifiedWhatsAppNumbers] = useState<Set<string>>(new Set());
     const [contactVerificationData, setContactVerificationData] = useState<Map<string, { verificationStatus?: string; hasWhatsApp?: boolean }>>(new Map());
 
+    // WhatsApp interaction states (para o card de interação)
+    const [selectedWhatsAppPhones, setSelectedWhatsAppPhones] = useState<Set<string>>(new Set());
+    const [whatsAppMessage, setWhatsAppMessage] = useState<string>("");
+
     const auth = getAuth();
 
     // Sync form fields with editingAtestado
@@ -354,10 +358,12 @@ export default function StudentProfilePage() {
             };
             setStudentRecordWithoutJustified(aggregatedNoJustified);
 
-            // Fetch interactions from the main collection
-            const interactionsSnapshot = await getDocs(collection(db, FIREBASE_PATHS.interactions(studentId)));
+            // ✅ CORREÇÃO: Buscar interações em V1 E V3 (dual-read)
+            console.log('[PERFIL-ESTUDANTE] Buscando interações V1 + V3...');
 
-            const interactionRecords: FamilyInteraction[] = interactionsSnapshot.docs.map(doc => ({
+            // V1: 2025/interactions/{studentId}
+            const interactionsV1Snapshot = await getDocs(collection(db, FIREBASE_PATHS.interactions(studentId)));
+            const interactionsV1: FamilyInteraction[] = interactionsV1Snapshot.docs.map(doc => ({
                 id: doc.id,
                 type: doc.data().type as string,
                 date: formatFirebaseDate(doc.data().date as string),
@@ -365,8 +371,38 @@ export default function StudentProfilePage() {
                 createdBy: doc.data().createdBy as string || "Não informado",
                 sensitive: doc.data().sensitive as boolean || false,
                 studentId: studentId,
-                _collection: 'interactions'
+                _collection: 'v1'
             } as FamilyInteraction & { _collection: string }));
+
+            // V3: students/{studentId}/interactions
+            const interactionsV3Snapshot = await getDocs(collection(db, 'students', studentId, 'interactions'));
+            const interactionsV3: FamilyInteraction[] = interactionsV3Snapshot.docs.map(doc => ({
+                id: doc.id,
+                type: doc.data().type as string,
+                date: formatFirebaseDate(doc.data().date as string),
+                description: doc.data().description as string,
+                createdBy: doc.data().createdBy as string || "Não informado",
+                sensitive: doc.data().sensitive as boolean || false,
+                studentId: studentId,
+                _collection: 'v3'
+            } as FamilyInteraction & { _collection: string }));
+
+            // Combinar e remover duplicatas (usar ID como chave única)
+            const combinedMap = new Map<string, FamilyInteraction & { _collection: string }>();
+
+            // Adicionar V1 primeiro
+            interactionsV1.forEach(interaction => {
+                combinedMap.set(interaction.id, interaction);
+            });
+
+            // Adicionar V3 (sobrescreve se duplicado - V3 é mais recente)
+            interactionsV3.forEach(interaction => {
+                combinedMap.set(interaction.id, interaction);
+            });
+
+            const interactionRecords = Array.from(combinedMap.values());
+
+            console.log(`[PERFIL-ESTUDANTE] ✅ ${interactionsV1.length} interações V1 + ${interactionsV3.length} interações V3 = ${interactionRecords.length} únicas`);
 
             // Ordenar por data
             interactionRecords.sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
@@ -431,11 +467,77 @@ export default function StudentProfilePage() {
             return;
         }
 
+        // Validação específica para "Contato digital"
+        if (interactionType === "Contato digital") {
+            if (selectedWhatsAppPhones.size === 0) {
+                toast.error("Selecione pelo menos um contato para enviar WhatsApp.");
+                return;
+            }
+
+            if (!whatsAppMessage.trim()) {
+                toast.error("Digite a mensagem que será enviada via WhatsApp.");
+                return;
+            }
+        }
+
         try {
             const scrollPosition = window.scrollY;
-
             const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
+            // FASE 1: Se for "Contato digital", enviar WhatsApp PRIMEIRO
+            if (interactionType === "Contato digital" && selectedWhatsAppPhones.size > 0) {
+                const toastId = toast.loading(`Enviando mensagens para ${selectedWhatsAppPhones.size} contato(s)...`);
+
+                const sendPromises = Array.from(selectedWhatsAppPhones).map(async (phone) => {
+                    try {
+                        const response = await fetch('/api/whatsapp/send', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                phone,
+                                message: whatsAppMessage.trim()
+                            })
+                        });
+
+                        const result = await response.json();
+
+                        if (!result.success) {
+                            throw new Error(result.message || "Falha ao enviar mensagem");
+                        }
+
+                        // Atualizar contador de mensagens
+                        await WhatsAppTrackingService.updateMessageCount(phone);
+
+                        return { phone, success: true };
+                    } catch (error) {
+                        logger.error("Erro ao enviar WhatsApp", { phone }, error as Error);
+                        return { phone, success: false, error: error instanceof Error ? error.message : "Erro desconhecido" };
+                    }
+                });
+
+                const results = await Promise.allSettled(sendPromises);
+                const successCount = results.filter(r => r.status === "fulfilled" && r.value.success).length;
+                const failCount = results.length - successCount;
+
+                toast.dismiss(toastId);
+
+                // Se NENHUMA mensagem foi enviada com sucesso, ABORTAR
+                if (successCount === 0) {
+                    toast.error(`Falha ao enviar todas as mensagens (${failCount}). A interação NÃO foi salva.`);
+                    return; // IMPORTANTE: Não salvar interação se todas falharam
+                }
+
+                // Se algumas falharam, avisar mas continuar
+                if (failCount > 0) {
+                    toast.warning(`${successCount} mensagem(ns) enviada(s), ${failCount} falhou(ram). Salvando interação...`);
+                } else {
+                    toast.success(`${successCount} mensagem(ns) enviada(s) com sucesso!`);
+                }
+            }
+
+            // FASE 2: Salvar interação com DUAL-WRITE (V1 + V3)
             const interactionData: Omit<FamilyInteraction, "id"> = {
                 studentId: selectedStudentId,
                 type: interactionType,
@@ -443,13 +545,30 @@ export default function StudentProfilePage() {
                 description: interactionDescription,
                 createdBy: currentUser,
                 sensitive: interactionSensitive,
+                ...(interactionType === "Contato digital" && whatsAppMessage && {
+                    whatsappMessage: whatsAppMessage
+                })
             };
 
-            await addDoc(collection(db, FIREBASE_PATHS.interactions(selectedStudentId)), interactionData);
+            // V1: 2025/interactions/{studentId}
+            const interactionRefV1 = await addDoc(collection(db, FIREBASE_PATHS.interactions(selectedStudentId)), interactionData);
+
+            // V3: students/{studentId}/interactions (usar mesmo ID via setDoc não funciona com addDoc, então criar separado)
+            await addDoc(collection(db, 'students', selectedStudentId, 'interactions'), {
+                ...interactionData,
+                anoLetivo: '2025'
+            });
+
+            console.log(`[PERFIL-ESTUDANTE] ✅ Interação salva com dual-write (V1 ID: ${interactionRefV1.id})`);
+
+            // Limpar todos os campos (incluindo WhatsApp)
             setInteractionType("");
             setInteractionDate(new Date().toLocaleDateString("pt-BR"));
             setInteractionDescription("");
             setInteractionSensitive(false);
+            setSelectedWhatsAppPhones(new Set());
+            setWhatsAppMessage("");
+
             await fetchStudentData(selectedStudentId);
 
             window.scrollTo(0, scrollPosition);
@@ -458,7 +577,8 @@ export default function StudentProfilePage() {
             toast.success("Interação salva com sucesso!");
         } catch (error) {
             logger.error("Erro ao cadastrar interação", error as Error);
-            toast.error("Erro ao salvar interação. Tente novamente.");
+            toast.error("Erro ao salvar interação. Os campos foram mantidos para você tentar novamente.");
+            // NÃO limpar campos em caso de erro (conforme solicitado)
         }
     };
 
@@ -475,14 +595,30 @@ export default function StudentProfilePage() {
         }
 
         try {
-            const interactionRef = doc(db, FIREBASE_PATHS.interactions(selectedStudentId), editingInteraction.id);
-            await updateDoc(interactionRef, {
+            const updatedData = {
                 type: interactionType,
                 date: formattedDate,
                 description: interactionDescription,
                 sensitive: interactionSensitive,
                 createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
-            });
+            };
+
+            // Atualizar em V1
+            const interactionRefV1 = doc(db, FIREBASE_PATHS.interactions(selectedStudentId), editingInteraction.id);
+            await updateDoc(interactionRefV1, updatedData);
+
+            // Tentar atualizar em V3 (pode não existir se for interação antiga)
+            try {
+                const interactionRefV3 = doc(db, 'students', selectedStudentId, 'interactions', editingInteraction.id);
+                await updateDoc(interactionRefV3, {
+                    ...updatedData,
+                    anoLetivo: '2025'
+                });
+                console.log('[PERFIL-ESTUDANTE] ✅ Interação atualizada em V1 e V3');
+            } catch (v3Error) {
+                console.log('[PERFIL-ESTUDANTE] ⚠️  Interação atualizada apenas em V1 (não existe em V3)');
+            }
+
             setEditingInteraction(null);
             setInteractionType("");
             setInteractionDate(new Date().toLocaleDateString("pt-BR"));
@@ -499,8 +635,19 @@ export default function StudentProfilePage() {
     const handleDeleteInteraction = async (interactionId: string): Promise<void> => {
         if (!selectedStudentId) return;
         try {
-            const interactionRef = doc(db, FIREBASE_PATHS.interactions(selectedStudentId), interactionId);
-            await deleteDoc(interactionRef);
+            // Deletar de V1
+            const interactionRefV1 = doc(db, FIREBASE_PATHS.interactions(selectedStudentId), interactionId);
+            await deleteDoc(interactionRefV1);
+
+            // Tentar deletar de V3 (pode não existir se for interação antiga)
+            try {
+                const interactionRefV3 = doc(db, 'students', selectedStudentId, 'interactions', interactionId);
+                await deleteDoc(interactionRefV3);
+                console.log('[PERFIL-ESTUDANTE] ✅ Interação excluída de V1 e V3');
+            } catch (v3Error) {
+                console.log('[PERFIL-ESTUDANTE] ⚠️  Interação excluída apenas de V1 (não existia em V3)');
+            }
+
             await fetchStudentData(selectedStudentId);
             toast.success("Interação excluída com sucesso!");
         } catch (error) {
@@ -1362,6 +1509,13 @@ export default function StudentProfilePage() {
                         onAddInteraction={handleAddInteraction}
                         onEditInteraction={handleEditInteraction}
                         id="interaction-card"
+                        contacts={student?.contatos || []}
+                        selectedWhatsAppPhones={selectedWhatsAppPhones}
+                        onWhatsAppPhonesChange={setSelectedWhatsAppPhones}
+                        whatsAppMessage={whatsAppMessage}
+                        onWhatsAppMessageChange={setWhatsAppMessage}
+                        verifiedWhatsAppNumbers={verifiedWhatsAppNumbers}
+                        contactVerificationData={contactVerificationData}
                     />
                     <InteractionHistoryCard
                         interactions={interactions}

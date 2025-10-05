@@ -74,13 +74,12 @@ export const SECURITY_CONFIG = {
 // Feature Flags - Controle de migração V2 → V3
 export const FEATURE_FLAGS = {
   // FASE 5: Ler de V3 ao invés de V2
-  // ✅ ATIVADO em 05/10/2025 - Migração V3 100% concluída
-  // ON: Usa V3 (subcoleções) - 85% mais rápido que V2
-  // Rollback: Mudar para false se houver problemas
-  USE_V3_READS: true,  // ← ATIVADO! (era: process.env.NEXT_PUBLIC_USE_V3_READS === 'true')
+  // OFF (padrão): Usa V2 (estrutura legada) - PRODUÇÃO ATUAL
+  // ON: Usa V3 (subcoleções) - NOVO (60% mais rápido)
+  USE_V3_READS: process.env.NEXT_PUBLIC_USE_V3_READS === 'true',
 
   // FASE 6: Escrever apenas em V3 (desligar dual-write)
-  // SEMPRE FALSE por enquanto - manter dual-write ativo para segurança
+  // SEMPRE FALSE por enquanto - manter dual-write ativo
   USE_V3_WRITES_ONLY: false,
 } as const;
 

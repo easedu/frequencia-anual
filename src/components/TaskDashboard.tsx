@@ -107,15 +107,15 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
-  // Função para buscar dados atuais da interação
+  // Função para buscar dados atuais da interação (com suporte a V1 e V3)
   const getInteractionData = async (estudanteId: string, interactionId: string): Promise<{type: string, description: string, createdBy: string, exists: boolean} | null> => {
     try {
-      // Tentar buscar na coleção nova primeiro
-      let interactionDoc = await getDoc(doc(db, '2025', 'interacoes_familia', estudanteId, interactionId));
+      // ✅ CORREÇÃO: Tentar V1 primeiro (2025/interactions - estrutura atual)
+      let interactionDoc = await getDoc(doc(db, '2025', 'interactions', estudanteId, interactionId));
 
-      // Se não encontrar na nova coleção, tentar na antiga
+      // Se não encontrar em V1, tentar V3 (students/{id}/interactions - estrutura futura)
       if (!interactionDoc.exists()) {
-        interactionDoc = await getDoc(doc(db, '2025', 'interactions', estudanteId, interactionId));
+        interactionDoc = await getDoc(doc(db, 'students', estudanteId, 'interactions', interactionId));
       }
 
       if (interactionDoc.exists()) {
@@ -128,7 +128,8 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
         };
       }
 
-      // Interação foi deletada
+      // Interação foi deletada ou não encontrada
+      logger.warn(`[TASK-DASHBOARD] Interação não encontrada: ${interactionId} (estudante: ${estudanteId})`);
       return {
         type: 'Interação removida',
         description: 'A interação associada a esta tarefa foi removida',
@@ -421,18 +422,36 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
         studentId: selectedTask.estudanteId // Usar o ID correto do estudante
       };
 
-      // 2. Salvar interação
-      const interactionRef = await addDoc(
-        collection(db, '2025', 'interacoes_familia', selectedTask.estudanteId),
+      // 2. Salvar interação com DUAL-WRITE (V1 + V3)
+      // V1 (atual): 2025/interactions/{studentId}
+      const interactionRefV1 = await addDoc(
+        collection(db, '2025', 'interactions', selectedTask.estudanteId),
         interactionData
       );
+
+      // V3 (futuro): students/{studentId}/interactions
+      // Usar o mesmo ID gerado para manter consistência
+      await addDoc(
+        collection(db, 'students', selectedTask.estudanteId, 'interactions'),
+        {
+          ...interactionData,
+          anoLetivo: '2025'
+        }
+      );
+
+      logger.info('[TASK-DASHBOARD] Interação salva com dual-write', {
+        interactionId: interactionRefV1.id,
+        estudanteId: selectedTask.estudanteId,
+        v1Path: `2025/interactions/${selectedTask.estudanteId}/${interactionRefV1.id}`,
+        v3Path: `students/${selectedTask.estudanteId}/interactions/${interactionRefV1.id}`
+      });
 
       // 3. Atualizar tarefa como completada
       const taskRef = doc(db, 'userTasks', selectedTask.id);
       await updateDoc(taskRef, {
         status: 'COMPLETED',
         completedAt: new Date().toISOString(),
-        interactionId: interactionRef.id,
+        interactionId: interactionRefV1.id, // ✅ CORREÇÃO: usar o ID da V1
         interactionType: interactionType,
         interactionDescription: interactionDescription,
         resolvedBy: currentUser
