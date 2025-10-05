@@ -218,7 +218,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse e validação dos dados de entrada
-    const taskData: CreateTaskRequest = await request.json();
+    const rawData: any = await request.json();
+
+    // 🔧 NORMALIZAÇÃO: Converter string para array se necessário
+    if (typeof rawData.whatsapp_phones === 'string') {
+      rawData.whatsapp_phones = [rawData.whatsapp_phones];
+    }
+
+    const taskData: CreateTaskRequest = rawData;
 
     // 🔍 LOG DETALHADO: Verificar dados recebidos (especialmente WhatsApp)
     if (taskData.action_type === "Contato digital") {
@@ -229,6 +236,7 @@ export async function POST(request: NextRequest) {
         whatsapp_message_length: taskData.whatsapp_message?.length,
         whatsapp_phones: taskData.whatsapp_phones,
         whatsapp_phones_type: typeof taskData.whatsapp_phones,
+        whatsapp_phones_isArray: Array.isArray(taskData.whatsapp_phones),
         whatsapp_phones_length: taskData.whatsapp_phones?.length,
         is_resolved: taskData.is_resolved
       });
