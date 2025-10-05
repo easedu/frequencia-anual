@@ -40,6 +40,9 @@ interface CreateTaskResponse {
     message: string;
   };
   error?: string;
+  debug?: {
+    receivedBody?: CreateTaskRequest;
+  };
 }
 
 /**
@@ -217,6 +220,20 @@ export async function POST(request: NextRequest) {
     // Parse e validação dos dados de entrada
     const taskData: CreateTaskRequest = await request.json();
 
+    // 🔍 LOG DETALHADO: Verificar dados recebidos (especialmente WhatsApp)
+    if (taskData.action_type === "Contato digital") {
+      logger.info(`[TASKS-CREATE] 🔍 DIAGNÓSTICO - Dados WhatsApp recebidos:`, {
+        action_type: taskData.action_type,
+        whatsapp_message: taskData.whatsapp_message,
+        whatsapp_message_type: typeof taskData.whatsapp_message,
+        whatsapp_message_length: taskData.whatsapp_message?.length,
+        whatsapp_phones: taskData.whatsapp_phones,
+        whatsapp_phones_type: typeof taskData.whatsapp_phones,
+        whatsapp_phones_length: taskData.whatsapp_phones?.length,
+        is_resolved: taskData.is_resolved
+      });
+    }
+
     // Validações básicas
     if (!taskData.estudante_id) {
       return NextResponse.json({
@@ -335,6 +352,17 @@ export async function POST(request: NextRequest) {
           })
         };
 
+        // 🔍 LOG: Verificar interactionData antes de salvar
+        if (taskData.action_type === "Contato digital") {
+          logger.info(`[TASKS-CREATE] 🔍 DIAGNÓSTICO - interactionData criado:`, {
+            hasWhatsappMessage: !!interactionData.whatsappMessage,
+            whatsappMessage: interactionData.whatsappMessage?.substring(0, 50),
+            hasWhatsappPhones: !!interactionData.whatsappPhones,
+            whatsappPhones: interactionData.whatsappPhones,
+            allKeys: Object.keys(interactionData)
+          });
+        }
+
         // Salvar com DUAL-WRITE (V1 + V3) para garantir compatibilidade
         interactionId = saveInteractionDualWrite(
           batch,
@@ -430,6 +458,10 @@ export async function POST(request: NextRequest) {
         message: taskData.is_resolved
           ? 'Tarefa criada e marcada como resolvida com interação registrada'
           : 'Tarefa criada como pendente'
+      },
+      // 🔍 DEBUG: Retornar body exato recebido
+      debug: {
+        receivedBody: taskData
       }
     } as CreateTaskResponse);
 
