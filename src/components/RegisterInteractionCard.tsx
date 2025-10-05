@@ -90,14 +90,22 @@ export default function RegisterInteractionCard({
             setInteractionDescription(editingInteraction.description);
             setInteractionSensitive(editingInteraction.sensitive || false);
 
-            // Carregar mensagem WhatsApp se existir (para exibição read-only)
-            if (editingInteraction.whatsappMessage) {
-                onWhatsAppMessageChange(editingInteraction.whatsappMessage);
+            // Carregar dados WhatsApp se existir (para exibição read-only)
+            if (editingInteraction.type === "Contato digital") {
+                // Carregar mensagem
+                if (editingInteraction.whatsappMessage) {
+                    onWhatsAppMessageChange(editingInteraction.whatsappMessage);
+                }
+
+                // Carregar telefones selecionados
+                if (editingInteraction.whatsappPhones && editingInteraction.whatsappPhones.length > 0) {
+                    onWhatsAppPhonesChange(new Set(editingInteraction.whatsappPhones));
+                }
             }
         }
         // Não limpar campos se editingInteraction for null/undefined
         // Isso permite que o componente seja usado em modais sem resetar
-    }, [editingInteraction, setInteractionType, setInteractionDate, setInteractionDescription, setInteractionSensitive, onWhatsAppMessageChange]);
+    }, [editingInteraction, setInteractionType, setInteractionDate, setInteractionDescription, setInteractionSensitive, onWhatsAppMessageChange, onWhatsAppPhonesChange]);
 
     const handleSensitiveChange = (checked: boolean | string) => {
         const isChecked = typeof checked === "boolean" ? checked : checked === "true";
@@ -161,12 +169,17 @@ export default function RegisterInteractionCard({
                             <Label htmlFor="interaction-type" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
                                 <MessageSquare className="w-3 h-3 text-blue-600" />
                                 <span>Tipo de Interação</span>
+                                {editingInteraction && interactionType === "Contato digital" && (
+                                    <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">
+                                        READ-ONLY
+                                    </Badge>
+                                )}
                             </Label>
-                            {readonlyType ? (
+                            {readonlyType || (editingInteraction && interactionType === "Contato digital") ? (
                                 <div className="h-8 px-2.5 py-1.5 border border-gray-300 rounded-md bg-gray-50 flex items-center text-sm">
                                     <span className="text-gray-700">{interactionType}</span>
                                     <Badge className="ml-2 bg-orange-100 text-orange-800 border-orange-200 text-xs px-1.5 py-0">
-                                        Fixo
+                                        {readonlyType ? "Fixo" : "Bloqueado"}
                                     </Badge>
                                 </div>
                             ) : (
@@ -189,6 +202,11 @@ export default function RegisterInteractionCard({
                             <Label htmlFor="interaction-date" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
                                 <Calendar className="w-3 h-3 text-blue-600" />
                                 <span>Data</span>
+                                {editingInteraction && interactionType === "Contato digital" && (
+                                    <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">
+                                        READ-ONLY
+                                    </Badge>
+                                )}
                             </Label>
                             <Input
                                 id="interaction-date"
@@ -196,7 +214,12 @@ export default function RegisterInteractionCard({
                                 onChange={(e) => setInteractionDate(formatDateInput(e.target.value))}
                                 placeholder="dd/mm/aaaa"
                                 maxLength={10}
-                                className="h-8 border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors text-sm"
+                                disabled={editingInteraction && interactionType === "Contato digital"}
+                                className={`h-8 transition-colors text-sm ${
+                                    editingInteraction && interactionType === "Contato digital"
+                                        ? "bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
+                                        : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                }`}
                             />
                         </div>
                     </div>
@@ -209,6 +232,7 @@ export default function RegisterInteractionCard({
                             onSelectionChange={onWhatsAppPhonesChange}
                             verifiedNumbers={verifiedWhatsAppNumbers}
                             contactVerificationData={contactVerificationData}
+                            readonly={!!editingInteraction}
                         />
                     )}
 

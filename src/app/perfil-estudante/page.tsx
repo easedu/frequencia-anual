@@ -546,7 +546,8 @@ export default function StudentProfilePage() {
                 createdBy: currentUser,
                 sensitive: interactionSensitive,
                 ...(interactionType === "Contato digital" && whatsAppMessage && {
-                    whatsappMessage: whatsAppMessage
+                    whatsappMessage: whatsAppMessage,
+                    whatsappPhones: Array.from(selectedWhatsAppPhones) // Salvar telefones que receberam mensagem
                 })
             };
 

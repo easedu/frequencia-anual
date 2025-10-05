@@ -52,6 +52,7 @@ interface WhatsAppContactSelectorProps extends VariantProps<typeof contactItemVa
             exists?: boolean;
         };
     }>;
+    readonly?: boolean; // Modo read-only para edição
 }
 
 export default function WhatsAppContactSelector({
@@ -63,6 +64,7 @@ export default function WhatsAppContactSelector({
     contactVerificationData = new Map(),
     variant,
     size,
+    readonly = false,
 }: WhatsAppContactSelectorProps) {
     const [whatsAppContacts, setWhatsAppContacts] = useState<Contato[]>([]);
 
@@ -86,6 +88,9 @@ export default function WhatsAppContactSelector({
     }, [contacts, contactVerificationData]);
 
     const handleContactToggle = (phone: string) => {
+        // Não permitir alteração se estiver em modo read-only
+        if (readonly) return;
+
         const cleanPhone = phone.replace(/\D/g, '');
         const newSelection = new Set(selectedPhones);
 
@@ -116,7 +121,12 @@ export default function WhatsAppContactSelector({
                 <Label className="text-xs font-medium text-gray-700 flex items-center space-x-1">
                     <Phone className="w-3 h-3 text-blue-600" />
                     <span>Selecione os contatos</span>
-                    <span className="text-red-500">*</span>
+                    {!readonly && <span className="text-red-500">*</span>}
+                    {readonly && (
+                        <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">
+                            READ-ONLY
+                        </Badge>
+                    )}
                 </Label>
                 <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 text-xs px-2 py-0">
                     {selectedPhones.size}/{whatsAppContacts.length}
@@ -137,7 +147,7 @@ export default function WhatsAppContactSelector({
                                 className={cn(contactItemVariants({
                                     variant: isSelected ? "selected" : "default",
                                     size
-                                }))}
+                                }), readonly && "cursor-not-allowed opacity-70")}
                             >
                                 {/* Nome e número (similar ao StudentInfoCard) */}
                                 <div className="flex items-center gap-2 min-w-0">

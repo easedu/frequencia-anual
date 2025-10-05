@@ -25,6 +25,7 @@ interface CreateTaskRequest {
   action_type?: string; // Tipo da interação quando resolvida (ex: "Contato telefônico", "Visita domiciliar")
   action_description?: string; // Descrição detalhada da ação tomada
   whatsapp_message?: string; // Mensagem do WhatsApp (obrigatório para action_type "Contato digital")
+  whatsapp_phones?: string[]; // Telefones que receberam a mensagem WhatsApp
   is_resolved: boolean;
 }
 
@@ -329,7 +330,8 @@ export async function POST(request: NextRequest) {
           createdBy: taskData.solved_by || taskData.created_by,
           sensitive: false,
           ...(taskData.action_type === "Contato digital" && taskData.whatsapp_message && {
-            whatsappMessage: taskData.whatsapp_message
+            whatsappMessage: taskData.whatsapp_message,
+            whatsappPhones: taskData.whatsapp_phones || [] // Telefones que receberam mensagem
           })
         };
 
