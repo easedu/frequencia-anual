@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -83,6 +83,31 @@ export default function RegisterInteractionCard({
     verifiedWhatsAppNumbers = new Set(),
     contactVerificationData = new Map(),
 }: RegisterInteractionCardProps) {
+    const whatsappTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Auto-resize do textarea WhatsApp baseado no conteúdo
+    useEffect(() => {
+        const textarea = whatsappTextareaRef.current;
+        if (textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        }
+    }, [whatsAppMessage]);
+
+    // Sincronizar altura do campo Descrição com Mensagem WhatsApp (quando Contato digital)
+    useEffect(() => {
+        if (interactionType === "Contato digital") {
+            const whatsappTextarea = whatsappTextareaRef.current;
+            const descriptionTextarea = descriptionTextareaRef.current;
+
+            if (whatsappTextarea && descriptionTextarea) {
+                const whatsappHeight = whatsappTextarea.scrollHeight;
+                descriptionTextarea.style.height = `${whatsappHeight}px`;
+            }
+        }
+    }, [whatsAppMessage, interactionType]);
+
     useEffect(() => {
         if (editingInteraction) {
             setInteractionType(editingInteraction.type);
@@ -169,18 +194,10 @@ export default function RegisterInteractionCard({
                             <Label htmlFor="interaction-type" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
                                 <MessageSquare className="w-3 h-3 text-blue-600" />
                                 <span>Tipo de Interação</span>
-                                {editingInteraction && interactionType === "Contato digital" && (
-                                    <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">
-                                        READ-ONLY
-                                    </Badge>
-                                )}
                             </Label>
                             {readonlyType || (editingInteraction && interactionType === "Contato digital") ? (
                                 <div className="h-8 px-2.5 py-1.5 border border-gray-300 rounded-md bg-gray-50 flex items-center text-sm">
                                     <span className="text-gray-700">{interactionType}</span>
-                                    <Badge className="ml-2 bg-orange-100 text-orange-800 border-orange-200 text-xs px-1.5 py-0">
-                                        {readonlyType ? "Fixo" : "Bloqueado"}
-                                    </Badge>
                                 </div>
                             ) : (
                                 <Select value={interactionType} onValueChange={setInteractionType}>
@@ -202,11 +219,6 @@ export default function RegisterInteractionCard({
                             <Label htmlFor="interaction-date" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
                                 <Calendar className="w-3 h-3 text-blue-600" />
                                 <span>Data</span>
-                                {editingInteraction && interactionType === "Contato digital" && (
-                                    <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">
-                                        READ-ONLY
-                                    </Badge>
-                                )}
                             </Label>
                             <Input
                                 id="interaction-date"
@@ -245,23 +257,18 @@ export default function RegisterInteractionCard({
                                     <Send className="w-3 h-3 text-blue-600" />
                                     <span>Mensagem WhatsApp</span>
                                     {!editingInteraction && <span className="text-red-500">*</span>}
-                                    {editingInteraction && (
-                                        <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">
-                                            READ-ONLY
-                                        </Badge>
-                                    )}
                                 </Label>
                                 <Textarea
+                                    ref={whatsappTextareaRef}
                                     id="whatsapp-message"
                                     value={whatsAppMessage}
                                     onChange={(e) => onWhatsAppMessageChange(e.target.value)}
                                     placeholder={editingInteraction ? "Mensagem já enviada" : "Digite a mensagem que será enviada..."}
-                                    rows={7}
                                     disabled={!!editingInteraction}
-                                    className={`resize-none text-sm ${
+                                    className={`min-h-[180px] text-sm overflow-hidden ${
                                         editingInteraction
-                                            ? "bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
-                                            : "border-blue-300 focus:border-blue-500 focus:ring-blue-500 bg-white"
+                                            ? "resize-none bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
+                                            : "resize-none border-blue-300 focus:border-blue-500 focus:ring-blue-500 bg-white"
                                     }`}
                                 />
                             </div>
@@ -274,12 +281,17 @@ export default function RegisterInteractionCard({
                                     <span className="text-red-500">*</span>
                                 </Label>
                                 <Textarea
+                                    ref={descriptionTextareaRef}
                                     id="interaction-description"
                                     value={interactionDescription}
                                     onChange={(e) => setInteractionDescription(e.target.value)}
                                     placeholder="Descrição da interação (ex: 'Mensagens enviadas para Rafaela')..."
-                                    rows={7}
-                                    className="resize-none border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors text-sm"
+                                    disabled={editingInteraction?.createdBy === "AUTOMAÇÃO"}
+                                    className={`min-h-[180px] text-sm overflow-hidden ${
+                                        editingInteraction?.createdBy === "AUTOMAÇÃO"
+                                            ? "resize-none bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
+                                            : "resize-none border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                    }`}
                                 />
                             </div>
                         </div>

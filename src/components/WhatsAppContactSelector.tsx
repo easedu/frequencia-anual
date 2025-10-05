@@ -122,11 +122,6 @@ export default function WhatsAppContactSelector({
                     <Phone className="w-3 h-3 text-blue-600" />
                     <span>Selecione os contatos</span>
                     {!readonly && <span className="text-red-500">*</span>}
-                    {readonly && (
-                        <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">
-                            READ-ONLY
-                        </Badge>
-                    )}
                 </Label>
                 <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 text-xs px-2 py-0">
                     {selectedPhones.size}/{whatsAppContacts.length}

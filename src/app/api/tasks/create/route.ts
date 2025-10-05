@@ -25,7 +25,7 @@ interface CreateTaskRequest {
   action_type?: string; // Tipo da interação quando resolvida (ex: "Contato telefônico", "Visita domiciliar")
   action_description?: string; // Descrição detalhada da ação tomada
   whatsapp_message?: string; // Mensagem do WhatsApp (obrigatório para action_type "Contato digital")
-  whatsapp_phones?: string[]; // Telefones que receberam a mensagem WhatsApp
+  whatsapp_phone?: string; // Telefone que recebeu a mensagem WhatsApp (sempre um único número)
   is_resolved: boolean;
 }
 
@@ -218,32 +218,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse e validação dos dados de entrada
-    const rawData: any = await request.json();
-
-    // 🔧 NORMALIZAÇÃO: Converter string para array se necessário
-    if (typeof rawData.whatsapp_phones === 'string') {
-      rawData.whatsapp_phones = [rawData.whatsapp_phones];
-    }
-
-    const taskData: CreateTaskRequest = rawData;
-
-    // 🔍 LOG DETALHADO: Verificar dados recebidos (especialmente WhatsApp)
-    const receivedActionType = taskData.action_type || taskData.action_taken;
-    if (receivedActionType === "Contato digital") {
-      logger.info(`[TASKS-CREATE] 🔍 DIAGNÓSTICO - Dados WhatsApp recebidos:`, {
-        action_type: taskData.action_type,
-        action_taken: taskData.action_taken,
-        resolvedActionType: receivedActionType,
-        whatsapp_message: taskData.whatsapp_message,
-        whatsapp_message_type: typeof taskData.whatsapp_message,
-        whatsapp_message_length: taskData.whatsapp_message?.length,
-        whatsapp_phones: taskData.whatsapp_phones,
-        whatsapp_phones_type: typeof taskData.whatsapp_phones,
-        whatsapp_phones_isArray: Array.isArray(taskData.whatsapp_phones),
-        whatsapp_phones_length: taskData.whatsapp_phones?.length,
-        is_resolved: taskData.is_resolved
-      });
-    }
+    const taskData: CreateTaskRequest = await request.json();
 
     // Validações básicas
     if (!taskData.estudante_id) {
@@ -361,24 +336,11 @@ export async function POST(request: NextRequest) {
           date: convertISOToFirebaseDate(taskData.processed_at || new Date().toISOString()),
           createdBy: taskData.solved_by || taskData.created_by,
           sensitive: false,
-          // ✅ CORREÇÃO: Verificar se é Contato digital usando a variável (aceita action_type OU action_taken)
-          ...(isContatoDigital && taskData.whatsapp_message && {
+          ...(isContatoDigital && taskData.whatsapp_message && taskData.whatsapp_phone && {
             whatsappMessage: taskData.whatsapp_message,
-            whatsappPhones: taskData.whatsapp_phones || [] // Telefones que receberam mensagem
+            whatsappPhones: [taskData.whatsapp_phone]
           })
         };
-
-        // 🔍 LOG: Verificar interactionData antes de salvar
-        if (isContatoDigital) {
-          logger.info(`[TASKS-CREATE] 🔍 DIAGNÓSTICO - interactionData criado:`, {
-            actionType,
-            hasWhatsappMessage: !!interactionData.whatsappMessage,
-            whatsappMessage: interactionData.whatsappMessage?.substring(0, 50),
-            hasWhatsappPhones: !!interactionData.whatsappPhones,
-            whatsappPhones: interactionData.whatsappPhones,
-            allKeys: Object.keys(interactionData)
-          });
-        }
 
         // Salvar com DUAL-WRITE (V1 + V3) para garantir compatibilidade
         interactionId = saveInteractionDualWrite(
@@ -475,10 +437,6 @@ export async function POST(request: NextRequest) {
         message: taskData.is_resolved
           ? 'Tarefa criada e marcada como resolvida com interação registrada'
           : 'Tarefa criada como pendente'
-      },
-      // 🔍 DEBUG: Retornar body exato recebido
-      debug: {
-        receivedBody: taskData
       }
     } as CreateTaskResponse);
 

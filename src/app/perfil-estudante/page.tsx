@@ -371,6 +371,8 @@ export default function StudentProfilePage() {
                 createdBy: doc.data().createdBy as string || "Não informado",
                 sensitive: doc.data().sensitive as boolean || false,
                 studentId: studentId,
+                whatsappMessage: doc.data().whatsappMessage as string | undefined,
+                whatsappPhones: doc.data().whatsappPhones as string[] | undefined,
                 _collection: 'v1'
             } as FamilyInteraction & { _collection: string }));
 
@@ -384,6 +386,8 @@ export default function StudentProfilePage() {
                 createdBy: doc.data().createdBy as string || "Não informado",
                 sensitive: doc.data().sensitive as boolean || false,
                 studentId: studentId,
+                whatsappMessage: doc.data().whatsappMessage as string | undefined,
+                whatsappPhones: doc.data().whatsappPhones as string[] | undefined,
                 _collection: 'v3'
             } as FamilyInteraction & { _collection: string }));
 
