@@ -55,7 +55,7 @@ export class TaskService {
 
       return '1º Bimestre';
     } catch (error) {
-      logger.error('Erro ao detectar bimestre atual:', error as Error);
+      logger.firebaseError('getCurrentBimester', error as Error);
       return '1º Bimestre';
     }
   }
@@ -276,14 +276,13 @@ export class TaskService {
               isPCD: estudante.deficiencia?.estudanteComDeficiencia || false,
               priority: 'critical' as const,
               recommendedAction: 'Encaminhar ao Conselho Tutelar',
-              createdAt: new Date().toISOString(),
               createdBy: 'Sistema'
             };
 
             // Add audit and soft delete fields
             const newTask: UserTask = {
               ...taskData,
-              ...addCreationAudit({}, userId),
+              createdAt: new Date().toISOString(),
               ...initializeSoftDelete(),
             };
 
@@ -297,6 +296,10 @@ export class TaskService {
       // 5. Executar batch
       if (newTasks.length > 0) {
         await batch.commit();
+        logger.info('Tarefas geradas com sucesso', {
+          count: newTasks.length,
+          bimestre: currentBimester
+        });
       }
 
       return {

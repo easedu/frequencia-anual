@@ -5,39 +5,7 @@
  */
 
 import { z } from 'zod';
-
-// ============================================================================
-// BASE SCHEMAS
-// ============================================================================
-
-/**
- * UUID v4 validation
- */
-export const uuidSchema = z.string().uuid('ID deve ser um UUID válido');
-
-/**
- * ISO 8601 date validation (YYYY-MM-DD)
- */
-export const isoDateSchema = z.string().regex(
-  /^\d{4}-\d{2}-\d{2}$/,
-  'Data deve estar no formato YYYY-MM-DD'
-);
-
-/**
- * Brazilian phone format
- */
-export const phoneSchema = z.string().regex(
-  /^\(\d{2}\)\s\d{4,5}-\d{4}$/,
-  'Telefone deve estar no formato (XX) XXXXX-XXXX'
-);
-
-/**
- * Brazilian CEP format
- */
-export const cepSchema = z.string().regex(
-  /^\d{5}-\d{3}$/,
-  'CEP deve estar no formato XXXXX-XXX'
-);
+import { uuidSchema, isoDateSchema, phoneSchema, cepSchema } from './common';
 
 // ============================================================================
 // NESTED SCHEMAS
@@ -262,3 +230,72 @@ export function safeValidateCreateStudent(data: unknown) {
 export function safeValidateUpdateStudent(data: unknown) {
   return updateStudentSchema.safeParse(data);
 }
+
+// ============================================================================
+// FORM SCHEMAS (Relaxed validation for UI)
+// ============================================================================
+
+/**
+ * Minimal schema for student form (allows partial data during editing)
+ * Uses passthrough to allow all fields from the full student object
+ */
+export const studentFormSchema = z.object({
+  nome: z.string().min(1, "Nome é obrigatório"),
+  turma: z.string().min(1, "Turma é obrigatória"),
+  turno: z.string().default("MANHÃ"),
+  dataNascimento: z.string().optional(),
+  matricula: z.string().optional(),
+  status: z.string().default("ATIVO"),
+  bolsaFamilia: z.string().default("NÃO"),
+  email: z.string().optional(),
+}).passthrough(); // Allow all other fields to pass through without validation
+
+export type StudentFormData = z.infer<typeof studentFormSchema>;
+
+/**
+ * Complete form schema for StudentForm component
+ * Includes all nested objects with proper validation
+ */
+export const studentCompleteFormSchema = z.object({
+  nome: z.string().min(1, "Nome é obrigatório"),
+  turma: z.string().min(1, "Turma é obrigatória"),
+  turno: z.enum(["MANHÃ", "TARDE"]),
+  dataNascimento: z.string().min(1, "Data de nascimento é obrigatória"),
+  matricula: z.string().optional(),
+  status: z.enum(["ATIVO", "INATIVO"]),
+  bolsaFamilia: z.enum(["SIM", "NÃO"]),
+  email: z.string().email("Email inválido").optional().or(z.literal("")),
+  endereco: z.object({
+    cep: z.string().optional(),
+    rua: z.string().optional(),
+    numero: z.string().optional(),
+    complemento: z.string().optional(),
+    bairro: z.string().optional(),
+    cidade: z.string().optional(),
+    estado: z.string().optional(),
+  }).optional(),
+  contatos: z.array(z.object({
+    podeReceberMensagem: z.boolean().default(true),
+    nome: z.string().min(1, "Nome do contato é obrigatório"),
+    telefone: z.string().min(1, "Telefone é obrigatório"),
+    parentesco: z.string().min(1, "Parentesco é obrigatório"),
+  })).optional(),
+  deficiencia: z.object({
+    estudanteComDeficiencia: z.boolean(),
+    tipoDeficiencia: z.array(z.string()).optional(),
+    observacoes: z.string().optional(),
+    possuiBarreiras: z.boolean().optional(),
+    aee: z.string().optional(),
+    instituicao: z.string().optional(),
+    horarioAtendimento: z.string().optional(),
+    atendimentoSaude: z.array(z.string()).optional(),
+    possuiEstagiario: z.boolean().optional(),
+    nomeEstagiario: z.string().optional(),
+    justificativaEstagiario: z.string().optional(),
+    ave: z.boolean().optional(),
+    nomeAve: z.string().optional(),
+    justificativaAve: z.array(z.string()).optional(),
+  }).optional(),
+});
+
+export type StudentCompleteFormData = z.infer<typeof studentCompleteFormSchema>;

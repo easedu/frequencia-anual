@@ -650,7 +650,7 @@ export default function StudentProfilePage() {
                 await deleteDoc(interactionRefV3);
                 logger.interactionOperation('delete', selectedStudentId, interaction.tipo, { v1AndV3: true });
             } catch (v3Error) {
-                logger.interactionOperation('delete', selectedStudentId, interaction.tipo, { v1Only: true });
+                console.log('[PERFIL-ESTUDANTE] ⚠️  Interação excluída apenas de V1 (não existia em V3)');
             }
 
             await fetchStudentData(selectedStudentId);
