@@ -5,7 +5,6 @@ import { Users, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import { v4 as uuidv4 } from "uuid";
 
 import { useStudents } from "@/hooks/useStudents";
@@ -18,18 +17,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "sonner";
 import { Estudante, Student } from "@/types";
 import { StudentDataService } from "@/services/studentDataService";
-
-// Student form schema - Minimal validation for debugging
-const studentSchema = z.object({
-    nome: z.string().min(1, "Nome é obrigatório"),
-    turma: z.string().min(1, "Turma é obrigatória"),
-    turno: z.string().default("MANHÃ"),
-    dataNascimento: z.string().optional(),
-    matricula: z.string().optional(),
-    status: z.string().default("ATIVO"),
-    bolsaFamilia: z.string().default("NÃO"),
-    email: z.string().optional(),
-}).passthrough(); // Allow all other fields to pass through without validation
+import { logger } from "@/utils/logger";
+import { studentFormSchema } from "@/schemas/studentSchemas";
 
 export default function CadastrarEstudantePage() {
     const { students, loading, error, setStudents, fetchStudents } = useStudents();
@@ -81,7 +70,7 @@ export default function CadastrarEstudantePage() {
     
     // Form
     const form = useForm({
-        resolver: zodResolver(studentSchema),
+        resolver: zodResolver(studentFormSchema),
         defaultValues: {
             nome: "",
             turma: "",
@@ -259,22 +248,24 @@ export default function CadastrarEstudantePage() {
     
     const handleFormSubmit = async (data: any) => {
         if (isSaving) return; // Prevenir múltiplos cliques
-        
+
         setIsSaving(true);
-        
+
+        let processedData: any = null;
+
         try {
             // Validação manual mínima para garantir campos obrigatórios
             if (!data.nome?.trim()) {
                 toast.error("Nome é obrigatório");
                 return;
             }
-            
+
             if (!data.turma?.trim()) {
                 toast.error("Turma é obrigatória");
                 return;
             }
             // Processar dados para garantir formato correto
-            const processedData = {
+            processedData = {
                 ...data,
                 estudanteId: editingEstudante ? editingEstudante.estudanteId : uuidv4(),
                 dataNascimento: data.dataNascimento ? data.dataNascimento.replace(/\D/g, '') : '',
@@ -366,10 +357,15 @@ export default function CadastrarEstudantePage() {
             );
             
         } catch (error) {
-            console.error('Erro ao salvar estudante:', error);
+            logger.studentOperation(
+                editingEstudante ? 'update' : 'create',
+                processedData?.estudanteId || '',
+                processedData?.nome,
+                { error: error instanceof Error ? error.message : 'unknown' }
+            );
             toast.error(
-                editingEstudante 
-                    ? "Erro ao atualizar estudante. Tente novamente." 
+                editingEstudante
+                    ? "Erro ao atualizar estudante. Tente novamente."
                     : "Erro ao cadastrar estudante. Tente novamente."
             );
         } finally {

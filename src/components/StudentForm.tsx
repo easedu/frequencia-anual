@@ -11,62 +11,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatPhoneNumber, formatCep, formatDate } from '@/utils/formatters';
+import { formatPhoneNumber, formatCep } from '@/utils/formatters';
 import { Estudante } from '@/types';
 import { toast } from 'sonner';
-import { WhatsAppVerificationService } from '@/services/whatsappVerificationService';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/firebase.config';
 import { doc, getDoc } from 'firebase/firestore';
+import { studentCompleteFormSchema } from '@/schemas/studentSchemas';
 
 // Types
 interface SelectOption {
     value: string;
     label: string;
 }
-
-// Form schema inline
-const formSchema = z.object({
-    nome: z.string().min(1, "Nome é obrigatório"),
-    turma: z.string().min(1, "Turma é obrigatória"),
-    turno: z.enum(["MANHÃ", "TARDE"]),
-    dataNascimento: z.string().min(1, "Data de nascimento é obrigatória"),
-    matricula: z.string().optional(),
-    status: z.enum(["ATIVO", "INATIVO"]),
-    bolsaFamilia: z.enum(["SIM", "NÃO"]),
-    email: z.string().email("Email inválido").optional().or(z.literal("")),
-    endereco: z.object({
-        cep: z.string().optional(),
-        rua: z.string().optional(),
-        numero: z.string().optional(),
-        complemento: z.string().optional(),
-        bairro: z.string().optional(),
-        cidade: z.string().optional(),
-        estado: z.string().optional(),
-    }).optional(),
-    contatos: z.array(z.object({
-        podeReceberMensagem: z.boolean().default(true),
-        nome: z.string().min(1, "Nome do contato é obrigatório"),
-        telefone: z.string().min(1, "Telefone é obrigatório"),
-        parentesco: z.string().min(1, "Parentesco é obrigatório"),
-    })).optional(),
-    deficiencia: z.object({
-        estudanteComDeficiencia: z.boolean(),
-        tipoDeficiencia: z.array(z.string()).optional(),
-        observacoes: z.string().optional(),
-        possuiBarreiras: z.boolean().optional(),
-        aee: z.string().optional(),
-        instituicao: z.string().optional(),
-        horarioAtendimento: z.string().optional(),
-        atendimentoSaude: z.array(z.string()).optional(),
-        possuiEstagiario: z.boolean().optional(),
-        nomeEstagiario: z.string().optional(),
-        justificativaEstagiario: z.string().optional(),
-        ave: z.boolean().optional(),
-        nomeAve: z.string().optional(),
-        justificativaAve: z.array(z.string()).optional(),
-    }).optional(),
-});
 
 // Helper functions
 const formatTelefone = (value: string) => formatPhoneNumber(value);
@@ -132,9 +89,9 @@ const fetchAddressFromCep = async (cep: string) => {
 };
 
 interface StudentFormProps {
-    form: UseFormReturn<z.infer<typeof formSchema>>;
+    form: UseFormReturn<z.infer<typeof studentCompleteFormSchema>>;
     editingEstudante: Estudante | null;
-    handleFormSubmit: (data: z.infer<typeof formSchema>) => void;
+    handleFormSubmit: (data: z.infer<typeof studentCompleteFormSchema>) => void;
     handleCancel: () => void;
     cepChangedManually: boolean;
     setCepChangedManually: (value: boolean) => void;
@@ -191,7 +148,7 @@ const ContactField = memo(({
     canRemove
 }: {
     index: number;
-    form: UseFormReturn<z.infer<typeof formSchema>>;
+    form: UseFormReturn<z.infer<typeof studentCompleteFormSchema>>;
     onRemove: () => void;
     canRemove: boolean;
 }) => {

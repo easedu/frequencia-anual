@@ -9,6 +9,7 @@
 
 import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase.config';
+import { logger } from '@/utils/logger';
 
 interface WhatsAppVerificationData {
   exists: boolean;
@@ -35,8 +36,12 @@ export async function saveWhatsAppVerification(
   telefone: string,
   verificationData: WhatsAppVerificationData
 ): Promise<SaveResult> {
-  console.log(`[WHATSAPP-SERVICE] 💾 Salvando verificação (dual-write)...`);
-  console.log(`[WHATSAPP-SERVICE] Estudante: ${estudanteId}, Contato: ${contactId}, Tel: ${telefone}`);
+  logger.info('Salvando verificação WhatsApp (dual-write)', {
+    estudanteId,
+    contactId,
+    telefone,
+    exists: verificationData.exists
+  });
 
   const errors: string[] = [];
 
@@ -53,26 +58,31 @@ export async function saveWhatsAppVerification(
   if (oldResult.status === 'rejected') {
     const errorMsg = `Estrutura antiga falhou: ${oldResult.reason}`;
     errors.push(errorMsg);
-    console.error('[WHATSAPP-SERVICE] ❌ Estrutura ANTIGA falhou:', oldResult.reason);
+    logger.error('Estrutura ANTIGA falhou', { telefone }, oldResult.reason as Error);
   } else {
-    console.log('[WHATSAPP-SERVICE] ✅ Salvo na estrutura ANTIGA');
+    logger.debug('Salvo na estrutura ANTIGA', { telefone });
   }
 
   if (newResult.status === 'rejected') {
     const errorMsg = `Estrutura nova falhou: ${newResult.reason}`;
     errors.push(errorMsg);
-    console.error('[WHATSAPP-SERVICE] ❌ Estrutura NOVA falhou:', newResult.reason);
+    logger.error('Estrutura NOVA falhou', { estudanteId, contactId }, newResult.reason as Error);
   } else {
-    console.log('[WHATSAPP-SERVICE] ✅ Salvo na estrutura NOVA');
+    logger.debug('Salvo na estrutura NOVA', { estudanteId, contactId });
   }
 
   // Se pelo menos UMA estrutura funcionou = SUCESSO
   const success = oldResult.status === 'fulfilled' || newResult.status === 'fulfilled';
 
   if (success) {
-    console.log('[WHATSAPP-SERVICE] ✅ Verificação salva com sucesso (dual-write)');
+    logger.whatsappOperation('verify', telefone, 'success', {
+      savedInOld: oldResult.status === 'fulfilled',
+      savedInNew: newResult.status === 'fulfilled'
+    });
   } else {
-    console.error('[WHATSAPP-SERVICE] ❌ ERRO CRÍTICO: Ambas estruturas falharam!');
+    logger.whatsappOperation('verify', telefone, 'failed', {
+      errors: errors.join('; ')
+    });
   }
 
   return {
@@ -141,7 +151,9 @@ export async function saveWhatsAppVerificationBatch(
   failed: number;
   errors: string[];
 }> {
-  console.log(`[WHATSAPP-SERVICE] 📦 Salvando ${verifications.length} verificações em lote...`);
+  logger.info('Salvando verificações WhatsApp em lote', {
+    totalVerifications: verifications.length
+  });
 
   const errors: string[] = [];
   let successful = 0;
@@ -166,10 +178,17 @@ export async function saveWhatsAppVerificationBatch(
       failed++;
       const errorMsg = `Erro ao processar ${verification.telefone}: ${error instanceof Error ? error.message : 'unknown'}`;
       errors.push(errorMsg);
+      logger.error('Erro ao processar verificação em lote', {
+        telefone: verification.telefone
+      }, error as Error);
     }
   }
 
-  console.log(`[WHATSAPP-SERVICE] 📊 Lote concluído: ${successful} sucesso, ${failed} falhas`);
+  logger.info('Lote de verificações WhatsApp concluído', {
+    totalProcessed: verifications.length,
+    successful,
+    failed
+  });
 
   return {
     totalProcessed: verifications.length,
@@ -213,7 +232,7 @@ export async function getStudentContactsWithWhatsApp(
   studentId: string
 ): Promise<ContactWithWhatsAppStatus[]> {
   try {
-    console.log(`[WHATSAPP-SERVICE] 📖 Buscando contatos do estudante ${studentId}...`);
+    logger.debug('Buscando contatos do estudante', { studentId });
 
     const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(studentId));
     const contactsSnap = await getDocs(contactsRef);
@@ -231,11 +250,14 @@ export async function getStudentContactsWithWhatsApp(
       };
     });
 
-    console.log(`[WHATSAPP-SERVICE] ✅ ${contacts.length} contatos encontrados`);
+    logger.info('Contatos do estudante carregados', {
+      studentId,
+      count: contacts.length
+    });
     return contacts;
 
   } catch (error) {
-    console.error('[WHATSAPP-SERVICE] ❌ Erro ao buscar contatos:', error);
+    logger.firebaseError('getStudentContactsWithWhatsApp', error as Error, { studentId });
     return [];
   }
 }
@@ -276,7 +298,7 @@ export async function checkWhatsAppStatusV3(
     return data.whatsapp?.exists === true && data.whatsapp?.verified === true;
 
   } catch (error) {
-    console.error('[WHATSAPP-SERVICE] ❌ Erro ao verificar status WhatsApp:', error);
+    logger.firebaseError('checkWhatsAppStatusV3', error as Error, { studentId, contactId });
     return null;
   }
 }

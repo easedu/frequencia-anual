@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import FiltersCard from "@/components/cards/FiltersCard";
 import KPIsCard from "@/components/cards/KPIsCard";
@@ -10,7 +10,13 @@ import AlertsCard from "@/components/cards/AlertsCard";
 import FrequencyTableCard from "@/components/cards/FrequencyTableCard";
 import StudentAbsencesCard from "@/components/cards/StudentAbsencesCard";
 import DuplicateAbsencesCard from "@/components/cards/DuplicateAbsencesCard";
-import { useAttendanceData } from "@/hooks/useAttendanceData";
+import {
+    useBimesterPeriods,
+    useStudentRecords,
+    useSchoolDays,
+    useStudentAbsences,
+    useDuplicateAbsences,
+} from "@/hooks/attendance";
 import { useStudents } from "@/hooks/useStudents";
 import dynamic from "next/dynamic";
 
@@ -29,29 +35,77 @@ export default function DashboardPage() {
     const [selectedTurma, setSelectedTurma] = useState<string>("");
     const [selectedStudent, setSelectedStudent] = useState<string>("");
 
-    const {
-        bimesterDates,
-        data,
-        totalDiasLetivos,
-        studentAbsences,
-        duplicateAbsences,
-        filterState,
-        removeDuplicateAbsences,
-    } = useAttendanceData({
-        selectedBimesters,
-        startDate,
-        endDate,
-        useToday,
-        useCustom,
-        excludeJustified,
-        selectedStudent,
-    });
-
-    // Adicionar hook para dados dos estudantes
+    // Usar hooks modulares
     const { students } = useStudents();
+    const { bimesterDates } = useBimesterPeriods();
+    const { studentRecords } = useStudentRecords({ autoRefresh: true });
+    const { getSchoolDaysForPeriod } = useSchoolDays();
+    const studentAbsencesHook = useStudentAbsences(selectedStudent || null, { excludeJustified });
+    const { duplicates, removeDuplicates } = useDuplicateAbsences();
+
+    // Calcular filterState (lógica do hook antigo)
+    const filterState = useMemo(() => {
+        if (!bimesterDates[1]) {
+            return {
+                computedStartDate: '',
+                computedEndDate: '',
+                computedSelectedBimesters: selectedBimesters,
+                computedUseCustom: useCustom,
+            };
+        }
+
+        if (useToday) {
+            const firstBimester = bimesterDates[1];
+            const today = new Date().toLocaleDateString('pt-BR');
+            return {
+                computedStartDate: firstBimester ? firstBimester.start : '01/01/2025',
+                computedEndDate: today,
+                computedSelectedBimesters: new Set<number>(),
+                computedUseCustom: false,
+            };
+        } else if (useCustom) {
+            return {
+                computedStartDate: startDate,
+                computedEndDate: endDate,
+                computedSelectedBimesters: selectedBimesters,
+                computedUseCustom: true,
+            };
+        } else if (selectedBimesters.size > 0) {
+            const sortedBimesters = Array.from(selectedBimesters).sort();
+            const minBimester = bimesterDates[sortedBimesters[0]];
+            const maxBimester = bimesterDates[sortedBimesters[sortedBimesters.length - 1]];
+            return {
+                computedStartDate: minBimester ? minBimester.start : '',
+                computedEndDate: maxBimester ? maxBimester.end : '',
+                computedSelectedBimesters: selectedBimesters,
+                computedUseCustom: false,
+            };
+        }
+
+        return {
+            computedStartDate: '',
+            computedEndDate: '',
+            computedSelectedBimesters: selectedBimesters,
+            computedUseCustom: useCustom,
+        };
+    }, [bimesterDates, useToday, useCustom, selectedBimesters, startDate, endDate]);
+
+    // Calcular totalDiasLetivos baseado no período selecionado
+    const totalDiasLetivos = useMemo(() => {
+        if (!filterState.computedStartDate || !filterState.computedEndDate) return 0;
+        return getSchoolDaysForPeriod(filterState.computedStartDate, filterState.computedEndDate);
+    }, [filterState.computedStartDate, filterState.computedEndDate, getSchoolDaysForPeriod]);
 
     // Synchronize parent state with computed filter state, avoiding unnecessary updates
     useEffect(() => {
+        const areSetsEqual = (setA: Set<number>, setB: Set<number>) => {
+            if (setA.size !== setB.size) return false;
+            for (const item of setA) {
+                if (!setB.has(item)) return false;
+            }
+            return true;
+        };
+
         if (
             startDate !== filterState.computedStartDate ||
             endDate !== filterState.computedEndDate ||
@@ -64,15 +118,6 @@ export default function DashboardPage() {
             setUseCustom(filterState.computedUseCustom);
         }
     }, [filterState, startDate, endDate, selectedBimesters, useCustom]);
-
-    // Helper function to compare Sets
-    const areSetsEqual = (setA: Set<number>, setB: Set<number>) => {
-        if (setA.size !== setB.size) return false;
-        for (const item of setA) {
-            if (!setB.has(item)) return false;
-        }
-        return true;
-    };
 
     return (
         <div className="p-4 space-y-8">
@@ -98,23 +143,23 @@ export default function DashboardPage() {
                 <div className="text-lg font-bold">Dias Letivos: {totalDiasLetivos}</div>
             </div>
 
-            <KPIsCard data={data} totalDiasLetivos={totalDiasLetivos} />
-            <ComparativeChartsCard data={data} />
-            <TemporalAnalysisCard data={data} />
+            <KPIsCard data={studentRecords} totalDiasLetivos={totalDiasLetivos} />
+            <ComparativeChartsCard data={studentRecords} />
+            <TemporalAnalysisCard data={studentRecords} />
             {/* Passar dados dos estudantes para o AlertsCard */}
-            <AlertsCard data={data} students={students} />
-            <FrequencyTableCard data={data} />
+            <AlertsCard data={studentRecords} students={students} />
+            <FrequencyTableCard data={studentRecords} />
             <StudentAbsencesCard
-                data={data}
+                data={studentRecords}
                 selectedTurma={selectedTurma}
                 setSelectedTurma={setSelectedTurma}
                 selectedStudent={selectedStudent}
                 setSelectedStudent={setSelectedStudent}
-                studentAbsences={studentAbsences}
+                studentAbsences={studentAbsencesHook.absences}
             />
             <Suspense fallback={<Skeleton className="h-64 w-full" />}>
                 <DayOfWeekDistributionCard
-                    data={data}
+                    data={studentRecords}
                     startDate={startDate}
                     endDate={endDate}
                     selectedBimesters={selectedBimesters}
@@ -123,8 +168,8 @@ export default function DashboardPage() {
                 />
             </Suspense>
             <DuplicateAbsencesCard
-                duplicateAbsences={duplicateAbsences}
-                removeDuplicateAbsences={removeDuplicateAbsences}
+                duplicateAbsences={duplicates}
+                removeDuplicateAbsences={removeDuplicates}
             />
         </div>
     );
