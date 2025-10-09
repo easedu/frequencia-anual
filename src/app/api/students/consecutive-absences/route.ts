@@ -390,20 +390,19 @@ export async function GET(request: NextRequest) {
 
     // FASE 3: Carregar estudantes com DUAL-READ
     console.log('[CONSECUTIVE-ABSENCES] Carregando estudantes com dual-read...');
-    const studentsResult = await getStudentsByYear('2025');
+    const students = await getStudentsByYear('2025');
 
-    if (!studentsResult.students || studentsResult.students.length === 0) {
+    if (!students || students.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'Dados de estudantes não encontrados'
       } as ApiResponse, { status: 404 });
     }
 
-    const students = studentsResult.students as any[];
-    const activeStudents = students.filter((student: any) => student.status === 'ATIVO');
+    const activeStudents = students.filter((student: Student) => student.status === 'ATIVO');
 
     console.log(`[CONSECUTIVE-ABSENCES] ✅ ${students.length} estudantes carregados (${activeStudents.length} ativos)`);
-    console.log(`[CONSECUTIVE-ABSENCES] 📊 Fonte de dados: ${studentsResult._dataSource.source.toUpperCase()}`);
+    console.log(`[CONSECUTIVE-ABSENCES] 📊 Fonte de dados: V3`);
 
     if (activeStudents.length === 0) {
       return NextResponse.json({

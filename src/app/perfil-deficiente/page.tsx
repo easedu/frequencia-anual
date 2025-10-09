@@ -451,7 +451,7 @@ export default function DashboardDeficiencia() {
                 return (
                     student.turma?.toLowerCase().includes(lowerFilter) ||
                     student.nome.toLowerCase().includes(lowerFilter) ||
-                    def?.tipoDeficiencia?.some((t) => t.toLowerCase().includes(lowerFilter)) ||
+                    (Array.isArray(def?.tipoDeficiencia) ? def.tipoDeficiencia.some((t: string) => t.toLowerCase().includes(lowerFilter)) : def?.tipoDeficiencia?.toLowerCase().includes(lowerFilter)) ||
                     def?.aee?.toLowerCase().includes(lowerFilter) ||
                     def?.instituicao?.toLowerCase().includes(lowerFilter) ||
                     def?.horarioAtendimento?.toLowerCase().includes(lowerFilter) ||
@@ -1144,7 +1144,7 @@ export default function DashboardDeficiencia() {
                                             <TableCell>{student.turma}</TableCell>
                                             <TableCell>{student.nome}</TableCell>
                                             <TableCell>
-                                                {student.deficiencia?.tipoDeficiencia?.join(", ") || "-"}
+                                                {Array.isArray(student.deficiencia?.tipoDeficiencia) ? student.deficiencia.tipoDeficiencia.join(", ") : (student.deficiencia?.tipoDeficiencia || "-")}
                                             </TableCell>
                                             <TableCell>{student.deficiencia?.aee || "-"}</TableCell>
                                             <TableCell>{student.deficiencia?.instituicao || "-"}</TableCell>

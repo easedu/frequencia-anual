@@ -363,7 +363,7 @@ export default function StudentProfilePage() {
 
             // V1: 2025/interactions/{studentId}
             const interactionsV1Snapshot = await getDocs(collection(db, FIREBASE_PATHS.interactions(studentId)));
-            const interactionsV1: FamilyInteraction[] = interactionsV1Snapshot.docs.map(doc => ({
+            const interactionsV1: (FamilyInteraction & { _collection: string })[] = interactionsV1Snapshot.docs.map(doc => ({
                 id: doc.id,
                 type: doc.data().type as string,
                 date: formatFirebaseDate(doc.data().date as string),
@@ -378,7 +378,7 @@ export default function StudentProfilePage() {
 
             // V3: students/{studentId}/interactions
             const interactionsV3Snapshot = await getDocs(collection(db, 'students', studentId, 'interactions'));
-            const interactionsV3: FamilyInteraction[] = interactionsV3Snapshot.docs.map(doc => ({
+            const interactionsV3: (FamilyInteraction & { _collection: string })[] = interactionsV3Snapshot.docs.map(doc => ({
                 id: doc.id,
                 type: doc.data().type as string,
                 date: formatFirebaseDate(doc.data().date as string),
@@ -619,9 +619,9 @@ export default function StudentProfilePage() {
                     ...updatedData,
                     anoLetivo: '2025'
                 });
-                logger.interactionOperation('update', selectedStudentId, editingInteraction.tipo, { v1AndV3: true });
+                logger.interactionOperation('update', selectedStudentId, editingInteraction.type, { v1AndV3: true });
             } catch (v3Error) {
-                logger.interactionOperation('update', selectedStudentId, editingInteraction.tipo, { v1Only: true });
+                logger.interactionOperation('update', selectedStudentId, editingInteraction.type, { v1Only: true });
             }
 
             setEditingInteraction(null);
@@ -648,9 +648,9 @@ export default function StudentProfilePage() {
             try {
                 const interactionRefV3 = doc(db, 'students', selectedStudentId, 'interactions', interactionId);
                 await deleteDoc(interactionRefV3);
-                logger.interactionOperation('delete', selectedStudentId, interaction.tipo, { v1AndV3: true });
+                logger.interactionOperation('delete', selectedStudentId, 'unknown', { v1AndV3: true });
             } catch (v3Error) {
-                logger.interactionOperation('delete', selectedStudentId, interaction.tipo, { v1Only: true });
+                logger.interactionOperation('delete', selectedStudentId, 'unknown', { v1Only: true });
             }
 
             await fetchStudentData(selectedStudentId);
