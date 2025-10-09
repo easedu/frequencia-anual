@@ -11,17 +11,18 @@
 3. [Estrutura de Diretórios](#-estrutura-de-diretórios)
 4. [Padrões de Código](#-padrões-de-código)
 5. [Boas Práticas de Desenvolvimento](#-boas-práticas-de-desenvolvimento)
-6. [Guias de Implementação](#-guias-de-implementação)
-7. [MCPs Configurados](#-mcps-configurados)
-8. [Workflows Comuns](#-workflows-comuns)
-9. [Prompts Efetivos](#-prompts-efetivos)
-10. [Modo Planning (/plan)](#-modo-planning-plan)
-11. [Documentações do Projeto](#-documentações-do-projeto)
-12. [Comandos Úteis](#-comandos-úteis)
-13. [Troubleshooting](#-troubleshooting)
-14. [Checklists](#-checklists)
-15. [Glossário](#-glossário)
-16. [Não Fazer](#-não-fazer)
+6. [Níveis de Planejamento](#-níveis-de-planejamento)
+7. [Guias de Implementação](#-guias-de-implementação)
+8. [MCPs Configurados](#-mcps-configurados)
+9. [Workflows Comuns](#-workflows-comuns)
+10. [Prompts Efetivos](#-prompts-efetivos)
+11. [Modo Planning (/plan)](#-modo-planning-plan)
+12. [Documentações do Projeto](#-documentações-do-projeto)
+13. [Comandos Úteis](#-comandos-úteis)
+14. [Troubleshooting](#-troubleshooting)
+15. [Checklists](#-checklists)
+16. [Glossário](#-glossário)
+17. [Não Fazer](#-não-fazer)
 
 ---
 
@@ -568,6 +569,561 @@ Sempre testar:
 - [ ] Error handling (erros de rede, etc)
 - [ ] Responsividade (mobile, tablet, desktop)
 - [ ] Dark mode
+
+---
+
+## 🎯 NÍVEIS DE PLANEJAMENTO
+
+### Filosofia: "Planeje na Medida Certa"
+
+> **Princípio**: Nem todo código precisa de planejamento extensivo. Use o nível apropriado para cada situação.
+
+**Objetivos**:
+- ⚡ Velocidade em tarefas simples
+- 🎯 Precisão em tarefas complexas
+- 🔄 Flexibilidade para ajustar abordagem
+- 📊 Transparência sobre o processo
+
+---
+
+### 📊 Flowchart de Decisão
+
+```
+Tarefa recebida
+    │
+    ├─ É apenas pergunta/consulta?
+    │   └─ SIM → Nível 0: Resposta Direta ⚡
+    │
+    ├─ Usuário pediu "pare e planeje"?
+    │   └─ SIM → Usar nível que ele pediu
+    │
+    ├─ É typo/correção óbvia? (1 arquivo, <5 linhas)
+    │   └─ SIM → Nível 1: Execução Direta 🏃
+    │
+    ├─ É tarefa pequena-média? (1-2 arquivos, 30min-2h)
+    │   └─ SIM → Nível 2: Planning Simples 📝
+    │
+    ├─ É tarefa complexa? (3+ arquivos, 2-8h)
+    │   └─ SIM → Nível 3: Planning Detalhado 📋
+    │
+    └─ É feature grande/refactoring? (8+ horas)
+        └─ SIM → Nível 4: Modo /plan 🗺️
+```
+
+---
+
+### Nível 0: Resposta Direta ⚡
+
+**Quando usar**:
+- ✅ Perguntas sobre código/arquitetura
+- ✅ Consultas à documentação
+- ✅ Explicações de conceitos
+- ✅ Ajuda com comandos
+- ✅ Recomendações técnicas
+
+**Não usar**:
+- ❌ Implementação de código
+- ❌ Modificações em arquivos
+
+**Características**:
+- 🚫 Sem TODO list
+- 🚫 Sem execução de ferramentas
+- ✅ Resposta clara e direta
+- ✅ Referências quando necessário
+
+**Exemplos**:
+
+```
+Pergunta: "O que faz o StudentDataService?"
+Resposta: O StudentDataService é responsável pelo CRUD de estudantes
+com dual-write V2/V3. Principais métodos:
+- addStudent(): Cria novo estudante (UUID)
+- updateStudent(): Atualiza existente
+- getStudents(): Busca com filtros
+Localização: src/services/studentDataService.ts
+```
+
+```
+Pergunta: "Como rodar o projeto?"
+Resposta: npm run dev
+Abre em http://localhost:3000
+```
+
+```
+Pergunta: "Qual a diferença entre V2 e V3?"
+Resposta: V2 usa IDs numéricos (timestamp), V3 usa UUID v4.
+Estamos em migração com dual-write ativo.
+Ver: docs/MIGRATION_PLAN_V3.md
+```
+
+---
+
+### Nível 1: Execução Direta 🏃
+
+**Quando usar**:
+- ✅ Typos e correções simples
+- ✅ 1 arquivo, < 10 linhas modificadas
+- ✅ Bugs óbvios com causa clara
+- ✅ Ajustes de estilo/formatação
+- ✅ Imports faltando
+
+**Não usar**:
+- ❌ Múltiplos arquivos
+- ❌ Lógica complexa
+- ❌ Possibilidade de quebrar código
+
+**Características**:
+- 🚫 Sem TODO list visível
+- ✅ Comunicação breve do que vai fazer
+- ✅ Execução imediata
+- ✅ Confirmação após concluir
+
+**Exemplos**:
+
+```
+Pedido: "Corrige o typo 'estudate' na linha 45 de StudentForm.tsx"
+Ação: Vou corrigir o typo.
+[Usa Edit para corrigir]
+Resultado: Corrigido 'estudate' → 'estudante' em StudentForm.tsx:45
+```
+
+```
+Pedido: "Adiciona o import de toast que está faltando"
+Ação: Vou adicionar o import do toast.
+[Usa Edit]
+Resultado: Adicionado import { toast } from 'sonner' em page.tsx:5
+```
+
+```
+Pedido: "Remove esse console.log esquecido"
+Ação: Vou remover o console.log.
+[Usa Edit]
+Resultado: Removido console.log da linha 127
+```
+
+---
+
+### Nível 2: Planning Simples 📝
+
+**Quando usar**:
+- ✅ 1-2 arquivos
+- ✅ 30 minutos - 2 horas estimadas
+- ✅ Mudanças médias (nova validação, componente simples)
+- ✅ Requer alguns passos ordenados
+- ✅ Baixo risco mas não trivial
+
+**Não usar**:
+- ❌ Tarefas de 5 minutos (usar Nível 1)
+- ❌ Tarefas de 4+ horas (usar Nível 3 ou 4)
+
+**Características**:
+- ✅ TODO list visível (3-5 itens)
+- ✅ Fases claras mas simples
+- ✅ Execução incremental
+- ✅ Comunicação de progresso
+
+**Template**:
+```
+Vou [ação] seguindo estes passos:
+1. [Passo 1]
+2. [Passo 2]
+3. [Passo 3]
+4. [Passo 4]
+5. [Passo 5]
+
+[Executa passo a passo, marcando concluídos]
+```
+
+**Exemplos**:
+
+```
+Pedido: "Adiciona validação de CPF no formulário de estudante"
+
+TODO:
+1. Verificar se já existe helper de CPF em @/utils/security
+2. Atualizar schema Zod em page.tsx
+3. Adicionar validação no campo CPF
+4. Testar com CPF válido e inválido
+5. Verificar mensagem de erro
+
+[Executa cada passo marcando como concluído]
+```
+
+```
+Pedido: "Cria um filtro de estudantes por deficiência no dashboard"
+
+TODO:
+1. Adicionar estado de filtro em page.tsx
+2. Adicionar Select no StudentFilters.tsx
+3. Implementar lógica de filtro no useMemo
+4. Testar com estudantes com/sem deficiência
+5. Verificar performance
+
+[Executa incrementalmente]
+```
+
+```
+Pedido: "Extrai essa lógica de cálculo para um hook"
+
+TODO:
+1. Criar arquivo src/hooks/useAbsenceCalculation.ts
+2. Mover lógica de cálculo para o hook
+3. Adicionar tipos TypeScript
+4. Substituir uso no componente original
+5. Testar se comportamento permanece igual
+
+[Executa passo a passo]
+```
+
+---
+
+### Nível 3: Planning Detalhado 📋
+
+**Quando usar**:
+- ✅ 3+ arquivos afetados
+- ✅ 2-8 horas estimadas
+- ✅ Múltiplas integrações
+- ✅ Refactoring médio
+- ✅ Features com dependências
+- ✅ Risco médio de quebrar código
+
+**Não usar**:
+- ❌ Tarefas simples de 1-2 arquivos (usar Nível 2)
+- ❌ Features arquiteturais grandes (usar Nível 4)
+
+**Características**:
+- ✅ TODO list detalhada (5-15 itens)
+- ✅ Fases bem definidas
+- ✅ Lista de arquivos afetados
+- ✅ Pontos de atenção identificados
+- ✅ Execução passo a passo com confirmação
+
+**Template**:
+```
+Vou implementar [feature] com o seguinte plano:
+
+ANÁLISE:
+- Arquivos afetados: X, Y, Z
+- Dependências: A, B
+- Pontos de atenção: [riscos]
+
+PLANO:
+Fase 1: Preparação
+1. [Passo]
+2. [Passo]
+
+Fase 2: Implementação Core
+3. [Passo]
+4. [Passo]
+5. [Passo]
+
+Fase 3: Integração
+6. [Passo]
+7. [Passo]
+
+Fase 4: Validação
+8. [Passo]
+9. [Passo]
+
+[Executa fase por fase]
+```
+
+**Exemplos**:
+
+```
+Pedido: "Implementa exportação de dados para Excel"
+
+ANÁLISE:
+- Arquivos afetados:
+  • src/services/exportService.ts (NOVO)
+  • src/app/cadastrar-estudante/page.tsx (botão)
+  • src/types/index.ts (interface Export)
+  • package.json (biblioteca xlsx)
+- Dependências: xlsx
+- Pontos de atenção: Performance com 700+ estudantes, Formato de datas
+
+PLANO:
+Fase 1: Setup (30min)
+1. Instalar biblioteca xlsx
+2. Criar tipos em src/types/index.ts
+3. Criar src/services/exportService.ts
+
+Fase 2: Implementação (1h)
+4. Implementar função formatDataForExcel()
+5. Implementar função exportToExcel()
+6. Adicionar tratamento de erros
+7. Testar com dados mockados
+
+Fase 3: UI (30min)
+8. Adicionar botão "Exportar" em page.tsx
+9. Adicionar loading state
+10. Adicionar toast de sucesso/erro
+
+Fase 4: Testes (30min)
+11. Testar com 10 estudantes
+12. Testar com 700+ estudantes
+13. Verificar formatação de dados
+14. Testar em diferentes browsers
+
+[Executa fase por fase, marcando cada item]
+```
+
+```
+Pedido: "Refatora lógica de cálculo de faltas para melhorar performance"
+
+ANÁLISE:
+- Arquivos afetados:
+  • src/hooks/useAttendanceData.ts (principal)
+  • src/utils/attendanceUtils.ts (helpers)
+  • src/app/home/page.tsx (uso)
+  • src/components/cards/KPIsCard.tsx (uso)
+- Problemas atuais: Cálculos em cada render, Sem memoização
+- Pontos de atenção: Não quebrar cálculos existentes, Manter precisão
+
+PLANO:
+Fase 1: Análise (30min)
+1. Mapear todos os cálculos atuais
+2. Identificar cálculos pesados
+3. Medir performance atual (baseline)
+
+Fase 2: Otimização (2h)
+4. Adicionar useMemo em useAttendanceData
+5. Extrair cálculos puros para attendanceUtils
+6. Implementar cache de resultados
+7. Adicionar useCallback em funções passadas
+
+Fase 3: Testes (1h)
+8. Testar cálculos com dados de teste
+9. Comparar resultados com versão antiga
+10. Medir performance nova (comparar)
+11. Testar com 700+ estudantes
+
+Fase 4: Validação (30min)
+12. Verificar KPIs no dashboard
+13. Verificar relatórios
+14. Code review de performance
+
+[Executa incrementalmente]
+```
+
+---
+
+### Nível 4: Modo /plan Completo 🗺️
+
+**Quando usar**:
+- ✅ Features grandes (8+ horas)
+- ✅ Refactoring arquitetural
+- ✅ Mudanças em múltiplos módulos
+- ✅ Alto risco de impacto
+- ✅ Necessita análise de trade-offs
+- ✅ Quando usuário pede `/plan`
+
+**Não usar**:
+- ❌ Tarefas de < 8 horas (usar Níveis 1-3)
+- ❌ Urgências (apresentar plano leva tempo)
+
+**Características**:
+- ✅ Template completo de planning (seção anterior)
+- ✅ Análise com MCPs
+- ✅ Múltiplas alternativas consideradas
+- ✅ Estimativas detalhadas
+- ✅ Análise de riscos
+- ✅ **AGUARDA APROVAÇÃO antes de executar**
+
+**Ver**: [Seção Modo Planning (/plan)](#-modo-planning-plan) para templates completos
+
+**Quando Usar /plan**:
+```
+Você: /plan
+Eu: [Tarefa complexa]
+
+Claude:
+1. Apresenta plano de 200-800 linhas
+2. Análise completa
+3. Arquitetura proposta
+4. Fases detalhadas
+5. Riscos identificados
+6. Aguarda aprovação
+
+Você responde:
+✅ "Aprovado" → Começa execução
+✅ "Mude X e Y" → Ajusta plano
+❌ "Muito grande" → Sugere alternativa
+```
+
+---
+
+### 🎛️ Como Claude Decide o Nível
+
+#### Decisão Automática:
+
+```typescript
+function escolherNivel(tarefa: string): Nivel {
+  // 1. Usuário pediu nível específico?
+  if (tarefa.includes("/plan")) return Nivel.PLAN_COMPLETO;
+  if (tarefa.includes("pare") && tarefa.includes("planeje")) {
+    return analisarComplexidade(tarefa); // Escolhe 2, 3 ou 4
+  }
+
+  // 2. É pergunta/consulta?
+  if (éPergunta(tarefa) && !requerCódigo(tarefa)) {
+    return Nivel.RESPOSTA_DIRETA;
+  }
+
+  // 3. Análise de complexidade
+  const analise = analisarTarefa(tarefa);
+
+  if (analise.arquivos === 1 && analise.linhas < 10) {
+    return Nivel.EXECUCAO_DIRETA; // Typo, import
+  }
+
+  if (analise.arquivos <= 2 && analise.horas < 2) {
+    return Nivel.PLANNING_SIMPLES; // Validação, filtro
+  }
+
+  if (analise.arquivos <= 5 && analise.horas < 8) {
+    return Nivel.PLANNING_DETALHADO; // Export, refactor médio
+  }
+
+  return Nivel.PLAN_COMPLETO; // Feature grande
+}
+```
+
+#### Sinais de Complexidade:
+
+**Nível 1 (Direto)**:
+- "corrige", "remove", "adiciona import"
+- Menção a linha específica
+- Typo/formatação
+
+**Nível 2 (Simples)**:
+- "adiciona validação", "cria filtro"
+- "extrai para hook"
+- Componente simples
+
+**Nível 3 (Detalhado)**:
+- "implementa", "refatora", "otimiza"
+- Múltiplos arquivos mencionados
+- "integração", "export"
+
+**Nível 4 (Plan)**:
+- "sistema de", "arquitetura"
+- "/plan" explícito
+- "nova feature", "migração"
+
+---
+
+### 🔄 Flexibilidade: Você Sempre Pode Pedir Nível Específico
+
+```
+Você: "Adiciona validação de CPF"
+Claude: [Nível 2 automático]
+
+Você: "Adiciona validação de CPF, mas me mostre o plano completo antes"
+Claude: [Muda para Nível 3, apresenta plano detalhado]
+
+Você: "/plan implementar validação de CPF com biblioteca externa"
+Claude: [Nível 4 completo]
+
+Você: "Só corrige esse typo, sem explicação"
+Claude: [Nível 1 direto]
+```
+
+---
+
+### 📈 Tabela Resumo de Níveis
+
+| Nível | Nome | Arquivos | Tempo | TODO | Aprovação | Uso |
+|-------|------|----------|-------|------|-----------|-----|
+| **0** | Resposta Direta ⚡ | 0 | 0 | Não | Não | Perguntas |
+| **1** | Execução Direta 🏃 | 1 | <30min | Não | Não | Typos, fixes |
+| **2** | Planning Simples 📝 | 1-2 | 30min-2h | Sim (3-5) | Não | Validações, filtros |
+| **3** | Planning Detalhado 📋 | 3-5 | 2-8h | Sim (5-15) | Não | Exports, refactors |
+| **4** | Modo /plan 🗺️ | 5+ | 8h+ | Sim (completo) | **Sim** | Features, arquitetura |
+
+---
+
+### ✅ Boas Práticas por Nível
+
+#### Nível 0-1: Velocidade
+- ✅ Responda ou execute imediatamente
+- ✅ Seja conciso
+- ❌ Não sobre-explique
+
+#### Nível 2: Clareza
+- ✅ Mostre os passos antes
+- ✅ Execute incrementalmente
+- ✅ Comunique progresso
+
+#### Nível 3: Completude
+- ✅ Análise antes de executar
+- ✅ Identifique riscos
+- ✅ Fases bem definidas
+- ✅ Validação ao final
+
+#### Nível 4: Excelência
+- ✅ Pesquisa com MCPs
+- ✅ Múltiplas alternativas
+- ✅ Análise de trade-offs
+- ✅ **Aguarda aprovação**
+
+---
+
+### 🎯 Exemplos Práticos Lado a Lado
+
+#### Tarefa: "Adicionar campo telefone em estudante"
+
+**Nível 1 (se já existe estrutura)**:
+```
+Vou adicionar o campo telefone.
+[Edit em types/index.ts]
+[Edit em StudentForm.tsx]
+Campo adicionado.
+```
+
+**Nível 2 (tarefa completa)**:
+```
+TODO:
+1. Adicionar tipo em types/index.ts
+2. Adicionar campo no schema Zod
+3. Adicionar input no formulário
+4. Testar salvamento no Firestore
+5. Validar formatação de telefone
+
+[Executa passo a passo]
+```
+
+**Nível 3 (com migração)**:
+```
+ANÁLISE:
+- Arquivos: types, schema, form, service
+- Migração: Estudantes existentes sem telefone
+- Validação: Formato brasileiro (11 dígitos)
+
+PLANO:
+Fase 1: Tipos e Validação (30min)
+1-3. [...]
+
+Fase 2: UI (30min)
+4-6. [...]
+
+Fase 3: Migração de Dados (1h)
+7-9. [...]
+
+[Executa fase por fase]
+```
+
+**Nível 4 (/plan)**:
+```
+[Plano completo de 300 linhas]
+- Análise de impacto
+- Alternativas (campo único vs array)
+- Migração de 700+ estudantes
+- Testes extensivos
+- Rollback plan
+
+Aguarda aprovação.
+```
 
 ---
 
