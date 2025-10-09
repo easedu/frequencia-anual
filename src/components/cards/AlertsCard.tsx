@@ -638,10 +638,11 @@ export default function AlertsCard({ data, students = [] }: AlertsCardProps) {
     const enrichDataWithDisability = (frequencyData: StudentRecord[]): EnhancedStudentRecord[] => {
         return frequencyData.map(student => {
             const studentInfo = students.find(s => s.estudanteId === student.estudanteId);
+            const tipoDeficiencia = studentInfo?.deficiencia?.tipoDeficiencia;
             return {
                 ...student,
                 temDeficiencia: studentInfo?.deficiencia?.estudanteComDeficiencia || false,
-                tipoDeficiencia: studentInfo?.deficiencia?.tipoDeficiencia || []
+                tipoDeficiencia: Array.isArray(tipoDeficiencia) ? tipoDeficiencia : (tipoDeficiencia ? [tipoDeficiencia] : [])
             };
         });
     };

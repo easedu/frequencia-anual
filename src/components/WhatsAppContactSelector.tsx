@@ -9,7 +9,7 @@ import {
     Phone,
     Check
 } from "lucide-react";
-import { Contato } from "@/app/types";
+import { Contato } from "@/types";
 import { formatPhoneNumber } from "@/utils/formatters";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";

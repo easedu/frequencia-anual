@@ -46,7 +46,7 @@ export default function InteractionChartsCard({ interactions, students }: Intera
   const getInteractionsByTurma = () => {
     const counts: Record<string, number> = {};
     interactions.forEach(interaction => {
-      const student = students.find(s => s.id === interaction.studentId);
+      const student = students.find(s => s.estudanteId === interaction.studentId);
       if (student?.turma) {
         counts[student.turma] = (counts[student.turma] || 0) + 1;
       }

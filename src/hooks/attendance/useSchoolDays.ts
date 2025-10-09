@@ -17,7 +17,16 @@ export interface SchoolDaysData {
   upToToday: number;
 }
 
-export function useSchoolDays() {
+export interface UseSchoolDaysReturn {
+  schoolDays: SchoolDaysData;
+  loading: boolean;
+  error: Error | null;
+  refresh: () => void;
+  getSchoolDaysForPeriod: (start: string, end: string) => number;
+  getSchoolDaysUpToDate: (targetDate: string) => number;
+}
+
+export function useSchoolDays(): UseSchoolDaysReturn {
   const { bimesterDates, loading: periodsLoading } = useBimesterPeriods();
   const [schoolDays, setSchoolDays] = useState<SchoolDaysData>({
     bimester1: 0,

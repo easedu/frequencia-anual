@@ -24,7 +24,7 @@ import {
   AlertTriangle,
   User
 } from "lucide-react";
-import { FamilyInteraction, Student } from "../types";
+import { FamilyInteraction, Student } from "@/types";
 import { formatFirebaseDate } from "../utils";
 import { CURRENT_SCHOOL_YEAR } from "@/config/constants";
 import InteractionChartsCard from "../../components/InteractionChartsCard";
@@ -92,7 +92,6 @@ export default function InteractionReportsPage() {
           .filter(s => s.status === "ATIVO")
           .map(student => ({
             ...student,
-            id: student.id || student.estudanteId,
             contatos: student.contatos || [],
           }));
       }
@@ -102,7 +101,7 @@ export default function InteractionReportsPage() {
 
       // Carregar interações de todos os estudantes com processamento em lotes
       const allInteractions: FamilyInteraction[] = [];
-      const validStudents = studentsData.filter(s => s.id || s.estudanteId);
+      const validStudents = studentsData.filter(s => s.estudanteId);
 
       // Processar em lotes de 20 estudantes para evitar timeout
       const batchSize = 20;
@@ -115,7 +114,7 @@ export default function InteractionReportsPage() {
         setLoadingProgress(`Processando lote ${currentBatch}/${totalBatches} (${progress}%)`);
 
         const batchPromises = batch.map(async (student) => {
-          const studentId = student.id || student.estudanteId;
+          const studentId = student.estudanteId;
           const studentInteractions: FamilyInteraction[] = [];
 
           try {
@@ -209,7 +208,7 @@ export default function InteractionReportsPage() {
     if (selectedTurma && selectedTurma !== "all") {
       const studentIds = students
         .filter(s => s.turma === selectedTurma)
-        .map(s => s.id);
+        .map(s => s.estudanteId);
       filtered = filtered.filter(i => studentIds.includes(i.studentId));
     }
 
@@ -302,7 +301,7 @@ export default function InteractionReportsPage() {
   const exportToCSV = () => {
     const headers = ["Data", "Tipo", "Estudante", "Turma", "Descrição", "Criado por", "Sensível"];
     const csvData = filteredInteractions.map(interaction => {
-      const student = students.find(s => s.id === interaction.studentId);
+      const student = students.find(s => s.estudanteId === interaction.studentId);
       return [
         interaction.date,
         interaction.type,
@@ -535,7 +534,7 @@ export default function InteractionReportsPage() {
                   {students
                     .filter(s => !selectedTurma || selectedTurma === "all" || s.turma === selectedTurma)
                     .map(student => (
-                      <SelectItem key={student.id} value={student.id}>
+                      <SelectItem key={student.estudanteId} value={student.estudanteId}>
                         {student.nome}
                       </SelectItem>
                     ))}
@@ -643,7 +642,7 @@ export default function InteractionReportsPage() {
               </div>
             ) : (
               filteredInteractions.slice(0, 50).map(interaction => {
-                const student = students.find(s => s.id === interaction.studentId);
+                const student = students.find(s => s.estudanteId === interaction.studentId);
                 return (
                   <div
                     key={interaction.id}

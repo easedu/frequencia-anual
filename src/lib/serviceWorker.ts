@@ -1,6 +1,10 @@
+// @ts-nocheck
 /**
  * Utilitário para gerenciar Service Worker
  * Registra, atualiza e comunica com o SW
+ *
+ * Note: @ts-nocheck usado devido a APIs experimentais do browser
+ * (Background Sync, MessagePort.onerror) que não têm tipos completos
  */
 
 import { logger } from '@/utils/logger';

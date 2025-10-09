@@ -8,7 +8,18 @@ import { useFirebaseDoc } from '@/hooks/useFirebaseDoc';
 import { logger } from '@/utils/logger';
 import type { BimesterDates } from '@/types';
 
-export function useBimesterPeriods() {
+export interface UseBimesterPeriodsReturn {
+  bimesterDates: BimesterDates;
+  loading: boolean;
+  error: Error | null;
+  refresh: () => Promise<void>;
+  getBimesterByDate: (dateString: string) => number;
+  getCurrentBimester: () => number;
+  getBimesterRange: (bimester: number) => { start: string; end: string } | null;
+  getAllBimesterRanges: () => BimesterDates;
+}
+
+export function useBimesterPeriods(): UseBimesterPeriodsReturn {
   const { data: anoLetivoData, loading, error, refresh } = useFirebaseDoc('2025/ano_letivo');
   const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});
 

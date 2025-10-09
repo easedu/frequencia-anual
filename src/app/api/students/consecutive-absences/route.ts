@@ -4,6 +4,7 @@ import { db } from '@/firebase.config';
 import { FIREBASE_PATHS } from '@/config/constants';
 import { apiCache, withTimeout, processInChunks } from '@/utils/apiOptimization';
 import { getStudentsByYear } from '@/services/studentDataService';
+import { Student } from '@/types';
 
 interface SchoolDay {
   date: string;

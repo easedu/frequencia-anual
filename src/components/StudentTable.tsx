@@ -470,7 +470,9 @@ export const StudentTable = memo(function StudentTable({
                                                     </Badge>
                                                     {est.deficiencia.tipoDeficiencia && est.deficiencia.tipoDeficiencia.length > 0 && (
                                                         <div className="text-xs text-slate-600 dark:text-slate-400">
-                                                            {est.deficiencia.tipoDeficiencia.join(", ")}
+                                                            {Array.isArray(est.deficiencia.tipoDeficiencia)
+                                                                ? est.deficiencia.tipoDeficiencia.join(", ")
+                                                                : est.deficiencia.tipoDeficiencia}
                                                         </div>
                                                     )}
                                                 </div>

@@ -226,7 +226,7 @@ export default function RegisterInteractionCard({
                                 onChange={(e) => setInteractionDate(formatDateInput(e.target.value))}
                                 placeholder="dd/mm/aaaa"
                                 maxLength={10}
-                                disabled={editingInteraction && interactionType === "Contato digital"}
+                                disabled={!!(editingInteraction && interactionType === "Contato digital")}
                                 className={`h-8 transition-colors text-sm ${
                                     editingInteraction && interactionType === "Contato digital"
                                         ? "bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"

@@ -71,6 +71,7 @@ export default function OfflinePage() {
       // Registrar sync em background
       if ('serviceWorker' in navigator && 'sync' in window.ServiceWorkerRegistration.prototype) {
         const registration = await navigator.serviceWorker.ready;
+        // @ts-ignore - Background Sync API experimental
         await registration.sync.register('attendance-sync');
         
         setLastSync(new Date().toLocaleString('pt-BR'));

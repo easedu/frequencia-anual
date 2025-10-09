@@ -15,7 +15,11 @@ export async function GET() {
         const q = query(studentsRef, limit(10));
         const snapshot = await getDocs(q);
 
-        const studentsWithContacts = [];
+        const studentsWithContacts: Array<{
+            estudanteId: string;
+            nome: string;
+            contatos: any[];
+        }> = [];
 
         snapshot.forEach((doc) => {
             const data = doc.data();
