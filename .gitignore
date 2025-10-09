@@ -50,3 +50,8 @@ firebase-debug.log
 firestore.rules.permissive
 firestore.rules.restrictive
 firestore.rules.working
+.mcp.json
+analytics.db
+analytics.db-journal
+*.db
+*.db-journal

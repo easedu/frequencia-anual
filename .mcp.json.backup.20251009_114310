@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "firebase": {
+      "type": "stdio",
+      "command": "firebase",
+      "args": ["mcp"],
+      "env": {
+        "FIREBASE_PROJECT_ID": "frequencia-anual"
+      }
+    },
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/easedu/Documents/Projetos/micro-saas/frequencia-anual"],
+      "env": {}
+    },
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { v4 as uuidv4 } from "uuid";
 
 import { useStudents } from "@/hooks/useStudents";
 import { StudentFilters } from "@/components/StudentFilters";
@@ -275,7 +276,7 @@ export default function CadastrarEstudantePage() {
             // Processar dados para garantir formato correto
             const processedData = {
                 ...data,
-                estudanteId: editingEstudante ? editingEstudante.estudanteId : Date.now().toString(),
+                estudanteId: editingEstudante ? editingEstudante.estudanteId : uuidv4(),
                 dataNascimento: data.dataNascimento ? data.dataNascimento.replace(/\D/g, '') : '',
                 endereco: data.endereco ? {
                     ...data.endereco,
