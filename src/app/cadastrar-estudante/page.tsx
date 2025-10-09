@@ -16,7 +16,7 @@ import { StudentDialog } from "@/components/StudentDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "sonner";
-import { Estudante } from "@/types";
+import { Estudante, Student } from "@/types";
 import { StudentDataService } from "@/services/studentDataService";
 
 // Student form schema - Minimal validation for debugging
@@ -184,8 +184,8 @@ export default function CadastrarEstudantePage() {
             }
 
             // Ordenação customizada por coluna clicada
-            let aVal = a[sortColumn] || "";
-            let bVal = b[sortColumn] || "";
+            let aVal = a[sortColumn as keyof Student] || "";
+            let bVal = b[sortColumn as keyof Student] || "";
 
             if (typeof aVal === 'string' && typeof bVal === 'string') {
                 aVal = aVal.toLowerCase();
@@ -220,8 +220,8 @@ export default function CadastrarEstudantePage() {
         setCurrentPage(page);
     };
     
-    const handleRecordsPerPageChange = (records: number) => {
-        setRecordsPerPage(records);
+    const handleRecordsPerPageChange = (value: string) => {
+        setRecordsPerPage(parseInt(value, 10));
         setCurrentPage(1);
     };
     
@@ -465,7 +465,7 @@ export default function CadastrarEstudantePage() {
                     cidade: editingEstudante.endereco?.cidade || "",
                     estado: editingEstudante.endereco?.estado || "",
                 },
-                contatos: editingEstudante.contatos?.length > 0
+                contatos: editingEstudante.contatos && editingEstudante.contatos.length > 0
                     ? editingEstudante.contatos.map(contato => ({
                         podeReceberMensagem: contato.podeReceberMensagem ?? true,
                         nome: contato.nome,

@@ -30,7 +30,7 @@ export interface Endereco {
 
 export interface Deficiencia {
   estudanteComDeficiencia: boolean;
-  tipoDeficiencia?: string[];
+  tipoDeficiencia?: string[] | string;
   possuiBarreiras?: boolean;
   aee?: "PAEE" | "PAAI";
   instituicao?: "INSTITUTO JÔ CLEMENTE" | "CLIFAK" | "CEJOLE" | "CCA" | "NENHUM";
@@ -42,6 +42,7 @@ export interface Deficiencia {
   ave?: boolean;
   nomeAve?: string;
   justificativaAve?: string[];
+  observacoes?: string;
 }
 
 export interface ProvaSaoPaulo {
