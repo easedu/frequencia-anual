@@ -35,7 +35,8 @@ import { toast } from 'sonner';
 import { WhatsAppTrackingService } from '@/services/whatsappTrackingService';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/firebase.config';
-import * as XLSX from 'xlsx';
+// Removido xlsx por vulnerabilidades de segurança - usando CSV nativo + papaparse
+import Papa from 'papaparse';
 import WhatsAppModal from '@/components/WhatsAppModal';
 import { logger } from '@/utils/logger';
 import { getStudentContacts } from '@/services/studentDataService';
@@ -410,22 +411,22 @@ export default function TelefonesPage() {
     }
   };
 
-  // Função para processar arquivo Excel de verificação
+  // Função para processar arquivo CSV de verificação (substituindo Excel)
   const processExcelFile = async (file: File) => {
     setUploading(true);
     setProcessingFile(true);
 
     try {
-      // Ler arquivo
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
+      // Ler arquivo CSV com papaparse
+      const text = await file.text();
 
-      // Pegar a primeira planilha
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
+      const parseResult = Papa.parse(text, {
+        header: false,
+        skipEmptyLines: true,
+        transformHeader: (header: string) => header.trim(),
+      });
 
-      // Converter para JSON
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+      const jsonData = parseResult.data as string[][];
 
       if (jsonData.length === 0) {
         throw new Error('Arquivo está vazio ou não pôde ser lido');
@@ -508,57 +509,78 @@ export default function TelefonesPage() {
     }
   };
 
-  // Função para exportar para Excel
+  // Função para exportar para CSV (substituindo Excel por segurança)
   const exportToExcel = () => {
     try {
-      // Preparar dados para exportação
-      const exportData = filteredPhones.map((contact, index) => ({
-        'Nº': index + 1,
-        'Telefone Completo': `+55${contact.telefone}`,
-        'Telefone Original': contact.telefone,
-        'Nome do Contato': contact.nome,
-        'Estudante': contact.estudanteNome,
-        'Turma': contact.turma,
-        'Turno': contact.turno,
-        'WhatsApp Verificado': contact.whatsAppVerified ? 'Sim' : 'Não',
-        'Tem WhatsApp': contact.hasWhatsApp === undefined ? 'Não verificado' : (contact.hasWhatsApp ? 'Sim' : 'Não'),
-        'Data da Verificação': contact.lastVerified ? new Date(contact.lastVerified).toLocaleDateString('pt-BR') : ''
-      }));
-
-      // Criar workbook e worksheet
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-
-      // Configurar largura das colunas
-      const columnWidths = [
-        { wch: 5 },   // Nº
-        { wch: 18 },  // Telefone Completo
-        { wch: 15 },  // Telefone Original
-        { wch: 25 },  // Nome do Contato
-        { wch: 30 },  // Estudante
-        { wch: 8 },   // Turma
-        { wch: 10 },  // Turno
-        { wch: 18 },  // WhatsApp Verificado
-        { wch: 15 },  // Tem WhatsApp
-        { wch: 18 }   // Data da Verificação
+      // Cabeçalhos
+      const headers = [
+        'Nº',
+        'Telefone Completo',
+        'Telefone Original',
+        'Nome do Contato',
+        'Estudante',
+        'Turma',
+        'Turno',
+        'WhatsApp Verificado',
+        'Tem WhatsApp',
+        'Data da Verificação'
       ];
-      worksheet['!cols'] = columnWidths;
 
-      // Adicionar worksheet ao workbook
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Lista de Telefones');
+      // Dados
+      const rows = filteredPhones.map((contact, index) => [
+        index + 1,
+        `+55${contact.telefone}`,
+        contact.telefone,
+        contact.nome,
+        contact.estudanteNome,
+        contact.turma,
+        contact.turno,
+        contact.whatsAppVerified ? 'Sim' : 'Não',
+        contact.hasWhatsApp === undefined ? 'Não verificado' : (contact.hasWhatsApp ? 'Sim' : 'Não'),
+        contact.lastVerified ? new Date(contact.lastVerified).toLocaleDateString('pt-BR') : ''
+      ]);
+
+      // Combinar cabeçalhos e dados
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => {
+          // Escapar células que contêm vírgulas ou aspas
+          const cellStr = String(cell);
+          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+            return `"${cellStr.replace(/"/g, '""')}"`;
+          }
+          return cellStr;
+        }).join(','))
+      ].join('\n');
+
+      // Adicionar BOM UTF-8 para Excel reconhecer caracteres especiais
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
 
       // Gerar nome do arquivo com data atual
       const today = new Date();
       const dateStr = today.toLocaleDateString('pt-BR').replace(/\//g, '-');
-      const fileName = `lista-telefones-${dateStr}.xlsx`;
+      const fileName = `lista-telefones-${dateStr}.csv`;
 
-      // Fazer download
-      XLSX.writeFile(workbook, fileName);
+      // Criar link de download
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', fileName);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
       toast.success(`Arquivo ${fileName} exportado com sucesso!`);
+      logger.info('Lista de telefones exportada para CSV', {
+        total: filteredPhones.length,
+        fileName
+      });
     } catch (error) {
-      console.error('Erro ao exportar para Excel:', error);
-      toast.error('Erro ao exportar arquivo Excel');
+      logger.error('Erro ao exportar lista de telefones para CSV', {}, error as Error);
+      toast.error('Erro ao exportar arquivo CSV');
     }
   };
 
@@ -956,14 +978,14 @@ export default function TelefonesPage() {
           <CardContent>
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
-                Faça upload de um arquivo Excel com verificações de WhatsApp para atualizar a base de dados.
+                Faça upload de um arquivo CSV com verificações de WhatsApp para atualizar a base de dados.
                 O arquivo deve conter colunas: <code className="bg-gray-100 px-2 py-1 rounded">Telefone</code>, <code className="bg-gray-100 px-2 py-1 rounded">Tem_WhatsApp</code>, <code className="bg-gray-100 px-2 py-1 rounded">Nome_WhatsApp</code>
               </p>
 
               <div className="flex items-center gap-4">
                 <Input
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".csv"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {

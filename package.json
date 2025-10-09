@@ -61,7 +61,6 @@
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
-    "xlsx": "^0.18.5",
     "zod": "^3.24.4"
   },
   "devDependencies": {
@@ -75,7 +74,6 @@
     "@types/react-dom": "^19",
     "@types/react-window": "^1.8.8",
     "@types/uuid": "^10.0.0",
-    "@types/xlsx": "^0.0.36",
     "eslint": "^9",
     "eslint-config-next": "15.1.6",
     "firebase-admin": "^13.5.0",
