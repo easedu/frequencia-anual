@@ -23,7 +23,7 @@ import RegisterInteractionCard from "../../components/RegisterInteractionCard";
 import InteractionHistoryCard from "../../components/InteractionHistoryCard";
 import ProvaSaoPauloCard from "../../components/ProvaSaoPauloCard";
 import WhatsAppModal from "../../components/WhatsAppModal";
-import { Student, StudentRecord, FamilyInteraction, Atestado, Suspensao, AbsenceRecord, BimesterDates, AnoLetivoData, Contato } from "../types";
+import { Student, StudentRecord, FamilyInteraction, Atestado, Suspensao, AbsenceRecord, BimesterDates, AnoLetivoData, Contato } from "@/types";
 import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate, getDiasLetivosNoPeriodo } from "../utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";

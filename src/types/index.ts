@@ -105,9 +105,18 @@ export interface AbsenceRecord {
   data: string;
   justified: boolean;
   atestadoId?: string;
+  suspensaoId?: string;
 }
 
 export interface Atestado {
+  id: string;
+  startDate: string;
+  days: number;
+  description: string;
+  createdBy: string;
+}
+
+export interface Suspensao {
   id: string;
   startDate: string;
   days: number;
@@ -121,11 +130,14 @@ export interface Atestado {
 
 export interface FamilyInteraction {
   id: string;
+  studentId: string;
   type: string;
   date: string;
   description: string;
   createdBy: string;
   sensitive: boolean;
+  whatsappMessage?: string; // Mensagem enviada via WhatsApp (obrigatório para type "Contato digital")
+  whatsappPhones?: string[]; // Telefones que receberam a mensagem WhatsApp (para type "Contato digital")
 }
 
 export interface Occurrence {

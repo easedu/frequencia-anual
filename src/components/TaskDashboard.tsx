@@ -28,7 +28,7 @@ import { db, auth } from '@/firebase.config';
 import { FIREBASE_PATHS } from '@/config/constants';
 import type { DashboardTask, TaskSection, TaskPriorityLevel } from '@/types/dashboardTasks';
 import type { UserTask } from '@/types/tasks';
-import type { FamilyInteraction, Student, Contato } from '@/app/types';
+import type { FamilyInteraction, Student, Contato } from '@/types';
 import RegisterInteractionCard from './RegisterInteractionCard';
 import { toast } from 'sonner';
 import { logger } from '@/utils/logger';

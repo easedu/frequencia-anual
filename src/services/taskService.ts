@@ -15,7 +15,7 @@ import {
 import { db } from '@/firebase.config';
 import { logger } from '@/utils/logger';
 import type { UserTask, TaskGenerationResult, BimesterTaskControl } from '@/types/tasks';
-import type { Student } from '@/app/types';
+import type { Student } from '@/types';
 import { addCreationAudit, addUpdateAudit } from '@/utils/auditHelpers';
 import { initializeSoftDelete } from '@/utils/softDeleteHelpers';
 

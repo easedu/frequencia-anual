@@ -3,7 +3,7 @@ import { collection, doc, getDoc, writeBatch, serverTimestamp } from 'firebase/f
 import { db } from '@/firebase.config';
 import { FIREBASE_PATHS } from '@/config/constants';
 import { logger } from '@/utils/logger';
-import type { Student, FamilyInteraction } from '@/app/types';
+import type { Student, FamilyInteraction } from '@/types';
 import type { UserTask, TaskType } from '@/types/tasks';
 import { getStudentByIdFast } from '@/services/studentDataService';
 

@@ -30,7 +30,7 @@ import type { UserTask } from '@/types/tasks';
 import RegisterInteractionCard from './RegisterInteractionCard';
 import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { db, auth } from '@/firebase.config';
-import type { FamilyInteraction } from '@/app/types';
+import type { FamilyInteraction } from '@/types';
 
 interface TaskManagerProps {
   userId: string;

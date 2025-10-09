@@ -3,7 +3,7 @@ import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firesto
 import { db } from '@/firebase.config';
 import { FIREBASE_PATHS, FIREBASE_PATHS_V3 } from '@/config/constants';
 import { apiCache, withTimeout } from '@/utils/apiOptimization';
-import { Student } from '@/app/types';
+import { Student } from '@/types';
 import { StudentDataService } from '@/services/studentDataService';
 
 interface VerifiedContact {
