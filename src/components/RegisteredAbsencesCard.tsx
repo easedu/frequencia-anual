@@ -9,7 +9,7 @@ import {
     DialogTitle,
     DialogDescription,
 } from "@/components/ui/dialog";
-import { AbsenceRecord, Atestado, Suspensao, BimesterDates } from "../app/types";
+import { AbsenceRecord, Atestado, Suspensao, BimesterDates } from "@/types";
 import { getBimesterByDate } from "../app/utils";
 import { Calendar, FileText, Clock, User, CheckCircle, XCircle, ChevronDown, ChevronRight, Trash2, AlertCircle } from "lucide-react";
 import { useState } from "react";

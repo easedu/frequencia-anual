@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Save, X, Calendar, MessageSquare, AlertTriangle, Edit3, Send } from "lucide-react";
-import { FamilyInteraction, Contato } from "../app/types";
+import { FamilyInteraction, Contato } from "@/types";
 import { formatDateInput } from "../app/utils";
 import WhatsAppContactSelector from "./WhatsAppContactSelector";
 

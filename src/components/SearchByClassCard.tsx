@@ -2,7 +2,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Student } from "../app/types";
+import { Student } from "@/types";
 import { GraduationCap, User, BookOpen, Filter, AlertCircle } from "lucide-react";
 
 interface SearchByClassCardProps {

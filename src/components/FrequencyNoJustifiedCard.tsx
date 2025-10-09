@@ -7,7 +7,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { StudentRecord } from "../app/types";
+import { StudentRecord } from "@/types";
 import { getFrequencyColor } from "../app/utils";
 import { CheckCircle, TrendingUp, Users, UserCheck } from "lucide-react";
 

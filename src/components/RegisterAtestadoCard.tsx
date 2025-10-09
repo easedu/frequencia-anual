@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Atestado } from "../app/types";
+import { Atestado } from "@/types";
 import { formatDateInput } from "../app/utils";
 import { FileText, Calendar, Clock, Edit3, Plus, X, Save } from "lucide-react";
 

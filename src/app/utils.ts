@@ -1,6 +1,6 @@
 import { db } from "@/firebase.config";
 import { doc, getDoc } from "firebase/firestore";
-import { AnoLetivoData, BimesterDate, BimesterDates } from "./types";
+import { AnoLetivoData, BimesterDate, BimesterDates } from "@/types";
 import { FIREBASE_PATHS } from "@/config/constants";
 import { logger } from "@/utils/logger";
 
@@ -96,7 +96,7 @@ export function getBimesterByDate(dateStr: string, bimesterDates: BimesterDates)
     const date = parseDate(dateStr);
     if (!date || isNaN(date.getTime())) return 0;
 
-    for (const [bimester, { start, end }] of Object.entries(bimesterDates)) {
+    for (const [bimester, { start, end }] of Object.entries(bimesterDates) as [string, { start: string; end: string }][]) {
         const startDate = parseDate(start);
         const endDate = parseDate(end);
         if (startDate && endDate && date >= startDate && date <= endDate) {
@@ -196,7 +196,7 @@ export async function getDiasLetivosNoPeriodo(startDate: Date, endDate: Date): P
                     return date && date >= startDate && date <= endDate;
                 });
 
-                diasLetivos.push(...bimesterDates.map(d => d.date));
+                diasLetivos.push(...bimesterDates.map((d: BimesterDate) => d.date));
             }
         }
 

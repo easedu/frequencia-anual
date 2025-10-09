@@ -22,7 +22,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Suspensao } from "../app/types";
+import { Suspensao } from "@/types";
 
 interface SuspensaoHistoryCardProps {
     suspensoes: Suspensao[];

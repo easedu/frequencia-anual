@@ -17,7 +17,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
-import { FamilyInteraction, Student } from "../app/types";
+import { FamilyInteraction, Student } from "@/types";
 
 interface StudentWithStats extends Student {
   id: string; // Adicionar propriedade id que pode vir de estudanteId

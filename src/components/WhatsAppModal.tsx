@@ -17,7 +17,7 @@ import {
     AlertCircle,
     Loader2
 } from "lucide-react";
-import { Student, Contato } from "../app/types";
+import { Student, Contato } from "@/types";
 import { formatPhoneNumber } from "@/utils/formatters";
 
 interface WhatsAppModalProps {

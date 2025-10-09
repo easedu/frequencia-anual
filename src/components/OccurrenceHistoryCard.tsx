@@ -20,7 +20,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Occurrence, Student, StudentRecord } from "../app/types";
+import { Occurrence, Student, StudentRecord } from "@/types";
 
 interface OccurrenceHistoryCardProps {
     occurrences: Occurrence[];

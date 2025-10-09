@@ -22,7 +22,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Atestado } from "../app/types";
+import { Atestado } from "@/types";
 
 interface AtestadoHistoryCardProps {
     atestados: Atestado[];

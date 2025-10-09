@@ -1,6 +1,6 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Student, StudentRecord, Contato } from "../app/types";
+import { Student, StudentRecord, Contato } from "@/types";
 import { 
     formatAddress, 
     formatPhoneNumber, 

@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Award, BookOpen, Trophy, Hash, TrendingUp, TrendingDown, Minus, BarChart3, Target, Star, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Student } from "../app/types";
+import { Student, ProvaSaoPaulo } from "@/types";
 
 interface ProvaSaoPauloData {
     matricula?: string;
@@ -53,7 +53,7 @@ export default function ModernProvaSaoPauloCard({ student }: ProvaSaoPauloCardPr
         disciplinas.forEach(disciplina => {
             organizedData[disciplina] = {};
             allYears.forEach(year => {
-                const prova = student.provaSaoPaulo?.find(p =>
+                const prova = student.provaSaoPaulo?.find((p: ProvaSaoPaulo) =>
                     p.edicao === year && (p.disciplina === disciplina || (!p.disciplina && disciplina === 'Língua Portuguesa'))
                 );
                 organizedData[disciplina][year] = prova || null;
@@ -97,9 +97,9 @@ export default function ModernProvaSaoPauloCard({ student }: ProvaSaoPauloCardPr
     // Calcular estatísticas gerais
     const allProvas = student.provaSaoPaulo || [];
     const mediaGeral = allProvas.length > 0 ?
-        (allProvas.reduce((acc, p) => acc + p.mediaAluno, 0) / allProvas.length).toFixed(1) : '0';
+        (allProvas.reduce((acc: number, p: ProvaSaoPaulo) => acc + p.mediaAluno, 0) / allProvas.length).toFixed(1) : '0';
     const melhorMedia = allProvas.length > 0 ?
-        Math.max(...allProvas.map(p => p.mediaAluno)).toFixed(1) : '0';
+        Math.max(...allProvas.map((p: ProvaSaoPaulo) => p.mediaAluno)).toFixed(1) : '0';
 
     return (
         <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-2 border-slate-200/50 dark:border-slate-600/50 rounded-2xl shadow-lg">
@@ -333,7 +333,7 @@ export default function ModernProvaSaoPauloCard({ student }: ProvaSaoPauloCardPr
                             </div>
                             <p className="text-xs text-slate-500 dark:text-slate-400">Último</p>
                             <p className="font-bold text-slate-800 dark:text-slate-200">
-                                {allProvas.length > 0 ? Math.max(...allProvas.map(p => parseInt(p.edicao))) : '--'}
+                                {allProvas.length > 0 ? Math.max(...allProvas.map((p: ProvaSaoPaulo) => parseInt(p.edicao))) : '--'}
                             </p>
                         </div>
                     </div>

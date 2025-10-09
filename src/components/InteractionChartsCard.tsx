@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BarChart3, TrendingUp, Calendar, MessageSquare, Users } from "lucide-react";
-import { FamilyInteraction, Student } from "../app/types";
+import { FamilyInteraction, Student } from "@/types";
 
 interface InteractionChartsCardProps {
   interactions: FamilyInteraction[];

@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Pencil, Trash, FileText, AlertTriangle, History, User, Calendar, MessageSquare } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { FamilyInteraction, Student, StudentRecord } from "../app/types";
+import { FamilyInteraction, Student, StudentRecord } from "@/types";
 
 interface InteractionHistoryCardProps {
     interactions: FamilyInteraction[];

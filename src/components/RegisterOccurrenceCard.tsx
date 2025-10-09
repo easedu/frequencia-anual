@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Occurrence } from "../app/types";
+import { Occurrence } from "@/types";
 import { formatDateInput } from "../app/utils";
 
 interface RegisterOccurrenceCardProps {
