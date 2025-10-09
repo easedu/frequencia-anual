@@ -126,12 +126,18 @@ frequencia-anual/
 │   │   ├── StudentTable.tsx      # Tabela de estudantes
 │   │   └── ...                   # Outros componentes
 │   │
-│   ├── hooks/                    # Custom React Hooks
-│   │   ├── useAuth.ts            # Hook de autenticação
-│   │   ├── useStudents.ts        # Hook de estudantes
-│   │   ├── useFirebase.ts        # Hook Firebase genérico
-│   │   ├── useAttendanceData.ts  # Hook de frequência
-│   │   └── attendance/           # Hooks específicos de frequência
+│   ├── hooks/                    # Custom React Hooks (✅ Fase 1.3 Concluída)
+│   │   ├── useAuth.ts            # Autenticação Firebase
+│   │   ├── useStudents.ts        # Lista de estudantes
+│   │   ├── useFirebase.ts        # Coleções Firebase (genérico, com cache)
+│   │   ├── useFirebaseDoc.ts     # Documentos Firebase (genérico, com cache)
+│   │   └── attendance/           # Módulo de frequência (5 hooks modulares)
+│   │       ├── index.ts          # Barrel export
+│   │       ├── useBimesterPeriods.ts     # Períodos dos bimestres
+│   │       ├── useSchoolDays.ts          # Dias letivos
+│   │       ├── useStudentRecords.ts      # Registros de frequência
+│   │       ├── useDuplicateAbsences.ts   # Detectar/remover duplicatas
+│   │       └── useStudentAbsences.ts     # Faltas por estudante/bimestre
 │   │
 │   ├── services/                 # Camada de serviços
 │   │   ├── studentDataService.ts # CRUD de estudantes
@@ -2535,6 +2541,193 @@ Durante o planning, Claude deve **SEMPRE**:
 - [ ] **Critérios de sucesso**: Como saber que funcionou
 - [ ] **Referências**: Links para docs e código similar
 - [ ] **Aprovação solicitada**: Não assume, pergunta!
+
+---
+
+## 🎣 HOOKS CUSTOMIZADOS
+
+### Arquitetura de Hooks (✅ Fase 1.3 Concluída)
+
+O projeto utiliza uma arquitetura **modular e composicional** de hooks customizados, otimizada para performance e reutilização.
+
+#### Princípios
+
+✅ **Modularidade**: Cada hook tem uma responsabilidade única
+✅ **Composição**: Hooks podem ser combinados para criar funcionalidades complexas
+✅ **Type-Safety**: TypeScript genérico em todos os hooks
+✅ **Cache Padronizado**: Sistema centralizado via `cache.ts`
+✅ **Performance**: Memoização e otimizações aplicadas
+
+#### Estrutura
+
+```
+src/hooks/
+├── useAuth.ts                    # Autenticação Firebase
+├── useStudents.ts                # Lista de estudantes
+├── useFirebase.ts                # Coleções Firebase (cache + paginação)
+├── useFirebaseDoc.ts             # Documentos Firebase (cache padronizado)
+└── attendance/                   # Módulo de frequência (5 hooks)
+    ├── index.ts                  # Barrel export
+    ├── useBimesterPeriods.ts     # Períodos dos bimestres
+    ├── useSchoolDays.ts          # Dias letivos
+    ├── useStudentRecords.ts      # Registros de frequência
+    ├── useDuplicateAbsences.ts   # Detectar/remover duplicatas
+    └── useStudentAbsences.ts     # Faltas por estudante/bimestre
+```
+
+### Como Usar
+
+#### Imports
+
+```typescript
+// Hooks gerais
+import { useAuth } from '@/hooks/useAuth';
+import { useStudents } from '@/hooks/useStudents';
+import { useFirebaseDoc } from '@/hooks/useFirebaseDoc';
+
+// Hooks de frequência (usar barrel export)
+import {
+  useBimesterPeriods,
+  useSchoolDays,
+  useStudentRecords,
+  useDuplicateAbsences,
+  useStudentAbsences
+} from '@/hooks/attendance';
+```
+
+#### Exemplo: Dashboard de Frequência
+
+```typescript
+function FrequencyDashboard() {
+  const { students } = useStudents();
+  const { bimesterDates, getCurrentBimester } = useBimesterPeriods();
+  const { studentRecords, loading } = useStudentRecords({ autoRefresh: true });
+  const { getSchoolDaysForPeriod } = useSchoolDays();
+  const { duplicates, removeDuplicates } = useDuplicateAbsences();
+
+  const currentBimester = getCurrentBimester();
+  const totalDays = getSchoolDaysForPeriod('01/02/2025', '30/12/2025');
+
+  if (loading) return <Skeleton />;
+
+  return (
+    <div>
+      <h1>Bimestre Atual: {currentBimester}</h1>
+      <p>Dias Letivos: {totalDays}</p>
+      <p>Total de Estudantes: {students.length}</p>
+
+      {duplicates.length > 0 && (
+        <Alert>
+          {duplicates.length} duplicatas encontradas.
+          <button onClick={removeDuplicates}>Remover</button>
+        </Alert>
+      )}
+
+      <FrequencyTable data={studentRecords} />
+    </div>
+  );
+}
+```
+
+#### Exemplo: Perfil de Estudante
+
+```typescript
+function StudentProfile({ estudanteId }: { estudanteId: string }) {
+  const { absences, loading } = useStudentAbsences(estudanteId, {
+    excludeJustified: true
+  });
+
+  if (loading) return <Skeleton />;
+
+  return (
+    <div>
+      <h3>Faltas por Bimestre</h3>
+      <div>1º Bimestre: {absences.b1.length} faltas</div>
+      <div>2º Bimestre: {absences.b2.length} faltas</div>
+      <div>3º Bimestre: {absences.b3.length} faltas</div>
+      <div>4º Bimestre: {absences.b4.length} faltas</div>
+    </div>
+  );
+}
+```
+
+### Boas Práticas
+
+#### 1. **Sempre Tipar Hooks**
+
+```typescript
+// ✅ BOM
+const { data } = useFirebaseDoc<AnoLetivo>('2025/ano_letivo');
+
+// ❌ RUIM
+const { data } = useFirebaseDoc('2025/ano_letivo');
+```
+
+#### 2. **Use useMemo para Derivações**
+
+```typescript
+// ✅ BOM
+const { studentRecords } = useStudentRecords();
+const activeStudents = useMemo(() =>
+  studentRecords.filter(s => s.totalFaltas < 10),
+  [studentRecords]
+);
+
+// ❌ RUIM - Recalcula toda renderização
+const activeStudents = studentRecords.filter(s => s.totalFaltas < 10);
+```
+
+#### 3. **Evite Chamadas Duplicadas**
+
+```typescript
+// ✅ BOM - Compartilha hook no componente pai
+function Parent() {
+  const { students } = useStudents();
+  return (
+    <>
+      <StudentList students={students} />
+      <StudentCount students={students} />
+    </>
+  );
+}
+
+// ❌ RUIM - Cada filho chama o hook (2x queries!)
+function StudentList() {
+  const { students } = useStudents(); // Duplicado!
+}
+```
+
+#### 4. **Composição de Hooks**
+
+```typescript
+function useDashboardData() {
+  const { students } = useStudents();
+  const { studentRecords } = useStudentRecords();
+  const { duplicates } = useDuplicateAbsences();
+
+  return useMemo(() => ({
+    totalStudents: students.length,
+    totalAbsences: studentRecords.reduce((sum, r) => sum + r.totalFaltas, 0),
+    duplicatesCount: duplicates.length
+  }), [students, studentRecords, duplicates]);
+}
+```
+
+### Documentação Completa
+
+Para guias detalhados de cada hook com exemplos e troubleshooting:
+
+📖 **Ver**: [`docs/HOOKS-GUIA-USO.md`](docs/HOOKS-GUIA-USO.md) - Guia Completo de Hooks
+
+### Histórico de Refatoração
+
+✅ **Fase 1.3 Concluída** (2025-01-09):
+- Migrado hook monolítico `useAttendanceData.ts` (476 linhas) → 5 hooks modulares
+- Removido hook duplicado `useFirebaseCollection.ts` (181 linhas)
+- Padronizado cache em `useFirebaseDoc.ts` (sessionStorage → cache.ts)
+- Total: **657 linhas de código legado removidas**
+
+📄 **Ver**: [`docs/FASE-1-3-CONCLUIDA.md`](docs/FASE-1-3-CONCLUIDA.md) - Resumo Executivo
 
 ---
 
