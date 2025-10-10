@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FullPageSkeleton } from "@/components/shared/LoadingSkeletons";
 import { collection, getDocs, getDoc, doc, DocumentSnapshot, DocumentData } from "firebase/firestore";
 import { db } from "@/firebase.config";
 import { logger } from "@/utils/logger";

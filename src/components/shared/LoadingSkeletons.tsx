@@ -271,3 +271,119 @@ export function AlertCardSkeleton() {
     </Card>
   );
 }
+
+/**
+ * Skeleton para Filtros de Busca
+ */
+export function FiltersSkeleton() {
+  return (
+    <Card className="p-6">
+      <div className="space-y-4">
+        <Skeleton className="h-6 w-32" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-10 w-24" />
+          <Skeleton className="h-10 w-24" />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Skeleton para Stats/Métricas (row de números)
+ */
+export function StatsSkeleton({ stats = 4 }: { stats?: number }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {Array.from({ length: stats }).map((_, i) => (
+        <Card key={i} className="p-4">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="h-3 w-20" />
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Skeleton para Page Header
+ */
+export function PageHeaderSkeleton() {
+  return (
+    <div className="space-y-4 mb-6">
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <Skeleton className="h-10 w-32" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Skeleton para Small Card (card compacto)
+ */
+export function SmallCardSkeleton() {
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-12 w-12 rounded-lg" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-6 w-16" />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Skeleton para Grid de Cards Pequenos
+ */
+export function SmallCardGridSkeleton({ cards = 4 }: { cards?: number }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {Array.from({ length: cards }).map((_, i) => (
+        <SmallCardSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Skeleton para Full Page Loading
+ * Combina header + filtros + tabela
+ */
+export function FullPageSkeleton() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <PageHeaderSkeleton />
+        <FiltersSkeleton />
+        <StatsSkeleton />
+        <Card className="p-6">
+          <StudentTableSkeleton rows={10} />
+        </Card>
+      </div>
+    </div>
+  );
+}

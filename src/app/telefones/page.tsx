@@ -34,6 +34,7 @@ import {
 import { useStudents } from '@/hooks/useStudents';
 import { toast } from 'sonner';
 import { WhatsAppTrackingService } from '@/services/whatsappTrackingService';
+import { FullPageSkeleton, FiltersSkeleton, StatsSkeleton, StudentTableSkeleton } from '@/components/shared/LoadingSkeletons';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 // Removido xlsx por vulnerabilidades de segurança - usando CSV nativo + papaparse
@@ -597,16 +598,7 @@ export default function TelefonesPage() {
   }, [phoneContacts]);
 
   if (studentsLoading || loadingWhatsAppData) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-100 p-4 flex items-center justify-center">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">
-            {studentsLoading ? 'Carregando dados dos estudantes...' : 'Carregando dados de verificação do WhatsApp...'}
-          </p>
-        </div>
-      </div>
-    );
+    return <FullPageSkeleton />;
   }
 
   return (
