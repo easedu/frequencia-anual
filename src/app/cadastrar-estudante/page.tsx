@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import { Users, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -8,17 +8,24 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { v4 as uuidv4 } from "uuid";
 
 import { useStudents } from "@/hooks/useStudents";
-import { StudentFilters } from "@/components/StudentFilters";
-import { StudentTable } from "@/components/StudentTable";
-import { StudentPagination } from "@/components/StudentPagination";
-import { StudentDialog } from "@/components/StudentDialog";
+import { StudentFilters } from "@/components/students/StudentFilters";
+import { StudentTable } from "@/components/students/StudentTable";
+import { StudentPagination } from "@/components/students/StudentPagination";
 import { Button } from "@/components/ui/button";
+import { StudentTableSkeleton } from "@/components/shared/LoadingSkeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "sonner";
 import { Estudante, Student } from "@/types";
 import { StudentDataService } from "@/services/studentDataService";
 import { logger } from "@/utils/logger";
 import { studentFormSchema } from "@/schemas/studentSchemas";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+
+// Lazy load heavy components
+// ✅ FIX: StudentDialog usa named export, não default export
+const StudentDialog = lazy(() =>
+  import("@/components/students/StudentDialog").then(module => ({ default: module.StudentDialog }))
+);
 
 export default function CadastrarEstudantePage() {
     const { students, loading, error, setStudents, fetchStudents } = useStudents();
@@ -483,18 +490,23 @@ export default function CadastrarEstudantePage() {
     if (loading) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-                <div className="flex items-center justify-center min-h-screen">
-                    <div className="space-y-6 w-full max-w-lg mx-auto p-8">
-                        <div className="flex items-center justify-center space-x-3">
-                            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse"></div>
-                            <div className="text-xl font-semibold text-slate-600 dark:text-slate-300">
-                                Carregando estudantes...
-                            </div>
+                <div className="container mx-auto p-4 max-w-[1400px]">
+                    <div className="mb-6">
+                        <Skeleton className="h-12 w-64 mb-2" />
+                        <Skeleton className="h-4 w-96" />
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-800 rounded-lg p-6">
+                        <div className="mb-6 flex gap-4">
+                            <Skeleton className="h-10 w-32" />
+                            <Skeleton className="h-10 w-40" />
                         </div>
-                        <div className="space-y-4">
-                            <Skeleton className="h-16 w-full rounded-2xl" />
-                            <Skeleton className="h-12 w-4/5 rounded-xl" />
-                            <Skeleton className="h-12 w-3/5 rounded-xl" />
+
+                        <StudentTableSkeleton rows={10} />
+
+                        <div className="mt-6 flex justify-between items-center">
+                            <Skeleton className="h-10 w-48" />
+                            <Skeleton className="h-10 w-32" />
                         </div>
                     </div>
                 </div>
@@ -503,11 +515,12 @@ export default function CadastrarEstudantePage() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-            <Toaster />
+        <ErrorBoundary>
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+                <Toaster />
 
-            {/* Main Content */}
-            <div className="container mx-auto p-4 max-w-[1400px]">
+                {/* Main Content */}
+                <div className="container mx-auto p-4 max-w-[1400px]">
                 {/* Compact Header with Gradient */}
                 <div className="mb-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl shadow-lg overflow-hidden">
                     <div className="flex items-center justify-between px-6 py-3">
@@ -594,19 +607,34 @@ export default function CadastrarEstudantePage() {
                 </div>
             </div>
 
-            {/* Dialog Modal */}
-            <StudentDialog
-                openModal={openModal}
-                setOpenModal={setOpenModal}
-                form={form}
-                editingIndex={editingIndex}
-                editingEstudante={editingEstudante}
-                handleFormSubmit={handleFormSubmit}
-                handleCancel={handleCancel}
-                cepChangedManually={cepChangedManually}
-                setCepChangedManually={setCepChangedManually}
-                isSaving={isSaving}
-            />
+            {/* Dialog Modal - Lazy Loaded */}
+            {openModal && (
+                <Suspense fallback={
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-lg p-6 animate-pulse">
+                            <div className="h-8 w-64 bg-slate-200 rounded mb-4"></div>
+                            <div className="space-y-3">
+                                <div className="h-4 w-full bg-slate-200 rounded"></div>
+                                <div className="h-4 w-3/4 bg-slate-200 rounded"></div>
+                            </div>
+                        </div>
+                    </div>
+                }>
+                    <StudentDialog
+                        openModal={openModal}
+                        setOpenModal={setOpenModal}
+                        form={form}
+                        editingIndex={editingIndex}
+                        editingEstudante={editingEstudante}
+                        handleFormSubmit={handleFormSubmit}
+                        handleCancel={handleCancel}
+                        cepChangedManually={cepChangedManually}
+                        setCepChangedManually={setCepChangedManually}
+                        isSaving={isSaving}
+                    />
+                </Suspense>
+            )}
         </div>
+        </ErrorBoundary>
     );
 }

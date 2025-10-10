@@ -2,11 +2,11 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import React from "react";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { ServiceWorkerProvider } from "@/components/ServiceWorkerProvider";
-import { AuthProvider } from "@/components/AuthProvider";
+import Header from "@/components/layout/Header";
+import Footer from "@/components/layout/Footer";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { ServiceWorkerProvider } from "@/components/shared/ServiceWorkerProvider";
+import { AuthProvider } from "@/components/layout/AuthProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

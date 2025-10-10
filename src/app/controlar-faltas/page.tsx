@@ -18,6 +18,7 @@ import {
     useDuplicateAbsences,
 } from "@/hooks/attendance";
 import { useStudents } from "@/hooks/useStudents";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import dynamic from "next/dynamic";
 
 const DayOfWeekDistributionCard = dynamic(() => import("@/components/cards/DayOfWeekDistributionCard"), {
@@ -120,8 +121,9 @@ export default function DashboardPage() {
     }, [filterState, startDate, endDate, selectedBimesters, useCustom]);
 
     return (
-        <div className="p-4 space-y-8">
-            <FiltersCard
+        <ErrorBoundary>
+            <div className="p-4 space-y-8">
+                <FiltersCard
                 selectedBimesters={selectedBimesters}
                 setSelectedBimesters={setSelectedBimesters}
                 startDate={startDate}
@@ -172,5 +174,6 @@ export default function DashboardPage() {
                 removeDuplicateAbsences={removeDuplicates}
             />
         </div>
+        </ErrorBoundary>
     );
 }

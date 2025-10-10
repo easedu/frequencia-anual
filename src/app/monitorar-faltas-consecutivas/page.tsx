@@ -39,7 +39,7 @@ import { useStudents } from '@/hooks/useStudents';
 import { toast } from 'sonner';
 import { FIREBASE_PATHS } from '@/config/constants';
 import { useRouter } from 'next/navigation';
-import RegisterInteractionCard from '@/components/RegisterInteractionCard';
+import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import type { FamilyInteraction } from '@/types';
 
 interface ConsecutiveAbsence {

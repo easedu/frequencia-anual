@@ -1,0 +1,13 @@
+export { StudentTable } from './StudentTable';
+export { VirtualizedStudentTable } from './VirtualizedStudentTable';
+export { StudentDialog } from './StudentDialog';
+export { StudentForm } from './StudentForm';
+export { default as StudentInfoCard } from './StudentInfoCard';
+export { StudentFilters } from './StudentFilters';
+export { StudentPagination } from './StudentPagination';
+export { default as SearchByNameCard } from './SearchByNameCard';
+export { default as SearchByClassCard } from './SearchByClassCard';
+export { AlertDataTable } from './CustomAlertDataTable';
+export { FullDataTable } from './CustomFullDataTable';
+export { default as ProvaSaoPauloCard } from './ProvaSaoPauloCard';
+export { default as StudentInteractionAnalysisCard } from './StudentInteractionAnalysisCard';

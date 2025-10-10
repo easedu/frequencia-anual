@@ -9,20 +9,22 @@ import { StudentDataService } from "@/services/studentDataService";
 import { getAuth } from "firebase/auth";
 import { logger } from "@/utils/logger";
 import { headerImageBase64 } from "@/assets/headerImage";
-import SearchByNameCard from "../../components/SearchByNameCard";
-import SearchByClassCard from "../../components/SearchByClassCard";
-import StudentInfoCard from "../../components/StudentInfoCard";
-import FrequencyAllAbsencesCard from "../../components/FrequencyAllAbsencesCard";
-import FrequencyNoJustifiedCard from "../../components/FrequencyNoJustifiedCard";
-import RegisteredAbsencesCard from "../../components/RegisteredAbsencesCard";
-import RegisterAtestadoCard from "../../components/RegisterAtestadoCard";
-import AtestadoHistoryCard from "../../components/AtestadoHistoryCard";
-import RegisterSuspensaoCard from "../../components/RegisterSuspensaoCard";
-import SuspensaoHistoryCard from "../../components/SuspensaoHistoryCard";
-import RegisterInteractionCard from "../../components/RegisterInteractionCard";
-import InteractionHistoryCard from "../../components/InteractionHistoryCard";
-import ProvaSaoPauloCard from "../../components/ProvaSaoPauloCard";
-import WhatsAppModal from "../../components/WhatsAppModal";
+import SearchByNameCard from "@/components/students/SearchByNameCard";
+import SearchByClassCard from "@/components/students/SearchByClassCard";
+import StudentInfoCard from "@/components/students/StudentInfoCard";
+import { FrequencyCardSkeleton, InteractionListSkeleton } from "@/components/shared/LoadingSkeletons";
+import FrequencyAllAbsencesCard from "@/components/attendance/FrequencyAllAbsencesCard";
+import FrequencyNoJustifiedCard from "@/components/attendance/FrequencyNoJustifiedCard";
+import RegisteredAbsencesCard from "@/components/attendance/RegisteredAbsencesCard";
+import RegisterAtestadoCard from "@/components/attendance/RegisterAtestadoCard";
+import AtestadoHistoryCard from "@/components/attendance/AtestadoHistoryCard";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import RegisterSuspensaoCard from "@/components/attendance/RegisterSuspensaoCard";
+import SuspensaoHistoryCard from "@/components/interactions/SuspensaoHistoryCard";
+import RegisterInteractionCard from "@/components/interactions/RegisterInteractionCard";
+import InteractionHistoryCard from "@/components/interactions/InteractionHistoryCard";
+import ProvaSaoPauloCard from "@/components/students/ProvaSaoPauloCard";
+import WhatsAppModal from "@/components/whatsapp/WhatsAppModal";
 import { Student, StudentRecord, FamilyInteraction, Atestado, Suspensao, AbsenceRecord, BimesterDates, AnoLetivoData, Contato } from "@/types";
 import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate, getDiasLetivosNoPeriodo } from "../utils";
 import { Card, CardContent } from "@/components/ui/card";
@@ -54,6 +56,7 @@ export default function StudentProfilePage() {
     const [suspensaoDays, setSuspensaoDays] = useState<string>("");
     const [suspensaoDescription, setSuspensaoDescription] = useState<string>("");
     const [editingSuspensao, setEditingSuspensao] = useState<Suspensao | null>(null);
+    const [isSubmittingAtestado, setIsSubmittingAtestado] = useState<boolean>(false);
     const [, setLoadingStudents] = useState<boolean>(true);
     const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
     const [, setLoadingUserRole] = useState<boolean>(true);
@@ -664,6 +667,12 @@ export default function StudentProfilePage() {
     };
 
     const handleAddAtestado = async (): Promise<void> => {
+        // ✅ Prevenir múltiplos cliques
+        if (isSubmittingAtestado) {
+            toast.warning("Processando... aguarde.");
+            return;
+        }
+
         if (!selectedStudentId || !atestadoStartDate || !atestadoDays || !atestadoDescription) {
             toast.error("Preencha todos os campos para adicionar um atestado.");
             return;
@@ -681,10 +690,32 @@ export default function StudentProfilePage() {
         }
 
         try {
+            setIsSubmittingAtestado(true); // ✅ Desabilitar botão
+
             const startDate = parseDate(atestadoStartDate);
             if (!startDate) throw new Error("Data inválida");
             const endDate = new Date(startDate);
             endDate.setDate(startDate.getDate() + days - 1);
+
+            // ✅ VALIDAÇÃO: Verificar duplicatas antes de salvar
+            const existingAtestadosSnapshot = await getDocs(
+                collection(db, FIREBASE_PATHS.medicalCertificates(selectedStudentId))
+            );
+
+            const isDuplicate = existingAtestadosSnapshot.docs.some(doc => {
+                const data = doc.data();
+                return (
+                    data.startDate === formattedDate &&
+                    data.days === days &&
+                    data.description === atestadoDescription
+                );
+            });
+
+            if (isDuplicate) {
+                toast.error("Este atestado já foi cadastrado anteriormente.");
+                setIsSubmittingAtestado(false);
+                return;
+            }
 
             const atestadoData: Omit<Atestado, "id"> = {
                 startDate: formattedDate,
@@ -771,6 +802,8 @@ export default function StudentProfilePage() {
         } catch (error) {
             logger.error("Erro ao cadastrar atestado", error as Error);
             toast.error("Erro ao salvar atestado. Tente novamente.");
+        } finally {
+            setIsSubmittingAtestado(false); // ✅ Reabilitar botão
         }
     };
 
@@ -1422,9 +1455,10 @@ export default function StudentProfilePage() {
     };
 
     return (
-        <div className="p-4 space-y-6">
-            <Toaster />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ErrorBoundary>
+            <div className="p-4 space-y-6">
+                <Toaster />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <SearchByNameCard
                     searchName={searchName}
                     suggestions={suggestions}
@@ -1449,11 +1483,15 @@ export default function StudentProfilePage() {
             </div>
 
             {loadingProfile ? (
-                <Card>
-                    <CardContent>
-                        <Skeleton className="h-64 w-full" />
-                    </CardContent>
-                </Card>
+                <div className="space-y-6">
+                    <FrequencyCardSkeleton />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FrequencyCardSkeleton />
+                        <FrequencyCardSkeleton />
+                    </div>
+                    <FrequencyCardSkeleton />
+                    <InteractionListSkeleton items={3} />
+                </div>
             ) : student && (
                 <>
                     <StudentInfoCard
@@ -1483,6 +1521,7 @@ export default function StudentProfilePage() {
                         atestadoDays={atestadoDays}
                         atestadoDescription={atestadoDescription}
                         editingAtestado={editingAtestado}
+                        isSubmitting={isSubmittingAtestado}
                         setAtestadoStartDate={setAtestadoStartDate}
                         setAtestadoDays={setAtestadoDays}
                         setAtestadoDescription={setAtestadoDescription}
@@ -1571,5 +1610,6 @@ export default function StudentProfilePage() {
                 verifiedNumbers={verifiedWhatsAppNumbers}
             />
         </div>
+        </ErrorBoundary>
     );
 }

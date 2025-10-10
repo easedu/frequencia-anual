@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, memo, lazy, Suspense } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import TurmaFrequencyGrid from "@/components/charts/TurmaFrequencyGrid";
+
+// Lazy load do componente de gráfico (Recharts)
+const TurmaFrequencyGrid = lazy(() => import("@/components/charts/TurmaFrequencyGrid"));
 import { TrendingUp, TrendingDown, Users, AlertTriangle, CheckCircle, BarChart3, Award } from "lucide-react";
 
 interface StudentRecord {
@@ -21,7 +23,7 @@ interface KPIsCardProps {
     totalDiasLetivos: number;
 }
 
-export default function KPIsCard({ data, totalDiasLetivos }: KPIsCardProps) {
+const KPIsCard = memo(function KPIsCard({ data, totalDiasLetivos }: KPIsCardProps) {
     const totalStudents = useMemo(() => data.length, [data]);
     const alunosConformes = useMemo(() => data.filter(s => s.percentualFaltas < 25).length, [data]);
     const nearLimitCount = useMemo(() => data.filter(s => s.percentualFaltas >= 20 && s.percentualFaltas < 25).length, [data]);
@@ -234,9 +236,17 @@ export default function KPIsCard({ data, totalDiasLetivos }: KPIsCardProps) {
                             </p>
                         </div>
                     </div>
-                    <TurmaFrequencyGrid turmaStats={turmaStats} />
+                    <Suspense fallback={
+                        <div className="flex items-center justify-center h-40 text-gray-500">
+                            <div className="animate-pulse">Carregando gráfico...</div>
+                        </div>
+                    }>
+                        <TurmaFrequencyGrid turmaStats={turmaStats} />
+                    </Suspense>
                 </div>
             </CardContent>
         </Card>
     );
-}
+});
+
+export default KPIsCard;

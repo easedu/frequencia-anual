@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { StudentDataService } from "@/services/studentDataService";
 import { logger } from "@/utils/logger";
 import type { Estudante } from "@/types";
@@ -20,7 +20,8 @@ export const useStudents = (includeDeleted: boolean = false, includeContacts: bo
     const [error, setError] = useState<Error | null>(null);
 
     // Fetch students using V3 unified service
-    const fetchStudents = async () => {
+    // useCallback previne recriação da função a cada render
+    const fetchStudents = useCallback(async () => {
         setLoading(true);
         try {
             // PERFORMANCE: Passar parâmetro includeContacts
@@ -32,11 +33,11 @@ export const useStudents = (includeDeleted: boolean = false, includeContacts: bo
         } finally {
             setLoading(false);
         }
-    };
+    }, [includeDeleted, includeContacts]); // Dependências corretas
 
     useEffect(() => {
         fetchStudents();
-    }, [includeDeleted, includeContacts]);
+    }, [fetchStudents]); // Agora fetchStudents é estável
 
     return { students, loading, error, fetchStudents, setStudents };
 };

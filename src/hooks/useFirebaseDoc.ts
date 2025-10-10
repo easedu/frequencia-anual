@@ -4,7 +4,7 @@
  * Uses centralized cache.ts for consistency across the application
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, setDoc, onSnapshot, DocumentData } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 import { logger } from '@/utils/logger';
@@ -68,7 +68,7 @@ export function useFirebaseDoc<T = DocumentData>(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -102,9 +102,9 @@ export function useFirebaseDoc<T = DocumentData>(
     } finally {
       setLoading(false);
     }
-  };
+  }, [path, cacheTime]);
 
-  const updateData = async (newData: Partial<T>) => {
+  const updateData = useCallback(async (newData: Partial<T>) => {
     try {
       const pathSegments = path.split('/');
       const docRef = doc(db, pathSegments[0], ...pathSegments.slice(1));
@@ -124,7 +124,7 @@ export function useFirebaseDoc<T = DocumentData>(
       setError(error);
       throw error;
     }
-  };
+  }, [path, data, cacheTime]);
 
   useEffect(() => {
     if (realtime) {
@@ -157,7 +157,7 @@ export function useFirebaseDoc<T = DocumentData>(
       // One-time fetch
       fetchData();
     }
-  }, [path, realtime]);
+  }, [path, realtime, cacheTime, fetchData]);
 
   return {
     data,

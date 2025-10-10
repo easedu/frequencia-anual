@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,7 @@ interface DuplicateAbsencesCardProps {
     removeDuplicateAbsences: () => Promise<void>;
 }
 
-export default function DuplicateAbsencesCard({
+const DuplicateAbsencesCard = memo(function DuplicateAbsencesCard({
     duplicateAbsences,
     removeDuplicateAbsences,
 }: DuplicateAbsencesCardProps) {
@@ -211,4 +211,6 @@ export default function DuplicateAbsencesCard({
             </CardContent>
         </Card>
     );
-}
+});
+
+export default DuplicateAbsencesCard;

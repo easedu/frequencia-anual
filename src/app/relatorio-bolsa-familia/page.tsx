@@ -378,9 +378,63 @@ export default function RelatorioFaltasPage() {
             <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
                 <div className="container mx-auto p-6 max-w-7xl">
                     <div className="space-y-6">
-                        <Skeleton className="h-32 w-full rounded-xl" />
-                        <Skeleton className="h-48 w-full rounded-xl" />
-                        <Skeleton className="h-96 w-full rounded-xl" />
+                        {/* Header Skeleton com informação de carregamento */}
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-blue-50 rounded-lg">
+                                            <FileText className="w-6 h-6 text-blue-600 animate-pulse" />
+                                        </div>
+                                        <div>
+                                            <h1 className="text-3xl font-bold text-slate-800">Relatório de Faltas</h1>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                                                <p className="text-sm text-blue-600 font-medium">
+                                                    {loadingStudents && loadingAbsences
+                                                        ? "Carregando estudantes e faltas..."
+                                                        : loadingStudents
+                                                        ? "Carregando estudantes..."
+                                                        : "Carregando faltas..."}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Filtros Skeleton */}
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Filter className="w-5 h-5 text-slate-400" />
+                                <Skeleton className="h-6 w-32" />
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                                {Array.from({ length: 12 }).map((_, i) => (
+                                    <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Tabela Skeleton */}
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                            <div className="flex items-center gap-2 mb-4">
+                                <FileText className="w-5 h-5 text-slate-400" />
+                                <Skeleton className="h-6 w-48" />
+                            </div>
+                            <div className="space-y-3">
+                                <Skeleton className="h-12 w-full" />
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                    <Skeleton key={i} className="h-16 w-full" />
+                                ))}
+                            </div>
+                            <div className="mt-4 flex justify-center">
+                                <p className="text-sm text-slate-500 italic">
+                                    Aguarde enquanto processamos os dados...
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

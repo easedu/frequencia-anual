@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, memo } from "react";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -161,7 +161,7 @@ const TurmaGrid = ({
     );
 };
 
-export default function DayOfWeekDistributionCard({
+const DayOfWeekDistributionCard = memo(function DayOfWeekDistributionCard({
     data,
     startDate,
     endDate,
@@ -537,4 +537,6 @@ export default function DayOfWeekDistributionCard({
             )}
         </div>
     );
-}
+});
+
+export default DayOfWeekDistributionCard;

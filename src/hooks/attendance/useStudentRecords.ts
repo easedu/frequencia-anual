@@ -3,15 +3,47 @@
  * Separated from the monolithic useAttendanceData
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { attendanceService } from '@/services/firebase/attendanceService';
 import { StudentDataService } from '@/services/studentDataService';
 import { logger } from '@/utils/logger';
+import { parseDate } from '@/utils/dateUtils';
 import type { StudentRecord, Estudante } from '@/types';
+
+/**
+ * Parse de data com fallback para múltiplos formatos
+ * Tenta: DD/MM/YYYY, YYYY-MM-DD, ISO, timestamp
+ */
+function parseFlexibleDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+
+  // Tentar formato brasileiro DD/MM/YYYY primeiro
+  const brDate = parseDate(dateStr);
+  if (brDate) return brDate;
+
+  // Tentar ISO/Firebase YYYY-MM-DD
+  if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const [year, month, day] = parts.map(Number);
+      if (year > 1900 && year < 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return new Date(year, month - 1, day);
+      }
+    }
+  }
+
+  // Tentar new Date() padrão como último recurso
+  const nativeDate = new Date(dateStr);
+  if (!isNaN(nativeDate.getTime())) {
+    return nativeDate;
+  }
+
+  return null;
+}
 
 export interface UseStudentRecordsOptions {
   turmaFilter?: string;
-  statusFilter?: string;
+  statusFilter?: string; // Default: 'ATIVO' - Para incluir todos, passe '' (string vazia)
   autoRefresh?: boolean;
 }
 
@@ -22,53 +54,85 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const calculateStudentRecord = async (student: Estudante): Promise<StudentRecord> => {
+  const calculateStudentRecord = useCallback(async (student: Estudante): Promise<StudentRecord> => {
     try {
       const absences = await attendanceService.getStudentAbsences(student.estudanteId);
       const periods = await attendanceService.getAcademicYearPeriods();
-      
+
+      // 🔍 DEBUG: Log para entender o formato dos dados (apenas para primeiro estudante)
+      if (absences.length > 0 && Math.random() < 0.1) {
+        logger.info(`📅 [DEBUG] Faltas de ${student.nome}:`, {
+          totalFaltas: absences.length,
+          exemploData: absences[0].data,
+          tipoDado: typeof absences[0].data
+        });
+        logger.info(`📆 [DEBUG] Períodos:`, periods);
+      }
+
       // Calculate absences by bimester
+      // ✅ FIX: Usar parseFlexibleDate para suportar múltiplos formatos (DD/MM/YYYY, YYYY-MM-DD, ISO)
       const faltasB1 = absences.filter(abs => {
-        const date = new Date(abs.data);
+        const date = parseFlexibleDate(abs.data);
         const b1 = periods[1];
-        return b1 && date >= new Date(b1.start) && date <= new Date(b1.end);
+        if (!date || !b1) return false;
+        const startDate = parseFlexibleDate(b1.start);
+        const endDate = parseFlexibleDate(b1.end);
+        return startDate && endDate && date >= startDate && date <= endDate;
       }).length;
 
       const faltasB2 = absences.filter(abs => {
-        const date = new Date(abs.data);
+        const date = parseFlexibleDate(abs.data);
         const b2 = periods[2];
-        return b2 && date >= new Date(b2.start) && date <= new Date(b2.end);
+        if (!date || !b2) return false;
+        const startDate = parseFlexibleDate(b2.start);
+        const endDate = parseFlexibleDate(b2.end);
+        return startDate && endDate && date >= startDate && date <= endDate;
       }).length;
 
       const faltasB3 = absences.filter(abs => {
-        const date = new Date(abs.data);
+        const date = parseFlexibleDate(abs.data);
         const b3 = periods[3];
-        return b3 && date >= new Date(b3.start) && date <= new Date(b3.end);
+        if (!date || !b3) return false;
+        const startDate = parseFlexibleDate(b3.start);
+        const endDate = parseFlexibleDate(b3.end);
+        return startDate && endDate && date >= startDate && date <= endDate;
       }).length;
 
       const faltasB4 = absences.filter(abs => {
-        const date = new Date(abs.data);
+        const date = parseFlexibleDate(abs.data);
         const b4 = periods[4];
-        return b4 && date >= new Date(b4.start) && date <= new Date(b4.end);
+        if (!date || !b4) return false;
+        const startDate = parseFlexibleDate(b4.start);
+        const endDate = parseFlexibleDate(b4.end);
+        return startDate && endDate && date >= startDate && date <= endDate;
       }).length;
 
       const totalFaltas = faltasB1 + faltasB2 + faltasB3 + faltasB4;
-      
+
       // Calculate today's absences
       const today = new Date();
-      const faltasAteHoje = absences.filter(abs => new Date(abs.data) <= today).length;
-      
+      today.setHours(0, 0, 0, 0); // Zerar horas para comparação correta
+      const faltasAteHoje = absences.filter(abs => {
+        const date = parseFlexibleDate(abs.data);
+        return date && date <= today;
+      }).length;
+
       // Calculate school days (simplified - in real app, this would come from academic year data)
       const diasLetivosB1 = 50; // Example values
       const diasLetivosB2 = 50;
       const diasLetivosB3 = 50;
       const diasLetivosB4 = 50;
       const diasLetivosAnual = diasLetivosB1 + diasLetivosB2 + diasLetivosB3 + diasLetivosB4;
-      
+
       // Calculate attendance percentage
-      const percentualFaltas = diasLetivosAnual > 0 ? (totalFaltas / diasLetivosAnual) * 100 : 0;
+      // ✅ FIX: Arredondar para inteiros (sem casas decimais) para evitar 28.999999999999996%
+      const percentualFaltas = diasLetivosAnual > 0
+        ? Math.round((totalFaltas / diasLetivosAnual) * 100)
+        : 0;
       const percentualFrequencia = 100 - percentualFaltas;
-      const percentualFaltasAteHoje = diasLetivosAnual > 0 ? (faltasAteHoje / diasLetivosAnual) * 100 : 0;
+      const percentualFaltasAteHoje = diasLetivosAnual > 0
+        ? Math.round((faltasAteHoje / diasLetivosAnual) * 100)
+        : 0;
       const percentualFrequenciaAteHoje = 100 - percentualFaltasAteHoje;
 
       return {
@@ -96,9 +160,9 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       logger.error(`Erro ao calcular registro para estudante ${student.nome}`, error as Error);
       throw error;
     }
-  };
+  }, []);
 
-  const fetchStudentRecords = async () => {
+  const fetchStudentRecords = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -106,13 +170,18 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       // Get all students (V3 only)
       let students = await StudentDataService.getStudents();
 
-      // Apply filters
-      if (turmaFilter) {
-        students = students.filter(s => s.turma === turmaFilter);
+      // ✅ FILTRO PADRÃO: Apenas estudantes ATIVOS
+      // Se statusFilter for explicitamente passado, usa ele. Caso contrário, filtra por ATIVO.
+      const effectiveStatusFilter = statusFilter !== undefined ? statusFilter : 'ATIVO';
+
+      if (effectiveStatusFilter) {
+        students = students.filter(s => s.status === effectiveStatusFilter);
+        logger.info(`🎯 Filtrando estudantes por status: ${effectiveStatusFilter} (${students.length} encontrados)`);
       }
 
-      if (statusFilter) {
-        students = students.filter(s => s.status === statusFilter);
+      // Apply turma filter
+      if (turmaFilter) {
+        students = students.filter(s => s.turma === turmaFilter);
       }
 
       // Calculate records for all students
@@ -127,11 +196,11 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [turmaFilter, statusFilter, calculateStudentRecord]);
 
   useEffect(() => {
     fetchStudentRecords();
-  }, [turmaFilter, statusFilter]);
+  }, [fetchStudentRecords]);
 
   // Auto refresh functionality
   useEffect(() => {
@@ -139,7 +208,7 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
 
     const interval = setInterval(fetchStudentRecords, 5 * 60 * 1000); // 5 minutes
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, fetchStudentRecords]);
 
   return {
     studentRecords,

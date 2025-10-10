@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { FullDataTable } from "@/components/CustomFullDataTable";
+import { FullDataTable } from "@/components/students/CustomFullDataTable";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -500,7 +500,7 @@ const TurmaSelector = ({
     );
 };
 
-export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
+const FrequencyTableCard = memo(function FrequencyTableCard({ data }: FrequencyTableCardProps) {
     const {
         filters,
         updateTurmaFilter,
@@ -808,4 +808,6 @@ export default function FrequencyTableCard({ data }: FrequencyTableCardProps) {
             </Card>
         </div>
     );
-}
+});
+
+export default FrequencyTableCard;

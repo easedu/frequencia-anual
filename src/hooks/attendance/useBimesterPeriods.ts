@@ -3,7 +3,7 @@
  * Separated from the monolithic useAttendanceData
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useFirebaseDoc } from '@/hooks/useFirebaseDoc';
 import { logger } from '@/utils/logger';
 import type { BimesterDates } from '@/types';
@@ -48,33 +48,34 @@ export function useBimesterPeriods(): UseBimesterPeriodsReturn {
     }
   }, [anoLetivoData]);
 
-  const getBimesterByDate = (dateString: string): number => {
+  // useCallback previne recriação dessas funções quando bimesterDates não muda
+  const getBimesterByDate = useCallback((dateString: string): number => {
     const date = new Date(dateString);
-    
+
     for (const [bimester, period] of Object.entries(bimesterDates)) {
       const start = new Date(period.start);
       const end = new Date(period.end);
-      
+
       if (date >= start && date <= end) {
         return parseInt(bimester);
       }
     }
-    
-    return 0; // Date doesn't fall in any bimester
-  };
 
-  const getCurrentBimester = (): number => {
+    return 0; // Date doesn't fall in any bimester
+  }, [bimesterDates]);
+
+  const getCurrentBimester = useCallback((): number => {
     const today = new Date().toISOString().split('T')[0];
     return getBimesterByDate(today);
-  };
+  }, [getBimesterByDate]);
 
-  const getBimesterRange = (bimester: number): { start: string; end: string } | null => {
+  const getBimesterRange = useCallback((bimester: number): { start: string; end: string } | null => {
     return bimesterDates[bimester] || null;
-  };
+  }, [bimesterDates]);
 
-  const getAllBimesterRanges = (): BimesterDates => {
+  const getAllBimesterRanges = useCallback((): BimesterDates => {
     return bimesterDates;
-  };
+  }, [bimesterDates]);
 
   return {
     bimesterDates,

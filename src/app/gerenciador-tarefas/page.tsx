@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { auth, db } from "@/firebase.config";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { logger } from "@/utils/logger";
-import TaskManager from "@/components/TaskManager";
+
+// Lazy load heavy TaskManager component (1,111 lines)
+const TaskManager = lazy(() => import("@/components/tasks/TaskManager"));
 
 type Role = "admin" | "super-user" | "user" | "user-pcd";
 
@@ -85,9 +87,23 @@ export default function GerenciadorTarefas() {
             <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] dark:bg-grid-slate-700/25"></div>
 
             <div className="relative container mx-auto px-4 py-8">
-                {/* Task Manager */}
+                {/* Task Manager - Lazy Loaded */}
                 {userId && (
-                    <TaskManager userId={userId} userRole={role} />
+                    <Suspense fallback={
+                        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-3xl p-8 shadow-2xl">
+                            <div className="space-y-4">
+                                <div className="h-10 w-64 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="h-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                                    <div className="h-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                                    <div className="h-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                                </div>
+                                <div className="h-64 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                            </div>
+                        </div>
+                    }>
+                        <TaskManager userId={userId} userRole={role} />
+                    </Suspense>
                 )}
             </div>
         </div>

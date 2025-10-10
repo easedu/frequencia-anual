@@ -5,7 +5,7 @@ import { auth, db } from "@/firebase.config";
 import { useRouter } from "next/navigation";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { logger } from "@/utils/logger";
-import TaskDashboard from "@/components/TaskDashboard";
+import TaskDashboard from "@/components/tasks/TaskDashboard";
 
 type Role = "admin" | "super-user" | "user" | "user-pcd";
 

@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, memo, lazy, Suspense } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import DistributionChart from "@/components/charts/DistributionChart";
-import TurmaComparisonChart from "@/components/charts/TurmaComparisonChart";
+
+// Lazy load dos componentes de gráfico (Recharts)
+const DistributionChart = lazy(() => import("@/components/charts/DistributionChart"));
+const TurmaComparisonChart = lazy(() => import("@/components/charts/TurmaComparisonChart"));
 import { BarChart3, PieChart, TrendingUp, Users } from "lucide-react";
 
 interface StudentRecord {
@@ -21,7 +23,7 @@ interface ComparativeChartsCardProps {
     data: StudentRecord[];
 }
 
-export default function ComparativeChartsCard({ data }: ComparativeChartsCardProps) {
+const ComparativeChartsCard = memo(function ComparativeChartsCard({ data }: ComparativeChartsCardProps) {
     const alunosConformes = useMemo(() => data.filter(s => s.percentualFaltas < 25).length, [data]);
     const alunosRisco = useMemo(() => data.filter(s => s.percentualFaltas >= 25).length, [data]);
 
@@ -170,7 +172,13 @@ export default function ComparativeChartsCard({ data }: ComparativeChartsCardPro
                             </div>
                         </div>
 
-                        <DistributionChart distributionData={distributionData} />
+                        <Suspense fallback={
+                            <div className="flex items-center justify-center h-64 text-gray-500">
+                                <div className="animate-pulse">Carregando gráfico...</div>
+                            </div>
+                        }>
+                            <DistributionChart distributionData={distributionData} />
+                        </Suspense>
                     </div>
 
                     {/* Comparação por Turma */}
@@ -209,10 +217,18 @@ export default function ComparativeChartsCard({ data }: ComparativeChartsCardPro
                             </div>
                         </div>
 
-                        <TurmaComparisonChart comparativeData={comparativeData} />
+                        <Suspense fallback={
+                            <div className="flex items-center justify-center h-64 text-gray-500">
+                                <div className="animate-pulse">Carregando comparação...</div>
+                            </div>
+                        }>
+                            <TurmaComparisonChart comparativeData={comparativeData} />
+                        </Suspense>
                     </div>
                 </div>
             </CardContent>
         </Card>
     );
-}
+});
+
+export default ComparativeChartsCard;

@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InteractionListSkeleton, ChartCardSkeleton } from "@/components/shared/LoadingSkeletons";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   TrendingUp,
   Calendar,
@@ -27,8 +29,8 @@ import {
 import { FamilyInteraction, Student } from "@/types";
 import { formatFirebaseDate } from "../utils";
 import { CURRENT_SCHOOL_YEAR } from "@/config/constants";
-import InteractionChartsCard from "../../components/InteractionChartsCard";
-import StudentInteractionAnalysisCard from "../../components/StudentInteractionAnalysisCard";
+import InteractionChartsCard from "@/components/interactions/InteractionChartsCard";
+import StudentInteractionAnalysisCard from "@/components/students/StudentInteractionAnalysisCard";
 
 interface InteractionStats {
   total: number;
@@ -331,29 +333,41 @@ export default function InteractionReportsPage() {
   if (loading) {
     return (
       <div className="p-6 space-y-6">
-        <div className="text-center py-16">
-          <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-3xl p-12 shadow-2xl max-w-md mx-auto">
-            <div className="w-16 h-16 mx-auto mb-6 bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30 rounded-2xl flex items-center justify-center">
-              <TrendingUp className="w-8 h-8 text-emerald-600 dark:text-emerald-400 animate-pulse" />
-            </div>
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">
-              Carregando Relatórios
-            </h2>
-            <p className="text-slate-600 dark:text-slate-400 mb-6">
-              {loadingProgress || "Preparando dados..."}
-            </p>
-            <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
-              <div className="bg-gradient-to-r from-emerald-500 to-teal-600 h-2 rounded-full transition-all duration-300 animate-pulse" style={{width: "60%"}}></div>
-            </div>
+        <div className="mb-6">
+          <Skeleton className="h-10 w-64 mb-2" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <ChartCardSkeleton />
+          <ChartCardSkeleton />
+          <ChartCardSkeleton />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-48" />
+            <InteractionListSkeleton items={5} />
           </div>
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-48" />
+            <ChartCardSkeleton />
+          </div>
+        </div>
+
+        <div className="text-center py-6">
+          <p className="text-slate-600 dark:text-slate-400">
+            {loadingProgress || "Carregando relatórios..."}
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-700 min-h-screen">
-      <Toaster position="top-right" />
+    <ErrorBoundary>
+      <div className="p-6 space-y-6 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-700 min-h-screen">
+        <Toaster position="top-right" />
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -703,5 +717,6 @@ export default function InteractionReportsPage() {
         </Card>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart, AlertTriangle, ClipboardList, TrendingUp, Phone, LayoutDashboard } from "lucide-react";
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
 import { logger } from "@/utils/logger";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Define os tipos possíveis para o perfil do usuário
 type Role = "admin" | "super-user" | "user" | "user-pcd";
@@ -501,10 +502,11 @@ export default function Home() {
     const roleInfo = getRoleInfo();
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-700">
-            <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] dark:bg-grid-slate-700/25"></div>
+        <ErrorBoundary>
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-700">
+                <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] dark:bg-grid-slate-700/25"></div>
 
-            <div className="relative container mx-auto px-4 py-8">
+                <div className="relative container mx-auto px-4 py-8">
                 {/* Header da página */}
                 <div className="mb-8">
                     <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-2xl shadow-blue-500/10 border border-slate-200/50 dark:border-slate-700/50 mb-8">
@@ -735,5 +737,6 @@ export default function Home() {
                 </section>
             </div>
         </div>
+        </ErrorBoundary>
     );
 }

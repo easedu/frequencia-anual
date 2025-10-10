@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { getFriendlyErrorMessage } from "@/utils/errorMessages";
 import { Card, CardContent } from "@/components/ui/card";
 import { Mail, Lock, Eye, EyeOff, GraduationCap } from "lucide-react";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "@/components/layout/AuthProvider";
 import { logger } from "@/utils/logger";
 
 export default function Login() {

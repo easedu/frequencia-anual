@@ -3,7 +3,7 @@
  * Separated from the monolithic useAttendanceData
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useBimesterPeriods } from './useBimesterPeriods';
 import { attendanceService } from '@/services/firebase/attendanceService';
 import { logger } from '@/utils/logger';
@@ -39,7 +39,7 @@ export function useSchoolDays(): UseSchoolDaysReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const calculateSchoolDays = async () => {
+  const calculateSchoolDays = useCallback(async () => {
     try {
       if (periodsLoading || Object.keys(bimesterDates).length === 0) return;
 
@@ -62,10 +62,10 @@ export function useSchoolDays(): UseSchoolDaysReturn {
           bimesterDates[1].end,
           holidays
         );
-        
+
         // Count days up to today for bimester 1
-        const endDate = new Date(bimesterDates[1].end) <= new Date(today) 
-          ? bimesterDates[1].end 
+        const endDate = new Date(bimesterDates[1].end) <= new Date(today)
+          ? bimesterDates[1].end
           : today;
         if (new Date(bimesterDates[1].start) <= new Date(today)) {
           upToToday += attendanceService.calculateSchoolDays(
@@ -82,10 +82,10 @@ export function useSchoolDays(): UseSchoolDaysReturn {
           bimesterDates[2].end,
           holidays
         );
-        
+
         // Count days up to today for bimester 2
-        const endDate = new Date(bimesterDates[2].end) <= new Date(today) 
-          ? bimesterDates[2].end 
+        const endDate = new Date(bimesterDates[2].end) <= new Date(today)
+          ? bimesterDates[2].end
           : today;
         if (new Date(bimesterDates[2].start) <= new Date(today)) {
           upToToday += attendanceService.calculateSchoolDays(
@@ -102,10 +102,10 @@ export function useSchoolDays(): UseSchoolDaysReturn {
           bimesterDates[3].end,
           holidays
         );
-        
+
         // Count days up to today for bimester 3
-        const endDate = new Date(bimesterDates[3].end) <= new Date(today) 
-          ? bimesterDates[3].end 
+        const endDate = new Date(bimesterDates[3].end) <= new Date(today)
+          ? bimesterDates[3].end
           : today;
         if (new Date(bimesterDates[3].start) <= new Date(today)) {
           upToToday += attendanceService.calculateSchoolDays(
@@ -122,10 +122,10 @@ export function useSchoolDays(): UseSchoolDaysReturn {
           bimesterDates[4].end,
           holidays
         );
-        
+
         // Count days up to today for bimester 4
-        const endDate = new Date(bimesterDates[4].end) <= new Date(today) 
-          ? bimesterDates[4].end 
+        const endDate = new Date(bimesterDates[4].end) <= new Date(today)
+          ? bimesterDates[4].end
           : today;
         if (new Date(bimesterDates[4].start) <= new Date(today)) {
           upToToday += attendanceService.calculateSchoolDays(
@@ -152,18 +152,18 @@ export function useSchoolDays(): UseSchoolDaysReturn {
     } finally {
       setLoading(false);
     }
-  };
+  }, [bimesterDates, periodsLoading]);
 
   useEffect(() => {
     calculateSchoolDays();
-  }, [bimesterDates, periodsLoading]);
+  }, [calculateSchoolDays]);
 
-  const getSchoolDaysForPeriod = (startDate: string, endDate: string): number => {
+  const getSchoolDaysForPeriod = useCallback((startDate: string, endDate: string): number => {
     const holidays: string[] = []; // In a real app, this would come from configuration
     return attendanceService.calculateSchoolDays(startDate, endDate, holidays);
-  };
+  }, []);
 
-  const getSchoolDaysUpToDate = (targetDate: string): number => {
+  const getSchoolDaysUpToDate = useCallback((targetDate: string): number => {
     let totalDays = 0;
     const target = new Date(targetDate);
 
@@ -178,7 +178,7 @@ export function useSchoolDays(): UseSchoolDaysReturn {
     });
 
     return totalDays;
-  };
+  }, [bimesterDates, getSchoolDaysForPeriod]);
 
   return {
     schoolDays,

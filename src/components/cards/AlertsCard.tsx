@@ -1,9 +1,9 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { AlertDataTable, EnhancedStudentRecord } from "@/components/CustomAlertDataTable";
+import { AlertDataTable, EnhancedStudentRecord } from "@/components/students/CustomAlertDataTable";
 import { Estudante } from "@/hooks/useStudents";
 import { AlertTriangle, Heart, Users, TrendingUp, TrendingDown, Target, Shield, Trophy, Star, Medal, Crown, Sparkles, X, Filter, Globe, GraduationCap, ChevronUp, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, memo, useMemo, useCallback } from "react";
 
 interface StudentRecord {
     estudanteId: string;
@@ -586,28 +586,31 @@ const SeriesCard = ({
     </Card>
 );
 
-export default function AlertsCard({ data, students = [] }: AlertsCardProps) {
+const AlertsCard = memo(function AlertsCard({ data, students = [] }: AlertsCardProps) {
     const [showExcellentModal, setShowExcellentModal] = useState(false);
     const [viewMode, setViewMode] = useState<ViewMode>('global');
     const [selectedSerie, setSelectedSerie] = useState<string>('');
     const [sortField, setSortField] = useState<SortField>('serie');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
-    // Dados agrupados por série
-    const seriesData = groupBySeries(data);
+    // Dados agrupados por série - Memoizado para evitar recálculo
+    const seriesData = useMemo(() => groupBySeries(data), [data]);
 
-    // Dados ordenados
-    const sortedSeriesData = sortSeriesData(seriesData, sortField, sortDirection);
+    // Dados ordenados - Memoizado
+    const sortedSeriesData = useMemo(
+        () => sortSeriesData(seriesData, sortField, sortDirection),
+        [seriesData, sortField, sortDirection]
+    );
 
-    // Função para lidar com clique no cabeçalho
-    const handleSort = (field: SortField) => {
+    // Função para lidar com clique no cabeçalho - Memoizado
+    const handleSort = useCallback((field: SortField) => {
         if (sortField === field) {
             setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
         } else {
             setSortField(field);
             setSortDirection('asc');
         }
-    };
+    }, [sortField, sortDirection]);
 
     // Componente para cabeçalho ordenável
     const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
@@ -661,18 +664,27 @@ export default function AlertsCard({ data, students = [] }: AlertsCardProps) {
         return enrichDataWithDisability(studentsInRange);
     };
 
-    const nearLimitStudents = filterAndEnrichStudents(data, { min: 20, max: 25 })
-        .sort((a, b) => b.percentualFaltas - a.percentualFaltas);
+    // Filtros de estudantes - Memoizados para performance
+    const nearLimitStudents = useMemo(
+        () => filterAndEnrichStudents(data, { min: 20, max: 25 })
+            .sort((a, b) => b.percentualFaltas - a.percentualFaltas),
+        [data, students]
+    );
 
-    const criticalStudents = filterAndEnrichStudents(data, { min: 25 })
-        .sort((a, b) => b.percentualFaltas - a.percentualFaltas);
+    const criticalStudents = useMemo(
+        () => filterAndEnrichStudents(data, { min: 25 })
+            .sort((a, b) => b.percentualFaltas - a.percentualFaltas),
+        [data, students]
+    );
 
-    const allEnrichedData = enrichDataWithDisability(data);
-    const totalPCD = allEnrichedData.filter(s => s.temDeficiencia).length;
-    const criticalPCD = criticalStudents.filter(s => s.temDeficiencia).length;
-    const nearLimitPCD = nearLimitStudents.filter(s => s.temDeficiencia).length;
-    const excellentStudentsData = data.filter(s => s.percentualFrequencia >= 95);
-    const excellentStudents = excellentStudentsData.length;
+    const allEnrichedData = useMemo(() => enrichDataWithDisability(data), [data, students]);
+
+    const totalPCD = useMemo(() => allEnrichedData.filter(s => s.temDeficiencia).length, [allEnrichedData]);
+    const criticalPCD = useMemo(() => criticalStudents.filter(s => s.temDeficiencia).length, [criticalStudents]);
+    const nearLimitPCD = useMemo(() => nearLimitStudents.filter(s => s.temDeficiencia).length, [nearLimitStudents]);
+
+    const excellentStudentsData = useMemo(() => data.filter(s => s.percentualFrequencia >= 95), [data]);
+    const excellentStudents = useMemo(() => excellentStudentsData.length, [excellentStudentsData]);
 
     const handleExcellentClick = (serie?: string) => {
         if (serie) {
@@ -1075,4 +1087,6 @@ export default function AlertsCard({ data, students = [] }: AlertsCardProps) {
             )}
         </div>
     );
-}
+});
+
+export default AlertsCard;

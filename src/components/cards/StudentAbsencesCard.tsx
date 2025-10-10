@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -142,7 +142,7 @@ const StudentStats = ({ student }: { student: StudentRecord }) => {
     );
 };
 
-export default function StudentAbsencesCard({
+const StudentAbsencesCard = memo(function StudentAbsencesCard({
     data,
     selectedTurma,
     setSelectedTurma,
@@ -362,4 +362,6 @@ export default function StudentAbsencesCard({
             ) : null}
         </div>
     );
-}
+});
+
+export default StudentAbsencesCard;

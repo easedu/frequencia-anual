@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,7 @@ interface FiltersCardProps {
     setExcludeJustified: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export default function FiltersCard({
+const FiltersCard = memo(function FiltersCard({
     selectedBimesters,
     setSelectedBimesters,
     startDate,
@@ -300,4 +301,6 @@ export default function FiltersCard({
             </CardContent>
         </Card>
     );
-}
+});
+
+export default FiltersCard;

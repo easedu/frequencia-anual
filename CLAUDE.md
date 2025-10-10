@@ -424,9 +424,46 @@ const maxAbsences = 50;
 
 ## ✅ BOAS PRÁTICAS DE DESENVOLVIMENTO
 
+### 0. **🔥 SEMPRE USE FIREBASE EMULATORS** ⚠️
+
+**REGRA CRÍTICA**: Durante desenvolvimento, **SEMPRE** use Firebase Emulators (banco local).
+
+#### Por que?
+- ✅ **Quota ILIMITADA** (0 reads consumidos)
+- ✅ **Velocidade** (50ms vs 8000ms)
+- ✅ **Dados reais** (não mock, estrutura idêntica)
+- ✅ **Segurança** (não afeta produção)
+
+#### Como Usar
+
+```bash
+# Terminal 1: SEMPRE iniciar emulators primeiro
+npm run emulators
+
+# Terminal 2: Next.js
+npm run dev
+```
+
+Confirme no console do navegador:
+```
+🔥 Conectado aos Firebase Emulators (Firestore: 8080, Auth: 9099)
+```
+
+#### Quando NÃO usar Emulators
+- ❌ **Nunca** durante desenvolvimento normal
+- ✅ **Apenas** em validação final pré-deploy
+- ✅ **Apenas** em produção (Vercel)
+
+**Detecção é automática**: `localhost` → Emulators | `vercel.app` → Produção
+
+📖 **Ver**: `docs/EMULATORS-QUICK-START.md`
+
+---
+
 ### 1. **Antes de Qualquer Implementação**
 
 #### Checklist Pré-Desenvolvimento
+- [ ] **🔥 Iniciar Firebase Emulators** (`npm run emulators`)
 - [ ] Ler a issue/tarefa completamente
 - [ ] Verificar documentações relacionadas em `docs/`
 - [ ] Entender o contexto (V2 vs V3, dual-write?)
@@ -3212,6 +3249,51 @@ node scripts/migrate-all.js // SEM TESTE?!
 // 4. Verificar resultados
 ```
 
+### 🔥 Firebase Emulators - Banco Local (RECOMENDADO)
+
+**SOLUÇÃO DEFINITIVA**: Use Firebase Emulators durante desenvolvimento para **quota ilimitada**.
+
+#### Vantagens sobre Mocks
+
+- ✅ **Dados REAIS** (não mockados, estrutura idêntica)
+- ✅ **Queries funcionam** (não simulação)
+- ✅ **Quota ILIMITADA** (0 reads consumidos)
+- ✅ **Velocidade** (50ms local vs 8000ms cloud)
+- ✅ **Interface visual** (explorar dados)
+
+#### Quick Start
+
+```bash
+# Terminal 1: Iniciar Emulators
+npm run emulators
+
+# Terminal 2: Next.js
+npm run dev
+
+# Console do navegador mostrará:
+🔥 Conectado aos Firebase Emulators (Firestore: 8080, Auth: 9099)
+```
+
+#### Sincronização de Dados
+
+**Manter Emulators atualizados com dados de produção:**
+
+1. **Firebase Console** → Firestore → Import/Export → Export
+2. Baixar ZIP e extrair em `./firebase-data/`
+3. `npm run emulators:import`
+
+**Frequência**: 1x por semana (segunda-feira)
+**Consumo de quota**: **0 reads** (Export não consome quota!)
+
+#### Documentação Completa
+
+- **Quick Start**: `docs/EMULATORS-QUICK-START.md`
+- **Guia Completo**: `docs/FIREBASE-EMULATORS-GUIA.md`
+- **Sincronização**: `docs/SYNC-PROD-TO-LOCAL.md`
+- **Detecção Automática**: `docs/DETECCAO-AUTOMATICA-AMBIENTE.md`
+
+---
+
 ### 🚫 Testes em Produção - NUNCA
 
 ```bash
@@ -3247,11 +3329,12 @@ curl "/api/students/absence-multiples?multiple=8"
 ```
 
 **Regras de Ouro para Testes**:
-1. ✅ **Sempre usar `dryRun=true`** em testes de automação
-2. ✅ **Evitar múltiplas chamadas** à mesma API em curto período
-3. ✅ **Respeitar cache** (não usar `clearCache=true` sem necessidade)
-4. ✅ **Monitorar quota** diariamente no Firebase Console
-5. ✅ **Criar ambiente de staging** para testes pesados
+1. ✅ **SEMPRE usar Firebase Emulators** durante desenvolvimento (`npm run emulators`)
+2. ✅ **Sempre usar `dryRun=true`** em testes de automação
+3. ✅ **Evitar múltiplas chamadas** à mesma API em ambiente de produção
+4. ✅ **Sincronizar dados semanalmente** (produção → local)
+5. ✅ **Monitorar quota** diariamente no Firebase Console
+6. ✅ **Perguntar antes de executar** APIs pesadas sem Emulators
 
 ### 🚫 Git - NUNCA
 

@@ -360,11 +360,61 @@ export default function DashboardDeficiencia() {
         setFiltroTurma(filtroTurma === turma ? null : turma);
     };
 
-    // Filtrar estudantes com base nos filtros selecionados
+    // 🔧 VISUALIZAÇÃO EXPANDIDA: Mostrar estudantes com dados REAIS de deficiência
+    // (mesmo que estudanteComDeficiencia esteja false)
     const filteredStudents = useMemo(() => {
         return students.filter((student) => {
             const def = student.deficiencia;
-            if (student.status !== 'ATIVO' || !def?.estudanteComDeficiencia) return false;
+
+            // Filtrar apenas ATIVOS
+            if (student.status !== 'ATIVO') return false;
+
+            // Valores padrão que NÃO indicam deficiência
+            const valoresPadraoEstagiario = ['NÃO NECESSITA', 'NENHUM', ''];
+            const valoresPadraoInstituicao = ['NENHUM', ''];
+            const valoresPadraoHorario = ['NENHUM', ''];
+
+            const temTipoDeficiencia = def?.tipoDeficiencia &&
+                Array.isArray(def.tipoDeficiencia) &&
+                def.tipoDeficiencia.length > 0 &&
+                def.tipoDeficiencia.some(t => t && t.trim() !== '');
+
+            const temAee = def?.aee &&
+                def.aee.trim() !== '';
+
+            const temInstituicao = def?.instituicao &&
+                def.instituicao.trim() !== '' &&
+                !valoresPadraoInstituicao.includes(def.instituicao);
+
+            const temHorarioAtendimento = def?.horarioAtendimento &&
+                def.horarioAtendimento.trim() !== '' &&
+                !valoresPadraoHorario.includes(def.horarioAtendimento);
+
+            const temNomeEstagiario = def?.nomeEstagiario &&
+                def.nomeEstagiario.trim() !== '' &&
+                !valoresPadraoEstagiario.includes(def.nomeEstagiario.trim());
+
+            const temNomeAve = def?.nomeAve &&
+                def.nomeAve.trim() !== '' &&
+                def.nomeAve !== 'NENHUM';
+
+            const temJustificativaAve = def?.justificativaAve &&
+                Array.isArray(def.justificativaAve) &&
+                def.justificativaAve.length > 0 &&
+                def.justificativaAve.some(j => j && j.trim() !== '' && j !== 'NENHUM');
+
+            const temDadosReaisDeficiencia =
+                temTipoDeficiencia ||
+                temAee ||
+                temInstituicao ||
+                temHorarioAtendimento ||
+                temNomeEstagiario ||
+                temNomeAve ||
+                temJustificativaAve;
+
+            const temDeficiencia = def?.estudanteComDeficiencia || temDadosReaisDeficiencia;
+
+            if (!temDeficiencia) return false;
             return (
                 (filtroTipoDeficiencia === "TODOS" ||
                     def.tipoDeficiencia?.includes(filtroTipoDeficiencia)) &&
@@ -514,20 +564,18 @@ export default function DashboardDeficiencia() {
     const estagiarioData = processChartData(filteredStudents, "justificativaEstagiario");
     const aveData = processChartData(filteredStudents, "justificativaAve");
 
-    // Cálculo dos totais para os cartões de big numbers
-    const totalComDeficiencia = students.filter(s => s.status === 'ATIVO' && s.deficiencia?.estudanteComDeficiencia).length;
+    // Cálculo dos totais
+    const totalComDeficienciaOficial = students.filter(s => s.status === 'ATIVO' && s.deficiencia?.estudanteComDeficiencia).length;
+
+    const totalComDeficiencia = filteredStudents.length;
+    const totalNaoMarcadosOficialmente = totalComDeficiencia - totalComDeficienciaOficial;
+
     const totalEstudantes = students.filter(s => s.status === 'ATIVO').length;
-    const totalComBarreiras = students.filter(
-        (s) => s.status === 'ATIVO' && s.deficiencia?.estudanteComDeficiencia && s.deficiencia?.possuiBarreiras
-    ).length;
+    const totalComBarreiras = filteredStudents.filter(s => s.deficiencia?.possuiBarreiras).length;
     const totalSemBarreiras = totalComDeficiencia - totalComBarreiras;
-    const totalComEstagiario = students.filter(
-        (s) => s.status === 'ATIVO' && s.deficiencia?.estudanteComDeficiencia && s.deficiencia?.possuiEstagiario
-    ).length;
+    const totalComEstagiario = filteredStudents.filter(s => s.deficiencia?.possuiEstagiario).length;
     const totalSemEstagiario = totalComDeficiencia - totalComEstagiario;
-    const totalComAve = students.filter(
-        (s) => s.status === 'ATIVO' && s.deficiencia?.estudanteComDeficiencia && s.deficiencia?.ave
-    ).length;
+    const totalComAve = filteredStudents.filter(s => s.deficiencia?.ave).length;
     const totalSemAve = totalComDeficiencia - totalComAve;
 
     if (loading) return <div>Carregando...</div>;
@@ -539,6 +587,34 @@ export default function DashboardDeficiencia() {
             <h1 className="text-2xl font-bold mb-4">
                 Dashboard de Estudantes com Deficiência
             </h1>
+
+            {/* ⚠️ ALERTA TEMPORÁRIO: Mostrando estudantes não marcados */}
+            {totalNaoMarcadosOficialmente > 0 && (
+                <Card className="mb-6 border-yellow-400 bg-yellow-50">
+                    <CardContent className="pt-6">
+                        <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center text-white font-bold">
+                                ⚠️
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="font-bold text-yellow-900 mb-2">
+                                    🔧 MODO DE VISUALIZAÇÃO TEMPORÁRIO ATIVADO
+                                </h3>
+                                <p className="text-sm text-yellow-800 mb-2">
+                                    Esta página está exibindo <strong>{totalComDeficiencia} estudantes</strong> que têm dados de deficiência preenchidos:
+                                </p>
+                                <ul className="text-sm text-yellow-800 space-y-1 ml-4">
+                                    <li>✅ <strong>{totalComDeficienciaOficial}</strong> estudantes marcados oficialmente como PCD (checkbox marcado)</li>
+                                    <li>⚠️ <strong>{totalNaoMarcadosOficialmente}</strong> estudantes com dados de deficiência preenchidos MAS não marcados oficialmente</li>
+                                </ul>
+                                <p className="text-sm text-yellow-800 mt-3 font-medium">
+                                    📋 Revise se a quantidade total ({totalComDeficiencia}) faz sentido. Se sim, podemos criar um script para marcar todos automaticamente.
+                                </p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Card de Filtros */}
             <Card className="mb-6">
@@ -1119,6 +1195,7 @@ export default function DashboardDeficiencia() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
+                                        <TableHead>Status</TableHead>
                                         <TableHead>Turma</TableHead>
                                         <TableHead>Nome</TableHead>
                                         <TableHead>Tipo de Deficiência</TableHead>
@@ -1136,13 +1213,26 @@ export default function DashboardDeficiencia() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {filteredEstudantesDetalhes.map((student) => (
-                                        <TableRow
-                                            key={student.estudanteId}
-                                            className={selectedStudent?.estudanteId === student.estudanteId ? "bg-slate-100" : ""}
-                                        >
-                                            <TableCell>{student.turma}</TableCell>
-                                            <TableCell>{student.nome}</TableCell>
+                                    {filteredEstudantesDetalhes.map((student) => {
+                                        const isOficialmenteMarcado = student.deficiencia?.estudanteComDeficiencia;
+                                        return (
+                                            <TableRow
+                                                key={student.estudanteId}
+                                                className={selectedStudent?.estudanteId === student.estudanteId ? "bg-slate-100" : ""}
+                                            >
+                                                <TableCell>
+                                                    {isOficialmenteMarcado ? (
+                                                        <span className="inline-block px-2 py-1 text-xs font-semibold rounded bg-green-100 text-green-800">
+                                                            ✓ Oficial
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-block px-2 py-1 text-xs font-semibold rounded bg-yellow-100 text-yellow-800">
+                                                            ⚠️ Não marcado
+                                                        </span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>{student.turma}</TableCell>
+                                                <TableCell>{student.nome}</TableCell>
                                             <TableCell>
                                                 {Array.isArray(student.deficiencia?.tipoDeficiencia) ? student.deficiencia.tipoDeficiencia.join(", ") : (student.deficiencia?.tipoDeficiencia || "-")}
                                             </TableCell>
@@ -1180,7 +1270,8 @@ export default function DashboardDeficiencia() {
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                         </div>

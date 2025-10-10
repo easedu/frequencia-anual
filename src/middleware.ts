@@ -9,13 +9,14 @@ const PROTECTED_ROUTES = [
   '/home',
   '/marcar-faltas',
   '/controlar-faltas',
-  '/cadastrar-estudante', 
+  '/cadastrar-estudante',
   '/cadastrar-ano-letivo',
   '/relatorio-bolsa-familia',
   '/perfil-estudante',
   '/perfil-deficiente',
   '/prova-sao-paulo',
-  '/gerenciar-usuarios'
+  '/gerenciar-usuarios',
+  '/admin'
 ];
 
 export function middleware(request: NextRequest) {

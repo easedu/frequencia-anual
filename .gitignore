@@ -58,3 +58,9 @@ analytics.db-journal
 
 # Scripts arquivados (temporários/diagnóstico)
 scripts/archived/
+
+# Firebase Emulators
+firebase-data/
+.firebase/
+ui-debug.log
+firestore-debug.log

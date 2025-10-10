@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, memo, lazy, Suspense } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import EvolutionChart from "@/components/charts/EvolutionChart";
-import HeatmapFaltas from "@/components/charts/HeatmapFaltas";
+
+// Lazy load dos componentes de gráfico (Recharts)
+const EvolutionChart = lazy(() => import("@/components/charts/EvolutionChart"));
+const HeatmapFaltas = lazy(() => import("@/components/charts/HeatmapFaltas"));
 import { Clock, Calendar, TrendingUp, Activity } from "lucide-react";
 
 interface StudentRecord {
@@ -29,7 +31,7 @@ interface TemporalAnalysisCardProps {
     data: StudentRecord[];
 }
 
-export default function TemporalAnalysisCard({ data }: TemporalAnalysisCardProps) {
+const TemporalAnalysisCard = memo(function TemporalAnalysisCard({ data }: TemporalAnalysisCardProps) {
     const evolutionData = useMemo(
         () => [
             { bimestre: "1º Bim", absences: data.reduce((acc, s) => acc + s.faltasB1, 0) },
@@ -172,7 +174,13 @@ export default function TemporalAnalysisCard({ data }: TemporalAnalysisCardProps
                             </div>
                         </div>
 
-                        <EvolutionChart evolutionData={evolutionData} />
+                        <Suspense fallback={
+                            <div className="flex items-center justify-center h-64 text-gray-500">
+                                <div className="animate-pulse">Carregando gráfico...</div>
+                            </div>
+                        }>
+                            <EvolutionChart evolutionData={evolutionData} />
+                        </Suspense>
                     </div>
 
                     {/* Heatmap de Faltas */}
@@ -203,10 +211,18 @@ export default function TemporalAnalysisCard({ data }: TemporalAnalysisCardProps
                             </div>
                         </div>
 
-                        <HeatmapFaltas heatmapData={heatmapData} />
+                        <Suspense fallback={
+                            <div className="flex items-center justify-center h-64 text-gray-500">
+                                <div className="animate-pulse">Carregando heatmap...</div>
+                            </div>
+                        }>
+                            <HeatmapFaltas heatmapData={heatmapData} />
+                        </Suspense>
                     </div>
                 </div>
             </CardContent>
         </Card>
     );
-}
+});
+
+export default TemporalAnalysisCard;

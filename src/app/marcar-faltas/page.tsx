@@ -36,7 +36,7 @@ import {
 import { toast, Toaster } from "sonner";
 import { useStudents, Estudante } from "@/hooks/useStudents";
 import { scheduleSync } from "@/lib/serviceWorker";
-import { useServiceWorkerContext } from "@/components/ServiceWorkerProvider";
+import { useServiceWorkerContext } from "@/components/shared/ServiceWorkerProvider";
 import {
     Calendar,
     Users,

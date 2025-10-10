@@ -23,7 +23,12 @@
     "icons:shortcuts": "node scripts/generate-icons.js --shortcuts",
     "clean": "rm -rf .next out dist",
     "quality": "npm run lint && npm run type-check && npm run test && npm run build",
-    "ci:full": "npm run quality && npm run analyze && npm run bundle:report"
+    "ci:full": "npm run quality && npm run analyze && npm run bundle:report",
+    "emulators": "firebase emulators:start --import=./firebase-data --export-on-exit",
+    "emulators:start": "firebase emulators:start",
+    "emulators:export": "firebase emulators:export ./firebase-data",
+    "emulators:import": "firebase emulators:start --import=./firebase-data",
+    "sync:prod-to-local": "node scripts/sync-prod-to-local.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",

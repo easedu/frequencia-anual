@@ -37,7 +37,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/firebase.config';
 // Removido xlsx por vulnerabilidades de segurança - usando CSV nativo + papaparse
 import Papa from 'papaparse';
-import WhatsAppModal from '@/components/WhatsAppModal';
+import WhatsAppModal from '@/components/whatsapp/WhatsAppModal';
 import { logger } from '@/utils/logger';
 import { getStudentContacts } from '@/services/studentDataService';
 

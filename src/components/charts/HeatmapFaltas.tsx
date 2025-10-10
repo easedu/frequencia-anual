@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 
 interface HeatmapData {
     turma: string;
@@ -12,7 +12,7 @@ interface HeatmapFaltasProps {
     heatmapData: HeatmapData[];
 }
 
-export default function HeatmapFaltas({ heatmapData }: HeatmapFaltasProps) {
+const HeatmapFaltas = memo(function HeatmapFaltas({ heatmapData }: HeatmapFaltasProps) {
     const maxHeatmapValue = useMemo(
         () => Math.max(...heatmapData.flatMap(d => [d.b1, d.b2, d.b3, d.b4]), 1),
         [heatmapData]
@@ -190,4 +190,6 @@ export default function HeatmapFaltas({ heatmapData }: HeatmapFaltasProps) {
             </div>
         </div>
     );
-}
+});
+
+export default HeatmapFaltas;
