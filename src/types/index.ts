@@ -267,3 +267,136 @@ export interface PerformanceMetrics {
   queryCount: number;
   cacheHitRate: number;
 }
+
+// ============================================================================
+// INTERFACES DE AUTOMAÇÃO DE ALERTAS DE FALTAS
+// ============================================================================
+
+/**
+ * Histórico de Mensagens WhatsApp Enviadas
+ * Usado para prevenção de duplicatas
+ */
+export interface WhatsAppMessageHistory {
+  // Chave de unicidade (5 campos)
+  estudanteId: string;
+  contatoTelefone: string;
+  anoReferencia: number;
+  mesReferencia: number;
+  quantidadeFaltas: number;
+
+  // Metadados
+  estudanteNome: string;
+  contatoNome: string;
+  taskId: string;
+  dataPrimeiroEnvio: string; // ISO 8601
+
+  // Status
+  status: 'SUCCESS' | 'FAILED' | 'NO_CONTACT';
+
+  // Dados WhatsApp (se enviado)
+  messageId?: string;
+  sentAt?: number;
+  retryCount?: number;
+
+  // Controle
+  isDryRun?: boolean;
+}
+
+/**
+ * Resultado de Envio de WhatsApp com Retry
+ */
+export interface WhatsAppSendResult {
+  success: boolean;
+  messageId?: string;
+  phone: string;
+  status: 'sent' | 'not_sent';
+  sentAt?: number;
+  retryCount: number;
+  error?: string;
+}
+
+/**
+ * Resumo de Execução da Automação
+ */
+export interface AutomationExecutionSummary {
+  executionId: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  dryRun: boolean;
+
+  // Configurações
+  absenceMultiple: number;
+  referenceMonth: number;
+  referenceYear: number;
+
+  // Resultados
+  studentsFound: number;
+  studentsWithContacts: number;
+  studentsWithoutContacts: number;
+  messagesAttempted: number;
+  messagesSucceeded: number;
+  messagesFailed: number;
+  messagesSkippedAlreadySent: number;
+  tasksCreated: number;
+  tasksSkippedDuplicate: number;
+
+  // Erros
+  errors: Array<{
+    estudanteId: string;
+    estudanteNome: string;
+    error: string;
+  }>;
+}
+
+/**
+ * Estado de Execução da Automação (Firestore)
+ * Usado para checkpoint e retomada
+ */
+export interface AutomationExecution {
+  executionId: string;
+  status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'RESUMING';
+  startedAt: number; // Timestamp
+  finishedAt?: number;
+  lastCheckpointAt?: number;
+
+  // Parâmetros
+  dryRun: boolean;
+  absenceMultiple: number;
+  notificationPhone: string;
+  referenceMonth: number;
+  referenceYear: number;
+
+  // Progresso
+  totalStudents: number;
+  processedStudents: number;
+  currentStudentIndex: number;
+
+  // Checkpoint: lista de estudantes já processados
+  processedStudentIds: string[];
+
+  // Resultados parciais/finais
+  messagesSucceeded: number;
+  messagesFailed: number;
+  tasksCreated: number;
+  errors: Array<{
+    estudanteId: string;
+    estudanteNome: string;
+    error: string;
+  }>;
+
+  // Sumário final (quando COMPLETED)
+  summary?: AutomationExecutionSummary;
+  error?: string;
+}
+
+/**
+ * Log de Execução da Automação (Firestore)
+ */
+export interface AutomationExecutionLog {
+  executionId: string;
+  timestamp: string;
+  status: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED';
+  summary: AutomationExecutionSummary;
+  notificationSent: boolean;
+}

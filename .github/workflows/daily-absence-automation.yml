@@ -1,0 +1,109 @@
+name: Daily Absence Alerts Automation
+
+on:
+  # Cron: Segunda a Sexta, 13h (1 PM) São Paulo (16h UTC)
+  schedule:
+    - cron: '0 16 * * 1-5'
+
+  # Permitir execução manual
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: 'Dry-run mode (teste sem enviar mensagens)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      multiple:
+        description: 'Múltiplo de faltas (3, 6, 9...)'
+        required: false
+        default: '3'
+
+jobs:
+  process-absences:
+    name: Process Student Absences
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Configure timezone (America/Sao_Paulo)
+        run: |
+          sudo timedatectl set-timezone America/Sao_Paulo
+          date
+
+      - name: Call Automation API
+        id: automation
+        env:
+          API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          API_USER: ${{ secrets.API_HABIB_KYRILLOS_USERNAME }}
+          API_PASS: ${{ secrets.API_HABIB_KYRILLOS_PASSWORD }}
+          NOTIFICATION_PHONE: ${{ secrets.AUTOMATION_NOTIFICATION_PHONE }}
+          DRY_RUN: ${{ github.event.inputs.dryRun || 'false' }}
+          MULTIPLE: ${{ github.event.inputs.multiple || '3' }}
+        run: |
+          echo "🚀 Chamando API de automação..."
+          echo "Dry-run: $DRY_RUN"
+          echo "Multiple: $MULTIPLE"
+          echo "Notification Phone: $NOTIFICATION_PHONE"
+
+          # Criar Basic Auth
+          AUTH_HEADER=$(echo -n "$API_USER:$API_PASS" | base64)
+
+          # Chamar API
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X GET \
+            "$API_URL/api/automation/process-absences?dryRun=$DRY_RUN&multiple=$MULTIPLE&notificationPhone=$NOTIFICATION_PHONE" \
+            -H "Authorization: Basic $AUTH_HEADER")
+
+          # Separar body e status code
+          HTTP_BODY=$(echo "$RESPONSE" | head -n -1)
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n 1)
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response Body:"
+          echo "$HTTP_BODY" | jq '.'
+
+          # Salvar para próximo step
+          echo "http_status=$HTTP_STATUS" >> $GITHUB_OUTPUT
+          echo "response_body=$HTTP_BODY" >> $GITHUB_OUTPUT
+
+          # Verificar sucesso
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "❌ Erro na API (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
+          SUCCESS=$(echo "$HTTP_BODY" | jq -r '.success')
+          if [ "$SUCCESS" != "true" ]; then
+            echo "❌ Execução falhou"
+            exit 1
+          fi
+
+          echo "✅ Execução concluída com sucesso"
+
+      - name: Display Summary
+        if: always()
+        run: |
+          echo "### 📊 Resumo da Execução" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status HTTP:** ${{ steps.automation.outputs.http_status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Response:**" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          echo '${{ steps.automation.outputs.response_body }}' | jq '.' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "❌ Workflow falhou! Verifique os logs acima."
+          echo "Notificação de erro foi enviada para o WhatsApp do admin."

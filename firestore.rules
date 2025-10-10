@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==========================================
+    // REGRA GERAL: Usuários Autenticados
+    // ==========================================
+    // Permite leitura/escrita para usuários autenticados
+    // (mantém compatibilidade com código atual)
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ==========================================
+    // AUTOMAÇÃO: Execuções
+    // ==========================================
+    // Coleção para controle de execuções da automação
+    // Fire-and-Forget com checkpoints
+    match /automationExecutions/{executionId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ==========================================
+    // AUTOMAÇÃO: Histórico de Mensagens WhatsApp
+    // ==========================================
+    // Prevenção de duplicatas de mensagens
+    match /whatsappMessageHistory/{messageId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ==========================================
+    // ESTUDANTES (V2 - Legacy)
+    // ==========================================
+    match /estudantes/{estudanteId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ==========================================
+    // ESTUDANTES (V3 - UUID)
+    // ==========================================
+    match /estudantesV3/{estudanteId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ==========================================
+    // ANO LETIVO
+    // ==========================================
+    match /{year}/ano_letivo {
+      allow read, write: if request.auth != null;
+    }
+
+    // ==========================================
+    // FALTAS (ABSENCES)
+    // ==========================================
+    match /absences/{absenceId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ==========================================
+    // TAREFAS (TASKS)
+    // ==========================================
+    match /tasks/{taskId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ==========================================
+    // INTERAÇÕES FAMILIARES
+    // ==========================================
+    match /interacoes/{interacaoId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

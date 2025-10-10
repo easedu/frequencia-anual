@@ -3212,6 +3212,47 @@ node scripts/migrate-all.js // SEM TESTE?!
 // 4. Verificar resultados
 ```
 
+### 🚫 Testes em Produção - NUNCA
+
+```bash
+# ❌ NUNCA testar APIs pesadas múltiplas vezes em produção
+curl /api/students/absence-multiples?multiple=8  # 1ª vez
+curl /api/students/absence-multiples?multiple=8  # 2ª vez
+curl /api/students/absence-multiples?multiple=8  # 3ª vez
+# ⚠️ RISCO: Exceder quota do Firestore (50k reads/dia)
+
+# ✅ SEMPRE usar dry-run em testes
+curl "/api/automation/process-absences?dryRun=true&multiple=8"
+
+# ✅ OU testar em ambiente local/staging
+# Criar projeto Firebase separado para testes
+
+# ❌ NUNCA chamar APIs de automação sem dryRun em testes
+curl /api/automation/process-absences?multiple=8
+# ✅ Dry-run primeiro, produção depois
+curl "/api/automation/process-absences?dryRun=true&multiple=8"
+
+# ❌ NUNCA testar com clearCache=true repetidamente
+curl "/api/students/absence-multiples?clearCache=true"  # Ignora cache!
+# ✅ Usar cache (comportamento padrão)
+curl "/api/students/absence-multiples?multiple=8"
+
+# ⚠️ ATENÇÃO: Quota do Firebase (Plano Gratuito)
+# - Reads: 50,000/dia
+# - Writes: 20,000/dia
+# - Testes massivos podem exceder e bloquear a aplicação
+# - Quota reseta às 04:00 AM (horário de Brasília)
+#
+# Ver análise completa: docs/ANALISE-QUOTA-FIRESTORE.md
+```
+
+**Regras de Ouro para Testes**:
+1. ✅ **Sempre usar `dryRun=true`** em testes de automação
+2. ✅ **Evitar múltiplas chamadas** à mesma API em curto período
+3. ✅ **Respeitar cache** (não usar `clearCache=true` sem necessidade)
+4. ✅ **Monitorar quota** diariamente no Firebase Console
+5. ✅ **Criar ambiente de staging** para testes pesados
+
 ### 🚫 Git - NUNCA
 
 ```bash
@@ -3467,6 +3508,213 @@ toast.warning("Alguns dados podem estar incompletos.");
    - Este documento deve evoluir com o projeto
    - Adicionar novos padrões descobertos
    - Documentar decisões arquiteturais
+
+---
+
+## 🤖 AUTOMAÇÃO DE ALERTAS DE FALTAS
+
+### Visão Geral
+
+Sistema automatizado de envio de alertas por WhatsApp para responsáveis de estudantes com múltiplos de faltas no mês atual.
+
+**Trigger**: GitHub Actions (cron diário - 9h AM São Paulo)
+**Execução**: Segunda a Sexta (dias úteis)
+**API**: `/api/automation/process-absences`
+
+### Componentes
+
+```
+GitHub Actions (Cron)
+    ↓
+API Orquestradora
+    ↓
+1. Buscar estudantes (absence-multiples)
+2. Verificar histórico (whatsappMessageHistory)
+3. Enviar WhatsApp (retry 3x, delay 5s)
+4. Criar Tasks (fechada/aberta)
+5. Registrar histórico
+6. Enviar relatório (admin)
+```
+
+### Arquivos Principais
+
+```
+src/
+├── app/api/automation/
+│   └── process-absences/route.ts    # API Orquestradora
+├── services/
+│   ├── messageHistoryService.ts     # Histórico de envios
+│   └── whatsappRetryService.ts      # Retry com delay
+├── utils/
+│   └── messageTemplates.ts          # Templates WhatsApp
+└── types/index.ts                   # Interfaces
+
+.github/workflows/
+└── daily-absence-automation.yml     # GitHub Actions
+
+docs/
+├── AUTOMACAO-FALTAS-PLANO-DETALHADO.md
+├── AUTOMACAO-ENV-VARS.md
+├── AUTOMACAO-TESTES.md
+├── AUTOMACAO-FALTAS-README.md
+└── FIRESTORE-INDEX-WHATSAPP-HISTORY.md
+```
+
+### Configuração
+
+#### Variáveis de Ambiente (`.env.local`)
+
+```bash
+NEXT_PUBLIC_WHATSAPP_API_URL=https://...
+NEXT_PUBLIC_API_URL=http://localhost:3000
+AUTOMATION_NOTIFICATION_PHONE=5511988384664
+API_HABIB_KYRILLOS_USERNAME=...
+API_HABIB_KYRILLOS_PASSWORD=...
+```
+
+#### GitHub Secrets
+
+Configurar em: Settings → Secrets and variables → Actions
+
+- `NEXT_PUBLIC_API_URL`
+- `API_HABIB_KYRILLOS_USERNAME`
+- `API_HABIB_KYRILLOS_PASSWORD`
+- `AUTOMATION_NOTIFICATION_PHONE`
+
+#### Firestore - Índice Composto (OBRIGATÓRIO)
+
+Coleção: `whatsappMessageHistory`
+
+Campos (em ordem):
+1. estudanteId (Ascending)
+2. contatoTelefone (Ascending)
+3. anoReferencia (Ascending)
+4. mesReferencia (Ascending)
+5. quantidadeFaltas (Ascending)
+
+**Ver**: `docs/FIRESTORE-INDEX-WHATSAPP-HISTORY.md`
+
+### Uso
+
+#### Execução Manual (Dry-Run)
+
+```bash
+curl -X GET \
+  "http://localhost:3000/api/automation/process-absences?dryRun=true&multiple=3" \
+  -H "Authorization: Basic $(echo -n 'user:pass' | base64)"
+```
+
+#### Executar via GitHub Actions
+
+1. Actions → "Daily Absence Alerts Automation"
+2. Run workflow
+3. Configurar:
+   - Dry-run: `true` (teste) ou `false` (produção)
+   - Multiple: `3` (ou 6, 9, 12...)
+
+### Regras de Negócio
+
+#### Unicidade
+Mensagem enviada **apenas 1x** por combinação:
+- Ano + Mês + Faltas + Estudante + Contato
+
+**Exemplo**:
+- Estudante com 3 faltas, 2 contatos → 2 mensagens
+- Mesmo estudante, mesmo mês, 3 faltas → NÃO envia (duplicata)
+- Mesmo estudante, mesmo mês, 6 faltas → ENVIA (nova quantidade)
+
+#### Retry
+- 3 tentativas automáticas
+- Delay de 5 segundos entre tentativas
+- Após 3 falhas → Task ABERTA
+
+#### Tasks
+- **FECHADA**: Mensagem enviada com sucesso
+  - `created_by: "AUTOMAÇÃO"`
+  - `action_taken: "Contato digital"`
+  - `is_resolved: true`
+  - `whatsapp_phone: "11xxxxx"`
+
+- **ABERTA**: Falha no envio OU sem contato
+  - `created_by: "AUTOMAÇÃO"`
+  - `recommended_action: "Contato telefônico"`
+  - `is_resolved: false`
+
+#### Relatório
+Enviado **sempre** para admin (5511988384664):
+- Resumo da execução
+- Quantidade de mensagens enviadas
+- Falhas
+- Tempo de execução
+
+### Firestore - Coleções
+
+#### `whatsappMessageHistory`
+Histórico de mensagens enviadas (prevenção de duplicatas)
+
+```typescript
+{
+  estudanteId: string;
+  contatoTelefone: string;
+  anoReferencia: number;
+  mesReferencia: number;
+  quantidadeFaltas: number;
+  estudanteNome: string;
+  contatoNome: string;
+  taskId: string;
+  dataPrimeiroEnvio: string;
+  status: 'SUCCESS' | 'FAILED' | 'NO_CONTACT';
+  messageId?: string;
+  sentAt?: number;
+  retryCount?: number;
+  isDryRun?: boolean;
+}
+```
+
+### Troubleshooting
+
+#### Mensagens duplicadas
+❌ Índice composto faltando ou incorreto
+✅ Verificar: Firebase Console → Firestore → Indexes
+✅ Campos exatos (ordem importa!)
+
+#### Workflow não executa
+❌ Cron incorreto (UTC vs BRT)
+✅ 9h AM BRT = 12h UTC
+✅ Cron: `0 12 * * 1-5`
+✅ Verificar secrets no GitHub
+
+#### API retorna 401
+❌ Basic Auth incorreto
+✅ Verificar env vars
+✅ Testar: `echo -n 'user:pass' | base64`
+
+#### Mensagem não enviada
+❌ Dry-run ativo
+✅ Usar `dryRun=false`
+❌ Contato sem WhatsApp verificado
+✅ Verificar `verifiedWhatsAppContacts`
+
+### Monitoramento
+
+#### Ver Tasks Criadas
+- Acessar: `/painel-tarefas`
+- Filtrar por `created_by: "AUTOMAÇÃO"`
+
+#### Ver Histórico de Envios
+- Firebase Console → Firestore → `whatsappMessageHistory`
+
+#### Ver Logs
+- **GitHub Actions**: https://github.com/repo/actions
+- **Vercel**: https://vercel.com/dashboard/logs
+
+### Documentação Completa
+
+- 📖 **Plano Detalhado**: `docs/AUTOMACAO-FALTAS-PLANO-DETALHADO.md`
+- 🔧 **Variáveis de Ambiente**: `docs/AUTOMACAO-ENV-VARS.md`
+- 🧪 **Guia de Testes**: `docs/AUTOMACAO-TESTES.md`
+- 📚 **README Rápido**: `docs/AUTOMACAO-FALTAS-README.md`
+- 🔥 **Índice Firestore**: `docs/FIRESTORE-INDEX-WHATSAPP-HISTORY.md`
 
 ---
 

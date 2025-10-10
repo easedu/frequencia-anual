@@ -55,3 +55,6 @@ analytics.db
 analytics.db-journal
 *.db
 *.db-journal
+
+# Scripts arquivados (temporários/diagnóstico)
+scripts/archived/

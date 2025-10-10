@@ -1,0 +1,24 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "whatsappMessageHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "estudanteId", "order": "ASCENDING" },
+        { "fieldPath": "contatoTelefone", "order": "ASCENDING" },
+        { "fieldPath": "anoReferencia", "order": "ASCENDING" },
+        { "fieldPath": "mesReferencia", "order": "ASCENDING" },
+        { "fieldPath": "quantidadeFaltas", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "automationExecutions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "lastCheckpointAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
