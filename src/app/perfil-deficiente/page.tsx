@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useStudents } from "@/hooks/useStudents";
+import { useDebounce } from "@/hooks/useDebounce";
 import { logger } from "@/utils/logger";
 import {
     Card,
@@ -116,6 +117,13 @@ export default function DashboardDeficiencia() {
     const [filtroTabelaEstagiario, setFiltroTabelaEstagiario] = useState<string>("");
     const [filtroTabelaAve, setFiltroTabelaAve] = useState<string>("");
     const [filtroTabelaEstudantes, setFiltroTabelaEstudantes] = useState<string>("");
+
+    // Debounced values para otimizar performance (aguarda 500ms após última digitação)
+    const debouncedFiltroEstagiario = useDebounce(filtroTabelaEstagiario, 500);
+    const debouncedFiltroAve = useDebounce(filtroTabelaAve, 500);
+    const debouncedFiltroEstudantes = useDebounce(filtroTabelaEstudantes, 500);
+    const debouncedFiltroOcorrencias = useDebounce(filtroTabelaOcorrencias, 500);
+
     const [sortEstagiario, setSortEstagiario] = useState<"asc" | "desc" | null>(null);
     const [sortAve, setSortAve] = useState<"asc" | "desc" | null>(null);
 
@@ -444,8 +452,8 @@ export default function DashboardDeficiencia() {
     // Filtrar estagiários para a tabela
     const filteredEstagiarios = useMemo(() => {
         let result = filteredStudents.filter((s) => s.deficiencia?.possuiEstagiario);
-        if (filtroTabelaEstagiario) {
-            const lowerFilter = filtroTabelaEstagiario.toLowerCase();
+        if (debouncedFiltroEstagiario) {
+            const lowerFilter = debouncedFiltroEstagiario.toLowerCase();
             result = result.filter((student) => {
                 const def = student.deficiencia;
                 return (
@@ -464,13 +472,13 @@ export default function DashboardDeficiencia() {
                 ? nomeA.localeCompare(nomeB)
                 : nomeB.localeCompare(nomeA);
         });
-    }, [filteredStudents, filtroTabelaEstagiario, sortEstagiario]);
+    }, [filteredStudents, debouncedFiltroEstagiario, sortEstagiario]);
 
     // Filtrar AVEs para a tabela
     const filteredAves = useMemo(() => {
         let result = filteredStudents.filter((s) => s.deficiencia?.ave);
-        if (filtroTabelaAve) {
-            const lowerFilter = filtroTabelaAve.toLowerCase();
+        if (debouncedFiltroAve) {
+            const lowerFilter = debouncedFiltroAve.toLowerCase();
             result = result.filter((student) => {
                 const def = student.deficiencia;
                 return (
@@ -489,13 +497,13 @@ export default function DashboardDeficiencia() {
                 ? nomeA.localeCompare(nomeB)
                 : nomeB.localeCompare(nomeA);
         });
-    }, [filteredStudents, filtroTabelaAve, sortAve]);
+    }, [filteredStudents, debouncedFiltroAve, sortAve]);
 
     // Filtrar estudantes para a tabela de detalhes
     const filteredEstudantesDetalhes = useMemo(() => {
         let result = filteredStudents;
-        if (filtroTabelaEstudantes) {
-            const lowerFilter = filtroTabelaEstudantes.toLowerCase();
+        if (debouncedFiltroEstudantes) {
+            const lowerFilter = debouncedFiltroEstudantes.toLowerCase();
             result = result.filter((student) => {
                 const def = student.deficiencia;
                 return (
@@ -516,19 +524,19 @@ export default function DashboardDeficiencia() {
             });
         }
         return result;
-    }, [filteredStudents, filtroTabelaEstudantes]);
+    }, [filteredStudents, debouncedFiltroEstudantes]);
 
     // Filtrar ocorrências para a tabela
     const filteredOccurrences = useMemo(() => {
-        if (!filtroTabelaOcorrencias) return occurrences;
+        if (!debouncedFiltroOcorrencias) return occurrences;
 
-        const lowerFilter = filtroTabelaOcorrencias.toLowerCase();
+        const lowerFilter = debouncedFiltroOcorrencias.toLowerCase();
         return occurrences.filter(occurrence =>
             occurrence.date.toLowerCase().includes(lowerFilter) ||
             occurrence.description.toLowerCase().includes(lowerFilter) ||
             occurrence.createdBy.toLowerCase().includes(lowerFilter)
         );
-    }, [occurrences, filtroTabelaOcorrencias]);
+    }, [occurrences, debouncedFiltroOcorrencias]);
 
     // Processar dados por turma
     const turmasData = useMemo(() => {
