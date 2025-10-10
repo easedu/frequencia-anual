@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHeader, TableRow, TableHead } from "@/components/ui/table";
@@ -72,6 +73,7 @@ export default function RelatorioFaltasPage() {
     const [loadingStudents, setLoadingStudents] = useState<boolean>(true);
     const [loadingAbsences, setLoadingAbsences] = useState<boolean>(true);
     const [searchFilter, setSearchFilter] = useState<string>("");
+    const debouncedSearchFilter = useDebounce(searchFilter, 500);
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [recordsPerPage, setRecordsPerPage] = useState<number>(10);
     const [selectedMonths, setSelectedMonths] = useState<Set<string>>(
@@ -226,16 +228,16 @@ export default function RelatorioFaltasPage() {
     const filteredStudents = useMemo(() => {
         return students
             .filter(student => {
-                const matchesSearch = searchFilter === "" ||
-                    student.turma.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                    student.nome.toLowerCase().includes(searchFilter.toLowerCase());
+                const matchesSearch = debouncedSearchFilter === "" ||
+                    student.turma.toLowerCase().includes(debouncedSearchFilter.toLowerCase()) ||
+                    student.nome.toLowerCase().includes(debouncedSearchFilter.toLowerCase());
 
                 const matchesFrequencyFilter = !showOnlyLowFrequency || hasLowFrequency(student.estudanteId);
 
                 return matchesSearch && matchesFrequencyFilter;
             })
             .sort((a, b) => a.nome.localeCompare(b.nome));
-    }, [students, searchFilter, showOnlyLowFrequency, hasLowFrequency]);
+    }, [students, debouncedSearchFilter, showOnlyLowFrequency, hasLowFrequency]);
 
     const totalRecords = filteredStudents.length;
     const totalPages = Math.ceil(totalRecords / recordsPerPage);

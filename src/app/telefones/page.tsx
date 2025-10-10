@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +61,7 @@ export default function TelefonesPage() {
 
   const [phoneContacts, setPhoneContacts] = useState<PhoneContact[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [verifyingPhone, setVerifyingPhone] = useState<string | null>(null);
   const [loadingWhatsAppData, setLoadingWhatsAppData] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -152,8 +154,8 @@ export default function TelefonesPage() {
     let filtered = [...phoneContacts];
 
     // Filtro de busca por texto
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
+    if (debouncedSearchTerm.trim()) {
+      const term = debouncedSearchTerm.toLowerCase();
       filtered = filtered.filter(contact =>
         contact.telefone.includes(term) ||
         contact.nome.toLowerCase().includes(term) ||
@@ -208,7 +210,7 @@ export default function TelefonesPage() {
       // Se turmas iguais, ordenar por nome do estudante
       return a.estudanteNome.localeCompare(b.estudanteNome);
     });
-  }, [phoneContacts, searchTerm, selectedTurma, selectedVerificationStatus, selectedPhoneType, selectedWhatsAppStatus]);
+  }, [phoneContacts, debouncedSearchTerm, selectedTurma, selectedVerificationStatus, selectedPhoneType, selectedWhatsAppStatus]);
 
   // Função para formatar telefone para exibição
   const formatPhone = (phone: string) => {

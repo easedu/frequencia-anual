@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from 'next/navigation';
+import { useDebounce } from "@/hooks/useDebounce";
 import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
 import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where, deleteField, writeBatch } from "firebase/firestore";
@@ -61,6 +62,7 @@ export default function StudentProfilePage() {
     const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
     const [, setLoadingUserRole] = useState<boolean>(true);
     const [searchName, setSearchName] = useState<string>("");
+    const debouncedSearchName = useDebounce(searchName, 300); // 300ms para autocomplete
     const [suggestions, setSuggestions] = useState<Student[]>([]);
     const isSelectingStudent = useRef(false);
     const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});

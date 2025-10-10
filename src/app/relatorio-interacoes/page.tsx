@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Toaster, toast } from "sonner";
 import { db } from "@/firebase.config";
 import { collection, getDocs, query, orderBy, doc, getDoc } from "firebase/firestore";
@@ -66,6 +67,7 @@ export default function InteractionReportsPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [showSensitive, setShowSensitive] = useState<boolean>(false);
 
 
@@ -77,7 +79,7 @@ export default function InteractionReportsPage() {
   // Aplicar filtros quando mudarem
   useEffect(() => {
     applyFilters();
-  }, [interactions, selectedTurma, selectedStudent, selectedType, startDate, endDate, searchTerm, showSensitive]);
+  }, [interactions, selectedTurma, selectedStudent, selectedType, startDate, endDate, debouncedSearchTerm, showSensitive]);
 
   const loadData = async () => {
     setLoading(true);
@@ -233,8 +235,8 @@ export default function InteractionReportsPage() {
     }
 
     // Filtro por termo de busca
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+    if (debouncedSearchTerm) {
+      const term = debouncedSearchTerm.toLowerCase();
       filtered = filtered.filter(i =>
         i.description.toLowerCase().includes(term) ||
         i.type.toLowerCase().includes(term) ||

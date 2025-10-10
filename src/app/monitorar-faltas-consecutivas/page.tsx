@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -69,6 +70,7 @@ export default function MonitorarFaltasConsecutivasPage() {
   const [consecutiveAbsences, setConsecutiveAbsences] = useState<ConsecutiveAbsence[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedShift, setSelectedShift] = useState<string>('all');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
@@ -100,9 +102,6 @@ export default function MonitorarFaltasConsecutivasPage() {
   // Estado para controlar hidratação (evitar mismatch entre server e client)
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Debounce para busca
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  
   // Paginação para grandes datasets
   const [currentActivePage, setCurrentActivePage] = useState(1);
   const [currentInactivePage, setCurrentInactivePage] = useState(1);
@@ -201,15 +200,6 @@ export default function MonitorarFaltasConsecutivasPage() {
 
     initializeBimester();
   }, []);
-
-  // Debounce para search term (evita filtrar a cada caractere digitado)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 300); // 300ms de delay
-
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   // Carregar dias letivos com cache inteligente
   const loadSchoolDays = async (): Promise<SchoolDay[]> => {
