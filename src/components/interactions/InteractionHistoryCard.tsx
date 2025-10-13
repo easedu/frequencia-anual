@@ -8,6 +8,24 @@ import { Pencil, Trash, FileText, AlertTriangle, History, User, Calendar, Messag
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { FamilyInteraction, Student, StudentRecord } from "@/types";
 
+/**
+ * Formatar data ISO (YYYY-MM-DD) para formato brasileiro (DD/MM/YYYY)
+ */
+function formatDateBR(dateString: string): string {
+    if (!dateString) return dateString;
+
+    // Se já está no formato DD/MM/YYYY, retornar como está
+    if (dateString.includes('/')) return dateString;
+
+    // Converter de YYYY-MM-DD para DD/MM/YYYY
+    if (dateString.includes('-')) {
+        const [year, month, day] = dateString.split('-');
+        return `${day}/${month}/${year}`;
+    }
+
+    return dateString;
+}
+
 interface InteractionHistoryCardProps {
     interactions: FamilyInteraction[];
     student: Student | null;
@@ -118,7 +136,7 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
                                                 </div>
                                             </TableCell>
                                             <TableCell className="py-2">
-                                                <span className="text-sm text-gray-600 font-medium">{interaction.date}</span>
+                                                <span className="text-sm text-gray-600 font-medium">{formatDateBR(interaction.date)}</span>
                                             </TableCell>
                                             <TableCell className="py-2">
                                                 <div className="max-w-[400px]">
