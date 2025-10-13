@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Home, LogOut, GraduationCap, Menu, X, User, Settings, Wifi, WifiOff } from "lucide-react";
+import { Home, LogOut, GraduationCap, Menu, X, User, Wifi, WifiOff } from "lucide-react";
 import { useServiceWorkerContext } from "@/components/shared/ServiceWorkerProvider";
 import { useAuth } from "@/components/layout/AuthProvider";
 
