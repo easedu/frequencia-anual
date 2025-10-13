@@ -43,6 +43,8 @@ next-env.d.ts
 .firebase/
 firebase-debug.log*
 firestore-debug.log*
+firebase-admin-key.json
+*-firebase-key.json
 
 # Arquivos temporários de migração
 *.json
@@ -50,12 +52,29 @@ firestore-debug.log*
 !package-lock.json
 !tsconfig.json
 !next.config.json
+!components.json
+!firebase.json
+!firestore.indexes.json
+!vercel.json
 *.sql
+!firestore.rules
 *.md
 !README.md
 !CLAUDE.md
 !CHANGELOG.md
+!WHATSAPP_INTEGRATION.md
 !docs/**/*.md
+
+# Arquivos temporários na raiz
+*-backup-*.json
+*-atestados-*.json
+firestore-backup-*.json
+recovery-log.txt
+*.log
+!firebase.json
+clear-tasks.js
+deploy.sh
+test-api.sh
 
 # Scripts temporários
 scripts/migration/
@@ -119,12 +138,9 @@ backup-firebase/
 *.backup
 *.BACKUP
 
-# Supabase temporário
+# Supabase temporário (NÃO ignorar src/services/supabase/)
 supabase-*.sql
 supabase-migrations/
-src/lib/supabase*.ts
-src/hooks/useSupabase*.ts
-src/services/supabase/
 
 # Output
 output/
