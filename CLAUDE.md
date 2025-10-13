@@ -1412,6 +1412,59 @@ export async function POST(request: NextRequest) {
 "Faz uma request para https://api.github.com"
 ```
 
+#### 6. Supabase MCP ✅ (NOVO!)
+
+**Quando usar**: Análise de dados, debugging, schema management, migrations
+
+**Capabilities**:
+- Consultar dados usando linguagem natural
+- Executar queries SQL
+- Gerenciar schema (criar/alterar tabelas)
+- Visualizar logs e configurações
+- Gerar migrations
+- Verificar integridade referencial
+
+**Configuração**:
+```json
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp",
+      "read_only": true,
+      "features": ["database", "logs"]
+    }
+  }
+}
+```
+
+**Exemplos de uso**:
+```
+"Quantos estudantes da turma 5A têm mais de 15 faltas?"
+"Mostra a estrutura da tabela student_absences"
+"Verifica se há faltas órfãs (sem student_id válido)"
+"Cria índice para melhorar performance em buscas por data"
+"Quantos atestados foram registrados esta semana?"
+"Quais turmas têm maior índice de faltas?"
+"Por que este estudante não aparece nas queries?"
+"Gera migration para adicionar campo 'observacoes' em interactions"
+```
+
+**Segurança** ⚠️:
+- ✅ **read_only: true** - Configurado para apenas leitura
+- ✅ Usar apenas para **análise** e **debugging**
+- ❌ **Não modificar** dados sem supervisão
+- ✅ Revisar queries antes de executar
+
+**Autenticação**:
+- Ao iniciar o Claude Code, será solicitado login no Supabase
+- Navegador abrirá automaticamente
+- Selecione a organização/projeto apropriado
+
+**Documentação**:
+- Oficial: https://supabase.com/docs/guides/getting-started/mcp
+- GitHub: https://github.com/supabase-community/supabase-mcp
+
 ### Como Usar MCPs Efetivamente
 
 #### Durante Desenvolvimento
