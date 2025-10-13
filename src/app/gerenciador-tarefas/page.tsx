@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, lazy, Suspense } from "react";
-import { auth, db } from "@/firebase.config";
+import { auth } from "@/firebase.config";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { UserProfilesService } from "@/services/supabase/userProfilesService";
 import { logger } from "@/utils/logger";
 
 // Lazy load heavy TaskManager component (1,111 lines)
@@ -27,12 +27,10 @@ export default function GerenciadorTarefas() {
             try {
                 const uid = auth.currentUser.uid;
                 setUserId(uid);
-                const q = query(collection(db, "users"), where("uid", "==", uid));
-                const querySnapshot = await getDocs(q);
+                const userProfile = await UserProfilesService.getByFirebaseUid(uid);
 
-                if (!querySnapshot.empty) {
-                    const data = querySnapshot.docs[0].data();
-                    const userRole = (data.perfil as Role) || "user";
+                if (userProfile) {
+                    const userRole = (userProfile.role?.toLowerCase() as Role) || "user";
                     setRole(userRole);
                 } else {
                     setRole("user");

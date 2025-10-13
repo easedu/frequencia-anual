@@ -23,9 +23,10 @@ import {
   RefreshCw,
   Phone
 } from 'lucide-react';
-import { collection, getDocs, query, where, doc, deleteDoc, writeBatch, addDoc, updateDoc, getDoc } from 'firebase/firestore';
-import { db, auth } from '@/firebase.config';
-import { FIREBASE_PATHS } from '@/config/constants';
+import { auth } from '@/firebase.config';
+import { TaskService } from '@/services/taskService';
+import { StudentDataService } from '@/services/studentDataService';
+import { InteractionService } from '@/services/supabase/interactionService';
 import type { DashboardTask, TaskSection, TaskPriorityLevel } from '@/types/dashboardTasks';
 import type { UserTask } from '@/types/tasks';
 import type { FamilyInteraction, Student, Contato } from '@/types';
@@ -90,45 +91,28 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   // Função para buscar dados completos do estudante
   const getStudentData = async (estudanteId: string): Promise<Student | null> => {
     try {
-      const studentsDocRef = doc(db, FIREBASE_PATHS.students());
-      const studentsDocSnap = await getDoc(studentsDocRef);
-
-      if (!studentsDocSnap.exists()) {
-        return null;
-      }
-
-      const studentsData = studentsDocSnap.data();
-      const allStudents = (studentsData.estudantes || []) as Student[];
-
-      return allStudents.find(student => student.estudanteId === estudanteId) || null;
+      return await StudentDataService.getStudentById(estudanteId);
     } catch (error) {
       logger.error('Erro ao buscar dados do estudante:', error as Error);
       return null;
     }
   };
 
-  // Função para buscar dados atuais da interação (com suporte a V1 e V3)
+  // Função para buscar dados atuais da interação (Supabase)
   const getInteractionData = async (estudanteId: string, interactionId: string): Promise<{type: string, description: string, createdBy: string, exists: boolean} | null> => {
     try {
-      // ✅ CORREÇÃO: Tentar V1 primeiro (2025/interactions - estrutura atual)
-      let interactionDoc = await getDoc(doc(db, '2025', 'interactions', estudanteId, interactionId));
+      const interaction = await InteractionService.getInteractionById(estudanteId, interactionId);
 
-      // Se não encontrar em V1, tentar V3 (students/{id}/interactions - estrutura futura)
-      if (!interactionDoc.exists()) {
-        interactionDoc = await getDoc(doc(db, 'students', estudanteId, 'interactions', interactionId));
-      }
-
-      if (interactionDoc.exists()) {
-        const data = interactionDoc.data();
+      if (interaction) {
         return {
-          type: data.type || 'Resolvida via API',
-          description: data.description || 'Tarefa marcada como resolvida automaticamente pela API',
-          createdBy: data.createdBy || 'Usuário desconhecido',
+          type: interaction.type || 'Resolvida via API',
+          description: interaction.description || 'Tarefa marcada como resolvida automaticamente pela API',
+          createdBy: interaction.createdBy || 'Usuário desconhecido',
           exists: true
         };
       }
 
-      // Interação foi deletada ou não encontrada
+      // Interação não encontrada
       logger.warn(`[TASK-DASHBOARD] Interação não encontrada: ${interactionId} (estudante: ${estudanteId})`);
       return {
         type: 'Interação removida',
@@ -191,33 +175,31 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
 
   // Função para limpar referências de interações deletadas
   const cleanupDeletedInteractions = async (userTasks: UserTask[]) => {
-    const tasksToUpdate: string[] = [];
+    const tasksToUpdate: Array<{id: string, updates: Partial<UserTask>}> = [];
 
     for (const task of userTasks) {
       if (task.status === 'COMPLETED' && task.interactionId) {
         const interactionData = await getInteractionData(task.estudanteId, task.interactionId);
         if (interactionData && !interactionData.exists) {
-          tasksToUpdate.push(task.id);
+          tasksToUpdate.push({
+            id: task.id,
+            updates: {
+              interactionId: undefined,
+              interactionType: 'Interação removida',
+              interactionDescription: 'A interação associada a esta tarefa foi removida',
+              resolvedBy: 'Desconhecido'
+            }
+          });
         }
       }
     }
 
     // Atualizar tarefas que perderam suas interações
     if (tasksToUpdate.length > 0) {
-      const batch = writeBatch(db);
-
-      for (const taskId of tasksToUpdate) {
-        const taskRef = doc(db, 'userTasks', taskId);
-        batch.update(taskRef, {
-          interactionId: null,
-          interactionType: 'Interação removida',
-          interactionDescription: 'A interação associada a esta tarefa foi removida',
-          resolvedBy: 'Desconhecido'
-        });
-      }
-
       try {
-        await batch.commit();
+        for (const { id, updates } of tasksToUpdate) {
+          await TaskService.updateTask(id, updates);
+        }
         logger.info(`Atualizadas ${tasksToUpdate.length} tarefa(s) com interações removidas`);
       } catch (error) {
         logger.error('Erro ao atualizar tarefas com interações removidas:', error as Error);
@@ -225,21 +207,13 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
-  // Carregar tarefas do Firebase
+  // Carregar tarefas do Supabase
   const loadTasks = async () => {
     try {
       setLoading(true);
 
       // Buscar todas as tarefas criadas pela API (userId = "BOT")
-      const tasksRef = collection(db, 'userTasks');
-      const q = query(tasksRef, where('userId', '==', 'BOT'));
-      const querySnapshot = await getDocs(q);
-
-      const userTasks: UserTask[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data() as Omit<UserTask, 'id'>;
-        userTasks.push({ id: doc.id, ...data });
-      });
+      const userTasks = await TaskService.getUserTasksForUserId('BOT');
 
       // Limpar referências de interações deletadas
       await cleanupDeletedInteractions(userTasks);
@@ -254,24 +228,24 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
           title: 'Tarefas do Dia a Dia',
           description: 'Acompanhamento rotineiro de frequência escolar',
           allowedRoles: ['admin', 'super-user', 'user'],
-          pendingTasks: dashboardTasks.filter(task => task.priority === 'routine' && task.status === 'pending'),
-          resolvedTasks: dashboardTasks.filter(task => task.priority === 'routine' && task.status === 'resolved')
+          pendingTasks: dashboardTasks.filter((task: DashboardTask) => task.priority === 'routine' && task.status === 'pending'),
+          resolvedTasks: dashboardTasks.filter((task: DashboardTask) => task.priority === 'routine' && task.status === 'resolved')
         },
         {
           id: 'attention',
           title: 'Tarefas que Exigem Atenção',
           description: 'Situações que necessitam intervenção mais atenta',
           allowedRoles: ['admin', 'super-user'],
-          pendingTasks: dashboardTasks.filter(task => task.priority === 'attention' && task.status === 'pending'),
-          resolvedTasks: dashboardTasks.filter(task => task.priority === 'attention' && task.status === 'resolved')
+          pendingTasks: dashboardTasks.filter((task: DashboardTask) => task.priority === 'attention' && task.status === 'pending'),
+          resolvedTasks: dashboardTasks.filter((task: DashboardTask) => task.priority === 'attention' && task.status === 'resolved')
         },
         {
           id: 'critical',
           title: 'Tarefas Críticas',
           description: 'Situações críticas que demandam ação imediata',
           allowedRoles: ['admin'],
-          pendingTasks: dashboardTasks.filter(task => task.priority === 'critical' && task.status === 'pending'),
-          resolvedTasks: dashboardTasks.filter(task => task.priority === 'critical' && task.status === 'resolved')
+          pendingTasks: dashboardTasks.filter((task: DashboardTask) => task.priority === 'critical' && task.status === 'pending'),
+          resolvedTasks: dashboardTasks.filter((task: DashboardTask) => task.priority === 'critical' && task.status === 'resolved')
         }
       ];
 
@@ -294,23 +268,14 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
       setClearingData(true);
 
       // Buscar todas as tarefas criadas pela API
-      const tasksRef = collection(db, 'userTasks');
-      const q = query(tasksRef, where('userId', '==', 'BOT'));
-      const querySnapshot = await getDocs(q);
+      const userTasks = await TaskService.getUserTasksForUserId('BOT');
 
-      const batch = writeBatch(db);
-      let deletedCount = 0;
-
-      // Adicionar todas as tarefas ao batch para exclusão
-      querySnapshot.forEach((docSnapshot) => {
-        batch.delete(doc(db, 'userTasks', docSnapshot.id));
-        deletedCount++;
-      });
-
-      // Executar a exclusão em lote
-      if (deletedCount > 0) {
-        await batch.commit();
-        toast.success(`${deletedCount} tarefa(s) excluída(s) com sucesso!`);
+      // Deletar todas as tarefas
+      if (userTasks.length > 0) {
+        for (const task of userTasks) {
+          await TaskService.deleteTask(task.id);
+        }
+        toast.success(`${userTasks.length} tarefa(s) excluída(s) com sucesso!`);
 
         // Recarregar dados
         await loadTasks();
@@ -397,14 +362,14 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
 
     try {
       // 1. Preparar dados da interação
-      // Converter data para formato Firebase (YYYY-MM-DD)
-      const parseDateToFirebase = (dateStr: string): string | null => {
+      // Converter data para formato Supabase (YYYY-MM-DD)
+      const parseDateToSupabase = (dateStr: string): string | null => {
         const [day, month, year] = dateStr.split('/').map(Number);
         if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || month < 1 || month > 12 || day > 31) return null;
         return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       };
 
-      const formattedDate = parseDateToFirebase(interactionDate);
+      const formattedDate = parseDateToSupabase(interactionDate);
       if (!formattedDate) {
         toast.error('Data inválida. Use o formato DD/MM/YYYY.');
         return;
@@ -422,36 +387,23 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
         studentId: selectedTask.estudanteId // Usar o ID correto do estudante
       };
 
-      // 2. Salvar interação com DUAL-WRITE (V1 + V3)
-      // V1 (atual): 2025/interactions/{studentId}
-      const interactionRefV1 = await addDoc(
-        collection(db, '2025', 'interactions', selectedTask.estudanteId),
+      // 2. Salvar interação no Supabase
+      const createdInteraction = await InteractionService.createInteraction(
+        selectedTask.estudanteId,
         interactionData
       );
 
-      // V3 (futuro): students/{studentId}/interactions
-      // Usar o mesmo ID gerado para manter consistência
-      await addDoc(
-        collection(db, 'students', selectedTask.estudanteId, 'interactions'),
-        {
-          ...interactionData,
-          anoLetivo: '2025'
-        }
-      );
-
-      logger.info('[TASK-DASHBOARD] Interação salva com dual-write', {
-        interactionId: interactionRefV1.id,
+      logger.info('[TASK-DASHBOARD] Interação salva no Supabase', {
+        interactionId: createdInteraction.id,
         estudanteId: selectedTask.estudanteId,
-        v1Path: `2025/interactions/${selectedTask.estudanteId}/${interactionRefV1.id}`,
-        v3Path: `students/${selectedTask.estudanteId}/interactions/${interactionRefV1.id}`
+        supabasePath: `family_interactions/${createdInteraction.id}`
       });
 
-      // 3. Atualizar tarefa como completada
-      const taskRef = doc(db, 'userTasks', selectedTask.id);
-      await updateDoc(taskRef, {
+      // 3. Atualizar tarefa como completada (Supabase)
+      await TaskService.updateTask(selectedTask.id, {
         status: 'COMPLETED',
         completedAt: new Date().toISOString(),
-        interactionId: interactionRefV1.id, // ✅ CORREÇÃO: usar o ID da V1
+        interactionId: createdInteraction.id,
         interactionType: interactionType,
         interactionDescription: interactionDescription,
         resolvedBy: currentUser

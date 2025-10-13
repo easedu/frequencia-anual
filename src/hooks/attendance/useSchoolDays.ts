@@ -1,11 +1,12 @@
 /**
  * Hook for school days calculations
- * Separated from the monolithic useAttendanceData
+ * MIGRATED: Firebase → Supabase
+ * Agora usa academicYearService.ts e functions SQL otimizadas
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { useBimesterPeriods } from './useBimesterPeriods';
-import { attendanceService } from '@/services/firebase/attendanceService';
+import { AcademicYearService } from '@/services/supabase/academicYearService';
 import { logger } from '@/utils/logger';
 
 export interface SchoolDaysData {
@@ -22,8 +23,8 @@ export interface UseSchoolDaysReturn {
   loading: boolean;
   error: Error | null;
   refresh: () => void;
-  getSchoolDaysForPeriod: (start: string, end: string) => number;
-  getSchoolDaysUpToDate: (targetDate: string) => number;
+  getSchoolDaysForPeriod: (start: string, end: string) => Promise<number>;
+  getSchoolDaysUpToDate: (targetDate: string) => Promise<number>;
 }
 
 export function useSchoolDays(): UseSchoolDaysReturn {
@@ -46,103 +47,22 @@ export function useSchoolDays(): UseSchoolDaysReturn {
       setLoading(true);
       setError(null);
 
-      const today = new Date().toISOString().split('T')[0];
-      const holidays: string[] = []; // In a real app, this would come from configuration
+      const year = 2025; // TODO: Tornar dinâmico se necessário
 
-      let bimester1 = 0;
-      let bimester2 = 0;
-      let bimester3 = 0;
-      let bimester4 = 0;
-      let upToToday = 0;
+      // Buscar contagens por bimestre do Supabase
+      const bimesterCounts = await AcademicYearService.getSchoolDaysByBimester(year);
 
-      // Calculate school days for each bimester
-      if (bimesterDates[1]) {
-        bimester1 = attendanceService.calculateSchoolDays(
-          bimesterDates[1].start,
-          bimesterDates[1].end,
-          holidays
-        );
+      // Buscar total até hoje usando function SQL
+      const upToToday = await AcademicYearService.countSchoolDaysUpToToday(year);
 
-        // Count days up to today for bimester 1
-        const endDate = new Date(bimesterDates[1].end) <= new Date(today)
-          ? bimesterDates[1].end
-          : today;
-        if (new Date(bimesterDates[1].start) <= new Date(today)) {
-          upToToday += attendanceService.calculateSchoolDays(
-            bimesterDates[1].start,
-            endDate,
-            holidays
-          );
-        }
-      }
-
-      if (bimesterDates[2]) {
-        bimester2 = attendanceService.calculateSchoolDays(
-          bimesterDates[2].start,
-          bimesterDates[2].end,
-          holidays
-        );
-
-        // Count days up to today for bimester 2
-        const endDate = new Date(bimesterDates[2].end) <= new Date(today)
-          ? bimesterDates[2].end
-          : today;
-        if (new Date(bimesterDates[2].start) <= new Date(today)) {
-          upToToday += attendanceService.calculateSchoolDays(
-            bimesterDates[2].start,
-            endDate,
-            holidays
-          );
-        }
-      }
-
-      if (bimesterDates[3]) {
-        bimester3 = attendanceService.calculateSchoolDays(
-          bimesterDates[3].start,
-          bimesterDates[3].end,
-          holidays
-        );
-
-        // Count days up to today for bimester 3
-        const endDate = new Date(bimesterDates[3].end) <= new Date(today)
-          ? bimesterDates[3].end
-          : today;
-        if (new Date(bimesterDates[3].start) <= new Date(today)) {
-          upToToday += attendanceService.calculateSchoolDays(
-            bimesterDates[3].start,
-            endDate,
-            holidays
-          );
-        }
-      }
-
-      if (bimesterDates[4]) {
-        bimester4 = attendanceService.calculateSchoolDays(
-          bimesterDates[4].start,
-          bimesterDates[4].end,
-          holidays
-        );
-
-        // Count days up to today for bimester 4
-        const endDate = new Date(bimesterDates[4].end) <= new Date(today)
-          ? bimesterDates[4].end
-          : today;
-        if (new Date(bimesterDates[4].start) <= new Date(today)) {
-          upToToday += attendanceService.calculateSchoolDays(
-            bimesterDates[4].start,
-            endDate,
-            holidays
-          );
-        }
-      }
-
-      const total = bimester1 + bimester2 + bimester3 + bimester4;
+      // Buscar total do ano
+      const total = await AcademicYearService.getTotalSchoolDays(year);
 
       setSchoolDays({
-        bimester1,
-        bimester2,
-        bimester3,
-        bimester4,
+        bimester1: bimesterCounts[1] || 0,
+        bimester2: bimesterCounts[2] || 0,
+        bimester3: bimesterCounts[3] || 0,
+        bimester4: bimesterCounts[4] || 0,
         total,
         upToToday,
       });
@@ -158,27 +78,41 @@ export function useSchoolDays(): UseSchoolDaysReturn {
     calculateSchoolDays();
   }, [calculateSchoolDays]);
 
-  const getSchoolDaysForPeriod = useCallback((startDate: string, endDate: string): number => {
-    const holidays: string[] = []; // In a real app, this would come from configuration
-    return attendanceService.calculateSchoolDays(startDate, endDate, holidays);
+  /**
+   * Obter dias letivos para um período específico
+   * Usa function SQL otimizada do Supabase
+   */
+  const getSchoolDaysForPeriod = useCallback(async (startDate: string, endDate: string): Promise<number> => {
+    try {
+      const year = 2025; // TODO: Tornar dinâmico se necessário
+      const count = await AcademicYearService.countSchoolDaysInPeriod(startDate, endDate, year);
+      return count;
+    } catch (err) {
+      logger.error(`Erro ao contar dias letivos no período ${startDate} - ${endDate}`, err as Error);
+      return 0;
+    }
   }, []);
 
-  const getSchoolDaysUpToDate = useCallback((targetDate: string): number => {
-    let totalDays = 0;
-    const target = new Date(targetDate);
+  /**
+   * Obter dias letivos até uma data específica
+   */
+  const getSchoolDaysUpToDate = useCallback(async (targetDate: string): Promise<number> => {
+    try {
+      const year = 2025; // TODO: Tornar dinâmico se necessário
 
-    Object.values(bimesterDates).forEach(period => {
-      const start = new Date(period.start);
-      const end = new Date(period.end);
+      // Pegar o primeiro bimestre para obter a data de início do ano
+      const bimesters = await AcademicYearService.getBimesters(year);
+      if (bimesters.length === 0) return 0;
 
-      if (start <= target) {
-        const effectiveEnd = end <= target ? period.end : targetDate;
-        totalDays += getSchoolDaysForPeriod(period.start, effectiveEnd);
-      }
-    });
+      const startDate = bimesters[0].start_date;
+      const count = await AcademicYearService.countSchoolDaysInPeriod(startDate, targetDate, year);
 
-    return totalDays;
-  }, [bimesterDates, getSchoolDaysForPeriod]);
+      return count;
+    } catch (err) {
+      logger.error(`Erro ao contar dias letivos até ${targetDate}`, err as Error);
+      return 0;
+    }
+  }, []);
 
   return {
     schoolDays,

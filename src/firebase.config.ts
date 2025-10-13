@@ -1,7 +1,16 @@
-// firebase.config.ts
+/**
+ * firebase.config.ts
+ *
+ * ✅ MIGRAÇÃO CONCLUÍDA PARA SUPABASE
+ *
+ * Firebase agora é usado APENAS para autenticação (Firebase Auth).
+ * Todos os dados (leitura/escrita) usam exclusivamente Supabase.
+ *
+ * Firestore mantido temporariamente apenas para ferramentas de diagnóstico.
+ */
 import { initializeApp } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -16,18 +25,16 @@ export const firebaseApp = initializeApp(firebaseConfig);
 export const auth = getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
 
-// 🔥 Conectar aos Firebase Emulators se estiver rodando localmente
-// ⚠️ DESABILITADO TEMPORARIAMENTE - Para habilitar, inicie os emulators com: firebase emulators:start
-/*
-if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+// 🔥 Auth Emulator - DESABILITADO por padrão
+// Para habilitar: defina NEXT_PUBLIC_USE_AUTH_EMULATOR=true no .env.local
+// E rode: firebase emulators:start --only auth
+if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === 'true') {
     try {
-        connectFirestoreEmulator(db, 'localhost', 8080);
         connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
-        console.log('🔥 Conectado aos Firebase Emulators (Firestore: 8080, Auth: 9099)');
+        console.log('🔥 Conectado ao Firebase Auth Emulator (porta 9099)');
     } catch (error) {
-        // Emulators já conectados ou não disponíveis
-        console.log('ℹ️ Firebase Emulators não disponíveis ou já conectados');
+        console.warn('⚠️ Erro ao conectar ao Auth Emulator:', error);
     }
+} else if (typeof window !== 'undefined') {
+    console.log('🌐 Usando Firebase Auth em PRODUÇÃO');
 }
-*/
-console.log('🌐 Usando Firebase em produção (Emulators desabilitados)');

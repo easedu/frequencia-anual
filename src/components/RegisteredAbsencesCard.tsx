@@ -14,9 +14,7 @@ import { getBimesterByDate } from "../app/utils";
 import { Calendar, FileText, Clock, User, CheckCircle, XCircle, ChevronDown, ChevronRight, Trash2, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { db } from "@/firebase.config";
-import { collection, query, where, getDocs, writeBatch } from "firebase/firestore";
-import { FIREBASE_PATHS } from "@/config/constants";
+import { AbsenceService } from "@/services/supabase/absenceService";
 import { logger } from "@/utils/logger";
 
 interface RegisteredAbsencesCardProps {
@@ -132,32 +130,23 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
 
         setIsDeleting(true);
         try {
-            // Converter a data para o formato do Firebase (YYYY-MM-DD)
+            // Converter a data para o formato ISO (YYYY-MM-DD)
             const [day, month, year] = absenceDate.split('/');
             const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 
-            // Buscar o documento da falta no Firestore
-            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
-            const q = query(
-                controleColRef,
-                where("estudanteId", "==", selectedStudentId),
-                where("data", "==", formattedDate)
+            // Buscar faltas no Supabase
+            const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
+            const absences = allAbsences.filter((a: any) =>
+                (a.absence_date === formattedDate || a.data === formattedDate)
             );
 
-            const querySnapshot = await getDocs(q);
-
-            if (querySnapshot.empty) {
+            if (!absences || absences.length === 0) {
                 toast.error("Falta não encontrada no banco de dados.");
                 return;
             }
 
-            // Usar batch para deletar todos os registros encontrados (caso haja duplicatas)
-            const batch = writeBatch(db);
-            querySnapshot.forEach((docSnap) => {
-                batch.delete(docSnap.ref);
-            });
-
-            await batch.commit();
+            // Deletar falta usando deleteAbsence(studentId, date)
+            await AbsenceService.deleteAbsence(selectedStudentId, formattedDate);
 
             toast.success("Falta removida com sucesso!");
 

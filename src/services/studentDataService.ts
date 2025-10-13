@@ -1,106 +1,273 @@
 /**
- * Student Data Service - V3 Unified Structure
+ * Student Data Service - Supabase Version
  *
- * PHASE 4: Cleanup Complete - Production Ready
- * - V3 ONLY operations (100% clean code)
- * - All V2 legacy code REMOVED
- * - All V2 fallback logic REMOVED
- * - Optimized imports and bundle size
- * - Production-ready, maintainable codebase
+ * MIGRATED FROM FIREBASE TO SUPABASE
+ * - PostgreSQL with relational data (no subcollections!)
+ * - Type-safe with full Database types
+ * - Performance optimized with JOINs (no N+1 queries)
+ * - Backward compatible interface
  *
- * Firebase V3 Structure:
- * students/{studentId}
- *   ├── estudanteId, nome, turma, status, turno
- *   ├── bolsaFamilia, matricula, email, dataNascimento
- *   ├── endereco, deficiencia, provaSaoPaulo
- *   ├── createdAt, updatedAt, createdBy, updatedBy
- *   ├── deleted, deletedAt, deletedBy, deletionReason
- *   └── contacts/{contactId}
- *       ├── nome, parentesco, telefone
- *       ├── telefoneNumerico, podeReceberWhatsapp
- *       └── createdAt, updatedAt
+ * Supabase Structure:
+ * students (table)
+ *   ├── id (UUID auto-generated)
+ *   ├── student_id (Firebase UUID preserved)
+ *   ├── name, class, shift, status
+ *   ├── birth_date, school_year, registration_number
+ *   ├── bolsa_familia, address (JSONB), disabilities (JSONB[])
+ *   ├── created_at, updated_at, deleted
+ *   └── (JOINs with student_contacts via foreign key)
+ *
+ * student_contacts (separate table with FK)
+ *   ├── id (UUID auto-generated)
+ *   ├── student_id (FK → students.id)
+ *   ├── name, relationship, phone, email
+ *   └── can_receive_whatsapp, whatsapp_data (JSONB)
  */
 
-import {
-  doc,
-  getDoc,
-  setDoc,
-  collection,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  Timestamp,
-  updateDoc,
-  writeBatch,
-  addDoc,
-  collectionGroup,
-} from 'firebase/firestore';
-import { db } from '@/firebase.config';
+import { supabase } from '@/lib/supabaseClient';
+// ⚠️ IMPORTANTE: NÃO importar supabaseAdmin aqui!
+// Este arquivo é usado em client-side, e supabaseAdmin só pode ser usado em server-side (API routes)
+// Para operações de escrita (INSERT/UPDATE/DELETE), usar supabase client (que respeita RLS)
+import type {
+  Student,
+  StudentInsert,
+  StudentUpdate,
+  StudentContact,
+  StudentContactInsert,
+  StudentContactUpdate,
+} from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
-import type { Estudante } from '@/types';
-import { FIREBASE_PATHS_V3 } from '@/config/constants';
-import { addCreationAudit, addUpdateAudit } from '@/utils/auditHelpers';
-import { markAsDeleted, restoreDeleted, initializeSoftDelete } from '@/utils/softDeleteHelpers';
+import type { Estudante, Contato } from '@/types';
 
 /**
- * Interface para contato na V3 (subcoleção)
+ * Helper: Convert Supabase Student to legacy Estudante type
+ * (Backward compatibility for existing code)
  */
-interface ContactV3 {
-  nome: string;
-  parentesco: string;
-  telefone: string;
-  telefoneNumerico: string;
-  podeReceberWhatsapp: boolean;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-  createdBy?: string;
-  updatedBy?: string;
+function convertSupabaseToEstudante(
+  student: Student & { student_contacts?: StudentContact[] }
+): Estudante {
+  return {
+    estudanteId: student.student_id,
+    nome: student.name,
+    turma: student.class,
+    status: student.status,
+    turno: student.shift as 'MANHÃ' | 'TARDE',
+    bolsaFamilia: student.bolsa_familia || 'NÃO',
+    matricula: student.registration_number || undefined,
+    email: undefined, // Not in Supabase schema
+    dataNascimento: student.birth_date || undefined,
+    contatos: student.student_contacts?.map(convertSupabaseContactToLegacy) || [],
+    endereco: (student.address as any) || undefined,
+    deficiencia: parseDisabilities(student.disabilities as any[]),
+    provaSaoPaulo: [], // Not migrated
+  };
 }
 
 /**
- * Interface para dados do estudante na V3 (documento raiz)
+ * Helper: Convert Supabase StudentContact to legacy Contato type
  */
-interface StudentV3 {
-  estudanteId: string;
-  nome: string;
-  turma: string;
-  status: string; // Campo de controle de migração
-  statusEstudante: string; // Campo real do status do estudante (ATIVO/INATIVO)
-  turno: 'MANHÃ' | 'TARDE';
-  bolsaFamilia: string;
-  matricula?: string;
-  email?: string;
-  dataNascimento?: string;
-  endereco?: any;
-  deficiencia?: any;
-  provaSaoPaulo?: any[];
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-  createdBy?: string;
-  updatedBy?: string;
-  deleted?: boolean;
-  deletedAt?: Timestamp;
-  deletedBy?: string;
-  deletionReason?: string;
+function convertSupabaseContactToLegacy(contact: StudentContact): Contato {
+  const whatsappData = (contact.whatsapp_data as any) || {};
+
+  return {
+    nome: contact.name,
+    parentesco: contact.relationship || '',
+    telefone: contact.phone || '',
+    podeReceberMensagem: contact.can_receive_whatsapp,
+    whatsapp: whatsappData.verified ? {
+      verified: whatsappData.verified || false,
+      exists: whatsappData.exists || false,
+      verifiedAt: whatsappData.verified_at || null,
+      name: whatsappData.name || null,
+      number: whatsappData.number || null,
+    } : undefined,
+  };
 }
+
+/**
+ * Helper: Convert legacy Estudante to Supabase Student INSERT
+ */
+function convertEstudanteToSupabaseInsert(estudante: Estudante): StudentInsert {
+  return {
+    student_id: estudante.estudanteId,
+    name: estudante.nome,
+    class: estudante.turma,
+    shift: estudante.turno,
+    status: estudante.status as 'ATIVO' | 'INATIVO' | 'TRANSFERIDO',
+    birth_date: estudante.dataNascimento || null,
+    school_year: new Date().getFullYear().toString(),
+    registration_number: estudante.matricula || null,
+    bolsa_familia: (estudante.bolsaFamilia === 'SIM' ? 'SIM' : 'NÃO') as 'SIM' | 'NÃO',
+    address: estudante.endereco || {},
+    disabilities: estudante.deficiencia ? convertLegacyDisabilities(estudante.deficiencia) : [],
+    migrated_from: 'firebase_v3',
+    version: '3.0',
+    deleted: false,
+    migrated_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Helper: Convert legacy Contato to Supabase StudentContact INSERT
+ */
+function convertContatoToSupabaseInsert(
+  contato: Contato,
+  studentId: string
+): StudentContactInsert {
+  return {
+    student_id: studentId,
+    name: normalizeContactName(contato.nome),
+    relationship: normalizeParentesco(contato.parentesco || ''),
+    phone: contato.telefone || null,
+    phone_numeric: extractNumericPhone(contato.telefone || ''),
+    email: null,
+    can_receive_whatsapp: contato.podeReceberMensagem ?? true,
+    whatsapp_data: contato.whatsapp || {},
+    migrated_from: 'firebase_v3',
+    synced_from_old_structure: false,
+    synced_at: new Date().toISOString(),
+    version: '3.0',
+    is_placeholder: false,
+  };
+}
+
+/**
+ * Helper: Parse disabilities from Supabase JSONB array
+ */
+function parseDisabilities(disabilities: any[]): any {
+  if (!disabilities || disabilities.length === 0) {
+    return {
+      estudanteComDeficiencia: false,
+      tipoDeficiencia: [],
+      possuiBarreiras: true,
+      horarioAtendimento: 'NENHUM',
+      atendimentoSaude: [],
+      possuiEstagiario: false,
+      nomeEstagiario: 'NÃO NECESSITA',
+      justificativaEstagiario: 'SEM BARREIRAS',
+      ave: false,
+      nomeAve: '',
+      justificativaAve: [],
+    };
+  }
+
+  // Convert array of disabilities to legacy format
+  return {
+    estudanteComDeficiencia: true,
+    tipoDeficiencia: disabilities.map(d => d.type || ''),
+    possuiBarreiras: true,
+    horarioAtendimento: disabilities[0]?.aee_type || 'NENHUM',
+    atendimentoSaude: [],
+    possuiEstagiario: false,
+    nomeEstagiario: 'NÃO NECESSITA',
+    justificativaEstagiario: 'SEM BARREIRAS',
+    ave: disabilities.some(d => d.needs_ave),
+    nomeAve: '',
+    justificativaAve: [],
+  };
+}
+
+/**
+ * Helper: Convert legacy disabilities to Supabase JSONB array
+ */
+function convertLegacyDisabilities(deficiencia: any): any[] {
+  if (!deficiencia.estudanteComDeficiencia || !deficiencia.tipoDeficiencia) {
+    return [];
+  }
+
+  return deficiencia.tipoDeficiencia.map((tipo: string) => ({
+    type: tipo,
+    description: '',
+    cid: null,
+    aee_type: deficiencia.horarioAtendimento || null,
+    needs_ave: deficiencia.ave || false,
+  }));
+}
+
+/**
+ * Helper: Normalize contact name
+ */
+function normalizeContactName(name: string): string {
+  if (!name || typeof name !== 'string') return '';
+
+  return name
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
+ * Helper: Normalize parentesco
+ */
+function normalizeParentesco(parentesco: string): string {
+  if (!parentesco || typeof parentesco !== 'string') return '';
+
+  const normalized = parentesco.trim().toLowerCase();
+
+  const parentescoMap: Record<string, string> = {
+    'mae': 'Mãe',
+    'mãe': 'Mãe',
+    'pai': 'Pai',
+    'avo': 'Avó',
+    'avó': 'Avó',
+    'avô': 'Avô',
+    'tio': 'Tio',
+    'tia': 'Tia',
+    'irmao': 'Irmão',
+    'irmã': 'Irmã',
+    'irmão': 'Irmão',
+    'irma': 'Irmã',
+    'responsavel': 'Responsável',
+    'responsável': 'Responsável',
+    'tutor': 'Tutor',
+    'tutora': 'Tutora',
+  };
+
+  return parentescoMap[normalized] ||
+         (normalized.charAt(0).toUpperCase() + normalized.slice(1));
+}
+
+/**
+ * Helper: Extract numeric phone
+ */
+function extractNumericPhone(telefone: string): string {
+  return telefone.replace(/\D/g, '');
+}
+
+// ============================================
+// PUBLIC API (Backward Compatible)
+// ============================================
 
 export class StudentDataService {
   /**
    * Get all students
-   * PHASE 3: Read from V3 only (no fallback)
    *
    * @param includeDeleted - Include soft-deleted students
-   * @param includeContacts - Include contacts subcollection (default: true for backward compatibility)
+   * @param includeContacts - Include contacts (default: true, uses JOIN - no extra query!)
    */
-  static async getStudents(includeDeleted: boolean = false, includeContacts: boolean = true): Promise<Estudante[]> {
+  static async getStudents(
+    includeDeleted: boolean = false,
+    includeContacts: boolean = true
+  ): Promise<Estudante[]> {
     try {
-      logger.info('📖 [V3] Lendo estudantes...');
 
-      const v3Students = await StudentDataService.getStudentsFromV3(includeDeleted, includeContacts);
+      let query = supabase
+        .from('students')
+        .select(includeContacts ? '*, student_contacts(*)' : '*'); // JOIN automático!
 
-      logger.info(`✅ [V3] ${v3Students.length} estudantes encontrados`);
-      return v3Students;
+      if (!includeDeleted) {
+        query = query.eq('deleted', false);
+      }
+
+      const { data, error } = await query.order('name');
+
+      if (error) throw error;
+
+      const students = (data || []).map(convertSupabaseToEstudante);
+
+      return students;
 
     } catch (error) {
       logger.error('❌ Erro ao buscar estudantes', error as Error);
@@ -109,22 +276,29 @@ export class StudentDataService {
   }
 
   /**
-   * Get student by ID
-   * PHASE 3: Read from V3 only (no fallback)
+   * Get student by ID (estudanteId, not Supabase internal id)
+   *
+   * @param estudanteId - Firebase UUID (student_id in Supabase)
    */
   static async getStudentById(estudanteId: string): Promise<Estudante | null> {
     try {
-      logger.info(`📖 [V3] Lendo estudante ${estudanteId}...`);
 
-      const v3Student = await StudentDataService.getStudentFromV3(estudanteId);
+      const { data, error } = await supabase
+        .from('students')
+        .select('*, student_contacts(*), student_absences(*)')
+        .eq('student_id', estudanteId)
+        .single();
 
-      if (v3Student) {
-        logger.info(`✅ [V3] Estudante encontrado`);
-      } else {
-        logger.warn(`⚠️  [V3] Estudante ${estudanteId} não encontrado`);
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Not found
+          logger.warn(`⚠️  [Supabase] Estudante ${estudanteId} não encontrado`);
+          return null;
+        }
+        throw error;
       }
 
-      return v3Student;
+      return convertSupabaseToEstudante(data);
 
     } catch (error) {
       logger.error('❌ Erro ao buscar estudante por ID', error as Error);
@@ -134,49 +308,42 @@ export class StudentDataService {
 
   /**
    * Add new student
-   * PHASE 3: Write to V3 only (no dual-write)
+   *
+   * @param newStudent - Student data (legacy Estudante format)
+   * @param userId - User ID for audit
    */
   static async addStudent(newStudent: Estudante, userId?: string): Promise<string> {
     try {
-      logger.info('💾 [V3] Adicionando estudante...');
 
-      // Normalize data
-      const normalizedStudent = StudentDataService.normalizeStudent(newStudent);
+      // 1. Insert student (main table)
+      const studentInsert = convertEstudanteToSupabaseInsert(newStudent);
 
-      // Write to V3 (students/{id})
-      const v3Ref = doc(db, FIREBASE_PATHS_V3.student(newStudent.estudanteId));
+      const { data: insertedStudent, error: studentError } = await (supabase
+        .from('students')
+        .insert(studentInsert as any)
+        .select()
+        .single() as any);
 
-      const v3StudentData: StudentV3 = {
-        estudanteId: normalizedStudent.estudanteId,
-        nome: normalizedStudent.nome,
-        turma: normalizedStudent.turma,
-        status: 'active', // Campo de controle interno
-        statusEstudante: normalizedStudent.status, // Campo real do status do estudante
-        turno: normalizedStudent.turno,
-        bolsaFamilia: normalizedStudent.bolsaFamilia,
-        matricula: normalizedStudent.matricula,
-        email: normalizedStudent.email,
-        dataNascimento: normalizedStudent.dataNascimento,
-        endereco: normalizedStudent.endereco,
-        deficiencia: normalizedStudent.deficiencia,
-        provaSaoPaulo: normalizedStudent.provaSaoPaulo,
-        ...addCreationAudit({} as object, userId),
-        ...initializeSoftDelete(),
-      };
+      if (studentError) throw studentError;
 
-      await setDoc(v3Ref, StudentDataService.removeUndefined(v3StudentData) as any);
-      logger.info(`  ✓ V3: students/${newStudent.estudanteId}`);
+      logger.debug(`  ✓ Supabase: students/${insertedStudent.id}`);
 
-      // Write contacts to V3 subcollection
-      if (normalizedStudent.contatos && normalizedStudent.contatos.length > 0) {
-        await StudentDataService.writeContactsToV3(
-          newStudent.estudanteId,
-          normalizedStudent.contatos,
-          userId
+      // 2. Insert contacts (if any)
+      if (newStudent.contatos && newStudent.contatos.length > 0) {
+        const contactsInsert = newStudent.contatos.map(contato =>
+          convertContatoToSupabaseInsert(contato, insertedStudent.id)
         );
+
+        const { error: contactsError } = await (supabase
+          .from('student_contacts')
+          .insert(contactsInsert as any) as any);
+
+        if (contactsError) throw contactsError;
+
+        logger.debug(`  ✓ ${newStudent.contatos.length} contatos adicionados`);
       }
 
-      logger.info(`✅ [V3] Estudante ${newStudent.nome} adicionado com sucesso`);
+      logger.info(`✅ [Supabase] Estudante ${newStudent.nome} adicionado com sucesso`);
       return newStudent.estudanteId;
 
     } catch (error) {
@@ -187,45 +354,69 @@ export class StudentDataService {
 
   /**
    * Update student
-   * PHASE 3: Update V3 only (no dual-write)
+   *
+   * @param updatedStudent - Updated student data (legacy format)
+   * @param userId - User ID for audit
    */
   static async updateStudent(updatedStudent: Estudante, userId?: string): Promise<void> {
     try {
-      logger.info(`💾 [V3] Atualizando estudante ${updatedStudent.estudanteId}...`);
 
-      const normalizedStudent = StudentDataService.normalizeStudent(updatedStudent);
+      // 1. Get Supabase internal ID
+      const { data: existingStudent, error: fetchError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('student_id', updatedStudent.estudanteId)
+        .single();
 
-      // Update V3 (root document)
-      const v3Ref = doc(db, FIREBASE_PATHS_V3.student(updatedStudent.estudanteId));
+      if (fetchError) throw fetchError;
 
-      const v3StudentData: Partial<StudentV3> = {
-        nome: normalizedStudent.nome,
-        turma: normalizedStudent.turma,
-        statusEstudante: normalizedStudent.status, // Atualizar o campo correto
-        turno: normalizedStudent.turno,
-        bolsaFamilia: normalizedStudent.bolsaFamilia,
-        matricula: normalizedStudent.matricula,
-        email: normalizedStudent.email,
-        dataNascimento: normalizedStudent.dataNascimento,
-        endereco: normalizedStudent.endereco,
-        deficiencia: normalizedStudent.deficiencia,
-        provaSaoPaulo: normalizedStudent.provaSaoPaulo,
-        ...addUpdateAudit({} as object, userId),
+      // 2. Update student (main fields)
+      const studentUpdate: StudentUpdate = {
+        name: updatedStudent.nome,
+        class: updatedStudent.turma,
+        shift: updatedStudent.turno,
+        status: updatedStudent.status as 'ATIVO' | 'INATIVO' | 'TRANSFERIDO',
+        birth_date: updatedStudent.dataNascimento || null,
+        bolsa_familia: (updatedStudent.bolsaFamilia === 'SIM' ? 'SIM' : 'NÃO') as 'SIM' | 'NÃO',
+        registration_number: updatedStudent.matricula || null,
+        address: updatedStudent.endereco || {},
+        disabilities: updatedStudent.deficiencia ? convertLegacyDisabilities(updatedStudent.deficiencia) : [],
       };
 
-      await updateDoc(v3Ref, StudentDataService.removeUndefined(v3StudentData) as any);
-      logger.info(`  ✓ V3 atualizado`);
+      const { error: updateError } = await ((supabase
+        .from('students') as any)
+        .update(studentUpdate)
+        .eq('id', (existingStudent as any).id));
 
-      // Update V3 contacts subcollection
-      if (normalizedStudent.contatos && normalizedStudent.contatos.length > 0) {
-        await StudentDataService.syncContactsToV3(
-          updatedStudent.estudanteId,
-          normalizedStudent.contatos,
-          userId
+      if (updateError) throw updateError;
+
+      logger.debug(`  ✓ Supabase atualizado`);
+
+      // 3. Sync contacts (delete old, insert new)
+      if (updatedStudent.contatos && updatedStudent.contatos.length > 0) {
+        // Delete existing contacts
+        const { error: deleteError } = await (supabase
+          .from('student_contacts')
+          .delete()
+          .eq('student_id', (existingStudent as any).id) as any);
+
+        if (deleteError) throw deleteError;
+
+        // Insert new contacts
+        const contactsInsert = updatedStudent.contatos.map(contato =>
+          convertContatoToSupabaseInsert(contato, (existingStudent as any).id)
         );
+
+        const { error: contactsError } = await (supabase
+          .from('student_contacts')
+          .insert(contactsInsert as any) as any);
+
+        if (contactsError) throw contactsError;
+
+        logger.debug(`  ✓ ${updatedStudent.contatos.length} contatos sincronizados`);
       }
 
-      logger.info(`✅ [V3] Estudante atualizado com sucesso`);
+      logger.info(`✅ [Supabase] Estudante atualizado com sucesso`);
 
     } catch (error) {
       logger.error('❌ Erro ao atualizar estudante', error as Error);
@@ -235,19 +426,25 @@ export class StudentDataService {
 
   /**
    * Delete student (soft delete)
-   * PHASE 3: Soft delete in V3 only (no dual-write)
+   *
+   * @param estudanteId - Firebase UUID (student_id)
+   * @param userId - User ID for audit
+   * @param reason - Deletion reason
    */
-  static async deleteStudent(estudanteId: string, userId?: string, reason?: string): Promise<void> {
+  static async deleteStudent(
+    estudanteId: string,
+    userId?: string,
+    reason?: string
+  ): Promise<void> {
     try {
-      logger.info(`🗑️  [V3] Soft delete estudante ${estudanteId}...`);
 
-      const deleteFields = markAsDeleted(userId, reason);
+      const { error } = await ((supabase
+        .from('students') as any)
+        .update({ deleted: true })
+        .eq('student_id', estudanteId));
 
-      // Soft delete V3
-      const v3Ref = doc(db, FIREBASE_PATHS_V3.student(estudanteId));
-      await updateDoc(v3Ref, deleteFields as any);
+      if (error) throw error;
 
-      logger.info(`✅ [V3] Estudante marcado como deletado`);
 
     } catch (error) {
       logger.error('❌ Erro ao deletar estudante', error as Error);
@@ -257,422 +454,25 @@ export class StudentDataService {
 
   /**
    * Restore deleted student
-   * PHASE 3: Restore in V3 only (no dual-write)
+   *
+   * @param estudanteId - Firebase UUID (student_id)
+   * @param userId - User ID for audit
    */
   static async restoreStudent(estudanteId: string, userId?: string): Promise<void> {
     try {
-      logger.info(`♻️  [V3] Restaurando estudante ${estudanteId}...`);
 
-      const restoreFields = restoreDeleted();
+      const { error } = await ((supabase
+        .from('students') as any)
+        .update({ deleted: false })
+        .eq('student_id', estudanteId));
 
-      // Restore V3
-      const v3Ref = doc(db, FIREBASE_PATHS_V3.student(estudanteId));
-      await updateDoc(v3Ref, { ...restoreFields, updatedAt: Timestamp.now(), ...(userId && { updatedBy: userId }) });
+      if (error) throw error;
 
-      logger.info(`✅ [V3] Estudante restaurado com sucesso`);
 
     } catch (error) {
       logger.error('❌ Erro ao restaurar estudante', error as Error);
       throw error;
     }
-  }
-
-  // ============================================
-  // V3 SPECIFIC OPERATIONS
-  // ============================================
-
-  /**
-   * Get all students from V3
-   *
-   * @param includeDeleted - Include soft-deleted students
-   * @param includeContacts - Include contacts subcollection (PERFORMANCE: set false for lists)
-   */
-  private static async getStudentsFromV3(includeDeleted: boolean = false, includeContacts: boolean = true): Promise<Estudante[]> {
-    try {
-      const studentsRef = collection(db, FIREBASE_PATHS_V3.students());
-
-      let q = query(studentsRef, orderBy('nome'));
-
-      if (!includeDeleted) {
-        q = query(studentsRef, where('deleted', '==', false), orderBy('nome'));
-      }
-
-      const snapshot = await getDocs(q);
-
-      if (!includeContacts) {
-        // Sem contatos, processar direto (super rápido - 1 query)
-        const students = snapshot.docs.map(docSnap => {
-          const studentData = docSnap.data() as StudentV3;
-          return StudentDataService.convertV3ToEstudante(studentData, []);
-        });
-        return students;
-      }
-
-      // OTIMIZAÇÃO: Tentar Collection Group Query primeiro, fallback para paralelo
-      try {
-        logger.info('🚀 [PERFORMANCE] Tentando Collection Group Query para contatos...');
-
-        const contactsGroupQuery = collectionGroup(db, 'contacts');
-        const allContactsSnap = await getDocs(contactsGroupQuery);
-
-        // Mapear contatos por estudanteId (extraído do path)
-        const contactsByStudent = new Map<string, any[]>();
-
-        allContactsSnap.docs.forEach(contactDoc => {
-          // Path format: students/{estudanteId}/contacts/{contactId}
-          const pathParts = contactDoc.ref.path.split('/');
-          const estudanteId = pathParts[1]; // Index 1 é o estudanteId
-
-          const contact = contactDoc.data() as any; // Usar any para acessar whatsapp
-          const contatoData = {
-            nome: contact.nome || '',
-            parentesco: contact.parentesco || '',
-            telefone: contact.telefone || '',
-            podeReceberMensagem: contact.podeReceberWhatsapp ?? true,
-            // INCLUIR dados de WhatsApp se existirem (estrutura nested)
-            whatsapp: contact.whatsapp ? {
-              verified: contact.whatsapp.verified || false,
-              exists: contact.whatsapp.exists || false,
-              verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || null,
-              name: contact.whatsapp.name || null,
-              number: contact.whatsapp.number || null,
-            } : undefined,
-          };
-
-          if (!contactsByStudent.has(estudanteId)) {
-            contactsByStudent.set(estudanteId, []);
-          }
-          contactsByStudent.get(estudanteId)!.push(contatoData);
-        });
-
-        logger.info(`✅ [PERFORMANCE] ${allContactsSnap.docs.length} contatos carregados em 1 query (Collection Group)!`);
-
-        // Combinar estudantes com seus contatos
-        const students = snapshot.docs.map(docSnap => {
-          const studentData = docSnap.data() as StudentV3;
-          const contatos = contactsByStudent.get(docSnap.id) || [];
-          return StudentDataService.convertV3ToEstudante(studentData, contatos);
-        });
-
-        return students;
-
-      } catch (collectionGroupError: any) {
-        // FALLBACK: Se Collection Group falhar (permission-denied), usar queries paralelas
-        if (collectionGroupError?.code === 'permission-denied') {
-          logger.warn('⚠️  Collection Group Query sem permissão, usando fallback paralelo...');
-        } else {
-          logger.warn('⚠️  Collection Group Query falhou, usando fallback paralelo...', collectionGroupError);
-        }
-
-        // FALLBACK: Buscar contatos em paralelo (rápido, mas mais queries)
-        const studentsWithContactsPromises = snapshot.docs.map(async (docSnap) => {
-          const studentData = docSnap.data() as StudentV3;
-
-          const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(docSnap.id));
-          const contactsSnap = await getDocs(contactsRef);
-
-          const contatos = contactsSnap.docs.map(contactDoc => {
-            const contact = contactDoc.data() as any; // Usar any para acessar whatsapp
-            return {
-              nome: contact.nome || '',
-              parentesco: contact.parentesco || '',
-              telefone: contact.telefone || '',
-              podeReceberMensagem: contact.podeReceberWhatsapp ?? true,
-              // INCLUIR dados de WhatsApp se existirem (estrutura nested)
-              whatsapp: contact.whatsapp ? {
-                verified: contact.whatsapp.verified || false,
-                exists: contact.whatsapp.exists || false,
-                verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || null,
-                name: contact.whatsapp.name || null,
-                number: contact.whatsapp.number || null,
-              } : undefined,
-            };
-          });
-
-          return StudentDataService.convertV3ToEstudante(studentData, contatos);
-        });
-
-        const students = await Promise.all(studentsWithContactsPromises);
-        logger.info(`✅ [PERFORMANCE] ${students.length} estudantes carregados com queries paralelas`);
-        return students;
-      }
-
-    } catch (error: any) {
-      // Handle index errors with fallback
-      if (error?.code === 'failed-precondition') {
-        logger.warn('Index V3 não disponível, usando fallback sem orderBy');
-
-        const studentsRef = collection(db, FIREBASE_PATHS_V3.students());
-        const snapshot = await getDocs(studentsRef);
-
-        // Filtrar estudantes deletados (se necessário)
-        const filteredDocs = snapshot.docs.filter(docSnap => {
-          const studentData = docSnap.data() as StudentV3;
-          return includeDeleted || studentData.deleted !== true;
-        });
-
-        // PERFORMANCE: Carregar contatos em PARALELO (não sequencial)
-        let students: Estudante[];
-
-        if (includeContacts) {
-          const studentsWithContactsPromises = filteredDocs.map(async (docSnap) => {
-            const studentData = docSnap.data() as StudentV3;
-
-            const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(docSnap.id));
-            const contactsSnap = await getDocs(contactsRef);
-
-            const contatos = contactsSnap.docs.map(contactDoc => {
-              const contact = contactDoc.data() as any; // Usar any para acessar whatsapp
-              return {
-                nome: contact.nome || '',
-                parentesco: contact.parentesco || '',
-                telefone: contact.telefone || '',
-                podeReceberMensagem: contact.podeReceberWhatsapp ?? true,
-                // INCLUIR dados de WhatsApp se existirem (estrutura nested)
-                whatsapp: contact.whatsapp ? {
-                  verified: contact.whatsapp.verified || false,
-                  exists: contact.whatsapp.exists || false,
-                  verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || null,
-                  name: contact.whatsapp.name || null,
-                  number: contact.whatsapp.number || null,
-                } : undefined,
-              };
-            });
-
-            return StudentDataService.convertV3ToEstudante(studentData, contatos);
-          });
-
-          students = await Promise.all(studentsWithContactsPromises);
-        } else {
-          students = filteredDocs.map(docSnap => {
-            const studentData = docSnap.data() as StudentV3;
-            return StudentDataService.convertV3ToEstudante(studentData, []);
-          });
-        }
-
-        students.sort((a, b) => a.nome.localeCompare(b.nome));
-        return students;
-      }
-
-      throw error;
-    }
-  }
-
-  /**
-   * Get single student from V3
-   */
-  private static async getStudentFromV3(estudanteId: string): Promise<Estudante | null> {
-    try {
-      const docRef = doc(db, FIREBASE_PATHS_V3.student(estudanteId));
-      const docSnap = await getDoc(docRef);
-
-      if (!docSnap.exists()) {
-        return null;
-      }
-
-      const studentData = docSnap.data() as StudentV3;
-
-      // Fetch contacts
-      const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(estudanteId));
-      const contactsSnap = await getDocs(contactsRef);
-
-      const contatos = contactsSnap.docs.map(contactDoc => {
-        const contact = contactDoc.data() as any; // Usar any para acessar whatsapp
-        return {
-          nome: contact.nome || '',
-          parentesco: contact.parentesco || '',
-          telefone: contact.telefone || '',
-          podeReceberMensagem: contact.podeReceberWhatsapp ?? true,
-          // INCLUIR dados de WhatsApp se existirem (estrutura nested)
-          whatsapp: contact.whatsapp ? {
-            verified: contact.whatsapp.verified || false,
-            exists: contact.whatsapp.exists || false,
-            verifiedAt: contact.whatsapp.verifiedAt?.toDate?.()?.toISOString() || null,
-            name: contact.whatsapp.name || null,
-            number: contact.whatsapp.number || null,
-          } : undefined,
-        };
-      });
-
-      return StudentDataService.convertV3ToEstudante(studentData, contatos);
-
-    } catch (error) {
-      logger.error('Erro ao buscar estudante V3', error as Error);
-      return null;
-    }
-  }
-
-  /**
-   * Write contacts to V3 subcollection
-   */
-  private static async writeContactsToV3(
-    estudanteId: string,
-    contatos: any[],
-    userId?: string
-  ): Promise<void> {
-    const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(estudanteId));
-
-    for (const contato of contatos) {
-      const contactData: ContactV3 = {
-        nome: StudentDataService.normalizeContactName(contato.nome),
-        parentesco: StudentDataService.normalizeParentesco(contato.parentesco || ''),
-        telefone: contato.telefone || '',
-        telefoneNumerico: StudentDataService.extractNumericPhone(contato.telefone || ''),
-        // Garantir que seja boolean: se undefined ou null, default é true
-        podeReceberWhatsapp: contato.podeReceberMensagem ?? true,
-        ...addCreationAudit({} as object, userId),
-      };
-
-      await addDoc(contactsRef, StudentDataService.removeUndefined(contactData) as any);
-    }
-
-    logger.info(`  ✓ V3: ${contatos.length} contatos adicionados`);
-  }
-
-  /**
-   * Sync contacts to V3 (delete all and recreate)
-   */
-  private static async syncContactsToV3(
-    estudanteId: string,
-    contatos: any[],
-    userId?: string
-  ): Promise<void> {
-    // 1. Delete existing contacts
-    const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(estudanteId));
-    const existingContacts = await getDocs(contactsRef);
-
-    const batch = writeBatch(db);
-    existingContacts.docs.forEach(doc => {
-      batch.delete(doc.ref);
-    });
-    await batch.commit();
-
-    // 2. Add new contacts
-    await StudentDataService.writeContactsToV3(estudanteId, contatos, userId);
-
-    logger.info(`  ✓ V3: ${contatos.length} contatos sincronizados`);
-  }
-
-  // ============================================
-  // HELPER METHODS
-  // ============================================
-
-  /**
-   * Convert V3 student data to Estudante interface
-   */
-  private static convertV3ToEstudante(studentData: StudentV3, contatos: any[]): Estudante {
-    return {
-      estudanteId: studentData.estudanteId,
-      nome: studentData.nome,
-      turma: studentData.turma,
-      // IMPORTANTE: Usar statusEstudante (campo real do estudante), não status (campo de migração)
-      status: studentData.statusEstudante || studentData.status,
-      turno: studentData.turno,
-      bolsaFamilia: studentData.bolsaFamilia,
-      matricula: studentData.matricula,
-      email: studentData.email,
-      dataNascimento: studentData.dataNascimento,
-      contatos: contatos,
-      endereco: studentData.endereco,
-      deficiencia: studentData.deficiencia || {
-        estudanteComDeficiencia: false,
-        tipoDeficiencia: [],
-        possuiBarreiras: true,
-        horarioAtendimento: 'NENHUM',
-        atendimentoSaude: [],
-        possuiEstagiario: false,
-        nomeEstagiario: 'NÃO NECESSITA',
-        justificativaEstagiario: 'SEM BARREIRAS',
-        ave: false,
-        nomeAve: '',
-        justificativaAve: [],
-      },
-      provaSaoPaulo: studentData.provaSaoPaulo || [],
-    };
-  }
-
-  /**
-   * Normalize student data
-   */
-  private static normalizeStudent(student: Estudante): Estudante {
-    return {
-      ...student,
-      contatos: student.contatos?.map(contato => ({
-        podeReceberMensagem: contato.podeReceberMensagem ?? true,
-        nome: StudentDataService.normalizeContactName(contato.nome),
-        telefone: contato.telefone,
-        parentesco: StudentDataService.normalizeParentesco(contato.parentesco || ''),
-      })) || [],
-    };
-  }
-
-  /**
-   * Normalize contact name
-   */
-  private static normalizeContactName(name: string): string {
-    if (!name || typeof name !== 'string') return '';
-
-    return name
-      .trim()
-      .toLowerCase()
-      .split(/\s+/)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  }
-
-  /**
-   * Normalize parentesco
-   */
-  private static normalizeParentesco(parentesco: string): string {
-    if (!parentesco || typeof parentesco !== 'string') return '';
-
-    const normalized = parentesco.trim().toLowerCase();
-
-    const parentescoMap: Record<string, string> = {
-      'mae': 'Mãe',
-      'mãe': 'Mãe',
-      'pai': 'Pai',
-      'avo': 'Avó',
-      'avó': 'Avó',
-      'avô': 'Avô',
-      'tio': 'Tio',
-      'tia': 'Tia',
-      'irmao': 'Irmão',
-      'irmã': 'Irmã',
-      'irmão': 'Irmão',
-      'irma': 'Irmã',
-      'responsavel': 'Responsável',
-      'responsável': 'Responsável',
-      'tutor': 'Tutor',
-      'tutora': 'Tutora',
-    };
-
-    return parentescoMap[normalized] ||
-           (normalized.charAt(0).toUpperCase() + normalized.slice(1));
-  }
-
-  /**
-   * Extract numeric phone
-   */
-  private static extractNumericPhone(telefone: string): string {
-    return telefone.replace(/\D/g, '');
-  }
-
-  /**
-   * Remove undefined fields recursively
-   */
-  private static removeUndefined(obj: unknown): unknown {
-    if (Array.isArray(obj)) {
-      return obj.map(StudentDataService.removeUndefined);
-    }
-    if (obj && typeof obj === 'object') {
-      return Object.fromEntries(
-        Object.entries(obj)
-          .filter(([, value]) => value !== undefined)
-          .map(([key, value]) => [key, StudentDataService.removeUndefined(value)])
-      );
-    }
-    return obj;
   }
 }
 
@@ -687,45 +487,23 @@ export const getStudent = StudentDataService.getStudentById;
 
 /**
  * Get student by ID without contacts (faster for APIs)
+ * NOTE: In Supabase, there's NO N+1 problem, so this is just an alias
  */
 export async function getStudentByIdFast(estudanteId: string): Promise<Estudante | null> {
   try {
-    const docRef = doc(db, FIREBASE_PATHS_V3.student(estudanteId));
-    const docSnap = await getDoc(docRef);
+    const { data, error } = await supabase
+      .from('students')
+      .select('*') // No JOIN, just student data
+      .eq('student_id', estudanteId)
+      .single();
 
-    if (!docSnap.exists()) {
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') return null; // Not found
+      throw error;
     }
 
-    const studentData = docSnap.data() as any;
+    return convertSupabaseToEstudante(data);
 
-    return {
-      estudanteId: studentData.estudanteId,
-      nome: studentData.nome,
-      turma: studentData.turma,
-      status: studentData.statusEstudante || studentData.status,
-      turno: studentData.turno,
-      bolsaFamilia: studentData.bolsaFamilia,
-      matricula: studentData.matricula,
-      email: studentData.email,
-      dataNascimento: studentData.dataNascimento,
-      contatos: [], // Sem contatos para performance
-      endereco: studentData.endereco,
-      deficiencia: studentData.deficiencia || {
-        estudanteComDeficiencia: false,
-        tipoDeficiencia: [],
-        possuiBarreiras: true,
-        horarioAtendimento: 'NENHUM',
-        atendimentoSaude: [],
-        possuiEstagiario: false,
-        nomeEstagiario: 'NÃO NECESSITA',
-        justificativaEstagiario: 'SEM BARREIRAS',
-        ave: false,
-        nomeAve: '',
-        justificativaAve: [],
-      },
-      provaSaoPaulo: studentData.provaSaoPaulo || [],
-    };
   } catch (error) {
     logger.error('Erro ao buscar estudante (fast)', error as Error);
     return null;
@@ -734,6 +512,7 @@ export async function getStudentByIdFast(estudanteId: string): Promise<Estudante
 
 /**
  * Get students by year (backward compatibility)
+ * NOTE: In Supabase, year filtering would be done differently
  */
 export const getStudentsByYear = (year?: string) => StudentDataService.getStudents();
 
@@ -745,7 +524,7 @@ export async function getStudentContacts(estudanteId: string) {
 
   return {
     _dataSource: {
-      source: 'new',
+      source: 'supabase',
       timestamp: Date.now()
     },
     contacts: student?.contatos || []

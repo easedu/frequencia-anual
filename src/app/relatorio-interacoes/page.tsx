@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Toaster, toast } from "sonner";
-import { db } from "@/firebase.config";
-import { collection, getDocs, query, orderBy, doc, getDoc } from "firebase/firestore";
+import { StudentDataService } from "@/services/studentDataService";
+import { InteractionService } from "@/services/supabase/interactionService";
 import { logger } from "@/utils/logger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -86,19 +86,15 @@ export default function InteractionReportsPage() {
     setLoadingProgress("Carregando estudantes...");
 
     try {
-      // Carregar estudantes (do documento lista_de_estudantes)
-      const studentDoc = await getDoc(doc(db, CURRENT_SCHOOL_YEAR, "lista_de_estudantes"));
-      let studentsData: Student[] = [];
-
-      if (studentDoc.exists()) {
-        const data = studentDoc.data() as { estudantes: Student[] };
-        studentsData = data.estudantes
-          .filter(s => s.status === "ATIVO")
-          .map(student => ({
-            ...student,
-            contatos: student.contatos || [],
-          }));
-      }
+      // Carregar estudantes via Supabase
+      logger.debug('Buscando estudantes via StudentDataService');
+      const allStudents = await StudentDataService.getStudents();
+      const studentsData = allStudents
+        .filter(s => s.status === "ATIVO")
+        .map(student => ({
+          ...student,
+          contatos: student.contatos || [],
+        }));
 
       setStudents(studentsData);
       setLoadingProgress(`Carregando interações de ${studentsData.length} estudantes...`);
@@ -119,52 +115,15 @@ export default function InteractionReportsPage() {
 
         const batchPromises = batch.map(async (student) => {
           const studentId = student.estudanteId;
-          const studentInteractions: FamilyInteraction[] = [];
 
           try {
-            // Buscar em ambas as collections com Promise.all para paralelizar
-            const [newSnapshot, oldSnapshot] = await Promise.all([
-              getDocs(collection(db, CURRENT_SCHOOL_YEAR, "interacoes_familia", studentId)),
-              getDocs(collection(db, CURRENT_SCHOOL_YEAR, "interactions", studentId))
-            ]);
-
-            const allDocs = [...newSnapshot.docs, ...oldSnapshot.docs];
-
-            allDocs.forEach(doc => {
-              try {
-                const data = doc.data();
-
-                if (!data.type || !data.description) {
-                  return;
-                }
-
-                let formattedDate: string;
-                try {
-                  formattedDate = data.date ? formatFirebaseDate(data.date) : new Date().toLocaleDateString('pt-BR');
-                } catch (dateError) {
-                  formattedDate = new Date().toLocaleDateString('pt-BR');
-                }
-
-                const interaction: FamilyInteraction = {
-                  id: doc.id,
-                  studentId: studentId,
-                  type: data.type,
-                  date: formattedDate,
-                  description: data.description,
-                  createdBy: data.createdBy || "Não informado",
-                  sensitive: Boolean(data.sensitive)
-                };
-                studentInteractions.push(interaction);
-              } catch (docError) {
-                // Silenciosamente pular documentos com erro
-              }
-            });
-
+            // Buscar interações via Supabase (single source)
+            const studentInteractions = await InteractionService.getStudentInteractions(studentId);
+            return studentInteractions;
           } catch (studentError) {
-            // Continuar com próximo estudante
+            logger.error('Erro ao buscar interações do estudante', { studentId }, studentError as Error);
+            return [];
           }
-
-          return studentInteractions;
         });
 
         // Aguardar o lote atual completar antes de processar o próximo

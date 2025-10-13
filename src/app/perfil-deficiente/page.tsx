@@ -50,10 +50,10 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Toaster, toast } from "sonner";
-import { db } from "@/firebase.config";
-import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, where } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { formatDateInput, parseDateToFirebase, formatFirebaseDate } from "../utils";
+import { UserProfilesService } from "@/services/supabase/userProfilesService";
+import { StudentOccurrencesService } from "@/services/supabase/studentOccurrencesService";
 
 // Interface de Ocorrência
 interface Ocorrencia {
@@ -117,6 +117,7 @@ export default function DashboardDeficiencia() {
     const [filtroTabelaEstagiario, setFiltroTabelaEstagiario] = useState<string>("");
     const [filtroTabelaAve, setFiltroTabelaAve] = useState<string>("");
     const [filtroTabelaEstudantes, setFiltroTabelaEstudantes] = useState<string>("");
+    const [filtroTabelaOcorrencias, setFiltroTabelaOcorrencias] = useState<string>("");
 
     // Debounced values para otimizar performance (aguarda 500ms após última digitação)
     const debouncedFiltroEstagiario = useDebounce(filtroTabelaEstagiario, 500);
@@ -136,7 +137,6 @@ export default function DashboardDeficiencia() {
     const [occurrences, setOccurrences] = useState<Ocorrencia[]>([]);
     const [showDeleteOccurrenceDialog, setShowDeleteOccurrenceDialog] = useState<string | null>(null);
     const [userRole, setUserRole] = useState<string | null>(null);
-    const [filtroTabelaOcorrencias, setFiltroTabelaOcorrencias] = useState<string>("");
     const [isOccurrenceSectionVisible, setIsOccurrenceSectionVisible] = useState<boolean>(false);
 
     const auth = getAuth();
@@ -167,16 +167,16 @@ export default function DashboardDeficiencia() {
         const fetchUserRole = async () => {
             try {
                 const user = auth.currentUser;
-                if (!user || !user.email) {
+                if (!user || !user.uid) {
                     setUserRole("user");
                     return;
                 }
-                const q = query(collection(db, "users"), where("email", "==", user.email));
-                const querySnapshot = await getDocs(q);
-                if (!querySnapshot.empty) {
-                    const userDoc = querySnapshot.docs[0];
-                    const userData = userDoc.data();
-                    setUserRole(userData.perfil || "user");
+
+                // Buscar perfil do usuário via Supabase
+                const userProfile = await UserProfilesService.getByFirebaseUid(user.uid);
+
+                if (userProfile) {
+                    setUserRole(userProfile.role?.toLowerCase() || "user");
                 } else {
                     setUserRole("user");
                 }
@@ -220,13 +220,15 @@ export default function DashboardDeficiencia() {
     // Buscar ocorrências para o estudante selecionado
     const fetchOccurrencesForStudent = async (studentId: string) => {
         try {
-            const occurrencesSnapshot = await getDocs(collection(db, "2025", "occurrences", studentId));
-            const occurrencesData: Ocorrencia[] = occurrencesSnapshot.docs.map(doc => ({
-                id: doc.id,
-                date: formatFirebaseDate(doc.data().date as string),
-                description: doc.data().description as string,
-                createdBy: doc.data().createdBy as string || "Não informado",
-                sensitive: doc.data().sensitive as boolean || false,
+            // Buscar ocorrências via Supabase
+            const supabaseOccurrences = await StudentOccurrencesService.getByStudentId(studentId);
+
+            const occurrencesData: Ocorrencia[] = supabaseOccurrences.map(occurrence => ({
+                id: occurrence.id,
+                date: formatFirebaseDate(occurrence.occurrenceDate),
+                description: occurrence.description,
+                createdBy: occurrence.createdBy || "Não informado",
+                sensitive: occurrence.severity === 'GRAVE', // Mapear severity GRAVE como sensível
             })).sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
 
             setOccurrences(occurrencesData);
@@ -252,14 +254,15 @@ export default function DashboardDeficiencia() {
         try {
             const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-            const occurrenceData = {
-                date: formattedDate,
+            // Criar ocorrência via Supabase
+            await StudentOccurrencesService.create({
+                studentId: selectedStudent.estudanteId,
+                occurrenceDate: formattedDate,
+                occurrenceType: 'COMPORTAMENTAL', // Tipo padrão
                 description: occurrenceDescription,
+                severity: occurrenceSensitive ? 'GRAVE' : 'MODERADA', // Mapear sensível como GRAVE
                 createdBy: currentUser,
-                sensitive: occurrenceSensitive,
-            };
-
-            await addDoc(collection(db, "2025", "occurrences", selectedStudent.estudanteId), occurrenceData);
+            });
 
             setOccurrenceDate(new Date().toLocaleDateString("pt-BR"));
             setOccurrenceDescription("");
@@ -291,13 +294,11 @@ export default function DashboardDeficiencia() {
         }
 
         try {
-            const occurrenceRef = doc(db, "2025", "occurrences", selectedStudent.estudanteId, editingOccurrence.id);
-
-            await updateDoc(occurrenceRef, {
-                date: formattedDate,
+            // Atualizar ocorrência via Supabase
+            await StudentOccurrencesService.update(editingOccurrence.id, {
+                occurrenceDate: formattedDate,
                 description: occurrenceDescription,
-                sensitive: occurrenceSensitive,
-                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
+                severity: occurrenceSensitive ? 'GRAVE' : 'MODERADA',
             });
 
             setEditingOccurrence(null);
@@ -319,8 +320,8 @@ export default function DashboardDeficiencia() {
         if (!selectedStudent) return;
 
         try {
-            const occurrenceRef = doc(db, "2025", "occurrences", selectedStudent.estudanteId, occurrenceId);
-            await deleteDoc(occurrenceRef);
+            // Deletar ocorrência via Supabase
+            await StudentOccurrencesService.delete(occurrenceId);
 
             await fetchOccurrencesForStudent(selectedStudent.estudanteId);
             toast.success("Ocorrência excluída com sucesso!");

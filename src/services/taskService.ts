@@ -1,65 +1,70 @@
 /**
- * Serviço para gerenciamento de tarefas de usuário
+ * Serviço para gerenciamento de tarefas de usuário (SUPABASE VERSION)
+ * Migrado de Firebase para Supabase
  */
 
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  where,
-  getDoc,
-  writeBatch,
-  Timestamp
-} from 'firebase/firestore';
-import { db } from '@/firebase.config';
+import { supabase } from '@/lib/supabaseClient';
+import { AcademicYearService } from './supabase/academicYearService';
+import { AbsenceService } from './supabase/absenceService';
+import { StudentDataService } from './studentDataService';
 import { logger } from '@/utils/logger';
 import type { UserTask, TaskGenerationResult, BimesterTaskControl } from '@/types/tasks';
 import type { Student } from '@/types';
-import { addCreationAudit, addUpdateAudit } from '@/utils/auditHelpers';
-import { initializeSoftDelete } from '@/utils/softDeleteHelpers';
 
 export class TaskService {
-  private static readonly COLLECTION_TASKS = 'userTasks';
-  private static readonly COLLECTION_TASK_CONTROL = 'taskControl';
-
   /**
    * Identifica o bimestre atual baseado na data
    */
   private static async getCurrentBimester(): Promise<string> {
     try {
-      const docRef = doc(db, '2025', 'ano_letivo');
-      const docSnap = await getDoc(docRef);
+      // Usar AcademicYearService do Supabase
+      const bimesterDates = await AcademicYearService.getBimesterDates(2025);
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
 
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const hoje = new Date();
-        hoje.setHours(0, 0, 0, 0);
+      const bimestres = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
 
-        const bimestres = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
+      for (const bimestre of bimestres) {
+        const bimNum = parseInt(bimestre.charAt(0));
+        const dates = bimesterDates[bimNum];
 
-        for (const bimestre of bimestres) {
-          if (data[bimestre]?.startDate && data[bimestre]?.endDate) {
-            const [startDay, startMonth, startYear] = data[bimestre].startDate.split('/').map(Number);
-            const [endDay, endMonth, endYear] = data[bimestre].endDate.split('/').map(Number);
+        if (dates?.start && dates?.end) {
+          const startDate = this.parseDate(dates.start);
+          const endDate = this.parseDate(dates.end);
 
-            const startDate = new Date(startYear, startMonth - 1, startDay);
-            const endDate = new Date(endYear, endMonth - 1, endDay);
-
-            if (hoje >= startDate && hoje <= endDate) {
-              return bimestre;
-            }
+          if (startDate && endDate && hoje >= startDate && hoje <= endDate) {
+            return bimestre;
           }
         }
       }
 
       return '1º Bimestre';
     } catch (error) {
-      logger.firebaseError('getCurrentBimester', error as Error);
+      logger.error('getCurrentBimester falhou', {}, error as Error);
       return '1º Bimestre';
     }
   }
 
+  /**
+   * Parse date in format dd/mm/yyyy or yyyy-mm-dd
+   */
+  private static parseDate(dateStr: string): Date | null {
+    if (!dateStr) return null;
+
+    // dd/mm/yyyy
+    if (dateStr.includes('/')) {
+      const [day, month, year] = dateStr.split('/').map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    // yyyy-mm-dd
+    if (dateStr.includes('-')) {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    return null;
+  }
 
   /**
    * Calcula dados completos de frequência de um estudante no bimestre atual
@@ -69,7 +74,6 @@ export class TaskService {
     currentBimester: string
   ): Promise<{ frequency: number; absences: number; totalDays: number }> {
     try {
-      // Timeout para evitar travamentos
       return await Promise.race([
         this.doCalculateFrequencyData(estudanteId, currentBimester),
         new Promise<{ frequency: number; absences: number; totalDays: number }>((_, reject) =>
@@ -78,7 +82,7 @@ export class TaskService {
       ]);
     } catch (error) {
       logger.error('Erro ao calcular frequência do bimestre:', error as Error);
-      return { frequency: 100, absences: 0, totalDays: 0 }; // Retorna valores seguros em caso de erro
+      return { frequency: 100, absences: 0, totalDays: 0 };
     }
   }
 
@@ -89,74 +93,58 @@ export class TaskService {
     estudanteId: string,
     currentBimester: string
   ): Promise<{ frequency: number; absences: number; totalDays: number }> {
-      // Buscar dados do ano letivo
-      const anoLetivoRef = doc(db, '2025', 'ano_letivo');
-      const anoLetivoSnap = await getDoc(anoLetivoRef);
+    // Buscar dias letivos do bimestre
+    const bimNum = parseInt(currentBimester.charAt(0));
+    const schoolDaysByBimester = await AcademicYearService.getSchoolDaysByBimester(2025);
+    const diasLetivos = schoolDaysByBimester[bimNum] || 0;
 
-      if (!anoLetivoSnap.exists()) {
-        logger.warn('Documento ano_letivo não encontrado');
-        return { frequency: 100, absences: 0, totalDays: 0 };
-      }
+    if (diasLetivos === 0) {
+      return { frequency: 100, absences: 0, totalDays: 0 };
+    }
 
-      const anoLetivoData = anoLetivoSnap.data();
-      const bimesterData = anoLetivoData[currentBimester];
+    // Buscar faltas do estudante (apenas não justificadas)
+    const allAbsences = await AbsenceService.getStudentAbsences(estudanteId);
+    const bimesterDates = await AcademicYearService.getBimesterDates(2025);
+    const dates = bimesterDates[bimNum];
 
-      if (!bimesterData?.dates) {
-        logger.warn(`Dados do ${currentBimester} não encontrados`);
-        return { frequency: 100, absences: 0, totalDays: 0 };
-      }
+    if (!dates?.start || !dates?.end) {
+      return { frequency: 100, absences: 0, totalDays: diasLetivos };
+    }
 
-      // Contar dias letivos do bimestre
-      const diasLetivos = bimesterData.dates.filter((day: any) => day.isChecked).length;
+    const startDate = this.parseDate(dates.start);
+    const endDate = this.parseDate(dates.end);
 
-      if (diasLetivos === 0) {
-        return { frequency: 100, absences: 0, totalDays: 0 }; // Se não há dias letivos, considerar 100% de presença
-      }
+    if (!startDate || !endDate) {
+      return { frequency: 100, absences: 0, totalDays: diasLetivos };
+    }
 
-      // Buscar faltas do estudante (apenas não justificadas)
-      const faltasRef = collection(db, '2025', 'faltas', 'controle');
-      const faltasQuery = query(faltasRef, where('estudanteId', '==', estudanteId));
-      const faltasSnap = await getDocs(faltasQuery);
-
-      let faltasNaoJustificadas = 0;
-      const diasLetivosDatas = bimesterData.dates
-        .filter((day: any) => day.isChecked)
-        .map((day: any) => day.date);
-
-      faltasSnap.forEach((doc) => {
-        const falta = doc.data();
-        if (!falta.justified) { // Apenas faltas não justificadas
-          // Converter data para formato dd/mm/yyyy se necessário
-          let dataFalta = falta.data;
-          if (dataFalta.includes('-')) {
-            const [year, month, day] = dataFalta.split('-');
-            dataFalta = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
-          }
-
-          // Verificar se a falta está no período do bimestre
-          if (diasLetivosDatas.includes(dataFalta)) {
-            faltasNaoJustificadas++;
-          }
+    // Contar faltas não justificadas no período
+    let faltasNaoJustificadas = 0;
+    allAbsences.forEach(absence => {
+      // Usar campo Supabase
+      if (!absence.is_justified) {
+        const absenceDate = this.parseDate(absence.absence_date || '');
+        if (absenceDate && absenceDate >= startDate && absenceDate <= endDate) {
+          faltasNaoJustificadas++;
         }
-      });
+      }
+    });
 
-      const diasPresentes = diasLetivos - faltasNaoJustificadas;
-      const percentual = (diasPresentes / diasLetivos) * 100;
+    const diasPresentes = diasLetivos - faltasNaoJustificadas;
+    const percentual = (diasPresentes / diasLetivos) * 100;
 
-      return {
-        frequency: Math.max(0, Math.min(100, percentual)),
-        absences: faltasNaoJustificadas,
-        totalDays: diasLetivos
-      };
+    return {
+      frequency: Math.max(0, Math.min(100, percentual)),
+      absences: faltasNaoJustificadas,
+      totalDays: diasLetivos
+    };
   }
-
 
   /**
    * Gera tarefas para estudantes com frequência baixa no bimestre atual
    */
   static async generateTasksForUser(userId: string): Promise<TaskGenerationResult> {
     try {
-      // Timeout geral para evitar carregamento infinito
       return await Promise.race([
         this.doGenerateTasksForUser(userId),
         new Promise<TaskGenerationResult>((_, reject) =>
@@ -178,178 +166,123 @@ export class TaskService {
    * Implementação otimizada da geração de tarefas
    */
   private static async doGenerateTasksForUser(userId: string): Promise<TaskGenerationResult> {
-      const currentBimester = await this.getCurrentBimester();
+    const currentBimester = await this.getCurrentBimester();
 
-      // 1. Buscar dados em paralelo para melhor performance
-      const [estudantesSnap, anoLetivoSnap] = await Promise.all([
-        getDoc(doc(db, '2025', 'lista_de_estudantes')),
-        getDoc(doc(db, '2025', 'ano_letivo'))
-      ]);
+    // Buscar estudantes ativos
+    const students = await StudentDataService.getStudents(true); // onlyActive = true
+    const estudantesAtivos = students.filter(s => s.status === 'ATIVO');
 
-      if (!estudantesSnap.exists() || !anoLetivoSnap.exists()) {
-        return { newTasks: [], message: 'Dados necessários não encontrados' };
-      }
-
-      const estudantesData = estudantesSnap.data() as { estudantes: Student[] };
-      const estudantesAtivos = estudantesData.estudantes.filter(e => e.status === 'ATIVO');
-
-      if (estudantesAtivos.length === 0) {
-        return { newTasks: [], message: 'Nenhum estudante ativo encontrado' };
-      }
-
-      // 2. Buscar todas as faltas, controles e tasks pendentes em lote
-      const estudanteIds = estudantesAtivos.map(e => e.estudanteId);
-      const [faltasSnap, controlSnap, existingTasksSnap] = await Promise.all([
-        this.getAllAbsences(estudanteIds),
-        this.getAllTaskControls(userId, estudanteIds, currentBimester),
-        this.getExistingPendingTasks(userId, estudanteIds, currentBimester)
-      ]);
-
-      // 3. Processar dados do ano letivo uma vez
-      const anoLetivoData = anoLetivoSnap.data();
-      const bimesterData = anoLetivoData[currentBimester];
-
-      if (!bimesterData?.dates) {
-        return { newTasks: [], message: `Dados do ${currentBimester} não encontrados` };
-      }
-
-      const diasLetivos = bimesterData.dates.filter((day: any) => day.isChecked).length;
-      const diasLetivosDatas = bimesterData.dates
-        .filter((day: any) => day.isChecked)
-        .map((day: any) => day.date);
-
-      if (diasLetivos === 0) {
-        return { newTasks: [], message: 'Nenhum dia letivo configurado para este bimestre' };
-      }
-
-      // 4. Processar estudantes em lote
-      const newTasks: UserTask[] = [];
-      const batch = writeBatch(db);
-      let studentsWithLowFrequency = 0;
-
-      for (const estudante of estudantesAtivos) {
-        // Verificar se já completou tarefa OU já tem task pendente (usando dados em cache)
-        if (controlSnap.has(estudante.estudanteId) || existingTasksSnap.has(estudante.estudanteId)) {
-          continue;
-        }
-
-        // Calcular frequência usando dados em cache
-        const faltasEstudante = faltasSnap.get(estudante.estudanteId) || [];
-        let faltasNaoJustificadas = 0;
-
-        faltasEstudante.forEach((falta: any) => {
-          if (!falta.justified) {
-            let dataFalta = falta.data;
-            if (dataFalta.includes('-')) {
-              const [year, month, day] = dataFalta.split('-');
-              dataFalta = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
-            }
-            if (diasLetivosDatas.includes(dataFalta)) {
-              faltasNaoJustificadas++;
-            }
-          }
-        });
-
-        const diasPresentes = diasLetivos - faltasNaoJustificadas;
-        const frequencyPercentage = (diasPresentes / diasLetivos) * 100;
-
-        // Verificar se frequência é < 76% E dados estão completos
-        if (frequencyPercentage < 76) {
-          studentsWithLowFrequency++;
-
-          // Só criar task se dados estão completos (turma e nome existem)
-          if (estudante.turma && estudante.turma.trim() && estudante.nome && estudante.nome.trim()) {
-            const tasksCollectionRef = collection(db, this.COLLECTION_TASKS);
-            const taskId = doc(tasksCollectionRef).id;
-
-            const taskData = {
-              id: taskId,
-              userId,
-              estudanteId: estudante.estudanteId,
-              studentName: estudante.nome,
-              studentClass: estudante.turma,
-              taskType: 'CONSELHO_TUTELAR' as const,
-              bimestre: currentBimester,
-              status: 'PENDING' as const,
-              frequencyPercentage: Math.max(0, Math.min(100, frequencyPercentage)),
-              absencesCount: faltasNaoJustificadas,
-              isPCD: estudante.deficiencia?.estudanteComDeficiencia || false,
-              priority: 'critical' as const,
-              recommendedAction: 'Encaminhar ao Conselho Tutelar',
-              createdBy: 'Sistema'
-            };
-
-            // Add audit and soft delete fields
-            const newTask: UserTask = {
-              ...taskData,
-              createdAt: new Date().toISOString(),
-              ...initializeSoftDelete(),
-            };
-
-            const taskRef = doc(db, this.COLLECTION_TASKS, taskId);
-            batch.set(taskRef, newTask);
-            newTasks.push(newTask);
-          }
-        }
-      }
-
-      // 5. Executar batch
-      if (newTasks.length > 0) {
-        await batch.commit();
-        logger.info('Tarefas geradas com sucesso', {
-          count: newTasks.length,
-          bimestre: currentBimester
-        });
-      }
-
-      return {
-        newTasks,
-        message: newTasks.length > 0
-          ? `${newTasks.length} estudante(s) com frequência ≤ 75% necessitam encaminhamento ao Conselho Tutelar`
-          : studentsWithLowFrequency > 0
-            ? `${studentsWithLowFrequency} estudante(s) com frequência baixa já foram processados anteriormente`
-            : 'Nenhum estudante necessita encaminhamento no momento'
-      };
-  }
-
-  /**
-   * Busca todas as faltas de uma lista de estudantes em uma única query
-   */
-  private static async getAllAbsences(estudanteIds: string[]): Promise<Map<string, any[]>> {
-    const faltasMap = new Map<string, any[]>();
-
-    if (estudanteIds.length === 0) return faltasMap;
-
-    // Firebase tem limite de 10 itens no 'in', então dividimos em chunks
-    const chunks = [];
-    for (let i = 0; i < estudanteIds.length; i += 10) {
-      chunks.push(estudanteIds.slice(i, i + 10));
+    if (estudantesAtivos.length === 0) {
+      return { newTasks: [], message: 'Nenhum estudante ativo encontrado' };
     }
 
-    const faltasPromises = chunks.map(chunk => {
-      const faltasRef = collection(db, '2025', 'faltas', 'controle');
-      const faltasQuery = query(faltasRef, where('estudanteId', 'in', chunk));
-      return getDocs(faltasQuery);
-    });
+    // Buscar dias letivos
+    const bimNum = parseInt(currentBimester.charAt(0));
+    const schoolDaysByBimester = await AcademicYearService.getSchoolDaysByBimester(2025);
+    const diasLetivos = schoolDaysByBimester[bimNum] || 0;
 
-    const faltasResults = await Promise.all(faltasPromises);
+    if (diasLetivos === 0) {
+      return { newTasks: [], message: 'Nenhum dia letivo configurado para este bimestre' };
+    }
 
-    faltasResults.forEach(querySnapshot => {
-      querySnapshot.forEach(doc => {
-        const falta = doc.data();
-        const estudanteId = falta.estudanteId;
-        if (!faltasMap.has(estudanteId)) {
-          faltasMap.set(estudanteId, []);
+    // Buscar controles e tasks existentes em paralelo
+    const estudanteIds = estudantesAtivos.map(e => e.estudanteId);
+    const [controlSet, existingTasksSet] = await Promise.all([
+      this.getAllTaskControls(userId, estudanteIds, currentBimester),
+      this.getExistingPendingTasks(userId, estudanteIds, currentBimester)
+    ]);
+
+    // Processar estudantes
+    const newTasks: UserTask[] = [];
+    let studentsWithLowFrequency = 0;
+
+    for (const estudante of estudantesAtivos) {
+      // Verificar se já completou OU já tem task pendente
+      if (controlSet.has(estudante.estudanteId) || existingTasksSet.has(estudante.estudanteId)) {
+        continue;
+      }
+
+      // Calcular frequência
+      const frequencyData = await this.calculateCurrentBimesterData(estudante.estudanteId, currentBimester);
+
+      // Verificar se frequência é < 76%
+      if (frequencyData.frequency < 76) {
+        studentsWithLowFrequency++;
+
+        // Criar task se dados estão completos
+        if (estudante.turma && estudante.turma.trim() && estudante.nome && estudante.nome.trim()) {
+          const taskData: Omit<UserTask, 'id' | 'createdAt' | 'updatedAt'> = {
+            userId,
+            estudanteId: estudante.estudanteId,
+            studentName: estudante.nome,
+            studentClass: estudante.turma,
+            taskType: 'CONSELHO_TUTELAR',
+            bimestre: currentBimester,
+            status: 'PENDING',
+            frequencyPercentage: frequencyData.frequency,
+            absencesCount: frequencyData.absences,
+            isPCD: estudante.deficiencia?.estudanteComDeficiencia || false,
+            priority: 'critical',
+            recommendedAction: 'Encaminhar ao Conselho Tutelar',
+            createdBy: 'Sistema',
+            deleted: false
+          };
+
+          // Insert no Supabase
+          const { data: inserted, error } = await (supabase as any)
+            .from('user_tasks')
+            .insert({
+              user_id: taskData.userId,
+              student_id: taskData.estudanteId,
+              student_name: taskData.studentName,
+              student_class: taskData.studentClass,
+              task_type: taskData.taskType,
+              bimestre: taskData.bimestre,
+              status: taskData.status,
+              frequency_percentage: taskData.frequencyPercentage,
+              absences_count: taskData.absencesCount,
+              is_pcd: taskData.isPCD,
+              priority: taskData.priority,
+              recommended_action: taskData.recommendedAction,
+              created_by: taskData.createdBy,
+              deleted: taskData.deleted
+            })
+            .select()
+            .single();
+
+          if (error) {
+            logger.error('Erro ao inserir task', { estudanteId: estudante.estudanteId }, error);
+          } else {
+            newTasks.push({
+              id: inserted.id,
+              ...taskData,
+              createdAt: inserted.created_at,
+              updatedAt: inserted.updated_at
+            });
+          }
         }
-        faltasMap.get(estudanteId)!.push(falta);
-      });
-    });
+      }
+    }
 
-    return faltasMap;
+    if (newTasks.length > 0) {
+      logger.info('Tarefas geradas com sucesso', {
+        count: newTasks.length,
+        bimestre: currentBimester
+      });
+    }
+
+    return {
+      newTasks,
+      message: newTasks.length > 0
+        ? `${newTasks.length} estudante(s) com frequência ≤ 75% necessitam encaminhamento ao Conselho Tutelar`
+        : studentsWithLowFrequency > 0
+          ? `${studentsWithLowFrequency} estudante(s) com frequência baixa já foram processados anteriormente`
+          : 'Nenhum estudante necessita encaminhamento no momento'
+    };
   }
 
   /**
-   * Busca todos os controles de tarefa em uma única query
+   * Busca todos os controles de tarefa
    */
   private static async getAllTaskControls(
     userId: string,
@@ -360,72 +293,60 @@ export class TaskService {
 
     if (estudanteIds.length === 0) return completedSet;
 
-    const chunks = [];
-    for (let i = 0; i < estudanteIds.length; i += 10) {
-      chunks.push(estudanteIds.slice(i, i + 10));
-    }
+    try {
+      const { data, error } = await (supabase
+        .from('task_control')
+        .select('student_id')
+        .eq('user_id', userId)
+        .in('student_id', estudanteIds)
+        .eq('bimestre', bimestre)
+        .eq('task_type', 'CONSELHO_TUTELAR')
+        .eq('has_completed_task', true) as any);
 
-    const controlPromises = chunks.map(chunk => {
-      const controlRef = collection(db, this.COLLECTION_TASK_CONTROL);
-      const controlQuery = query(
-        controlRef,
-        where('userId', '==', userId),
-        where('estudanteId', 'in', chunk),
-        where('bimestre', '==', bimestre),
-        where('taskType', '==', 'CONSELHO_TUTELAR'),
-        where('hasCompletedTask', '==', true)
-      );
-      return getDocs(controlQuery);
-    });
+      if (error) throw error;
 
-    const controlResults = await Promise.all(controlPromises);
-
-    controlResults.forEach(querySnapshot => {
-      querySnapshot.forEach(doc => {
-        const control = doc.data();
-        completedSet.add(control.estudanteId);
+      (data || []).forEach((record: any) => {
+        completedSet.add(record.student_id);
       });
-    });
+    } catch (error) {
+      logger.error('getAllTaskControls falhou', {}, error as Error);
+    }
 
     return completedSet;
   }
 
   /**
-   * Busca todas as tasks pendentes existentes para uma lista de estudantes
+   * Busca todas as tasks pendentes existentes
    */
-  private static async getExistingPendingTasks(userId: string, estudanteIds: string[], bimestre: string): Promise<Map<string, boolean>> {
-    const tasksMap = new Map<string, boolean>();
+  private static async getExistingPendingTasks(
+    userId: string,
+    estudanteIds: string[],
+    bimestre: string
+  ): Promise<Set<string>> {
+    const tasksSet = new Set<string>();
 
-    if (estudanteIds.length === 0) return tasksMap;
+    if (estudanteIds.length === 0) return tasksSet;
 
-    // Firebase tem limite de 10 itens no 'in', então dividimos em chunks
-    const chunks = [];
-    for (let i = 0; i < estudanteIds.length; i += 10) {
-      chunks.push(estudanteIds.slice(i, i + 10));
+    try {
+      const { data, error } = await (supabase
+        .from('user_tasks')
+        .select('student_id')
+        .eq('user_id', userId)
+        .in('student_id', estudanteIds)
+        .eq('bimestre', bimestre)
+        .eq('status', 'PENDING')
+        .eq('deleted', false) as any);
+
+      if (error) throw error;
+
+      (data || []).forEach((record: any) => {
+        tasksSet.add(record.student_id);
+      });
+    } catch (error) {
+      logger.error('getExistingPendingTasks falhou', {}, error as Error);
     }
 
-    const tasksPromises = chunks.map(chunk => {
-      const tasksRef = collection(db, this.COLLECTION_TASKS);
-      const tasksQuery = query(
-        tasksRef,
-        where('userId', '==', userId),
-        where('estudanteId', 'in', chunk),
-        where('bimestre', '==', bimestre),
-        where('status', '==', 'PENDING')
-      );
-      return getDocs(tasksQuery);
-    });
-
-    const tasksResults = await Promise.all(tasksPromises);
-
-    tasksResults.forEach(querySnapshot => {
-      querySnapshot.forEach(doc => {
-        const data = doc.data() as UserTask;
-        tasksMap.set(data.estudanteId, true);
-      });
-    });
-
-    return tasksMap;
+    return tasksSet;
   }
 
   /**
@@ -433,23 +354,19 @@ export class TaskService {
    */
   static async getPendingTasks(userId: string): Promise<UserTask[]> {
     try {
-      const tasksRef = collection(db, this.COLLECTION_TASKS);
-      const tasksQuery = query(
-        tasksRef,
-        where('userId', '==', userId),
-        where('status', '==', 'PENDING')
-      );
+      const { data, error } = await supabase
+        .from('user_tasks')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'PENDING')
+        .eq('deleted', false)
+        .order('created_at', { ascending: false });
 
-      const tasksSnap = await getDocs(tasksQuery);
-      const tasks: UserTask[] = [];
+      if (error) throw error;
 
-      tasksSnap.forEach((doc) => {
-        tasks.push({ ...doc.data() } as UserTask);
-      });
-
-      return tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return (data || []).map(task => this.mapSupabaseToUserTask(task));
     } catch (error) {
-      logger.error('Erro ao buscar tarefas pendentes:', error as Error);
+      logger.error('getPendingTasks falhou', {}, error as Error);
       return [];
     }
   }
@@ -462,54 +379,58 @@ export class TaskService {
     interactionId: string
   ): Promise<boolean> {
     try {
-      const batch = writeBatch(db);
+      // Buscar task
+      const { data: task, error: fetchError } = await (supabase
+        .from('user_tasks')
+        .select('*')
+        .eq('id', taskId)
+        .single() as any);
 
-      // 1. Atualizar a tarefa
-      const taskRef = doc(db, this.COLLECTION_TASKS, taskId);
-      const taskSnap = await getDoc(taskRef);
-
-      if (!taskSnap.exists()) {
+      if (fetchError || !task) {
         logger.error('Tarefa não encontrada', { taskId });
         return false;
       }
 
-      const task = taskSnap.data() as UserTask;
       const completedAt = new Date().toISOString();
 
-      // Add update audit fields
-      const updateData = addUpdateAudit({
-        status: 'COMPLETED',
-        completedAt,
-        interactionId
-      }, task.userId);
+      // Atualizar task e criar control em paralelo
+      const [updateResult, controlResult] = await Promise.allSettled([
+        // 1. Atualizar task
+        ((supabase
+          .from('user_tasks') as any)
+          .update({
+            status: 'COMPLETED',
+            completed_at: completedAt,
+            interaction_id: interactionId
+          })
+          .eq('id', taskId)),
 
-      batch.update(taskRef, updateData);
+        // 2. Criar control
+        (supabase
+          .from('task_control')
+          .insert({
+            user_id: task.user_id,
+            student_id: task.student_id,
+            bimestre: task.bimestre,
+            task_type: task.task_type,
+            has_completed_task: true,
+            completed_at: completedAt
+          } as any) as any)
+      ]);
 
-      // 2. Criar registro de controle para evitar nova tarefa no mesmo bimestre
-      const taskControlCollectionRef = collection(db, this.COLLECTION_TASK_CONTROL);
-      const controlRef = doc(taskControlCollectionRef);
-      const controlData: BimesterTaskControl = {
-        userId: task.userId,
-        estudanteId: task.estudanteId,
-        bimestre: task.bimestre,
-        taskType: task.taskType,
-        hasCompletedTask: true,
-        completedAt
-      };
+      if (updateResult.status === 'rejected') {
+        logger.error('Erro ao atualizar task', { taskId }, updateResult.reason);
+        return false;
+      }
 
-      // Add audit and soft delete fields to control record
-      const controlDataWithAudit = {
-        ...addCreationAudit(controlData, task.userId),
-        ...initializeSoftDelete(),
-      };
+      if (controlResult.status === 'rejected') {
+        logger.error('Erro ao criar control', { taskId }, controlResult.reason);
+        // Task foi atualizada, então considerar sucesso parcial
+      }
 
-      batch.set(controlRef, controlDataWithAudit);
-
-      // 3. Executar batch
-      await batch.commit();
       return true;
     } catch (error) {
-      logger.error('Erro ao completar tarefa:', error as Error);
+      logger.error('completeTask falhou', { taskId }, error as Error);
       return false;
     }
   }
@@ -519,16 +440,20 @@ export class TaskService {
    */
   static async getTaskById(taskId: string): Promise<UserTask | null> {
     try {
-      const taskRef = doc(db, this.COLLECTION_TASKS, taskId);
-      const taskSnap = await getDoc(taskRef);
+      const { data, error } = await supabase
+        .from('user_tasks')
+        .select('*')
+        .eq('id', taskId)
+        .single();
 
-      if (taskSnap.exists()) {
-        return { ...taskSnap.data() } as UserTask;
+      if (error) {
+        if (error.code === 'PGRST116') return null; // Not found
+        throw error;
       }
 
-      return null;
+      return this.mapSupabaseToUserTask(data);
     } catch (error) {
-      logger.error('Erro ao buscar tarefa:', error as Error);
+      logger.error('getTaskById falhou', { taskId }, error as Error);
       return null;
     }
   }
@@ -538,25 +463,141 @@ export class TaskService {
    */
   static async getCompletedTasks(userId: string, bimestres: string[]): Promise<UserTask[]> {
     try {
-      const tasksRef = collection(db, this.COLLECTION_TASKS);
-      const tasksQuery = query(
-        tasksRef,
-        where('userId', '==', userId),
-        where('status', '==', 'COMPLETED'),
-        where('bimestre', 'in', bimestres.length > 0 ? bimestres : ['1º Bimestre']) // Fallback para evitar erro
-      );
+      if (bimestres.length === 0) {
+        bimestres = ['1º Bimestre']; // Fallback
+      }
 
-      const tasksSnap = await getDocs(tasksQuery);
-      const tasks: UserTask[] = [];
+      const { data, error } = await supabase
+        .from('user_tasks')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'COMPLETED')
+        .in('bimestre', bimestres)
+        .eq('deleted', false)
+        .order('completed_at', { ascending: false });
 
-      tasksSnap.forEach((doc) => {
-        tasks.push({ ...doc.data() } as UserTask);
-      });
+      if (error) throw error;
 
-      return tasks.sort((a, b) => new Date(b.completedAt || '').getTime() - new Date(a.completedAt || '').getTime());
+      return (data || []).map(task => this.mapSupabaseToUserTask(task));
     } catch (error) {
-      logger.error('Erro ao buscar tarefas completadas:', error as Error);
+      logger.error('getCompletedTasks falhou', {}, error as Error);
       return [];
+    }
+  }
+
+  /**
+   * Cria uma nova tarefa no Supabase
+   */
+  static async createTask(taskData: Omit<UserTask, 'id'>): Promise<string> {
+    try {
+      const insertData: any = {
+        user_id: taskData.userId,
+        student_id: taskData.estudanteId,
+        student_name: taskData.studentName,
+        student_class: taskData.studentClass,
+        task_type: taskData.taskType,
+        bimestre: taskData.bimestre,
+        status: taskData.status,
+        frequency_percentage: taskData.frequencyPercentage,
+        absences_count: taskData.absencesCount,
+        is_pcd: taskData.isPCD,
+        created_at: taskData.createdAt,
+        created_by: taskData.createdBy,
+        priority: taskData.priority,
+        recommended_action: taskData.recommendedAction,
+        deleted: false,
+      };
+
+      // Campos opcionais
+      if (taskData.completedAt !== undefined) insertData.completed_at = taskData.completedAt;
+      if (taskData.resolvedBy !== undefined) insertData.resolved_by = taskData.resolvedBy;
+      if (taskData.interactionId !== undefined) insertData.interaction_id = taskData.interactionId;
+      if (taskData.interactionType !== undefined) insertData.interaction_type = taskData.interactionType;
+      if (taskData.interactionDescription !== undefined) insertData.interaction_description = taskData.interactionDescription;
+
+      const { data, error } = await ((supabase
+        .from('user_tasks') as any)
+        .insert(insertData)
+        .select()
+        .single());
+
+      if (error) throw error;
+
+      logger.info('Tarefa criada no Supabase', { taskId: data.id });
+      return data.id;
+    } catch (error) {
+      logger.error('createTask falhou', {}, error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Busca todas as tarefas de um usuário (por userId, incluindo BOT)
+   */
+  static async getUserTasksForUserId(userId: string): Promise<UserTask[]> {
+    try {
+      const { data, error } = await supabase
+        .from('user_tasks')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('deleted', false)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map(task => this.mapSupabaseToUserTask(task));
+    } catch (error) {
+      logger.error('getUserTasksForUserId falhou', { userId }, error as Error);
+      return [];
+    }
+  }
+
+  /**
+   * Atualiza uma tarefa
+   */
+  static async updateTask(taskId: string, updates: Partial<UserTask>): Promise<boolean> {
+    try {
+      const updateData: any = {};
+
+      if (updates.status !== undefined) updateData.status = updates.status;
+      if (updates.completedAt !== undefined) updateData.completed_at = updates.completedAt;
+      if (updates.interactionId !== undefined) updateData.interaction_id = updates.interactionId;
+      if (updates.interactionType !== undefined) updateData.interaction_type = updates.interactionType;
+      if (updates.interactionDescription !== undefined) updateData.interaction_description = updates.interactionDescription;
+      if (updates.resolvedBy !== undefined) updateData.resolved_by = updates.resolvedBy;
+
+      const { error } = await ((supabase
+        .from('user_tasks') as any)
+        .update(updateData)
+        .eq('id', taskId));
+
+      if (error) throw error;
+
+      logger.info('Tarefa atualizada', { taskId });
+      return true;
+    } catch (error) {
+      logger.error('updateTask falhou', { taskId }, error as Error);
+      return false;
+    }
+  }
+
+  /**
+   * Deleta uma tarefa
+   */
+  static async deleteTask(taskId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('user_tasks')
+        .delete()
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      logger.info('Tarefa deletada', { taskId });
+      return true;
+    } catch (error) {
+      logger.error('deleteTask falhou', { taskId }, error as Error);
+      return false;
     }
   }
 
@@ -565,31 +606,45 @@ export class TaskService {
    */
   static async clearAllTasks(): Promise<void> {
     try {
-      const batch = writeBatch(db);
+      // Delete em paralelo
+      await Promise.all([
+        supabase.from('user_tasks').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('task_control').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+      ]);
 
-      // 1. Limpar todas as tarefas
-      const tasksRef = collection(db, this.COLLECTION_TASKS);
-      const tasksSnapshot = await getDocs(tasksRef);
-
-      tasksSnapshot.forEach((taskDoc) => {
-        batch.delete(taskDoc.ref);
-      });
-
-      // 2. Limpar todos os controles de tarefas
-      const controlRef = collection(db, this.COLLECTION_TASK_CONTROL);
-      const controlSnapshot = await getDocs(controlRef);
-
-      controlSnapshot.forEach((controlDoc) => {
-        batch.delete(controlDoc.ref);
-      });
-
-      // 3. Executar batch
-      await batch.commit();
-
-      logger.info(`Removidas ${tasksSnapshot.size} tarefas e ${controlSnapshot.size} controles`);
+      logger.info('Todas as tarefas foram removidas');
     } catch (error) {
-      logger.error('Erro ao limpar tarefas:', error as Error);
+      logger.error('clearAllTasks falhou', {}, error as Error);
       throw error;
     }
+  }
+
+  /**
+   * Map Supabase record to UserTask type
+   */
+  private static mapSupabaseToUserTask(record: any): UserTask {
+    return {
+      id: record.id,
+      userId: record.user_id,
+      estudanteId: record.student_id,
+      studentName: record.student_name,
+      studentClass: record.student_class,
+      taskType: record.task_type,
+      bimestre: record.bimestre,
+      status: record.status,
+      frequencyPercentage: parseFloat(record.frequency_percentage),
+      absencesCount: record.absences_count,
+      isPCD: record.is_pcd,
+      priority: record.priority,
+      recommendedAction: record.recommended_action,
+      createdBy: record.created_by,
+      createdAt: record.created_at,
+      updatedAt: record.updated_at,
+      completedAt: record.completed_at,
+      interactionId: record.interaction_id,
+      deleted: record.deleted,
+      deletedAt: record.deleted_at,
+      deletedBy: record.deleted_by
+    };
   }
 }

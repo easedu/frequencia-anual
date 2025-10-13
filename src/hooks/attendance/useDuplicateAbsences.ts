@@ -1,12 +1,12 @@
 /**
  * Hook para detectar e remover faltas duplicadas
  * Funcionalidade específica para controle de qualidade de dados
+ *
+ * ✅ MIGRADO PARA SUPABASE
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore';
-import { db } from '@/firebase.config';
-import { formatFirebaseDate } from '@/utils/attendanceUtils';
+import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 
 interface AbsenceRecord {
@@ -47,13 +47,28 @@ export function useDuplicateAbsences(): UseDuplicateAbsencesReturn {
       setLoading(true);
       setError(null);
 
-      const absenceSnapshot = await getDocs(collection(db, '2025', 'faltas', 'controle'));
-      const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
-        estudanteId: doc.data().estudanteId,
-        turma: doc.data().turma,
-        data: formatFirebaseDate(doc.data().data),
-        docId: doc.id,
-        justified: doc.data().justified ?? false,
+      // ✅ SUPABASE: Buscar todas absences com JOIN para pegar student data
+      const { data: absences, error: fetchError } = await supabase
+        .from('student_absences')
+        .select(`
+          id,
+          absence_date,
+          is_justified,
+          students!inner (
+            student_id,
+            class
+          )
+        `)
+        .order('absence_date', { ascending: false });
+
+      if (fetchError) throw fetchError;
+
+      const absenceRecords: AbsenceRecord[] = (absences || []).map((absence: any) => ({
+        estudanteId: absence.students.student_id,
+        turma: absence.students.class,
+        data: absence.absence_date,
+        docId: absence.id,
+        justified: absence.is_justified,
       }));
 
       // Agrupar por chave única (estudanteId-data)
@@ -73,12 +88,11 @@ export function useDuplicateAbsences(): UseDuplicateAbsencesReturn {
 
       setDuplicates(duplicatesFound);
 
+      // Apenas log de warning se houver duplicatas (não info sempre)
       if (duplicatesFound.length > 0) {
         logger.warn(`Encontradas ${duplicatesFound.length} faltas duplicadas`, {
           count: duplicatesFound.length,
         });
-      } else {
-        logger.info('Nenhuma falta duplicada encontrada');
       }
     } catch (err) {
       const error = err as Error;
@@ -95,18 +109,14 @@ export function useDuplicateAbsences(): UseDuplicateAbsencesReturn {
       setLoading(true);
       setError(null);
 
-      const absenceSnapshot = await getDocs(collection(db, '2025', 'faltas', 'controle'));
-      const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
-        estudanteId: doc.data().estudanteId,
-        turma: doc.data().turma,
-        data: formatFirebaseDate(doc.data().data),
-        docId: doc.id,
-        justified: doc.data().justified ?? false,
-      }));
+      if (duplicates.length === 0) {
+        await fetchDuplicates(); // Atualiza lista
+        return;
+      }
 
-      // Agrupar por chave única
+      // Agrupar duplicatas por chave única
       const seen: Record<string, AbsenceRecord[]> = {};
-      absenceRecords.forEach(record => {
+      duplicates.forEach(record => {
         const key = `${record.estudanteId}-${record.data}`;
         if (!seen[key]) {
           seen[key] = [];
@@ -120,16 +130,18 @@ export function useDuplicateAbsences(): UseDuplicateAbsencesReturn {
         .flatMap(group => group.slice(1)); // Remove do 2º em diante
 
       if (duplicatesToRemove.length === 0) {
-        logger.info('Nenhuma duplicata para remover');
-        await fetchDuplicates(); // Atualiza lista
+        await fetchDuplicates();
         return;
       }
 
-      // Deletar duplicatas
-      const deletePromises = duplicatesToRemove.map(record =>
-        deleteDoc(doc(db, '2025', 'faltas', 'controle', record.docId))
-      );
-      await Promise.all(deletePromises);
+      // ✅ SUPABASE: Deletar duplicatas em batch
+      const idsToDelete = duplicatesToRemove.map(record => record.docId);
+      const { error: deleteError } = await supabase
+        .from('student_absences')
+        .delete()
+        .in('id', idsToDelete);
+
+      if (deleteError) throw deleteError;
 
       logger.info(`Removidos ${duplicatesToRemove.length} registros duplicados`, {
         count: duplicatesToRemove.length,
@@ -144,7 +156,7 @@ export function useDuplicateAbsences(): UseDuplicateAbsencesReturn {
     } finally {
       setLoading(false);
     }
-  }, [fetchDuplicates]);
+  }, [duplicates, fetchDuplicates]);
 
   // Buscar duplicatas ao montar o componente
   useEffect(() => {

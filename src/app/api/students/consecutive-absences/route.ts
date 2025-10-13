@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/firebase.config';
-import { FIREBASE_PATHS } from '@/config/constants';
-import { apiCache, withTimeout, processInChunks } from '@/utils/apiOptimization';
+import { apiCache } from '@/utils/apiOptimization';
 import { getStudentsByYear } from '@/services/studentDataService';
 import { Student } from '@/types';
+import { AcademicYearService } from '@/services/supabase/academicYearService';
+import { AbsenceService } from '@/services/supabase/absenceService';
 
 interface SchoolDay {
   date: string;
@@ -58,11 +57,9 @@ async function loadAcademicYearData(): Promise<any> {
   }
 
   try {
-    const docRef = doc(db, '2025', 'ano_letivo');
-    const docSnap = await withTimeout(getDoc(docRef), 5000, 'Timeout loading academic year');
+    const data = await AcademicYearService.getAcademicYearComplete(2025);
 
-    if (docSnap.exists()) {
-      const data = docSnap.data();
+    if (data && Object.keys(data).length > 0) {
       // Cache por 15 minutos
       apiCache.set(cacheKey, data, 15);
       return data;
@@ -140,53 +137,35 @@ async function loadSchoolDays(selectedBimesters: string[]): Promise<SchoolDay[]>
 
 async function loadAllStudentAbsences(studentIds: string[], schoolDays: SchoolDay[]): Promise<Record<string, string[]>> {
   try {
-    const absencesRef = collection(db, FIREBASE_PATHS.absenceControl());
-    const batchSize = 5; // Reduzir ainda mais o tamanho do batch
     const allAbsences: Record<string, string[]> = {};
 
     // Criar set de datas de dias letivos para filtro rápido
     const schoolDayDates = new Set(schoolDays.map(day => day.date));
 
-    // Processar em batches menores e com timeout individual
-    const promises = [];
-    for (let i = 0; i < studentIds.length; i += batchSize) {
-      const batch = studentIds.slice(i, i + batchSize);
+    // Buscar todas as faltas não justificadas de uma vez (Supabase suporta arrays grandes)
+    const absencesData = await AbsenceService.getAbsencesByStudentIds(studentIds, false); // false = não justificadas
 
-      const batchPromise = Promise.race([
-        getDocs(query(absencesRef, where('estudanteId', 'in', batch))),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Batch timeout')), 4000))
-      ]).then((querySnapshot: any) => {
-        // Inicializar arrays vazios para todos os estudantes do batch
-        batch.forEach(id => {
-          allAbsences[id] = [];
-        });
+    // Inicializar arrays vazios para todos os estudantes
+    studentIds.forEach(id => {
+      allAbsences[id] = [];
+    });
 
-        querySnapshot.forEach((docSnap: any) => {
-          const data = docSnap.data();
-          if (!data.justified && data.estudanteId && data.data) {
-            // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
-            let dateStr = data.data;
-            if (dateStr.includes('-')) {
-              const [year, month, day] = dateStr.split('-');
-              dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
-            }
+    // Processar faltas
+    absencesData.forEach(absence => {
+      if (absence.estudante_id && absence.data) {
+        // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
+        let dateStr = absence.data;
+        if (dateStr.includes('-')) {
+          const [year, month, day] = dateStr.split('-');
+          dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+        }
 
-            // Filtrar apenas faltas em dias letivos
-            if (schoolDayDates.has(dateStr) && allAbsences[data.estudanteId]) {
-              allAbsences[data.estudanteId].push(dateStr);
-            }
-          }
-        });
-      }).catch(error => {
-        console.warn(`Erro no batch ${i}-${i + batchSize}:`, error);
-        // Não inicializar estudantes com timeout - eles serão ignorados no processamento
-      });
-
-      promises.push(batchPromise);
-    }
-
-    // Aguardar todos os batches com timeout global
-    await Promise.allSettled(promises);
+        // Filtrar apenas faltas em dias letivos
+        if (schoolDayDates.has(dateStr) && allAbsences[absence.estudante_id]) {
+          allAbsences[absence.estudante_id].push(dateStr);
+        }
+      }
+    });
 
     return allAbsences;
   } catch (error) {

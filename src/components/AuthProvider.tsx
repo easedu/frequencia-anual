@@ -3,8 +3,8 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { auth, db } from "@/firebase.config";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { auth } from "@/firebase.config";
+import { UserProfilesService } from "@/services/supabase/userProfilesService";
 import { logger } from "@/utils/logger";
 
 // Páginas que não precisam de autenticação
@@ -57,28 +57,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Função para buscar perfil do usuário com timeout
   const fetchUserProfile = async (firebaseUser: User) => {
     try {
-      const q = query(collection(db, "users"), where("uid", "==", firebaseUser.uid));
-      
       // Timeout para busca do perfil (3 segundos máximo)
-      const profilePromise = getDocs(q);
-      const timeoutPromise = new Promise((_, reject) => 
+      const profilePromise = UserProfilesService.getByFirebaseUid(firebaseUser.uid);
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Profile fetch timeout')), 3000)
       );
-      
-      const querySnapshot = await Promise.race([profilePromise, timeoutPromise]) as any;
-      
-      if (!querySnapshot.empty) {
-        const data = querySnapshot.docs[0].data();
+
+      const userProfileData = await Promise.race([profilePromise, timeoutPromise]) as any;
+
+      if (userProfileData) {
         const profile: UserProfile = {
-          nome: data.nome || firebaseUser.displayName || 'Usuário',
-          email: data.email || firebaseUser.email || '',
-          perfil: data.perfil || 'user',
-          status: data.status || 'ativo'
+          nome: userProfileData.fullName || firebaseUser.displayName || 'Usuário',
+          email: userProfileData.email || firebaseUser.email || '',
+          perfil: (userProfileData.role?.toLowerCase() as any) || 'user',
+          status: userProfileData.isActive ? 'ativo' : 'desabilitado'
         };
         setUserProfile(profile);
         logger.info('👤 Perfil do usuário carregado:', { nome: profile.nome, perfil: profile.perfil });
       } else {
-        logger.warn('⚠️ Perfil do usuário não encontrado no Firestore');
+        logger.warn('⚠️ Perfil do usuário não encontrado no Supabase');
         setUserProfile({
           nome: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
           email: firebaseUser.email || '',

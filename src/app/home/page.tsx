@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { auth, db } from "@/firebase.config";
+import { auth } from "@/firebase.config";
 import { useRouter } from "next/navigation";
 import { CheckCircle, UserPlus, Calendar, BarChart, UserCheck, Shield, CalendarX, Accessibility, FileSpreadsheet, Clock, Users, GraduationCap, Zap, Star, StarOff, Grid3X3, Heart, AlertTriangle, ClipboardList, TrendingUp, Phone, LayoutDashboard } from "lucide-react";
-import { collection, query, where, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
+import { UserProfilesService } from "@/services/supabase/userProfilesService";
 import { logger } from "@/utils/logger";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -51,23 +51,20 @@ export default function Home() {
 
             try {
                 const uid = auth.currentUser.uid;
-                const q = query(collection(db, "users"), where("uid", "==", uid));
-                const querySnapshot = await getDocs(q);
+                const userProfile = await UserProfilesService.getByFirebaseUid(uid);
 
-                if (!querySnapshot.empty) {
-                    const data = querySnapshot.docs[0].data();
-                    const userRole = (data.perfil as Role) || "user";
+                if (userProfile) {
+                    const userRole = (userProfile.role?.toLowerCase() as Role) || "user";
                     setRole(userRole);
-                    setUserName(data.name || auth.currentUser?.displayName || auth.currentUser?.email || "Usuário");
+                    setUserName(userProfile.fullName || auth.currentUser?.displayName || auth.currentUser?.email || "Usuário");
+
+                    // Buscar favoritos do notification_preferences (se existirem)
+                    if (userProfile.notificationPreferences && (userProfile.notificationPreferences as any).favorites) {
+                        setFavorites((userProfile.notificationPreferences as any).favorites || []);
+                    }
                 } else {
                     setRole("user");
                     setUserName(auth.currentUser?.displayName || auth.currentUser?.email || "Usuário");
-                }
-
-                // Buscar favoritos do usuário
-                const favDoc = await getDoc(doc(db, "userPreferences", uid));
-                if (favDoc.exists()) {
-                    setFavorites(favDoc.data().favorites || []);
                 }
             } catch (error) {
                 logger.error("Erro ao buscar usuário", error as Error);
@@ -108,7 +105,10 @@ export default function Home() {
         setFavorites(newFavorites);
 
         try {
-            await setDoc(doc(db, "userPreferences", uid), { favorites: newFavorites }, { merge: true });
+            // Atualizar favoritos no notification_preferences do Supabase
+            await UserProfilesService.updateNotificationPreferences(uid, {
+                favorites: newFavorites
+            } as any);
         } catch (error) {
             logger.error("Erro ao salvar favoritos", error as Error);
         }

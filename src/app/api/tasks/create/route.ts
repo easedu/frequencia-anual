@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collection, doc, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/firebase.config';
-import { FIREBASE_PATHS } from '@/config/constants';
 import { logger } from '@/utils/logger';
 import type { Student, FamilyInteraction } from '@/types';
 import type { UserTask, TaskType } from '@/types/tasks';
 import { getStudentByIdFast } from '@/services/studentDataService';
+import { TaskService } from '@/services/taskService';
+import { InteractionService } from '@/services/supabase/interactionService';
 
 /**
  * Interface para os dados de entrada da API
@@ -68,9 +67,9 @@ function mapPriorityToLevel(priority: 0 | 1 | 2): 'critical' | 'attention' | 'ro
 }
 
 /**
- * Função para converter data ISO para formato Firebase (YYYY-MM-DD)
+ * Função para converter data ISO para formato Supabase (YYYY-MM-DD)
  */
-function convertISOToFirebaseDate(isoString: string): string {
+function convertISOToSupabaseDate(isoString: string): string {
   try {
     const date = new Date(isoString);
     if (isNaN(date.getTime())) {
@@ -84,14 +83,14 @@ function convertISOToFirebaseDate(isoString: string): string {
 
     return `${year}-${month}-${day}`;
   } catch (error) {
-    logger.error('Erro ao converter data ISO para Firebase:', error as Error);
+    logger.error('Erro ao converter data ISO para Supabase:', error as Error);
     return new Date().toISOString().split('T')[0]; // Fallback para hoje
   }
 }
 
 /**
- * Função para determinar o bimestre baseado no mês (otimizada - sem leitura do Firebase)
- * PERFORMANCE: Removida busca ao Firebase - usa lógica baseada em mês
+ * Função para determinar o bimestre baseado no mês (otimizada)
+ * PERFORMANCE: Usa lógica baseada em mês sem queries de banco
  */
 function getBimesterFromMonth(month: number): string {
   // Lógica simplificada baseada no calendário escolar padrão
@@ -121,48 +120,6 @@ async function getStudentData(estudanteId: string): Promise<Student | null> {
   } catch (error) {
     logger.error('Erro ao buscar dados do estudante:', error as Error);
     return null;
-  }
-}
-
-/**
- * FASE 3: Função para salvar interação com DUAL-WRITE (V1 + V3)
- * SEGURANÇA: Salva em ambas estruturas para garantir compatibilidade
- *
- * V1 (ATUAL/PRODUÇÃO): 2025/interactions/{studentId}/{docId}
- * V3 (FUTURO): students/{studentId}/interactions/{docId}
- */
-function saveInteractionDualWrite(
-  batch: ReturnType<typeof writeBatch>,
-  estudanteId: string,
-  interactionData: Omit<FamilyInteraction, "id">
-): string {
-  const interactionId = doc(collection(db, 'temp')).id; // Gerar ID único
-
-  try {
-    // ✅ V1 (PRODUÇÃO ATUAL): 2025/interactions/{studentId}/{docId}
-    const v1InteractionRef = doc(db, '2025', 'interactions', estudanteId, interactionId);
-    batch.set(v1InteractionRef, {
-      ...interactionData,
-      createdAt: serverTimestamp(),
-      studentId: estudanteId, // V1 precisa do studentId explícito
-    });
-
-    // ✅ V3 (FUTURO): students/{studentId}/interactions/{docId}
-    const v3InteractionRef = doc(db, 'students', estudanteId, 'interactions', interactionId);
-    batch.set(v3InteractionRef, {
-      ...interactionData,
-      createdAt: serverTimestamp(),
-      anoLetivo: '2025'
-    });
-
-    console.log(`[TASKS-CREATE] 💾 Interação DUAL-WRITE configurada (ID: ${interactionId})`);
-    console.log(`[TASKS-CREATE] ✅ V1: 2025/interactions/${estudanteId}/${interactionId}`);
-    console.log(`[TASKS-CREATE] ✅ V3: students/${estudanteId}/interactions/${interactionId}`);
-
-    return interactionId;
-  } catch (error) {
-    logger.error('Erro ao configurar interação dual-write:', error as Error);
-    return interactionId;
   }
 }
 
@@ -298,7 +255,7 @@ export async function POST(request: NextRequest) {
       } as CreateTaskResponse, { status: 404 });
     }
 
-    // Determinar bimestre (otimizado - sem leitura do Firebase)
+    // Determinar bimestre (otimizado)
     const bimestre = getBimesterFromMonth(taskData.reference_month);
 
     // Calcular frequência (usando 22 como aproximação de dias letivos por mês)
@@ -308,11 +265,10 @@ export async function POST(request: NextRequest) {
     // Mapear prioridade
     const priorityLevel = mapPriorityToLevel(taskData.priority);
 
-    // Usar transação para garantir consistência
-    const batch = writeBatch(db);
     let interactionId: string | undefined;
+    let taskId: string | undefined;
 
-    // FASE 3: Se tarefa está resolvida, criar interação PRIMEIRO (Dual-Write V1+V3)
+    // FASE 3: Se tarefa está resolvida, criar interação PRIMEIRO (Supabase)
     if (taskData.is_resolved) {
       // Validação: Se resolvida, DEVE ter action_type e action_description
       if (!taskData.action_type || !taskData.action_description) {
@@ -323,7 +279,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Criar interação se tiver pelo menos action_type OU action_description
+      // Criar interação no Supabase se tiver pelo menos action_type OU action_description
       if (taskData.action_type || taskData.action_description) {
         // Determinar o tipo da ação (aceita action_type OU action_taken)
         const actionType = taskData.action_type || taskData.action_taken || 'Ação não especificada';
@@ -333,7 +289,7 @@ export async function POST(request: NextRequest) {
           studentId: taskData.estudante_id,
           type: actionType,
           description: taskData.action_description || taskData.action_taken || 'Descrição não fornecida',
-          date: convertISOToFirebaseDate(taskData.processed_at || new Date().toISOString()),
+          date: convertISOToSupabaseDate(taskData.processed_at || new Date().toISOString()),
           createdBy: taskData.solved_by || taskData.created_by,
           sensitive: false,
           ...(isContatoDigital && taskData.whatsapp_message && taskData.whatsapp_phone && {
@@ -342,28 +298,31 @@ export async function POST(request: NextRequest) {
           })
         };
 
-        // Salvar com DUAL-WRITE (V1 + V3) para garantir compatibilidade
-        interactionId = saveInteractionDualWrite(
-          batch,
-          taskData.estudante_id,
-          interactionData
-        );
+        try {
+          // ✅ Salvar interação no Supabase
+          const createdInteraction = await InteractionService.createInteraction(
+            taskData.estudante_id,
+            interactionData
+          );
+          interactionId = createdInteraction.id;
 
-        logger.info(`[TASKS-CREATE] ✅ Interação DUAL-WRITE configurada`, {
-          interactionId,
-          estudanteId: taskData.estudante_id,
-          type: interactionData.type,
-          v1Path: `2025/interactions/${taskData.estudante_id}/${interactionId}`,
-          v3Path: `students/${taskData.estudante_id}/interactions/${interactionId}`
-        });
+          logger.info(`[TASKS-CREATE] ✅ Interação salva no Supabase`, {
+            interactionId,
+            estudanteId: taskData.estudante_id,
+            type: interactionData.type,
+            supabasePath: `family_interactions/${interactionId}`
+          });
+        } catch (commitError) {
+          logger.error('[TASKS-CREATE] ❌ ERRO ao salvar interação no Supabase', {
+            error: commitError,
+            estudanteId: taskData.estudante_id
+          });
+          throw commitError;
+        }
       }
     }
 
-    // Criar tarefa JÁ COM interactionId (evita batch.update adicional)
-    const taskRef = doc(collection(db, 'userTasks'));
-    const taskId = taskRef.id;
-
-    // Criar objeto da tarefa, removendo campos undefined
+    // Criar objeto da tarefa para Supabase
     const newTask: Omit<UserTask, 'id'> = {
       userId: "BOT",
       estudanteId: taskData.estudante_id,
@@ -396,14 +355,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    batch.set(taskRef, newTask);
-
-    // Executar transação batch
+    // Criar tarefa no Supabase usando TaskService
     try {
-      await batch.commit();
+      taskId = await TaskService.createTask(newTask);
 
-      // ✅ LOGGING DETALHADO PÓS-COMMIT
-      logger.info(`[TASKS-CREATE] ✅ BATCH COMMIT CONCLUÍDO COM SUCESSO`, {
+      // ✅ LOGGING DETALHADO PÓS-CRIAÇÃO
+      logger.info(`[TASKS-CREATE] ✅ TAREFA CRIADA COM SUCESSO NO SUPABASE`, {
         taskId,
         estudanteId: taskData.estudante_id,
         studentName: studentData.nome,
@@ -412,21 +369,19 @@ export async function POST(request: NextRequest) {
         interactionType: newTask.interactionType,
         interactionDescription: newTask.interactionDescription?.substring(0, 50),
         paths: {
-          task: `userTasks/${taskId}`,
+          task: `Supabase: user_tasks/${taskId}`,
           ...(interactionId && {
-            interactionV1: `2025/interactions/${taskData.estudante_id}/${interactionId}`,
-            interactionV3: `students/${taskData.estudante_id}/interactions/${interactionId}`
+            interaction: `Supabase: family_interactions/${interactionId}`
           })
         }
       });
 
-    } catch (commitError) {
-      logger.error('[TASKS-CREATE] ❌ ERRO NO BATCH COMMIT', {
-        error: commitError,
-        taskId,
+    } catch (createError) {
+      logger.error('[TASKS-CREATE] ❌ ERRO AO CRIAR TAREFA NO SUPABASE', {
+        error: createError,
         estudanteId: taskData.estudante_id
       });
-      throw commitError;
+      throw createError;
     }
 
     return NextResponse.json({

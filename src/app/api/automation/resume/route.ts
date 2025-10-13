@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { AutomationExecutionService } from '@/services/supabase/automationExecutionService';
 import { logger } from '@/utils/logger';
-import type { AutomationExecution } from '@/types';
 import { processAbsencesWithCheckpoint } from '@/services/automationOrchestrator';
 
 /**
  * API DE RETOMADA MANUAL
  *
  * Retoma uma execução que falhou ou foi interrompida.
- * Usa checkpoints salvos no Firestore para continuar de onde parou.
+ * Usa checkpoints salvos no Supabase para continuar de onde parou.
  *
  * Method: POST
  * Body: { executionId: string }
@@ -73,20 +71,17 @@ export async function POST(request: NextRequest) {
   }
 
   // ==========================================
-  // BUSCAR EXECUÇÃO NO FIRESTORE
+  // BUSCAR EXECUÇÃO NO SUPABASE
   // ==========================================
   try {
-    const executionRef = adminDb.collection('automationExecutions').doc(executionId);
-    const executionDoc = await executionRef.get();
+    const execution = await AutomationExecutionService.getExecutionById(executionId);
 
-    if (!executionDoc.exists) {
+    if (!execution) {
       return NextResponse.json(
         { success: false, error: 'Execution not found' },
         { status: 404 }
       );
     }
-
-    const execution = executionDoc.data() as AutomationExecution;
 
     // Verificar se já foi concluída
     if (execution.status === 'COMPLETED') {
@@ -106,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verificar se já está rodando
-    if (execution.status === 'RUNNING' || execution.status === 'RESUMING') {
+    if (execution.status === 'RUNNING') {
       return NextResponse.json(
         {
           success: false,
@@ -115,8 +110,7 @@ export async function POST(request: NextRequest) {
             executionId,
             status: execution.status,
             processedStudents: execution.processedStudents,
-            totalStudents: execution.totalStudents,
-            lastCheckpointAt: execution.lastCheckpointAt
+            totalStudents: execution.totalStudents
           }
         },
         { status: 409 } // 409 Conflict
@@ -131,24 +125,25 @@ export async function POST(request: NextRequest) {
     });
 
     // ==========================================
-    // MARCAR COMO RESUMING
+    // MARCAR COMO RUNNING (RETOMANDO)
     // ==========================================
-    await executionRef.update({
-      status: 'RESUMING',
-      lastCheckpointAt: FieldValue.serverTimestamp()
-    });
+    await AutomationExecutionService.updateStatus(executionId, 'RUNNING');
 
     // ==========================================
     // RETOMAR PROCESSAMENTO EM BACKGROUND
     // ==========================================
+    const currentDate = new Date();
+    const referenceMonth = execution.absenceMultiple ? currentDate.getMonth() + 1 : 1;
+    const referenceYear = execution.absenceMultiple ? currentDate.getFullYear() : 2025;
+
     processAbsencesWithCheckpoint(
       executionId,
       {
         dryRun: execution.dryRun,
-        absenceMultiple: execution.absenceMultiple,
-        notificationPhone: execution.notificationPhone,
-        referenceMonth: execution.referenceMonth,
-        referenceYear: execution.referenceYear
+        absenceMultiple: execution.absenceMultiple || 3,
+        notificationPhone: execution.notificationPhone || '',
+        referenceMonth,
+        referenceYear
       },
       authorization
     ).catch(error => {
@@ -165,7 +160,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         executionId,
-        status: 'RESUMING',
+        status: 'RUNNING',
         message: 'Processamento retomado. Você receberá relatório via WhatsApp.',
         progress: {
           processedStudents: execution.processedStudents,

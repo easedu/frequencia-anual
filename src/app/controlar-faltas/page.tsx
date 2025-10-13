@@ -39,7 +39,7 @@ export default function DashboardPage() {
     // Usar hooks modulares
     const { students } = useStudents();
     const { bimesterDates } = useBimesterPeriods();
-    const { studentRecords } = useStudentRecords({ autoRefresh: true });
+    const { studentRecords } = useStudentRecords({ autoRefresh: true, excludeJustified }); // 🎯 Passar excludeJustified
     const { getSchoolDaysForPeriod } = useSchoolDays();
     const studentAbsencesHook = useStudentAbsences(selectedStudent || null, { excludeJustified });
     const { duplicates, removeDuplicates } = useDuplicateAbsences();
@@ -92,9 +92,21 @@ export default function DashboardPage() {
     }, [bimesterDates, useToday, useCustom, selectedBimesters, startDate, endDate]);
 
     // Calcular totalDiasLetivos baseado no período selecionado
-    const totalDiasLetivos = useMemo(() => {
-        if (!filterState.computedStartDate || !filterState.computedEndDate) return 0;
-        return getSchoolDaysForPeriod(filterState.computedStartDate, filterState.computedEndDate);
+    const [totalDiasLetivos, setTotalDiasLetivos] = useState(0);
+
+    useEffect(() => {
+        if (!filterState.computedStartDate || !filterState.computedEndDate) {
+            setTotalDiasLetivos(0);
+            return;
+        }
+
+        // getSchoolDaysForPeriod agora é async (Supabase)
+        getSchoolDaysForPeriod(filterState.computedStartDate, filterState.computedEndDate)
+            .then(count => setTotalDiasLetivos(count))
+            .catch(err => {
+                console.error('Erro ao calcular dias letivos:', err);
+                setTotalDiasLetivos(0);
+            });
     }, [filterState.computedStartDate, filterState.computedEndDate, getSchoolDaysForPeriod]);
 
     // Synchronize parent state with computed filter state, avoiding unnecessary updates

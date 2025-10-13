@@ -4,8 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { db } from '@/firebase.config';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { AcademicYearService } from '@/services/supabase/academicYearService';
 import { logger } from '@/utils/logger';
 import { toast, Toaster } from 'sonner';
 import { Calendar, Save, BookOpen, Clock, CheckCircle2 } from 'lucide-react';
@@ -78,55 +77,42 @@ export default function CadastrarAnoLetivoPage() {
         return dateStr;
     }
 
-    // Consulta os dados salvos no Firebase ao carregar a página
+    // Consulta os dados salvos no Supabase ao carregar a página
     useEffect(() => {
         async function fetchData() {
             try {
-                const docRef = doc(db, "2025", "ano_letivo");
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
+                const data = await AcademicYearService.getAcademicYearComplete(2025);
+
+                if (Object.keys(data).length > 0) {
                     const newInitialData: { [key: number]: BimesterData } = {};
                     bimestres.forEach((bim, index) => {
                         if (data[bim]) {
-                            const bimData = data[bim];
-                            // Converte startDate e endDate se necessário
-                            const convertedData = {
-                                ...bimData,
-                                startDate: convertISOtoDDMMYYYY(bimData.startDate || ""),
-                                endDate: convertISOtoDDMMYYYY(bimData.endDate || ""),
-                                // Converte as datas no array dates também
-                                dates: bimData.dates?.map((d: any) => ({
-                                    ...d,
-                                    date: convertISOtoDDMMYYYY(d.date || "")
-                                })) || []
-                            };
-                            newInitialData[index] = convertedData;
+                            newInitialData[index] = data[bim];
                         }
                     });
                     setInitialData(newInitialData);
                     setCardData(newInitialData);
                 }
             } catch (error) {
-                logger.error("Erro ao buscar dados do Firebase", error as Error);
+                logger.error("Erro ao buscar dados do Supabase", error as Error);
             }
         }
         fetchData();
     }, [bimestres]);
 
-    // Salva os dados no Firebase
+    // Salva os dados no Supabase
     async function handleSave() {
         try {
             const dataToSave: { [key: string]: BimesterData } = {};
             bimestres.forEach((bim, index) => {
                 dataToSave[bim] = cardData[index] || { startDate: "", endDate: "", dates: [] };
             });
-            const docRef = doc(db, "2025", "ano_letivo");
-            await setDoc(docRef, dataToSave);
+
+            await AcademicYearService.saveAcademicYearComplete(2025, dataToSave);
             toast.success("Dados salvos com sucesso!");
         } catch (error) {
-            logger.error("Erro ao salvar dados no Firebase", error as Error);
-            toast.error("Erro ao salvar dados no Firebase");
+            logger.error("Erro ao salvar dados no Supabase", error as Error);
+            toast.error("Erro ao salvar dados. Tente novamente.");
         }
     }
 

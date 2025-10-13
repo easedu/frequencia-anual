@@ -24,12 +24,12 @@ import {
   Download
 } from 'lucide-react';
 import { TaskService } from '@/services/taskService';
+import { InteractionService } from '@/services/supabase/interactionService';
 import { toast } from 'sonner';
 import { logger } from '@/utils/logger';
 import type { UserTask } from '@/types/tasks';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
-import { db, auth } from '@/firebase.config';
+import { auth } from '@/firebase.config';
 import type { FamilyInteraction } from '@/types';
 
 interface TaskManagerProps {
@@ -163,14 +163,14 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
 
     try {
       // 1. Preparar dados da interação
-      // Converter data para formato Firebase (YYYY-MM-DD)
-      const parseDateToFirebase = (dateStr: string): string | null => {
+      // Converter data para formato Supabase (YYYY-MM-DD)
+      const parseDateToSupabase = (dateStr: string): string | null => {
         const [day, month, year] = dateStr.split('/').map(Number);
         if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || month < 1 || month > 12 || day > 31) return null;
         return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       };
 
-      const formattedDate = parseDateToFirebase(interactionDate);
+      const formattedDate = parseDateToSupabase(interactionDate);
       if (!formattedDate) {
         toast.error('Data inválida. Use o formato DD/MM/YYYY.');
         return;
@@ -181,20 +181,26 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
 
       const interactionData: Omit<FamilyInteraction, 'id'> = {
         type: interactionType, // Usar o tipo selecionado dinamicamente
-        date: formattedDate, // Data no formato Firebase
+        date: formattedDate, // Data no formato Supabase (YYYY-MM-DD)
         description: interactionDescription,
         sensitive: interactionSensitive,
         createdBy: currentUser, // Nome do usuário ao invés do role
         studentId: selectedTask.estudanteId // ID do estudante
       };
 
-      const interactionRef = await addDoc(
-        collection(db, '2025', 'interacoes_familia', selectedTask.estudanteId),
+      // Salvar interação no Supabase
+      const createdInteraction = await InteractionService.createInteraction(
+        selectedTask.estudanteId,
         interactionData
       );
 
+      logger.info('[TASK-MANAGER] Interação salva no Supabase', {
+        interactionId: createdInteraction.id,
+        estudanteId: selectedTask.estudanteId
+      });
+
       // 2. Marcar tarefa como completada
-      const success = await TaskService.completeTask(selectedTask.id, interactionRef.id);
+      const success = await TaskService.completeTask(selectedTask.id, createdInteraction.id);
 
       if (success) {
         toast.success('Tarefa concluída e interação registrada com sucesso!');
@@ -277,33 +283,27 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
     for (const task of completedTasks) {
       if (task.interactionId) {
         try {
-          // Buscar todas as interações do estudante e encontrar a específica
-          const interactionsCollection = collection(db, '2025', 'interacoes_familia', task.estudanteId);
-          const interactionsSnapshot = await getDocs(interactionsCollection);
+          // Buscar interação específica no Supabase
+          const interaction = await InteractionService.getInteractionById(
+            task.estudanteId,
+            task.interactionId
+          );
 
-          let foundInteraction = false;
-          interactionsSnapshot.forEach((doc) => {
-            if (doc.id === task.interactionId) {
-              const interaction = doc.data() as FamilyInteraction;
-
-              // Converter data do formato YYYY-MM-DD para DD/MM/YYYY
-              let dataFormatada = interaction.date;
-              if (interaction.date.includes('-')) {
-                const [year, month, day] = interaction.date.split('-');
-                dataFormatada = `${day}/${month}/${year}`;
-              }
-
-              reportData.push({
-                data: dataFormatada,
-                nome: task.studentName,
-                turma: task.studentClass || 'N/A',
-                tipoInteracao: interaction.type
-              });
-              foundInteraction = true;
+          if (interaction) {
+            // Converter data do formato YYYY-MM-DD para DD/MM/YYYY
+            let dataFormatada = interaction.date;
+            if (interaction.date.includes('-')) {
+              const [year, month, day] = interaction.date.split('-');
+              dataFormatada = `${day}/${month}/${year}`;
             }
-          });
 
-          if (!foundInteraction) {
+            reportData.push({
+              data: dataFormatada,
+              nome: task.studentName,
+              turma: task.studentClass || 'N/A',
+              tipoInteracao: interaction.type
+            });
+          } else {
             // Se não encontrar a interação, adicionar com dados básicos
             reportData.push({
               data: task.completedAt ? new Date(task.completedAt).toLocaleDateString('pt-BR') : 'N/A',

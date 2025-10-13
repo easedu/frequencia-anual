@@ -16,8 +16,8 @@ import {
 } from "@/components/ui/select";
 import { Toaster, toast } from "sonner";
 import { FileSpreadsheet, Upload, CheckCircle, AlertTriangle, Info } from "lucide-react";
-import { db } from "@/firebase.config";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { StudentDataService } from "@/services/studentDataService";
+import type { Student } from "@/types";
 import { logger } from "@/utils/logger";
 import Papa from "papaparse";
 
@@ -201,14 +201,9 @@ export default function ProvaSaoPauloPage() {
         setProgress(0);
 
         try {
-            // Buscar lista de estudantes
-            const studentDoc = await getDoc(doc(db, "2025", "lista_de_estudantes"));
-            if (!studentDoc.exists()) {
-                throw new Error("Lista de estudantes não encontrada");
-            }
-
-            const studentData = studentDoc.data() as { estudantes: Estudante[] };
-            const estudantes = studentData.estudantes;
+            // Buscar lista de estudantes via Supabase
+            logger.debug('Buscando estudantes via StudentDataService');
+            const estudantes = await StudentDataService.getStudents();
 
             const resultado: ProcessamentoCsv = {
                 totalLinhas: csvData.length,
@@ -224,6 +219,7 @@ export default function ProvaSaoPauloPage() {
             };
 
             const estudantesAtualizados = [...estudantes];
+            const estudantesModificados = new Set<string>(); // Rastrear IDs modificados
             const dataImportacao = new Date().toLocaleDateString("pt-BR");
 
             // Processar cada linha do CSV
@@ -252,7 +248,7 @@ export default function ProvaSaoPauloPage() {
                     }
 
                     // Encontrar estudante
-                    const estudante = findStudentByName(row.nome, estudantesAtualizados);
+                    const estudante = findStudentByName(row.nome, estudantesAtualizados as unknown as Estudante[]);
 
                     if (!estudante) {
                         resultado.alunosNaoEncontrados++;
@@ -302,6 +298,9 @@ export default function ProvaSaoPauloPage() {
                         estudanteId: estudante.estudanteId
                     });
 
+                    // Marcar como modificado
+                    estudantesModificados.add(estudante.estudanteId);
+
                 } catch (error) {
                     resultado.erros.push(`Linha ${i + 1}: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
                 }
@@ -310,11 +309,24 @@ export default function ProvaSaoPauloPage() {
             // Contar quantos foram efetivamente atualizados
             resultado.alunosAtualizados = resultado.alunosEncontrados;
 
-            // Salvar dados atualizados no Firebase
-            await setDoc(doc(db, "2025", "lista_de_estudantes"), {
-                estudantes: estudantesAtualizados
-            });
+            // Salvar dados atualizados via Supabase (apenas os modificados)
+            logger.info('Salvando estudantes modificados via Supabase', { total: estudantesModificados.size });
 
+            let salvosComSucesso = 0;
+            for (const estudanteId of estudantesModificados) {
+                try {
+                    const estudante = estudantesAtualizados.find(e => e.estudanteId === estudanteId);
+                    if (!estudante) continue;
+
+                    await StudentDataService.updateStudent(estudante);
+                    salvosComSucesso++;
+                } catch (error) {
+                    logger.error('Erro ao salvar estudante', { estudanteId }, error as Error);
+                    resultado.erros.push(`Erro ao salvar estudante ${estudanteId}`);
+                }
+            }
+
+            logger.info('Estudantes salvos no Supabase', { salvos: salvosComSucesso, total: estudantesModificados.size });
             setProgress(100);
             setResultado(resultado);
 

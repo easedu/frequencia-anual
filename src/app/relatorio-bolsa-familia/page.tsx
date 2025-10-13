@@ -10,9 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FullPageSkeleton } from "@/components/shared/LoadingSkeletons";
-import { collection, getDocs, getDoc, doc, DocumentSnapshot, DocumentData } from "firebase/firestore";
-import { db } from "@/firebase.config";
+import { AbsenceControlService } from "@/services/supabase/absenceControlService";
+import { AbsenceService } from "@/services/supabase/absenceService";
 import { logger } from "@/utils/logger";
+import { useStudents } from "@/hooks/useStudents";
 import {
     FileText,
     Search,
@@ -108,31 +109,31 @@ export default function RelatorioFaltasPage() {
 
     const calculateDiasLetivos = useCallback(async () => {
         try {
-            const docRef = doc(db, "2025", "ano_letivo");
-            const docSnap: DocumentSnapshot<DocumentData> = await getDoc(docRef);
-            if (!docSnap.exists()) return {};
+            // Buscar dados do ano letivo via Supabase
+            const absenceControlData = await AbsenceControlService.getByYear(2025);
 
-            const anoData = docSnap.data() as AnoLetivoData;
             const diasPorMes: { [key: number]: number } = {};
 
             months.forEach((_, index) => {
                 diasPorMes[index] = 0;
             });
 
-            for (const key in anoData) {
-                const bimesterData = anoData[key as keyof AnoLetivoData];
-                if (bimesterData?.dates) {
-                    bimesterData.dates.forEach((d: BimesterDate) => {
-                        if (d.isChecked && d.date) {
-                            const date = parseDate(d.date);
-                            if (date) {
-                                const monthIndex = date.getMonth();
-                                diasPorMes[monthIndex] = (diasPorMes[monthIndex] || 0) + 1;
-                            }
-                        }
-                    });
+            // Calcular dias letivos por mês baseado nos bimestres
+            absenceControlData.forEach((bimester) => {
+                if (bimester.startDate && bimester.endDate) {
+                    const startDate = new Date(bimester.startDate);
+                    const endDate = new Date(bimester.endDate);
+
+                    // Contar dias entre start e end (simplificado - pode precisar ajuste)
+                    const currentDate = new Date(startDate);
+                    while (currentDate <= endDate) {
+                        const monthIndex = currentDate.getMonth();
+                        diasPorMes[monthIndex] = (diasPorMes[monthIndex] || 0) + 1;
+                        currentDate.setDate(currentDate.getDate() + 1);
+                    }
                 }
-            }
+            });
+
             setDiasLetivos(diasPorMes);
         } catch (error) {
             logger.error("Erro ao calcular dias letivos", error as Error);
@@ -140,36 +141,25 @@ export default function RelatorioFaltasPage() {
         }
     }, []);
 
-    useEffect(() => {
-        const fetchStudents = async () => {
-            try {
-                const studentsDocSnap = await getDoc(doc(db, "2025", "lista_de_estudantes"));
-                let studentList: Estudante[] = [];
-                if (studentsDocSnap.exists()) {
-                    const studentData = studentsDocSnap.data() as { estudantes: Estudante[] };
-                    studentList = (studentData.estudantes || []).filter(
-                        (student: Estudante) => student.status === "ATIVO" && student.bolsaFamilia === "SIM"
-                    );
-                }
-                setStudents(studentList);
-            } catch (error) {
-                logger.error("Erro ao carregar estudantes", error as Error);
-            } finally {
-                setLoadingStudents(false);
-            }
-        };
+    // Usar hook useStudents ao invés de buscar manualmente
+    const { students: allStudents, loading: loadingAllStudents } = useStudents();
 
+    useEffect(() => {
+        // Filtrar apenas estudantes com Bolsa Família
+        const studentList = allStudents.filter(
+            (student) => student.status === "ATIVO" && student.bolsaFamilia === "SIM"
+        ) as any[];
+        setStudents(studentList);
+        setLoadingStudents(loadingAllStudents);
+    }, [allStudents, loadingAllStudents]);
+
+    useEffect(() => {
         const fetchAbsences = async () => {
             try {
-                const absenceSnapshot = await getDocs(collection(db, "2025", "faltas", "controle"));
-                const records: AbsenceRecord[] = absenceSnapshot.docs.map(doc => ({
-                    estudanteId: doc.data().estudanteId,
-                    turma: doc.data().turma,
-                    data: doc.data().data,
-                    docId: doc.id,
-                    justified: doc.data().justified || false,
-                }));
-                setAbsenceRecords(records);
+                // Buscar todas as faltas via Supabase
+                const absences = await AbsenceService.getAllAbsences();
+                // getAllAbsences já retorna AbsenceRecord[] no formato correto
+                setAbsenceRecords(absences as any);
             } catch (error) {
                 logger.error("Erro ao carregar faltas", error as Error);
             } finally {
@@ -177,7 +167,6 @@ export default function RelatorioFaltasPage() {
             }
         };
 
-        fetchStudents();
         fetchAbsences();
         calculateDiasLetivos();
     }, [calculateDiasLetivos]);

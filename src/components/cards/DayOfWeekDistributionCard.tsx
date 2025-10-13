@@ -3,12 +3,10 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
-import { BarChart, Bar, CartesianGrid, XAxis, Cell, ResponsiveContainer } from "recharts";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/firebase.config";
+import { BarChart, Bar, CartesianGrid, XAxis, Cell } from "recharts";
+import { AbsenceService } from "@/services/supabase/absenceService";
 import { parseDate, getBimesterByDate, formatFirebaseDate } from "@/utils/attendanceUtils";
 import { logger } from "@/utils/logger";
-import { FIREBASE_PATHS } from "@/config/constants";
 import {
     Calendar,
     TrendingUp,
@@ -198,14 +196,10 @@ const DayOfWeekDistributionCard = memo(function DayOfWeekDistributionCard({
         const fetchDayOfWeekData = async () => {
             setLoading(true);
             try {
-                const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
-                const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs.map((doc) => ({
-                    estudanteId: doc.data().estudanteId,
-                    turma: doc.data().turma,
-                    data: formatFirebaseDate(doc.data().data),
-                    docId: doc.id,
-                    justified: doc.data().justified ?? false,
-                }));
+                // Buscar faltas do Supabase
+                const supabaseAbsences = await AbsenceService.getAllAbsences();
+                // getAllAbsences já retorna AbsenceRecord[] no formato correto
+                const absenceRecords: AbsenceRecord[] = supabaseAbsences as any;
 
                 const startDateObj = parseDate(startDate);
                 const endDateObj = parseDate(endDate);
@@ -408,52 +402,50 @@ const DayOfWeekDistributionCard = memo(function DayOfWeekDistributionCard({
                         <Card className="border-0 shadow-lg overflow-hidden">
                             <CardContent className="p-6">
                                 <ChartContainer config={dayChartConfig} className="h-64 w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                                            <XAxis
-                                                dataKey="day"
-                                                axisLine={false}
-                                                tickLine={false}
-                                                tick={{ fontSize: 12, fill: '#64748b' }}
-                                                tickMargin={10}
-                                            />
-                                            <ChartTooltip
-                                                content={({ active, payload, label }) => {
-                                                    if (active && payload && payload.length) {
-                                                        const data = payload[0].payload;
-                                                        return (
-                                                            <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-                                                                <p className="font-medium text-gray-900">{label}</p>
-                                                                <p className="text-sm text-gray-600">
-                                                                    <span className="font-medium">{data.absences}</span> faltas
-                                                                </p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    {data.percentage}% do pico
-                                                                </p>
-                                                            </div>
-                                                        );
-                                                    }
-                                                    return null;
-                                                }}
-                                            />
-                                            <Bar
-                                                dataKey="absences"
-                                                radius={[4, 4, 0, 0]}
-                                                className="drop-shadow-sm"
-                                            >
-                                                {chartData.map((entry, index) => (
-                                                    <Cell
-                                                        key={`cell-${index}`}
-                                                        fill={entry.fill}
-                                                        stroke={entry.isMax ? "#1f2937" : "transparent"}
-                                                        strokeWidth={entry.isMax ? 2 : 0}
-                                                        className={entry.isMax ? "drop-shadow-lg" : ""}
-                                                    />
-                                                ))}
-                                            </Bar>
-                                        </BarChart>
-                                    </ResponsiveContainer>
+                                    <BarChart data={chartData} width={800} height={256} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                        <XAxis
+                                            dataKey="day"
+                                            axisLine={false}
+                                            tickLine={false}
+                                            tick={{ fontSize: 12, fill: '#64748b' }}
+                                            tickMargin={10}
+                                        />
+                                        <ChartTooltip
+                                            content={({ active, payload, label }) => {
+                                                if (active && payload && payload.length) {
+                                                    const data = payload[0].payload;
+                                                    return (
+                                                        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                                                            <p className="font-medium text-gray-900">{label}</p>
+                                                            <p className="text-sm text-gray-600">
+                                                                <span className="font-medium">{data.absences}</span> faltas
+                                                            </p>
+                                                            <p className="text-xs text-gray-500">
+                                                                {data.percentage}% do pico
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            }}
+                                        />
+                                        <Bar
+                                            dataKey="absences"
+                                            radius={[4, 4, 0, 0]}
+                                            className="drop-shadow-sm"
+                                        >
+                                            {chartData.map((entry, index) => (
+                                                <Cell
+                                                    key={`cell-${index}`}
+                                                    fill={entry.fill}
+                                                    stroke={entry.isMax ? "#1f2937" : "transparent"}
+                                                    strokeWidth={entry.isMax ? 2 : 0}
+                                                    className={entry.isMax ? "drop-shadow-lg" : ""}
+                                                />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
                                 </ChartContainer>
                             </CardContent>
                         </Card>

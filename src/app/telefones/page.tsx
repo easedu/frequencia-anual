@@ -35,8 +35,7 @@ import { useStudents } from '@/hooks/useStudents';
 import { toast } from 'sonner';
 import { WhatsAppTrackingService } from '@/services/whatsappTrackingService';
 import { FullPageSkeleton, FiltersSkeleton, StatsSkeleton, StudentTableSkeleton } from '@/components/shared/LoadingSkeletons';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from '@/firebase.config';
+// Firebase removido - migramos para Supabase StudentDataService
 // Removido xlsx por vulnerabilidades de segurança - usando CSV nativo + papaparse
 import Papa from 'papaparse';
 import WhatsAppModal from '@/components/whatsapp/WhatsAppModal';
@@ -223,21 +222,14 @@ export default function TelefonesPage() {
     return phone;
   };
 
-  // FASE 3: Função para verificar WhatsApp e SALVAR no Firestore (dual-write)
-  // Helper: Buscar o ID real do contato no Firestore
+  // FASE 3: Função para verificar WhatsApp e SALVAR no Supabase
+  // Helper: Buscar o ID real do contato nos dados do estudante (já em memória via Supabase)
+  // NOTA: Retorna undefined pois Contato não possui 'id' na interface atual
+  // O WhatsAppTrackingService cria um novo ID se necessário
   const getContactId = async (studentId: string, phone: string): Promise<string | undefined> => {
     try {
-      const contactsRef = collection(db, 'students', studentId, 'contacts');
-      const contactsSnap = await getDocs(contactsRef);
-
-      for (const doc of contactsSnap.docs) {
-        const data = doc.data();
-        const cleanPhone = data.telefone?.replace(/\D/g, '');
-        if (cleanPhone === phone) {
-          return doc.id;
-        }
-      }
-
+      // Por enquanto retorna undefined - o WhatsAppTrackingService gerará ID se necessário
+      // TODO: Atualizar interface Contato para incluir 'id' opcional quando migrado do Supabase
       return undefined;
     } catch (error) {
       console.error('[TELEFONES] Erro ao buscar contactId:', error);
@@ -475,7 +467,7 @@ export default function TelefonesPage() {
                                  hasWhatsAppValue.includes('1') ||
                                  hasWhatsAppValue === 'true';
 
-          // Salvar no Firebase usando o serviço existente
+          // Salvar usando WhatsAppTrackingService (já usa Supabase)
           await WhatsAppTrackingService.markNumberAsVerified(
             phone,
             hasWhatsAppBool,

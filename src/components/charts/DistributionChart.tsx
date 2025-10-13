@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell } from "recharts";
 
 interface DistributionData {
     name: string;
@@ -22,54 +22,52 @@ function DistributionChart({ distributionData }: DistributionChartProps) {
     return (
         <div className="relative w-full h-40">
             <ChartContainer config={{}} className="h-full w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                            data={distributionData}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={35}
-                            outerRadius={65}
-                            strokeWidth={3}
-                            stroke="white"
-                        >
-                            {distributionData.map((entry, index) => (
-                                <Cell
-                                    key={`cell-${index}`}
-                                    fill={distributionColors[index % distributionColors.length]}
-                                    className="hover:opacity-80 transition-opacity duration-200"
-                                />
-                            ))}
-                        </Pie>
-                        <ChartTooltip
-                            content={({ active, payload }) => {
-                                if (active && payload && payload.length) {
-                                    const data = payload[0];
-                                    const value = typeof data.value === 'number' ? data.value : 0;
-                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                                    return (
-                                        <div className="bg-white dark:bg-slate-800 p-3 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700">
-                                            <p className="font-medium text-slate-800 dark:text-slate-200 mb-1">
-                                                {data.name || 'N/A'}
+                <PieChart width={300} height={160}>
+                    <Pie
+                        data={distributionData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={35}
+                        outerRadius={65}
+                        strokeWidth={3}
+                        stroke="white"
+                    >
+                        {distributionData.map((entry, index) => (
+                            <Cell
+                                key={`cell-${index}`}
+                                fill={distributionColors[index % distributionColors.length]}
+                                className="hover:opacity-80 transition-opacity duration-200"
+                            />
+                        ))}
+                    </Pie>
+                    <ChartTooltip
+                        content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                                const data = payload[0];
+                                const value = typeof data.value === 'number' ? data.value : 0;
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                                return (
+                                    <div className="bg-white dark:bg-slate-800 p-3 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700">
+                                        <p className="font-medium text-slate-800 dark:text-slate-200 mb-1">
+                                            {data.name || 'N/A'}
+                                        </p>
+                                        <div className="space-y-1">
+                                            <p className="text-sm text-slate-600 dark:text-slate-400">
+                                                <span className="font-semibold">{value}</span> estudantes
                                             </p>
-                                            <div className="space-y-1">
-                                                <p className="text-sm text-slate-600 dark:text-slate-400">
-                                                    <span className="font-semibold">{value}</span> estudantes
-                                                </p>
-                                                <p className="text-xs text-slate-500 dark:text-slate-500">
-                                                    {percentage}% do total
-                                                </p>
-                                            </div>
+                                            <p className="text-xs text-slate-500 dark:text-slate-500">
+                                                {percentage}% do total
+                                            </p>
                                         </div>
-                                    );
-                                }
-                                return null;
-                            }}
-                        />
-                    </PieChart>
-                </ResponsiveContainer>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        }}
+                    />
+                </PieChart>
             </ChartContainer>
 
             {/* Centro do donut com informação total */}

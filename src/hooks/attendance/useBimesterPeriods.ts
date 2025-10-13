@@ -1,10 +1,11 @@
 /**
  * Hook for academic bimester periods
- * Separated from the monolithic useAttendanceData
+ * MIGRATED: Firebase → Supabase
+ * Agora usa academicYearService.ts para buscar dados relacionais
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useFirebaseDoc } from '@/hooks/useFirebaseDoc';
+import { AcademicYearService } from '@/services/supabase/academicYearService';
 import { logger } from '@/utils/logger';
 import type { BimesterDates } from '@/types';
 
@@ -20,33 +21,32 @@ export interface UseBimesterPeriodsReturn {
 }
 
 export function useBimesterPeriods(): UseBimesterPeriodsReturn {
-  const { data: anoLetivoData, loading, error, refresh } = useFirebaseDoc('2025/ano_letivo');
   const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchBimesterDates = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Buscar bimestres do ano atual (2025)
+      const year = 2025; // TODO: Tornar dinâmico se necessário
+      const dates = await AcademicYearService.getBimesterDates(year);
+
+      setBimesterDates(dates);
+    } catch (err) {
+      const error = err as Error;
+      logger.error('Erro ao buscar períodos dos bimestres', error);
+      setError(error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!anoLetivoData) return;
-
-    try {
-      const periods: BimesterDates = {};
-
-      // Process each bimester
-      Object.keys(anoLetivoData).forEach((key, index) => {
-        if (key.includes('Bimestre')) {
-          const bimesterData = anoLetivoData[key];
-          if (bimesterData && bimesterData.startDate && bimesterData.endDate) {
-            periods[index + 1] = {
-              start: bimesterData.startDate,
-              end: bimesterData.endDate,
-            };
-          }
-        }
-      });
-
-      setBimesterDates(periods);
-    } catch (err) {
-      logger.error('Erro ao processar dados dos bimestres', err as Error);
-    }
-  }, [anoLetivoData]);
+    fetchBimesterDates();
+  }, [fetchBimesterDates]);
 
   // useCallback previne recriação dessas funções quando bimesterDates não muda
   const getBimesterByDate = useCallback((dateString: string): number => {
@@ -81,7 +81,7 @@ export function useBimesterPeriods(): UseBimesterPeriodsReturn {
     bimesterDates,
     loading,
     error,
-    refresh,
+    refresh: fetchBimesterDates,
     getBimesterByDate,
     getCurrentBimester,
     getBimesterRange,

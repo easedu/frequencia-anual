@@ -49,8 +49,8 @@ const BimesterAbsences: React.FC<BimesterAbsencesProps> = ({
 
   // Memoizar cálculos custosos
   const bimesterData = useMemo(() => {
-    const filteredAbsences = absences.filter((absence) => 
-      getBimesterByDate(absence.data, bimesterDates) === bimester
+    const filteredAbsences = absences.filter((absence) =>
+      absence.data && getBimesterByDate(absence.data, bimesterDates) === bimester
     );
     
     const justifiedCount = filteredAbsences.filter(absence => absence.justified).length;
@@ -230,12 +230,12 @@ const AbsenceItem: React.FC<{
               )}
 
               {/* Botão de remoção - apenas para administradores */}
-              {userRole === "admin" && onDeleteAbsence && (
+              {userRole === "admin" && onDeleteAbsence && absence.data && (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                  onClick={() => onDeleteAbsence(absence.data)}
+                  onClick={() => onDeleteAbsence(absence.data!)}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>

@@ -6,8 +6,8 @@ import {
     updateProfile,
     sendPasswordResetEmail,
 } from "firebase/auth";
-import { doc, getDocs, collection, addDoc, updateDoc } from "firebase/firestore";
-import { db, auth } from "@/firebase.config";
+import { auth } from "@/firebase.config";
+import { UserProfilesService } from "@/services/supabase/userProfilesService";
 import { logger } from "@/utils/logger";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -70,15 +70,14 @@ export default function UserManagementPage() {
     const fetchUsers = useCallback(async () => {
         setLoadingUsers(true);
         try {
-            const querySnapshot = await getDocs(collection(db, "users"));
-            const userList: UserProfile[] = querySnapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
+            const allUsers = await UserProfilesService.getAllActive();
+            const userList: UserProfile[] = allUsers.map((user) => {
                 return {
-                    id: docSnap.id,
-                    nome: data.nome,
-                    email: data.email,
-                    perfil: data.perfil,
-                    status: data.status,
+                    id: user.id,
+                    nome: user.fullName,
+                    email: user.email,
+                    perfil: user.role?.toLowerCase() as "admin" | "user" | "super-user" | "user-pcd",
+                    status: user.isActive ? "ativo" : "desabilitado",
                 };
             });
             // Ordena usuários: ativos primeiro, desabilitados por último
@@ -157,22 +156,34 @@ export default function UserManagementPage() {
         setSaving(true);
         try {
             if (editingUser) {
-                await updateDoc(doc(db, "users", editingUser.id), {
-                    nome,
-                    perfil,
-                    status,
-                });
-                toast.success("Usuário atualizado com sucesso!");
+                // Atualizar usuário existente via Supabase
+                // Precisamos buscar o firebase_uid do usuário para atualizar
+                const userProfile = await UserProfilesService.getByEmail(email);
+                if (userProfile && userProfile.firebaseUid) {
+                    await UserProfilesService.update(userProfile.firebaseUid, {
+                        fullName: nome,
+                        role: perfil.toUpperCase() as any,
+                        isActive: status === "ativo",
+                        updatedBy: auth.currentUser?.email || 'SYSTEM'
+                    });
+                    toast.success("Usuário atualizado com sucesso!");
+                } else {
+                    toast.error("Usuário não encontrado no Supabase.");
+                }
             } else {
+                // Criar novo usuário
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const newUser = userCredential.user;
                 await updateProfile(newUser, { displayName: nome });
-                await addDoc(collection(db, "users"), {
-                    nome,
-                    email,
-                    perfil,
-                    status,
-                    uid: newUser.uid,
+
+                // Criar perfil no Supabase
+                await UserProfilesService.create({
+                    firebaseUid: newUser.uid,
+                    fullName: nome,
+                    email: email,
+                    role: perfil.toUpperCase() as any,
+                    isActive: status === "ativo",
+                    createdBy: auth.currentUser?.email || 'SYSTEM'
                 });
                 toast.success("Usuário criado com sucesso!");
             }
@@ -202,11 +213,21 @@ export default function UserManagementPage() {
 
     const handleDisableUser = async (userId: string) => {
         try {
-            await updateDoc(doc(db, "users", userId), {
-                status: "desabilitado",
-            });
-            toast.success("Usuário desabilitado!");
-            await fetchUsers(); // Re-carrega e re-ordena a lista
+            // Buscar usuário para pegar o firebase_uid
+            const user = users.find(u => u.id === userId);
+            if (!user) {
+                toast.error("Usuário não encontrado.");
+                return;
+            }
+
+            const userProfile = await UserProfilesService.getByEmail(user.email);
+            if (userProfile && userProfile.firebaseUid) {
+                await UserProfilesService.setActive(userProfile.firebaseUid, false);
+                toast.success("Usuário desabilitado!");
+                await fetchUsers(); // Re-carrega e re-ordena a lista
+            } else {
+                toast.error("Usuário não encontrado no Supabase.");
+            }
         } catch (err) {
             logger.error("Erro ao desabilitar usuário", err as Error);
             toast.error("Erro ao desabilitar usuário.");

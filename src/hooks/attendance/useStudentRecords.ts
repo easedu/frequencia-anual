@@ -4,11 +4,12 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { attendanceService } from '@/services/firebase/attendanceService';
+import { AbsenceService } from '@/services/supabase/absenceService';
+import { AcademicYearService } from '@/services/supabase/academicYearService';
 import { StudentDataService } from '@/services/studentDataService';
 import { logger } from '@/utils/logger';
 import { parseDate } from '@/utils/dateUtils';
-import type { StudentRecord, Estudante } from '@/types';
+import type { StudentRecord, Estudante, BimesterDates } from '@/types';
 
 /**
  * Parse de data com fallback para múltiplos formatos
@@ -45,122 +46,15 @@ export interface UseStudentRecordsOptions {
   turmaFilter?: string;
   statusFilter?: string; // Default: 'ATIVO' - Para incluir todos, passe '' (string vazia)
   autoRefresh?: boolean;
+  excludeJustified?: boolean; // 🆕 Filtro para excluir faltas justificadas (default: true)
 }
 
 export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
-  const { turmaFilter, statusFilter, autoRefresh = false } = options;
-  
+  const { turmaFilter, statusFilter, autoRefresh = false, excludeJustified = true } = options;
+
   const [studentRecords, setStudentRecords] = useState<StudentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-
-  const calculateStudentRecord = useCallback(async (student: Estudante): Promise<StudentRecord> => {
-    try {
-      const absences = await attendanceService.getStudentAbsences(student.estudanteId);
-      const periods = await attendanceService.getAcademicYearPeriods();
-
-      // 🔍 DEBUG: Log para entender o formato dos dados (apenas para primeiro estudante)
-      if (absences.length > 0 && Math.random() < 0.1) {
-        logger.info(`📅 [DEBUG] Faltas de ${student.nome}:`, {
-          totalFaltas: absences.length,
-          exemploData: absences[0].data,
-          tipoDado: typeof absences[0].data
-        });
-        logger.info(`📆 [DEBUG] Períodos:`, periods);
-      }
-
-      // Calculate absences by bimester
-      // ✅ FIX: Usar parseFlexibleDate para suportar múltiplos formatos (DD/MM/YYYY, YYYY-MM-DD, ISO)
-      const faltasB1 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data);
-        const b1 = periods[1];
-        if (!date || !b1) return false;
-        const startDate = parseFlexibleDate(b1.start);
-        const endDate = parseFlexibleDate(b1.end);
-        return startDate && endDate && date >= startDate && date <= endDate;
-      }).length;
-
-      const faltasB2 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data);
-        const b2 = periods[2];
-        if (!date || !b2) return false;
-        const startDate = parseFlexibleDate(b2.start);
-        const endDate = parseFlexibleDate(b2.end);
-        return startDate && endDate && date >= startDate && date <= endDate;
-      }).length;
-
-      const faltasB3 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data);
-        const b3 = periods[3];
-        if (!date || !b3) return false;
-        const startDate = parseFlexibleDate(b3.start);
-        const endDate = parseFlexibleDate(b3.end);
-        return startDate && endDate && date >= startDate && date <= endDate;
-      }).length;
-
-      const faltasB4 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data);
-        const b4 = periods[4];
-        if (!date || !b4) return false;
-        const startDate = parseFlexibleDate(b4.start);
-        const endDate = parseFlexibleDate(b4.end);
-        return startDate && endDate && date >= startDate && date <= endDate;
-      }).length;
-
-      const totalFaltas = faltasB1 + faltasB2 + faltasB3 + faltasB4;
-
-      // Calculate today's absences
-      const today = new Date();
-      today.setHours(0, 0, 0, 0); // Zerar horas para comparação correta
-      const faltasAteHoje = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data);
-        return date && date <= today;
-      }).length;
-
-      // Calculate school days (simplified - in real app, this would come from academic year data)
-      const diasLetivosB1 = 50; // Example values
-      const diasLetivosB2 = 50;
-      const diasLetivosB3 = 50;
-      const diasLetivosB4 = 50;
-      const diasLetivosAnual = diasLetivosB1 + diasLetivosB2 + diasLetivosB3 + diasLetivosB4;
-
-      // Calculate attendance percentage
-      // ✅ FIX: Arredondar para inteiros (sem casas decimais) para evitar 28.999999999999996%
-      const percentualFaltas = diasLetivosAnual > 0
-        ? Math.round((totalFaltas / diasLetivosAnual) * 100)
-        : 0;
-      const percentualFrequencia = 100 - percentualFaltas;
-      const percentualFaltasAteHoje = diasLetivosAnual > 0
-        ? Math.round((faltasAteHoje / diasLetivosAnual) * 100)
-        : 0;
-      const percentualFrequenciaAteHoje = 100 - percentualFaltasAteHoje;
-
-      return {
-        estudanteId: student.estudanteId,
-        turma: student.turma,
-        nome: student.nome,
-        faltasB1,
-        faltasB2,
-        faltasB3,
-        faltasB4,
-        totalFaltas,
-        totalFaltasAteHoje: faltasAteHoje,
-        percentualFaltas,
-        percentualFaltasAteHoje,
-        percentualFrequencia,
-        percentualFrequenciaAteHoje,
-        diasLetivosAteHoje: diasLetivosAnual, // Simplified
-        diasLetivosB1,
-        diasLetivosB2,
-        diasLetivosB3,
-        diasLetivosB4,
-        diasLetivosAnual,
-      };
-    } catch (error) {
-      logger.error(`Erro ao calcular registro para estudante ${student.nome}`, error as Error);
-      throw error;
-    }
-  }, []);
 
   const fetchStudentRecords = useCallback(async () => {
     try {
@@ -176,7 +70,6 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
 
       if (effectiveStatusFilter) {
         students = students.filter(s => s.status === effectiveStatusFilter);
-        logger.info(`🎯 Filtrando estudantes por status: ${effectiveStatusFilter} (${students.length} encontrados)`);
       }
 
       // Apply turma filter
@@ -184,10 +77,116 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
         students = students.filter(s => s.turma === turmaFilter);
       }
 
-      // Calculate records for all students
-      const records = await Promise.all(
-        students.map(student => calculateStudentRecord(student))
-      );
+      // 🚀 PERFORMANCE OPTIMIZATION: Batch query em vez de N queries individuais
+      // Antes: N queries (uma por estudante) → Agora: 1 query única!
+      // Exemplo: 677 estudantes = 677 queries → 1 query = 677x mais rápido!
+      const studentIds = students.map(s => s.estudanteId);
+
+      const absencesByStudentMap = await AbsenceService.getBatchStudentAbsences(studentIds);
+
+      // Buscar períodos dos bimestres (1 query única)
+      const periods: BimesterDates = await AcademicYearService.getBimesterDates(2025);
+
+      // Buscar dias letivos por bimestre (valores reais do Supabase)
+      const schoolDaysByBimester = await AcademicYearService.getSchoolDaysByBimester(2025);
+
+      // Processar registros (agora síncronos, sem await dentro do map)
+      const records: StudentRecord[] = students.map((student) => {
+        const allAbsences = absencesByStudentMap.get(student.estudanteId) || [];
+
+        // 🎯 FILTRO: Aplicar excludeJustified
+        // 🔧 FIX: Suporta ambos os campos (Supabase e Firebase legacy)
+        const absences = excludeJustified
+          ? allAbsences.filter(abs => !(abs.is_justified ?? abs.justified ?? false))
+          : allAbsences;
+
+        // 🔧 FIX: Suporta ambos os campos (absence_date Supabase ou data Firebase)
+        // Calculate absences by bimester
+        const faltasB1 = absences.filter(abs => {
+          const date = parseFlexibleDate(abs.absence_date ?? abs.data ?? '');
+          const b1 = periods[1];
+          if (!date || !b1) return false;
+          const startDate = parseFlexibleDate(b1.start);
+          const endDate = parseFlexibleDate(b1.end);
+          return startDate && endDate && date >= startDate && date <= endDate;
+        }).length;
+
+        const faltasB2 = absences.filter(abs => {
+          const date = parseFlexibleDate(abs.absence_date ?? abs.data ?? '');
+          const b2 = periods[2];
+          if (!date || !b2) return false;
+          const startDate = parseFlexibleDate(b2.start);
+          const endDate = parseFlexibleDate(b2.end);
+          return startDate && endDate && date >= startDate && date <= endDate;
+        }).length;
+
+        const faltasB3 = absences.filter(abs => {
+          const date = parseFlexibleDate(abs.absence_date ?? abs.data ?? '');
+          const b3 = periods[3];
+          if (!date || !b3) return false;
+          const startDate = parseFlexibleDate(b3.start);
+          const endDate = parseFlexibleDate(b3.end);
+          return startDate && endDate && date >= startDate && date <= endDate;
+        }).length;
+
+        const faltasB4 = absences.filter(abs => {
+          const date = parseFlexibleDate(abs.absence_date ?? abs.data ?? '');
+          const b4 = periods[4];
+          if (!date || !b4) return false;
+          const startDate = parseFlexibleDate(b4.start);
+          const endDate = parseFlexibleDate(b4.end);
+          return startDate && endDate && date >= startDate && date <= endDate;
+        }).length;
+
+        const totalFaltas = faltasB1 + faltasB2 + faltasB3 + faltasB4;
+
+        // Calculate today's absences
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const faltasAteHoje = absences.filter(abs => {
+          const date = parseFlexibleDate(abs.absence_date ?? abs.data ?? ''); // 🔧 FIX: Suporta ambos
+          return date && date <= today;
+        }).length;
+
+        // 🔧 FIX: Usar dias letivos REAIS do Supabase (buscado dinamicamente!)
+        const diasLetivosB1 = schoolDaysByBimester[1] || 0; // 54 dias
+        const diasLetivosB2 = schoolDaysByBimester[2] || 0; // 42 dias
+        const diasLetivosB3 = schoolDaysByBimester[3] || 0; // 52 dias
+        const diasLetivosB4 = schoolDaysByBimester[4] || 0; // 52 dias
+        const diasLetivosAnual = diasLetivosB1 + diasLetivosB2 + diasLetivosB3 + diasLetivosB4; // = 200
+
+        // Calculate attendance percentage
+        const percentualFaltas = diasLetivosAnual > 0
+          ? Math.round((totalFaltas / diasLetivosAnual) * 100)
+          : 0;
+        const percentualFrequencia = 100 - percentualFaltas;
+        const percentualFaltasAteHoje = diasLetivosAnual > 0
+          ? Math.round((faltasAteHoje / diasLetivosAnual) * 100)
+          : 0;
+        const percentualFrequenciaAteHoje = 100 - percentualFaltasAteHoje;
+
+        return {
+          estudanteId: student.estudanteId,
+          turma: student.turma,
+          nome: student.nome,
+          faltasB1,
+          faltasB2,
+          faltasB3,
+          faltasB4,
+          totalFaltas,
+          totalFaltasAteHoje: faltasAteHoje,
+          percentualFaltas,
+          percentualFaltasAteHoje,
+          percentualFrequencia,
+          percentualFrequenciaAteHoje,
+          diasLetivosAteHoje: diasLetivosAnual, // Simplified
+          diasLetivosB1,
+          diasLetivosB2,
+          diasLetivosB3,
+          diasLetivosB4,
+          diasLetivosAnual,
+        };
+      });
 
       setStudentRecords(records);
     } catch (err) {
@@ -196,7 +195,7 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [turmaFilter, statusFilter, calculateStudentRecord]);
+  }, [turmaFilter, statusFilter, excludeJustified]); // 🔧 FIX: Adicionar excludeJustified nas dependências
 
   useEffect(() => {
     fetchStudentRecords();

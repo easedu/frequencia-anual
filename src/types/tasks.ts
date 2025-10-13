@@ -23,6 +23,10 @@ export interface UserTask {
   interactionType?: string; // Tipo de interação quando resolvida
   interactionDescription?: string; // Descrição da interação quando resolvida
   resolvedBy?: string; // Nome de quem resolveu a tarefa
+  updatedAt?: string; // Data de última atualização
+  deleted?: boolean; // Soft delete flag
+  deletedAt?: string; // Data de deleção
+  deletedBy?: string; // Quem deletou
 }
 
 export type TaskType = 'CONSELHO_TUTELAR';

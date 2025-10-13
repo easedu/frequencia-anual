@@ -1,7 +1,4 @@
-import { db } from "@/firebase.config";
-import { doc, getDoc } from "firebase/firestore";
 import { AnoLetivoData, BimesterDate, BimesterDates } from "@/types";
-import { FIREBASE_PATHS } from "@/config/constants";
 import { logger } from "@/utils/logger";
 
 export function formatFirebaseDate(dateStr: string | undefined): string {
@@ -112,52 +109,53 @@ export function getFrequencyColor(percentual: number): string {
     else return "text-red-600 text-center";
 }
 
+/**
+ * MIGRADO PARA SUPABASE
+ * Calcula dias letivos usando AcademicYearService
+ */
 export const calculateDiasLetivos = async (start: string, end: string): Promise<{ ateHoje: number; b1: number; b2: number; b3: number; b4: number; anual: number }> => {
     try {
-        const docRef = doc(db, FIREBASE_PATHS.academicYear());
-        const docSnap = await getDoc(docRef);
-        if (!docSnap.exists()) {
-            return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
-        }
+        // Usar Supabase via AcademicYearService
+        const { AcademicYearService } = await import('@/services/supabase/academicYearService');
+        const currentYear = new Date().getFullYear();
 
-        const anoData = docSnap.data() as AnoLetivoData;
         const startDateObj = parseDate(start);
         const endDateObj = parseDate(end) || new Date();
         if (!startDateObj || !endDateObj) {
             return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
         }
 
-        let totalAteHoje = 0;
-        const totalsByBimester: { b1: number; b2: number; b3: number; b4: number } = { b1: 0, b2: 0, b3: 0, b4: 0 };
-        const bimesters: (keyof AnoLetivoData)[] = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
-
-        for (let i = 0; i < bimesters.length; i++) {
-            const bimesterKey = bimesters[i];
-            if (anoData[bimesterKey]?.dates) {
-                const bimesterStart = parseDate(anoData[bimesterKey].startDate);
-                const bimesterEnd = parseDate(anoData[bimesterKey].endDate);
-                if (!bimesterStart || !bimesterEnd) continue;
-
-                const bimesterCount = anoData[bimesterKey].dates.filter((d: BimesterDate) => {
-                    const date = parseDate(d.date);
-                    return d.isChecked && date && date >= bimesterStart && date <= bimesterEnd;
-                }).length;
-
-                if (i === 0) totalsByBimester.b1 = bimesterCount;
-                if (i === 1) totalsByBimester.b2 = bimesterCount;
-                if (i === 2) totalsByBimester.b3 = bimesterCount;
-                if (i === 3) totalsByBimester.b4 = bimesterCount;
-            }
+        // Buscar dados do ano letivo completo via Supabase
+        const academicYearData = await AcademicYearService.getAcademicYearComplete(currentYear);
+        if (!academicYearData) {
+            return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
         }
 
-        for (const bimesterKey of bimesters) {
-            if (anoData[bimesterKey]?.dates) {
-                totalAteHoje += anoData[bimesterKey].dates.filter((d: BimesterDate) => {
-                    const date = parseDate(d.date);
-                    return d.isChecked && date && date >= startDateObj && date <= endDateObj;
-                }).length;
+        // Contar dias letivos por bimestre
+        const totalsByBimester = { b1: 0, b2: 0, b3: 0, b4: 0 };
+
+        const bimesterKeys = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
+        bimesterKeys.forEach((key, index) => {
+            const bimesterData = academicYearData[key];
+            if (bimesterData?.dates) {
+                const count = bimesterData.dates.filter((day: any) => day.isChecked).length;
+                if (index === 0) totalsByBimester.b1 = count;
+                if (index === 1) totalsByBimester.b2 = count;
+                if (index === 2) totalsByBimester.b3 = count;
+                if (index === 3) totalsByBimester.b4 = count;
             }
-        }
+        });
+
+        // Contar dias até hoje no período especificado
+        // Converter datas para formato DD/MM/YYYY que o AcademicYearService espera
+        const startStr = `${startDateObj.getDate().toString().padStart(2, '0')}/${(startDateObj.getMonth() + 1).toString().padStart(2, '0')}/${startDateObj.getFullYear()}`;
+        const endStr = `${endDateObj.getDate().toString().padStart(2, '0')}/${(endDateObj.getMonth() + 1).toString().padStart(2, '0')}/${endDateObj.getFullYear()}`;
+
+        const totalAteHoje = await AcademicYearService.countSchoolDaysInPeriod(
+            startStr,
+            endStr,
+            currentYear
+        );
 
         const totalAnual = totalsByBimester.b1 + totalsByBimester.b2 + totalsByBimester.b3 + totalsByBimester.b4;
 
@@ -170,39 +168,51 @@ export const calculateDiasLetivos = async (start: string, end: string): Promise<
             anual: totalAnual,
         };
     } catch (error) {
-        logger.error("Erro ao calcular dias letivos", { start, end }, error as Error);
+        logger.error("Erro ao calcular dias letivos (Supabase)", { start, end }, error as Error);
         return { ateHoje: 0, b1: 0, b2: 0, b3: 0, b4: 0, anual: 0 };
     }
-}
+};
 
+/**
+ * MIGRADO PARA SUPABASE
+ * Obtém dias letivos no período usando AcademicYearService
+ */
 export async function getDiasLetivosNoPeriodo(startDate: Date, endDate: Date): Promise<string[]> {
     try {
-        const docRef = doc(db, FIREBASE_PATHS.academicYear());
-        const docSnap = await getDoc(docRef);
-        if (!docSnap.exists()) {
+        const { AcademicYearService } = await import('@/services/supabase/academicYearService');
+        const currentYear = new Date().getFullYear();
+
+        // Buscar dados do ano letivo completo via Supabase
+        const academicYearData = await AcademicYearService.getAcademicYearComplete(currentYear);
+        if (!academicYearData) {
             return [];
         }
 
-        const anoData = docSnap.data() as AnoLetivoData;
         const diasLetivos: string[] = [];
-        const bimesters: (keyof AnoLetivoData)[] = ["1º Bimestre", "2º Bimestre", "3º Bimestre", "4º Bimestre"];
 
-        for (const bimesterKey of bimesters) {
-            if (anoData[bimesterKey]?.dates) {
-                const bimesterDates = anoData[bimesterKey].dates.filter((d: BimesterDate) => {
-                    if (!d.isChecked) return false;
+        // Percorrer todos os bimestres (chaves do objeto)
+        const bimesterKeys = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
 
-                    const date = parseDate(d.date);
-                    return date && date >= startDate && date <= endDate;
-                });
+        for (const key of bimesterKeys) {
+            const bimesterData = academicYearData[key];
+            if (bimesterData?.dates) {
+                // Filtrar dias letivos marcados no período
+                const bimesterDates = bimesterData.dates
+                    .filter((day: any) => {
+                        if (!day.isChecked) return false;
 
-                diasLetivos.push(...bimesterDates.map((d: BimesterDate) => d.date));
+                        const date = parseDate(day.date);
+                        return date && date >= startDate && date <= endDate;
+                    })
+                    .map((day: any) => day.date);
+
+                diasLetivos.push(...bimesterDates);
             }
         }
 
         return diasLetivos;
     } catch (error) {
-        logger.error("Erro ao obter dias letivos no período", { startDate: startDate.toISOString(), endDate: endDate.toISOString() }, error as Error);
+        logger.error("Erro ao obter dias letivos no período (Supabase)", { startDate: startDate.toISOString(), endDate: endDate.toISOString() }, error as Error);
         return [];
     }
 };

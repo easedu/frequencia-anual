@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { AutomationExecutionService, type AutomationExecution } from '@/services/supabase/automationExecutionService';
 import { logger } from '@/utils/logger';
-import type { AutomationExecution } from '@/types';
 import { processAbsencesWithCheckpoint } from '@/services/automationOrchestrator';
 
 /**
@@ -73,32 +71,28 @@ export async function POST(request: NextRequest) {
 
   try {
     // ==========================================
-    // BUSCAR EXECUÇÕES TRAVADAS
+    // BUSCAR EXECUÇÕES TRAVADAS NO SUPABASE
     // ==========================================
-    // Execuções RUNNING ou RESUMING com lastCheckpointAt antigo
-    const stuckQuery = adminDb.collection('automationExecutions')
-      .where('status', 'in', ['RUNNING', 'RESUMING']);
-
-    const stuckSnapshot = await stuckQuery.get();
+    // Buscar última execução RUNNING
+    const runningExecution = await AutomationExecutionService.getLastRunningExecution();
     const stuckExecutions: AutomationExecution[] = [];
 
-    stuckSnapshot.forEach(doc => {
-      const data = doc.data() as AutomationExecution;
-      const lastCheckpoint = data.lastCheckpointAt || data.startedAt;
+    if (runningExecution) {
+      const lastUpdated = new Date(runningExecution.updatedAt).getTime();
 
-      // Verificar se está travado (checkpoint muito antigo)
-      if (lastCheckpoint < cutoffTime) {
-        stuckExecutions.push(data);
+      // Verificar se está travado (sem atualização há muito tempo)
+      if (lastUpdated < cutoffTime) {
+        stuckExecutions.push(runningExecution);
       }
-    });
+    }
 
     logger.info('[WATCHDOG] 📊 Execuções travadas encontradas', {
       count: stuckExecutions.length,
       executions: stuckExecutions.map(e => ({
-        executionId: e.executionId,
+        executionId: e.id,
         status: e.status,
-        lastCheckpointAt: e.lastCheckpointAt ? new Date(e.lastCheckpointAt).toISOString() : null,
-        minutesSinceCheckpoint: Math.round((Date.now() - (e.lastCheckpointAt || e.startedAt)) / 1000 / 60)
+        updatedAt: e.updatedAt,
+        minutesSinceUpdate: Math.round((Date.now() - new Date(e.updatedAt).getTime()) / 1000 / 60)
       }))
     });
 
@@ -112,40 +106,38 @@ export async function POST(request: NextRequest) {
       for (const execution of stuckExecutions) {
         try {
           logger.info('[WATCHDOG] 🔄 Retomando execução travada', {
-            executionId: execution.executionId,
+            executionId: execution.id,
             processedStudents: execution.processedStudents,
             totalStudents: execution.totalStudents
           });
 
-          // Marcar como RESUMING
-          await adminDb.collection('automationExecutions').doc(execution.executionId).update({
-            status: 'RESUMING',
-            lastCheckpointAt: FieldValue.serverTimestamp()
-          });
+          // Marcar como RUNNING novamente (Supabase atualiza updated_at automaticamente)
+          await AutomationExecutionService.updateStatus(execution.id, 'RUNNING');
 
           // Retomar em background
+          const currentDate = new Date();
           processAbsencesWithCheckpoint(
-            execution.executionId,
+            execution.id,
             {
               dryRun: execution.dryRun,
-              absenceMultiple: execution.absenceMultiple,
-              notificationPhone: execution.notificationPhone,
-              referenceMonth: execution.referenceMonth,
-              referenceYear: execution.referenceYear
+              absenceMultiple: execution.absenceMultiple || 3,
+              notificationPhone: execution.notificationPhone || '',
+              referenceMonth: currentDate.getMonth() + 1,
+              referenceYear: currentDate.getFullYear()
             },
             authorization
           ).catch(error => {
             logger.error('[WATCHDOG] ❌ Erro ao retomar', {
-              executionId: execution.executionId,
+              executionId: execution.id,
               error: error.message
             });
           });
 
-          resumed.push(execution.executionId);
+          resumed.push(execution.id);
 
         } catch (error) {
           failed.push({
-            executionId: execution.executionId,
+            executionId: execution.id,
             error: error instanceof Error ? error.message : 'Erro desconhecido'
           });
         }
@@ -169,11 +161,11 @@ export async function POST(request: NextRequest) {
       stuckCount: stuckExecutions.length,
       autoResume: false,
       executions: stuckExecutions.map(e => ({
-        executionId: e.executionId,
+        executionId: e.id,
         status: e.status,
-        startedAt: new Date(e.startedAt).toISOString(),
-        lastCheckpointAt: e.lastCheckpointAt ? new Date(e.lastCheckpointAt).toISOString() : null,
-        minutesSinceCheckpoint: Math.round((Date.now() - (e.lastCheckpointAt || e.startedAt)) / 1000 / 60),
+        startedAt: e.startedAt || e.createdAt,
+        updatedAt: e.updatedAt,
+        minutesSinceUpdate: Math.round((Date.now() - new Date(e.updatedAt).getTime()) / 1000 / 60),
         processedStudents: e.processedStudents,
         totalStudents: e.totalStudents
       })),

@@ -7,11 +7,10 @@
  * - Isolamento de erros (1 estudante não trava todos)
  * - Idempotência (previne duplicatas)
  *
- * MIGRADO PARA FIREBASE ADMIN SDK (bypassa regras de segurança)
+ * MIGRADO PARA SUPABASE (PostgreSQL)
  */
 
-import { adminDb } from '@/lib/firebaseAdmin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { AutomationExecutionService } from './supabase/automationExecutionService';
 import {
   AutomationExecution,
   AutomationExecutionSummary,
@@ -456,7 +455,6 @@ export async function processAbsencesWithCheckpoint(
   params: AutomationParams,
   authorization: string
 ): Promise<AutomationExecutionSummary> {
-  const executionRef = adminDb.collection('automationExecutions').doc(executionId);
   const startTime = Date.now();
 
   try {
@@ -465,28 +463,12 @@ export async function processAbsencesWithCheckpoint(
     const students = await fetchStudentsWithAbsences(params.absenceMultiple);
     console.log(`✅ ${students.length} estudantes encontrados`);
 
-    // 2. INICIALIZAR ESTADO NO FIRESTORE
-    const initialData: Partial<AutomationExecution> = {
-      status: 'RUNNING',
-      totalStudents: students.length,
-      processedStudents: 0,
-      currentStudentIndex: 0,
-      processedStudentIds: [],
-      messagesSucceeded: 0,
-      messagesFailed: 0,
-      tasksCreated: 0,
-      errors: []
-    };
-
-    await executionRef.update({
-      ...initialData,
-      lastCheckpointAt: FieldValue.serverTimestamp()
-    });
+    // 2. ATUALIZAR STATUS PARA RUNNING NO SUPABASE
+    await AutomationExecutionService.updateStatus(executionId, 'RUNNING');
 
     // 3. VERIFICAR SE É RETOMADA (estudantes já processados)
-    const executionDoc = await executionRef.get();
-    const execution = executionDoc.data() as AutomationExecution;
-    const processedIds = execution.processedStudentIds || [];
+    const execution = await AutomationExecutionService.getExecutionById(executionId);
+    const processedIds = execution?.processedStudentIds || [];
 
     // Filtrar apenas estudantes não processados
     const remainingStudents = students.filter(
@@ -497,10 +479,10 @@ export async function processAbsencesWithCheckpoint(
 
     // 4. PROCESSAR CADA ESTUDANTE COM CHECKPOINT
     const results = {
-      messagesSucceeded: execution.messagesSucceeded || 0,
-      messagesFailed: execution.messagesFailed || 0,
-      tasksCreated: execution.tasksCreated || 0,
-      errors: execution.errors || []
+      messagesSucceeded: 0,
+      messagesFailed: 0,
+      tasksCreated: 0,
+      errors: [] as Array<{ estudanteId: string; estudanteNome: string; error: string }>
     };
 
     for (let i = 0; i < remainingStudents.length; i++) {
@@ -522,16 +504,18 @@ export async function processAbsencesWithCheckpoint(
         results.tasksCreated += studentResult.tasksCreated;
         results.errors.push(...studentResult.errors);
 
-        // CHECKPOINT: Marcar como processado
-        await executionRef.update({
-          processedStudents: processedIds.length + i + 1,
+        // CHECKPOINT: Atualizar no Supabase
+        const updatedProcessedIds = [...processedIds, student.estudanteId];
+        await AutomationExecutionService.updateCheckpoint(executionId, {
+          processedStudents: updatedProcessedIds.length,
           currentStudentIndex: i + 1,
-          processedStudentIds: FieldValue.arrayUnion(student.estudanteId),
-          messagesSucceeded: results.messagesSucceeded,
-          messagesFailed: results.messagesFailed,
-          tasksCreated: results.tasksCreated,
-          errors: results.errors,
-          lastCheckpointAt: FieldValue.serverTimestamp()
+          processedStudentIds: updatedProcessedIds,
+          results: {
+            messagesSucceeded: results.messagesSucceeded,
+            messagesFailed: results.messagesFailed,
+            tasksCreated: results.tasksCreated,
+            errors: results.errors
+          }
         });
 
         console.log(`✅ [${i + 1}/${remainingStudents.length}] ${student.nome} processado e checkpoint salvo`);
@@ -579,12 +563,19 @@ export async function processAbsencesWithCheckpoint(
       errors: results.errors
     };
 
-    // 6. FINALIZAR NO FIRESTORE
-    await executionRef.update({
-      status: 'COMPLETED',
-      finishedAt: endTime,
-      summary,
-      lastCheckpointAt: FieldValue.serverTimestamp()
+    // 6. FINALIZAR NO SUPABASE
+    await AutomationExecutionService.updateStatus(executionId, 'COMPLETED');
+    await AutomationExecutionService.updateCheckpoint(executionId, {
+      processedStudents: students.length,
+      currentStudentIndex: remainingStudents.length,
+      processedStudentIds: students.map(s => s.estudanteId),
+      results: {
+        summary,
+        messagesSucceeded: results.messagesSucceeded,
+        messagesFailed: results.messagesFailed,
+        tasksCreated: results.tasksCreated,
+        errors: results.errors
+      }
     });
 
     console.log(`\n✅ Processamento concluído!`);
@@ -597,13 +588,11 @@ export async function processAbsencesWithCheckpoint(
   } catch (error) {
     console.error('❌ Erro crítico no processamento:', error);
 
-    // SALVAR ERRO MAS MANTER CHECKPOINT
-    await executionRef.update({
-      status: 'FAILED',
-      finishedAt: Date.now(),
-      error: error instanceof Error ? error.message : 'Erro desconhecido',
-      lastCheckpointAt: FieldValue.serverTimestamp()
-    });
+    // SALVAR ERRO NO SUPABASE MAS MANTER CHECKPOINT
+    await AutomationExecutionService.updateError(
+      executionId,
+      error instanceof Error ? error.message : 'Erro desconhecido'
+    );
 
     // Enviar notificação de falha
     await sendErrorNotification(

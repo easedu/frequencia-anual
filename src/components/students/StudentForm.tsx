@@ -15,8 +15,7 @@ import { formatPhoneNumber, formatCep } from '@/utils/formatters';
 import { Estudante } from '@/types';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
-import { db } from '@/firebase.config';
-import { doc, getDoc } from 'firebase/firestore';
+import { getVerifiedNumber } from '@/services/whatsappDataService';
 import { studentCompleteFormSchema } from '@/schemas/studentSchemas';
 
 // Types
@@ -173,15 +172,14 @@ const ContactField = memo(({
             if (!cleanPhone || cleanPhone.length !== 11) return;
 
             try {
-                const docRef = doc(db, 'whatsapp_verified_numbers', cleanPhone);
-                const docSnap = await getDoc(docRef);
+                // Buscar número verificado no Supabase
+                const verifiedData = await getVerifiedNumber(cleanPhone);
 
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
+                if (verifiedData && verifiedData.isVerified) {
                     setWhatsappStatus({
                         isVerifying: false,
-                        hasWhatsApp: data.hasWhatsApp,
-                        whatsappName: data.contactName,
+                        hasWhatsApp: verifiedData.exists,
+                        whatsappName: verifiedData.name || undefined,
                         verified: true
                     });
                 }
@@ -235,7 +233,7 @@ const ContactField = memo(({
                     verified: true
                 });
 
-                // Salvar no Firebase (no cliente onde temos autenticação)
+                // Salvar usando WhatsAppTrackingService (Supabase)
                 try {
                     const { WhatsAppTrackingService } = await import('@/services/whatsappTrackingService');
                     await WhatsAppTrackingService.markNumberAsVerified(

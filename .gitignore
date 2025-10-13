@@ -3,12 +3,8 @@
 # dependencies
 /node_modules
 /.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+.pnp.js
+.yarn/install-state.gz
 
 # testing
 /coverage
@@ -28,10 +24,10 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# local env files
+.env*.local
+.env
 
 # vercel
 .vercel
@@ -39,28 +35,99 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-# Arquivos de debug temporários
-DEBUG_CHECK_DATES.md
-DEBUG_DATAS_AULA.md
 
-# Logs do Firebase
-firebase-debug.log
+# bundle analyzer
+.next-bundle-analysis
 
-# Regras temporárias de firestore (manter apenas firestore.rules)
-firestore.rules.permissive
-firestore.rules.restrictive
-firestore.rules.working
-.mcp.json
-analytics.db
-analytics.db-journal
-*.db
-*.db-journal
-
-# Scripts arquivados (temporários/diagnóstico)
-scripts/archived/
-
-# Firebase Emulators
-firebase-data/
+# Firebase
 .firebase/
-ui-debug.log
-firestore-debug.log
+firebase-debug.log*
+firestore-debug.log*
+
+# Arquivos temporários de migração
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!next.config.json
+*.sql
+*.md
+!README.md
+!CLAUDE.md
+!CHANGELOG.md
+!docs/**/*.md
+
+# Scripts temporários
+scripts/migration/
+scripts/*-supabase*.mjs
+scripts/*-firebase*.mjs
+scripts/*-atestados*.mjs
+scripts/buscar-*.mjs
+scripts/check-*.mjs
+scripts/verificar-*.mjs
+scripts/investigar-*.mjs
+scripts/migrar-*.mjs
+scripts/limpar-*.mjs
+scripts/extrair-*.mjs
+scripts/encontrar-*.mjs
+scripts/reconstruir-*.mjs
+scripts/corrigir-*.mjs
+scripts/diagnose-*.mjs
+scripts/cross-*.mjs
+scripts/debug-*.mjs
+scripts/delete-*.mjs
+scripts/list-*.mjs
+scripts/export-*.mjs
+scripts/import-*.mjs
+scripts/compare-*.mjs
+scripts/contagem-*.mjs
+scripts/create-user-*.mjs
+scripts/discover-*.mjs
+scripts/find-*.mjs
+scripts/generate-*.mjs
+scripts/populate-*.mjs
+scripts/test-*.mjs
+scripts/verify-*.mjs
+scripts/apply-*.mjs
+scripts/auditoria-*.mjs
+scripts/fase1-*.mjs
+scripts/fase1-*.sql
+
+# Páginas de debug/admin temporárias
+src/app/admin/atestados-firebase/
+src/app/buscar-*/
+src/app/consultar-*/
+src/app/debug-*/
+src/app/exportar-*/
+src/app/investigar-*/
+src/app/testar-*/
+src/app/teste-*/
+src/app/verificar-*/
+
+# APIs de admin temporárias
+src/app/api/admin/check-*/
+src/app/api/admin/debug-*/
+src/app/api/admin/fetch-*/
+src/app/api/admin/fix-*/
+src/app/api/admin/migrate-*/
+src/app/api/admin/search-*/
+src/app/api/admin/students-with-*/
+src/app/api/admin/test-*/
+
+# Backups
+backup-firebase/
+*.backup
+*.BACKUP
+
+# Supabase temporário
+supabase-*.sql
+supabase-migrations/
+src/lib/supabase*.ts
+src/hooks/useSupabase*.ts
+src/services/supabase/
+
+# Output
+output/
+
+# Node modules duplicado
+node_modules*/

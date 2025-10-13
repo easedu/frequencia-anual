@@ -15,9 +15,7 @@ import { getBimesterByDate } from "@/app/utils";
 import { Calendar, FileText, Clock, User, CheckCircle, XCircle, ChevronDown, ChevronRight, Trash2, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { db } from "@/firebase.config";
-import { collection, query, where, getDocs, writeBatch } from "firebase/firestore";
-import { FIREBASE_PATHS } from "@/config/constants";
+import { AbsenceService } from "@/services/supabase/absenceService";
 import { logger } from "@/utils/logger";
 
 interface RegisteredAbsencesCardProps {
@@ -58,7 +56,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
     const [isDeleting, setIsDeleting] = useState(false);
 
     const filteredAbsences = absences.filter((absence) => {
-        return getBimesterByDate(absence.data, bimesterDates) === bimester;
+        return absence.data && getBimesterByDate(absence.data, bimesterDates) === bimester;
     });
     const justifiedCount = filteredAbsences.filter(absence => absence.justified).length;
     const unjustifiedCount = filteredAbsences.length - justifiedCount;
@@ -138,32 +136,23 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
 
         setIsDeleting(true);
         try {
-            // Converter a data para o formato do Firebase (YYYY-MM-DD)
+            // Converter a data para o formato ISO (YYYY-MM-DD)
             const [day, month, year] = absenceDate.split('/');
             const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 
-            // Buscar o documento da falta no Firestore
-            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
-            const q = query(
-                controleColRef,
-                where("estudanteId", "==", selectedStudentId),
-                where("data", "==", formattedDate)
+            // Buscar faltas no Supabase
+            const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
+            const absences = allAbsences.filter((a: any) =>
+                (a.absence_date === formattedDate || a.data === formattedDate)
             );
 
-            const querySnapshot = await getDocs(q);
-
-            if (querySnapshot.empty) {
+            if (!absences || absences.length === 0) {
                 toast.error("Falta não encontrada no banco de dados.");
                 return;
             }
 
-            // Usar batch para deletar todos os registros encontrados (caso haja duplicatas)
-            const batch = writeBatch(db);
-            querySnapshot.forEach((docSnap) => {
-                batch.delete(docSnap.ref);
-            });
-
-            await batch.commit();
+            // Deletar falta usando deleteAbsence(studentId, date)
+            await AbsenceService.deleteAbsence(selectedStudentId, formattedDate);
 
             toast.success("Falta removida com sucesso!");
 
@@ -264,7 +253,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                     }`} />
                                                 <div>
                                                     <p className="font-medium text-gray-900 text-sm">
-                                                        {formatDate(absence.data)}
+                                                        {absence.data ? formatDate(absence.data) : '-'}
                                                     </p>
                                                 </div>
                                             </div>
@@ -289,12 +278,12 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                 )}
 
                                                 {/* Botão de remoção - apenas para administradores */}
-                                                {userRole === "admin" && (
+                                                {userRole === "admin" && absence.data && (
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
                                                         className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                        onClick={() => setShowDeleteDialog(absence.data)}
+                                                        onClick={() => setShowDeleteDialog(absence.data!)}
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </Button>

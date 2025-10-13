@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { AutomationExecutionService } from '@/services/supabase/automationExecutionService';
 import { logger } from '@/utils/logger';
-import type { AutomationExecution } from '@/types';
 
 /**
  * API DE CONSULTA DE STATUS
@@ -62,55 +61,42 @@ export async function GET(request: NextRequest) {
     // CASO 1: CONSULTAR EXECUÇÃO ESPECÍFICA
     // ==========================================
     if (executionId) {
-      const executionRef = adminDb.collection('automationExecutions').doc(executionId);
-      const executionDoc = await executionRef.get();
+      const execution = await AutomationExecutionService.getExecutionById(executionId);
 
-      if (!executionDoc.exists) {
+      if (!execution) {
         return NextResponse.json(
           { success: false, error: 'Execution not found' },
           { status: 404 }
         );
       }
 
-      const execution = executionDoc.data() as AutomationExecution;
-
       // Calcular progresso
       const progressPercentage = execution.totalStudents > 0
         ? Math.round((execution.processedStudents / execution.totalStudents) * 100)
         : 0;
 
-      const elapsedMs = execution.finishedAt
-        ? execution.finishedAt - execution.startedAt
-        : Date.now() - execution.startedAt;
-
-      const elapsedMinutes = Math.round(elapsedMs / 1000 / 60);
+      const startedMs = execution.startedAt ? new Date(execution.startedAt).getTime() : new Date(execution.createdAt).getTime();
+      const finishedMs = execution.completedAt ? new Date(execution.completedAt).getTime() : Date.now();
+      const elapsedMinutes = Math.round((finishedMs - startedMs) / 1000 / 60);
 
       return NextResponse.json({
         success: true,
         execution: {
-          executionId: execution.executionId,
+          executionId: execution.id,
           status: execution.status,
-          startedAt: new Date(execution.startedAt).toISOString(),
-          finishedAt: execution.finishedAt ? new Date(execution.finishedAt).toISOString() : null,
-          lastCheckpointAt: execution.lastCheckpointAt ? new Date(execution.lastCheckpointAt).toISOString() : null,
+          startedAt: execution.startedAt || execution.createdAt,
+          finishedAt: execution.completedAt || null,
+          updatedAt: execution.updatedAt,
           elapsedMinutes,
           dryRun: execution.dryRun,
           absenceMultiple: execution.absenceMultiple,
-          referenceMonth: execution.referenceMonth,
-          referenceYear: execution.referenceYear,
           progress: {
             totalStudents: execution.totalStudents,
             processedStudents: execution.processedStudents,
             remainingStudents: execution.totalStudents - execution.processedStudents,
             percentage: progressPercentage
           },
-          results: {
-            messagesSucceeded: execution.messagesSucceeded,
-            messagesFailed: execution.messagesFailed,
-            tasksCreated: execution.tasksCreated,
-            errors: execution.errors
-          },
-          summary: execution.summary || null
+          results: execution.results || {}
         }
       });
     }
@@ -118,37 +104,33 @@ export async function GET(request: NextRequest) {
     // ==========================================
     // CASO 2: LISTAR EXECUÇÕES RECENTES
     // ==========================================
-    const executionsQuery = adminDb.collection('automationExecutions')
-      .orderBy('startedAt', 'desc')
-      .limit(limitParam);
+    const executions = await AutomationExecutionService.getRecentExecutions(limitParam);
 
-    const executionsSnapshot = await executionsQuery.get();
-    const executions = executionsSnapshot.docs.map(doc => {
-      const data = doc.data() as AutomationExecution;
+    const formattedExecutions = executions.map(data => {
       const progressPercentage = data.totalStudents > 0
         ? Math.round((data.processedStudents / data.totalStudents) * 100)
         : 0;
 
+      const results = data.results || {};
+
       return {
-        executionId: data.executionId,
+        executionId: data.id,
         status: data.status,
-        startedAt: new Date(data.startedAt).toISOString(),
-        finishedAt: data.finishedAt ? new Date(data.finishedAt).toISOString() : null,
+        startedAt: data.startedAt || data.createdAt,
+        finishedAt: data.completedAt || null,
         dryRun: data.dryRun,
         absenceMultiple: data.absenceMultiple,
         processedStudents: data.processedStudents,
         totalStudents: data.totalStudents,
         progressPercentage,
-        messagesSucceeded: data.messagesSucceeded,
-        tasksCreated: data.tasksCreated,
-        errorCount: data.errors.length
+        results
       };
     });
 
     return NextResponse.json({
       success: true,
-      count: executions.length,
-      executions
+      count: formattedExecutions.length,
+      executions: formattedExecutions
     });
 
   } catch (error) {

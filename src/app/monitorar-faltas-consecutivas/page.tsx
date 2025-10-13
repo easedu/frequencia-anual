@@ -34,14 +34,16 @@ import {
   FileText,
   X
 } from 'lucide-react';
-import { collection, getDocs, query, where, doc, getDoc, addDoc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db, auth } from '@/firebase.config';
+import { auth } from '@/firebase.config';
 import { useStudents } from '@/hooks/useStudents';
 import { toast } from 'sonner';
-import { FIREBASE_PATHS } from '@/config/constants';
 import { useRouter } from 'next/navigation';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import type { FamilyInteraction } from '@/types';
+import { AcademicYearService } from '@/services/supabase/academicYearService';
+import { AbsenceService } from '@/services/supabase/absenceService';
+import { InteractionService } from '@/services/supabase/interactionService';
+import { ResolvedCasesService } from '@/services/supabase/resolvedCasesService';
 
 interface ConsecutiveAbsence {
   estudanteId: string;
@@ -113,27 +115,25 @@ export default function MonitorarFaltasConsecutivasPage() {
     return [...new Set(students.map(student => student.turma))].sort();
   }, [students]);
 
-  // Função para carregar dados do ano letivo com cache inteligente
+  // Função para carregar dados do ano letivo com cache inteligente (Supabase)
   const loadAcademicYearData = async (): Promise<any> => {
     const now = Date.now();
     const CACHE_TTL = 10 * 60 * 1000; // 10 minutos
-    
+
     // Verificar se o cache ainda é válido
     if (academicYearCache && (now - academicYearCacheTime) < CACHE_TTL) {
       return academicYearCache;
     }
 
     try {
-      const docRef = doc(db, '2025', 'ano_letivo');
-      const docSnap = await getDoc(docRef);
+      const data = await AcademicYearService.getAcademicYearComplete(2025);
 
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+      if (data && Object.keys(data).length > 0) {
         setAcademicYearCache(data);
         setAcademicYearCacheTime(now);
         return data;
       }
-      
+
       return null;
     } catch (error) {
       console.error('Erro ao carregar ano letivo:', error);
@@ -262,81 +262,46 @@ export default function MonitorarFaltasConsecutivasPage() {
     }
   };
 
-  // Carregar faltas de TODOS os estudantes em uma query batch otimizada
+  // Carregar faltas de TODOS os estudantes otimizado (Supabase)
   const loadAllStudentAbsences = async (studentIds: string[], schoolDays: SchoolDay[]): Promise<Record<string, string[]>> => {
     try {
-      const absencesRef = collection(db, FIREBASE_PATHS.absenceControl());
+      // Criar set de datas de dias letivos para filtro rápido
+      const schoolDayDates = new Set(schoolDays.map(day => day.date));
 
-      // Otimizar batch size (máximo suportado pelo Firestore é 30 para 'in')
-      const batchSize = 30;
-      const batches: Promise<Record<string, string[]>>[] = [];
+      // Buscar todas as faltas não justificadas de todos os estudantes
+      const allAbsences = await AbsenceService.getAbsencesByStudentIds(studentIds, false); // false = não justificadas
 
-      for (let i = 0; i < studentIds.length; i += batchSize) {
-        const batch = studentIds.slice(i, i + batchSize);
-        const batchPromise = getBatchAbsences(absencesRef, batch, i / batchSize + 1, schoolDays);
-        batches.push(batchPromise);
-      }
+      // Organizar faltas por estudante
+      const absencesByStudent: Record<string, string[]> = {};
 
-      // Executar todos os batches em paralelo com controle de concorrência
-      const maxConcurrency = 5; // Limitar concorrência para evitar rate limiting
-      const batchResults: Record<string, string[]>[] = [];
-
-      for (let i = 0; i < batches.length; i += maxConcurrency) {
-        const concurrentBatches = batches.slice(i, i + maxConcurrency);
-        const results = await Promise.all(concurrentBatches);
-        batchResults.push(...results);
-
-        // Pequeno delay entre grupos de batches para evitar sobrecarga
-        if (i + maxConcurrency < batches.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
-
-      // Combinar resultados
-      const allAbsences: Record<string, string[]> = {};
-      batchResults.forEach(batchResult => {
-        Object.assign(allAbsences, batchResult);
+      // Inicializar arrays vazios para todos os estudantes
+      studentIds.forEach(id => {
+        absencesByStudent[id] = [];
       });
 
-      return allAbsences;
-      
+      // Processar faltas
+      allAbsences.forEach(absence => {
+        if (absence.estudante_id && absence.data) {
+          // Converter formato ISO para dd/mm/yyyy se necessário
+          let dateStr = absence.data;
+          if (dateStr.includes('-')) {
+            const [year, month, day] = dateStr.split('-');
+            dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+          }
+
+          // Filtrar apenas faltas em dias letivos
+          if (schoolDayDates.has(dateStr) && absencesByStudent[absence.estudante_id]) {
+            absencesByStudent[absence.estudante_id].push(dateStr);
+          }
+        }
+      });
+
+      return absencesByStudent;
+
     } catch (error) {
       console.error('Erro ao carregar faltas dos estudantes:', error);
       return {};
     }
-  };
-
-  // Função helper para processar um batch de estudantes
-  const getBatchAbsences = async (absencesRef: any, studentIds: string[], batchNumber: number, schoolDays: SchoolDay[]): Promise<Record<string, string[]>> => {
-    const querySnapshot = await getDocs(query(absencesRef, where('estudanteId', 'in', studentIds)));
-    const batchAbsences: Record<string, string[]> = {};
-
-    // Criar set de datas de dias letivos para filtro rápido
-    const schoolDayDates = new Set(schoolDays.map(day => day.date));
-
-    // Inicializar arrays vazios para todos os estudantes do batch
-    studentIds.forEach(id => {
-      batchAbsences[id] = [];
-    });
-
-    querySnapshot.forEach((docSnap) => {
-      const data = docSnap.data() as any;
-      if (!data.justified && data.estudanteId && data.data) {
-        // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
-        let dateStr = data.data;
-        if (dateStr.includes('-')) {
-          const [year, month, day] = dateStr.split('-');
-          dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
-        }
-
-        // Filtrar apenas faltas em dias letivos
-        if (schoolDayDates.has(dateStr) && batchAbsences[data.estudanteId]) {
-          batchAbsences[data.estudanteId].push(dateStr);
-        }
-      }
-    });
-
-    return batchAbsences;
   };
 
   // Calcular faltas consecutivas (atualizada para detectar todos os períodos)
@@ -712,18 +677,11 @@ export default function MonitorarFaltasConsecutivasPage() {
     router.push(`/perfil-estudante?id=${estudanteId}`);
   };
 
-  // Funções para gerenciar casos resolvidos no Firebase
+  // Funções para gerenciar casos resolvidos no Supabase
   const loadResolvedCases = async () => {
     try {
-      const resolvedCasesRef = collection(db, '2025', 'casos_resolvidos', 'faltas_consecutivas');
-      const querySnapshot = await getDocs(resolvedCasesRef);
-
-      const resolved = new Set<string>();
-      querySnapshot.forEach((docSnap) => {
-        resolved.add(docSnap.id); // O ID do documento é o estudanteId
-      });
-
-      setResolvedCases(resolved);
+      const studentIds = await ResolvedCasesService.getResolvedStudentIds();
+      setResolvedCases(new Set(studentIds));
     } catch (error) {
       console.error('Erro ao carregar casos resolvidos:', error);
     }
@@ -731,12 +689,11 @@ export default function MonitorarFaltasConsecutivasPage() {
 
   const saveResolvedCase = async (estudanteId: string, interactionId: string) => {
     try {
-      const resolvedCaseRef = doc(db, '2025', 'casos_resolvidos', 'faltas_consecutivas', estudanteId);
-      await setDoc(resolvedCaseRef, {
-        estudanteId,
+      await ResolvedCasesService.createResolvedCase({
+        studentId: estudanteId,
         interactionId,
         resolvedAt: new Date().toISOString(),
-        resolvedBy: auth.currentUser?.uid || 'unknown'
+        resolvedBy: auth.currentUser?.displayName || auth.currentUser?.email || 'Usuário desconhecido'
       });
     } catch (error) {
       console.error('Erro ao salvar caso resolvido:', error);
@@ -746,8 +703,7 @@ export default function MonitorarFaltasConsecutivasPage() {
 
   const removeResolvedCase = async (estudanteId: string) => {
     try {
-      const resolvedCaseRef = doc(db, '2025', 'casos_resolvidos', 'faltas_consecutivas', estudanteId);
-      await deleteDoc(resolvedCaseRef);
+      await ResolvedCasesService.deleteResolvedCaseByStudentId(estudanteId);
 
       // Remover do estado local também
       const newResolvedCases = new Set(resolvedCases);
@@ -793,13 +749,13 @@ export default function MonitorarFaltasConsecutivasPage() {
 
     try {
       // Preparar dados da interação
-      const parseDateToFirebase = (dateStr: string): string | null => {
+      const parseDateToSupabase = (dateStr: string): string | null => {
         const [day, month, year] = dateStr.split('/').map(Number);
         if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || month < 1 || month > 12 || day > 31) return null;
         return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       };
 
-      const formattedDate = parseDateToFirebase(interactionDate);
+      const formattedDate = parseDateToSupabase(interactionDate);
       if (!formattedDate) {
         toast.error('Data inválida. Use o formato DD/MM/YYYY.');
         return;
@@ -811,19 +767,20 @@ export default function MonitorarFaltasConsecutivasPage() {
       const interactionData: Omit<FamilyInteraction, 'id'> = {
         studentId: selectedAbsence.estudanteId,
         type: interactionType,
-        date: formattedDate, // Data no formato Firebase
+        date: formattedDate, // Data no formato Supabase (YYYY-MM-DD)
         description: interactionDescription,
         sensitive: interactionSensitive,
         createdBy: currentUser
       };
 
-      const interactionRef = await addDoc(
-        collection(db, '2025', 'interacoes_familia', selectedAbsence.estudanteId),
+      // Salvar interação no Supabase
+      const createdInteraction = await InteractionService.createInteraction(
+        selectedAbsence.estudanteId,
         interactionData
       );
 
-      // Salvar caso como resolvido no Firebase
-      await saveResolvedCase(selectedAbsence.estudanteId, interactionRef.id);
+      // Salvar caso como resolvido no Supabase
+      await saveResolvedCase(selectedAbsence.estudanteId, createdInteraction.id);
 
       // Marcar como resolvido no estado local
       const newResolvedCases = new Set(resolvedCases).add(selectedAbsence.estudanteId);
@@ -851,7 +808,7 @@ export default function MonitorarFaltasConsecutivasPage() {
     const initializePage = async () => {
       setIsHydrated(true);
 
-      // Carregar casos resolvidos do Firebase
+      // Carregar casos resolvidos do Supabase
       await loadResolvedCases();
     };
 

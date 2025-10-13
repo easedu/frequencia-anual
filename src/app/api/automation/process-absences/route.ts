@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { AutomationExecutionService } from '@/services/supabase/automationExecutionService';
 import { logger } from '@/utils/logger';
-import type { AutomationExecution } from '@/types';
 import { processAbsencesWithCheckpoint } from '@/services/automationOrchestrator';
 
 /**
@@ -12,7 +10,7 @@ import { processAbsencesWithCheckpoint } from '@/services/automationOrchestrator
  * - Retorna 202 Accepted imediatamente (< 2s)
  * - Processamento roda em background
  * - Relatório enviado via WhatsApp ao final
- * - Estado salvo no Firestore (checkpoints)
+ * - Estado salvo no Supabase (checkpoints)
  *
  * Chamada pelo GitHub Actions diariamente às 9h AM (São Paulo)
  *
@@ -73,46 +71,33 @@ export async function GET(request: NextRequest) {
   }
 
   // ==========================================
-  // CRIAR EXECUÇÃO NO FIRESTORE (QUEUED)
+  // CRIAR EXECUÇÃO NO SUPABASE (PENDING)
   // ==========================================
   try {
-    const now = Date.now();
     const currentDate = new Date();
     const referenceMonth = currentDate.getMonth() + 1; // 1-12
     const referenceYear = currentDate.getFullYear();
 
-    const executionData: AutomationExecution = {
-      executionId,
-      status: 'QUEUED',
-      startedAt: now,
-      lastCheckpointAt: now,
+    const execution = await AutomationExecutionService.createExecution({
+      totalStudents: 0,
+      studentsData: [],
       dryRun,
       absenceMultiple,
-      notificationPhone,
-      referenceMonth,
-      referenceYear,
-      totalStudents: 0,
-      processedStudents: 0,
-      currentStudentIndex: 0,
-      processedStudentIds: [],
-      messagesSucceeded: 0,
-      messagesFailed: 0,
-      tasksCreated: 0,
-      errors: []
-    };
+      notificationPhone
+    });
 
-    await adminDb.collection('automationExecutions').doc(executionId).set(executionData);
+    const createdExecutionId = execution.id;
 
-    logger.info('[AUTOMATION] ✅ Execução criada no Firestore', {
-      executionId,
-      status: 'QUEUED'
+    logger.info('[AUTOMATION] ✅ Execução criada no Supabase', {
+      executionId: createdExecutionId,
+      status: 'PENDING'
     });
 
     // ==========================================
     // DISPARAR PROCESSAMENTO EM BACKGROUND
     // ==========================================
     processAbsencesWithCheckpoint(
-      executionId,
+      createdExecutionId,
       {
         dryRun,
         absenceMultiple,
@@ -123,7 +108,7 @@ export async function GET(request: NextRequest) {
       authorization
     ).catch(error => {
       logger.error('[AUTOMATION] ❌ Erro no processamento background', {
-        executionId,
+        executionId: createdExecutionId,
         error: error.message
       });
     });
@@ -134,7 +119,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        executionId,
+        executionId: createdExecutionId,
         status: 'STARTED',
         message: 'Processamento iniciado em background. Você receberá relatório via WhatsApp.',
         dryRun,
@@ -146,7 +131,6 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     logger.error('[AUTOMATION] ❌ Erro ao criar execução', {
-      executionId,
       error: error instanceof Error ? error.message : 'Erro desconhecido'
     });
 

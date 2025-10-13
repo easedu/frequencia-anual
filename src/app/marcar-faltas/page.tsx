@@ -1,19 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import {
-    doc,
-    getDoc,
-    getDocs,
-    query,
-    where,
-    writeBatch,
-    collection,
-} from "firebase/firestore";
-import { db, auth } from "@/firebase.config";
+import { auth } from "@/firebase.config";
 import { logger } from "@/utils/logger";
-import { FIREBASE_PATHS } from "@/config/constants";
+import { UserProfilesService } from "@/services/supabase/userProfilesService";
+import { MedicalCertificatesService } from "@/services/supabase/medicalCertificatesService";
+import { StudentSuspensionsService } from "@/services/supabase/studentSuspensionsService";
+import { AbsenceService } from "@/services/supabase/absenceService";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -52,11 +45,12 @@ import {
     FileText
 } from "lucide-react";
 
-// Constantes para coleções e documentos
-const ACADEMIC_YEAR = "2025";
-const DOC_ACADEMIC_YEAR = "ano_letivo";
-const COLLECTION_FALTAS = "faltas";
-const SUBCOLLECTION_CONTROLE = "controle";
+// Constantes para coleções e documentos (SUPABASE - não mais necessário)
+// Mantidas apenas para referência histórica
+// const ACADEMIC_YEAR = "2025";
+// const DOC_ACADEMIC_YEAR = "ano_letivo";
+// const COLLECTION_FALTAS = "faltas";
+// const SUBCOLLECTION_CONTROLE = "controle";
 
 // Define os tipos possíveis para o perfil do usuário
 type Role = "admin" | "super-user" | "user";
@@ -101,7 +95,10 @@ function formatDateToDDMMYYYY(date: Date): string {
 
 function convertToISO(dateStr: string): string {
     const [day, month, year] = dateStr.split("/");
-    return `${year}-${month}-${day}`;
+    // FIX: Adicionar zeros à esquerda para garantir formato ISO correto (YYYY-MM-DD)
+    const paddedMonth = month.padStart(2, '0');
+    const paddedDay = day.padStart(2, '0');
+    return `${year}-${paddedMonth}-${paddedDay}`;
 }
 
 // Função auxiliar para converter data para DD/MM/YYYY
@@ -123,10 +120,20 @@ function convertDateToDDMMYYYY(dateStr: string): string {
 
 // Função para extrair as datas válidas (isChecked === true) do ano letivo
 function getValidDates(academicYearData: AcademicYearData | null, role: Role | null): string[] {
-    if (!academicYearData) return [];
+    if (!academicYearData) {
+        logger.warn('getValidDates: academicYearData é null');
+        return [];
+    }
 
     const validDates: string[] = [];
-    Object.values(academicYearData).forEach((bimData) => {
+    const bimesterKeys = Object.keys(academicYearData);
+    logger.info(`🔍 getValidDates: Processando ${bimesterKeys.length} bimestres`);
+
+    Object.entries(academicYearData).forEach(([key, bimData]) => {
+        const datesCount = bimData?.dates?.length || 0;
+        const checkedCount = bimData?.dates?.filter(d => d.isChecked).length || 0;
+        logger.info(`   ${key}: ${checkedCount} marcadas (de ${datesCount} datas)`);
+
         bimData?.dates?.forEach((d) => {
             if (d.isChecked) {
                 const formattedDate = convertDateToDDMMYYYY(d.date);
@@ -134,6 +141,8 @@ function getValidDates(academicYearData: AcademicYearData | null, role: Role | n
             }
         });
     });
+
+    logger.info(`   Total de datas válidas (isChecked=true): ${validDates.length}`);
 
     const today = new Date();
     const sortedDates = validDates
@@ -154,17 +163,22 @@ function getValidDates(academicYearData: AcademicYearData | null, role: Role | n
         (d) => d.timestamp <= todayTimestamp
     );
 
+    logger.info(`   Filtradas até hoje: ${filteredDates.length} datas`);
+
     // Para perfil "user", retorna apenas os últimos 5 dias letivos
     if (role === "user") {
-        return filteredDates.slice(-5).map((d) => d.date);
+        const result = filteredDates.slice(-5).map((d) => d.date);
+        logger.info(`   Role "user": retornando últimos 5 dias`);
+        return result;
     }
 
     // Para outros perfis, retorna todas as datas válidas
-    return filteredDates.map((d) => d.date);
+    const result = filteredDates.map((d) => d.date);
+    logger.info(`   Retornando ${result.length} datas para role "${role}"`);
+    return result;
 }
 
 export default function MarcarFaltasPage() {
-    const router = useRouter();
     const { students, loading } = useStudents();
     const { isOnline } = useServiceWorkerContext();
 
@@ -232,11 +246,22 @@ export default function MarcarFaltasPage() {
     useEffect(() => {
         const fetchAcademicYearData = async () => {
             try {
-                const docRef = doc(db, ACADEMIC_YEAR, DOC_ACADEMIC_YEAR);
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data() as AcademicYearData;
-                    setAcademicYearData(data);
+                // 🔧 SUPABASE: Buscar academic_year completo (bimestres + school_days)
+                const { AcademicYearService } = await import('@/services/supabase/academicYearService');
+                const yearData = await AcademicYearService.getAcademicYearComplete(2025);
+
+                if (yearData && Object.keys(yearData).length > 0) {
+                    setAcademicYearData(yearData);
+
+                    // Contar total de dias letivos
+                    const totalSchoolDays = Object.values(yearData).reduce((sum, bimester) => {
+                        return sum + (bimester.dates?.filter(d => d.isChecked).length || 0);
+                    }, 0);
+
+                    logger.info('Dados do ano letivo carregados do Supabase', {
+                        bimesters: Object.keys(yearData).length,
+                        totalSchoolDays
+                    });
                 } else {
                     setErrorMessage("Dados do ano letivo não encontrados.");
                 }
@@ -273,7 +298,7 @@ export default function MarcarFaltasPage() {
         }
     }, [academicYearData, selectedDate]);
 
-    // Obtém o perfil do usuário do Firestore
+    // Obtém o perfil do usuário via Supabase
     useEffect(() => {
         const fetchUserRole = async () => {
             try {
@@ -282,11 +307,11 @@ export default function MarcarFaltasPage() {
                     logger.warn("Usuário não autenticado");
                     return;
                 }
-                const q = query(collection(db, "users"), where("uid", "==", uid));
-                const querySnapshot = await getDocs(q);
-                if (!querySnapshot.empty) {
-                    const data = querySnapshot.docs[0].data();
-                    const userRole = (data.perfil as Role) || "user";
+
+                const userProfile = await UserProfilesService.getByFirebaseUid(uid);
+
+                if (userProfile) {
+                    const userRole = (userProfile.role?.toLowerCase() as Role) || "user";
                     setRole(userRole);
                     logger.info("Perfil do usuário carregado:", { role: userRole });
                 } else {
@@ -318,45 +343,43 @@ export default function MarcarFaltasPage() {
 
                 if (studentsInClass.length === 0) return;
 
-                // Buscar atestados e suspensões para cada aluno da turma
+                // Buscar atestados e suspensões para cada aluno da turma via Supabase
                 for (const student of studentsInClass) {
-                    // Buscar atestados
-                    const atestadosSnapshot = await getDocs(collection(db, FIREBASE_PATHS.medicalCertificates(student.estudanteId)));
-                    const studentAtestados: Atestado[] = atestadosSnapshot.docs.map((doc) => {
-                        const data = doc.data();
+                    // Buscar atestados via Supabase
+                    const supabaseAtestados = await MedicalCertificatesService.getByStudentId(student.estudanteId);
+                    const studentAtestados: Atestado[] = supabaseAtestados.map((cert) => {
                         // Converter de YYYY-MM-DD para DD/MM/YYYY
-                        const dateISO = data.startDate as string;
+                        const dateISO = cert.startDate;
                         let formattedDate = dateISO;
                         if (dateISO.includes('-')) {
                             const [year, month, day] = dateISO.split('-');
                             formattedDate = `${day}/${month}/${year}`;
                         }
                         return {
-                            id: doc.id,
+                            id: cert.id,
                             startDate: formattedDate,
-                            days: data.days as number,
-                            description: data.description as string,
-                            createdBy: data.createdBy as string || "Não informado",
+                            days: cert.daysCovered,
+                            description: cert.diagnosis || "Sem descrição",
+                            createdBy: cert.createdBy || "Não informado",
                         };
                     });
 
-                    // Buscar suspensões
-                    const suspensoesSnapshot = await getDocs(collection(db, FIREBASE_PATHS.suspensions(student.estudanteId)));
-                    const studentSuspensoes: Suspensao[] = suspensoesSnapshot.docs.map((doc) => {
-                        const data = doc.data();
+                    // Buscar suspensões via Supabase
+                    const supabaseSuspensoes = await StudentSuspensionsService.getByStudentId(student.estudanteId);
+                    const studentSuspensoes: Suspensao[] = supabaseSuspensoes.map((susp) => {
                         // Converter de YYYY-MM-DD para DD/MM/YYYY
-                        const dateISO = data.startDate as string;
+                        const dateISO = susp.startDate;
                         let formattedDate = dateISO;
                         if (dateISO.includes('-')) {
                             const [year, month, day] = dateISO.split('-');
                             formattedDate = `${day}/${month}/${year}`;
                         }
                         return {
-                            id: doc.id,
+                            id: susp.id,
                             startDate: formattedDate,
-                            days: data.days as number,
-                            description: data.description as string,
-                            createdBy: data.createdBy as string || "Não informado",
+                            days: susp.daysSuspended,
+                            description: susp.reason,
+                            createdBy: susp.createdBy || "Não informado",
                         };
                     });
 
@@ -384,24 +407,31 @@ export default function MarcarFaltasPage() {
             if (!selectedClass || !selectedDate) return;
             const formattedDate = convertToISO(selectedDate);
             try {
-                const controleColRef = collection(db, ACADEMIC_YEAR, COLLECTION_FALTAS, SUBCOLLECTION_CONTROLE);
-                const q = query(
-                    controleColRef,
-                    where("turma", "==", selectedClass),
-                    where("data", "==", formattedDate)
-                );
-                const querySnapshot = await getDocs(q);
+                logger.info(`📋 Buscando faltas existentes: Turma ${selectedClass}, Data selecionada: "${selectedDate}" → Convertida para ISO: "${formattedDate}"`);
+
+                // Buscar faltas da turma na data específica via Supabase
+                const absences = await AbsenceService.getByTurmaAndDate(selectedClass, formattedDate);
+
+                logger.info(`   ✅ ${absences.length} faltas encontradas`, { absences });
+
                 const newExistingAbsences: { [key: string]: boolean } = {};
                 const newExistingAbsenceDocs: { [key: string]: string } = {};
-                querySnapshot.forEach((docSnap) => {
-                    const data = docSnap.data();
-                    const studentId = data.estudanteId;
-                    newExistingAbsences[studentId] = true;
-                    newExistingAbsenceDocs[studentId] = docSnap.id;
+
+                absences.forEach((absence: any) => {
+                    const estudanteId = absence.estudanteId;
+                    newExistingAbsences[estudanteId] = true;
+                    newExistingAbsenceDocs[estudanteId] = absence.id;
+                    logger.info(`      - Estudante ${estudanteId} tem falta (ID: ${absence.id})`);
                 });
+
+                logger.info(`   📦 Estado newExistingAbsences:`, newExistingAbsences);
+                logger.info(`   🔄 Atualizando estados com ${Object.keys(newExistingAbsences).length} faltas`);
+
                 setExistingAbsences(newExistingAbsences);
                 setExistingAbsenceDocs(newExistingAbsenceDocs);
                 setMarkedAbsences(newExistingAbsences);
+
+                logger.info(`   ✅ Estados atualizados! markedAbsences agora tem ${Object.keys(newExistingAbsences).length} estudantes com falta`);
             } catch (error) {
                 logger.error("Erro ao carregar faltas existentes", error as Error);
             }
@@ -514,73 +544,61 @@ export default function MarcarFaltasPage() {
             }
 
             const formattedDate = convertToISO(selectedDate);
-            const batch = writeBatch(db);
-            const controleColRef = collection(db, ACADEMIC_YEAR, COLLECTION_FALTAS, SUBCOLLECTION_CONTROLE);
 
-            // Carrega novamente as faltas existentes para evitar duplicatas concorrentes
-            const q = query(
-                controleColRef,
-                where("turma", "==", selectedClass),
-                where("data", "==", formattedDate)
-            );
-            const querySnapshot = await getDocs(q);
+            // Carrega novamente as faltas existentes via Supabase para evitar duplicatas concorrentes
+            const currentAbsencesList = await AbsenceService.getByTurmaAndDate(selectedClass, formattedDate);
             const currentAbsences: { [key: string]: string } = {};
-            querySnapshot.forEach((docSnap) => {
-                const data = docSnap.data();
-                currentAbsences[data.estudanteId] = docSnap.id;
+            currentAbsencesList.forEach((absence: any) => {
+                currentAbsences[absence.estudanteId] = absence.id;
             });
+
+            // Determinar bimestre atual (simplificado - pode precisar ajuste)
+            const currentBimester = 1; // TODO: calcular bimestre real baseado na data
 
             if (role === "user") {
                 // Para "user", apenas adiciona novas faltas, ignorando existentes
-                filteredStudents.forEach((est: Estudante) => {
+                for (const est of filteredStudents) {
                     if (markedAbsences[est.estudanteId] && !currentAbsences[est.estudanteId]) {
-                        const absenceData = {
+                        await AbsenceService.create({
                             estudanteId: est.estudanteId,
                             data: formattedDate,
-                            turma: selectedClass,
-                        };
-                        const newDocRef = doc(controleColRef);
-                        batch.set(newDocRef, absenceData);
+                            justified: false,
+                        });
                     }
-                });
+                }
             } else {
                 // Para "admin" ou "super-user", adiciona ou remove faltas
-                filteredStudents.forEach((est: Estudante) => {
+                for (const est of filteredStudents) {
                     const currentlyMarked = markedAbsences[est.estudanteId] || false;
                     const previouslyMarked = !!currentAbsences[est.estudanteId];
 
                     if (currentlyMarked && !previouslyMarked) {
                         // Adiciona nova falta apenas se não existir
-                        const absenceData = {
+                        await AbsenceService.create({
                             estudanteId: est.estudanteId,
                             data: formattedDate,
-                            turma: selectedClass,
-                        };
-                        const newDocRef = doc(controleColRef);
-                        batch.set(newDocRef, absenceData);
+                            justified: false,
+                        });
                     } else if (!currentlyMarked && previouslyMarked) {
                         // Remove falta existente
-                        const docId = currentAbsences[est.estudanteId];
-                        if (docId) {
-                            const docRef = doc(db, ACADEMIC_YEAR, COLLECTION_FALTAS, SUBCOLLECTION_CONTROLE, docId);
-                            batch.delete(docRef);
+                        const absenceId = currentAbsences[est.estudanteId];
+                        if (absenceId) {
+                            await AbsenceService.delete(absenceId);
                         }
                     }
-                });
+                }
             }
 
-            await batch.commit();
             toast.success("Faltas salvas com sucesso!");
             setOpenDialog(false);
 
             // Atualiza o estado após salvar
+            const updatedAbsences = await AbsenceService.getByTurmaAndDate(selectedClass, formattedDate);
             const newExistingAbsences: { [key: string]: boolean } = {};
             const newExistingAbsenceDocs: { [key: string]: string } = {};
-            const updatedSnapshot = await getDocs(q);
-            updatedSnapshot.forEach((docSnap) => {
-                const data = docSnap.data();
-                newExistingAbsences[data.estudanteId] = true;
-                newExistingAbsenceDocs[data.estudanteId] = docSnap.id;
+            updatedAbsences.forEach((absence: any) => {
+                newExistingAbsences[absence.estudanteId] = true;
+                newExistingAbsenceDocs[absence.estudanteId] = absence.id;
             });
             setExistingAbsences(newExistingAbsences);
             setExistingAbsenceDocs(newExistingAbsenceDocs);
@@ -757,8 +775,15 @@ export default function MarcarFaltasPage() {
                                         .sort((a, b) => a.nome.localeCompare(b.nome))
                                         .map((est: Estudante) => {
                                             const isLocked = role === "user" && existingAbsences[est.estudanteId];
-                                            const isAbsent = markedAbsences[est.estudanteId];
+                                            // FIX: Garantir que isAbsent seja sempre boolean (não undefined)
+                                            // Isso evita o erro "Checkbox is changing from uncontrolled to controlled"
+                                            const isAbsent = markedAbsences[est.estudanteId] === true;
                                             const coverage = checkCoverageForStudent(est.estudanteId, selectedDate);
+
+                                            // Debug: Log para primeiros 5 estudantes apenas
+                                            if (filteredStudents.indexOf(est) < 5) {
+                                                logger.info(`   🎨 Render ${est.nome}: isAbsent=${isAbsent}, markedAbsences[${est.estudanteId}]=${markedAbsences[est.estudanteId]}`);
+                                            }
 
                                             return (
                                                 <div

@@ -23,13 +23,12 @@ class Logger {
   private enableConsoleLogs: boolean;
 
   constructor() {
-    // Ler nível de log do env (padrão: info)
-    this.logLevel = (process.env.NEXT_PUBLIC_LOG_LEVEL as LogLevel) || 'info';
+    // Ler nível de log do env (padrão: error apenas - console limpo!)
+    this.logLevel = (process.env.NEXT_PUBLIC_LOG_LEVEL as LogLevel) || 'error';
 
-    // Habilitar console logs (padrão: true em dev, false em prod)
-    this.enableConsoleLogs =
-      process.env.NEXT_PUBLIC_ENABLE_CONSOLE_LOGS === 'true' ||
-      this.isDevelopment;
+    // Habilitar console logs apenas se explicitamente configurado
+    // Padrão: FALSE (console limpo em dev e prod)
+    this.enableConsoleLogs = process.env.NEXT_PUBLIC_ENABLE_CONSOLE_LOGS === 'true';
   }
 
   private shouldLog(level: LogLevel): boolean {
@@ -51,6 +50,29 @@ class Logger {
       return;
     }
 
+    // Se console logs não habilitado, apenas salvar no localStorage e sair
+    if (!this.enableConsoleLogs) {
+      const entry: LogEntry = {
+        level,
+        message,
+        timestamp: new Date().toISOString(),
+        context,
+        error,
+      };
+
+      // Salvar em localStorage (últimos 100 logs)
+      if (typeof window !== 'undefined') {
+        this.saveToLocalStorage(entry);
+      }
+
+      // Em produção, enviar erros para serviço de monitoramento
+      if (!this.isDevelopment && level === 'error') {
+        this.sendToMonitoringService(entry);
+      }
+
+      return;
+    }
+
     const entry: LogEntry = {
       level,
       message,
@@ -61,22 +83,20 @@ class Logger {
 
     const formattedMessage = this.formatMessage(entry);
 
-    // Console logs (se habilitado)
-    if (this.enableConsoleLogs) {
-      switch (level) {
-        case 'debug':
-          console.log(`🔍 ${formattedMessage}`, context || '');
-          break;
-        case 'info':
-          console.info(`ℹ️  ${formattedMessage}`, context || '');
-          break;
-        case 'warn':
-          console.warn(`⚠️  ${formattedMessage}`, context || '', error || '');
-          break;
-        case 'error':
-          console.error(`❌ ${formattedMessage}`, context || '', error || '');
-          break;
-      }
+    // Console logs
+    switch (level) {
+      case 'debug':
+        console.log(`🔍 ${formattedMessage}`, context || '');
+        break;
+      case 'info':
+        console.info(`ℹ️  ${formattedMessage}`, context || '');
+        break;
+      case 'warn':
+        console.warn(`⚠️  ${formattedMessage}`, context || '', error || '');
+        break;
+      case 'error':
+        console.error(`❌ ${formattedMessage}`, context || '', error || '');
+        break;
     }
 
     // Em produção, enviar erros para serviço de monitoramento
@@ -124,18 +144,25 @@ class Logger {
 
   // Métodos públicos
   debug(message: string, context?: Record<string, any>) {
+    // SILENCIAR COMPLETAMENTE debug em produção e dev
+    if (!this.enableConsoleLogs) return;
     this.log('debug', message, context);
   }
 
   info(message: string, context?: Record<string, any>) {
+    // SILENCIAR COMPLETAMENTE info em produção e dev
+    if (!this.enableConsoleLogs) return;
     this.log('info', message, context);
   }
 
   warn(message: string, context?: Record<string, any>, error?: Error) {
+    // SILENCIAR COMPLETAMENTE warn em produção e dev
+    if (!this.enableConsoleLogs) return;
     this.log('warn', message, context, error);
   }
 
   error(message: string, context?: Record<string, any>, error?: Error) {
+    // Errors sempre logam (importante!)
     this.log('error', message, context, error);
   }
 

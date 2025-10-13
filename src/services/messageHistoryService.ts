@@ -1,12 +1,11 @@
-import { db } from '@/firebase.config';
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase } from '@/lib/supabaseClient';
 import type { WhatsAppMessageHistory } from '@/types';
 import { logger } from '@/utils/logger';
 
-const COLLECTION_NAME = 'whatsappMessageHistory';
+const TABLE_NAME = 'whatsapp_message_history';
 
 /**
- * Serviço para gerenciar histórico de mensagens WhatsApp enviadas
+ * Serviço para gerenciar histórico de mensagens WhatsApp enviadas (SUPABASE)
  * Previne duplicatas e rastreia status de envios
  */
 export class MessageHistoryService {
@@ -23,25 +22,26 @@ export class MessageHistoryService {
     try {
       const { estudanteId, contatoTelefone, anoReferencia, mesReferencia, quantidadeFaltas } = params;
 
-      const q = query(
-        collection(db, COLLECTION_NAME),
-        where('estudanteId', '==', estudanteId),
-        where('contatoTelefone', '==', contatoTelefone),
-        where('anoReferencia', '==', anoReferencia),
-        where('mesReferencia', '==', mesReferencia),
-        where('quantidadeFaltas', '==', quantidadeFaltas)
-      );
+      const { data, error } = await supabase
+        .from(TABLE_NAME)
+        .select('id')
+        .eq('estudante_id', estudanteId)
+        .eq('contato_telefone', contatoTelefone)
+        .eq('ano_referencia', anoReferencia)
+        .eq('mes_referencia', mesReferencia)
+        .eq('quantidade_faltas', quantidadeFaltas)
+        .limit(1);
 
-      const snapshot = await getDocs(q);
+      if (error) throw error;
 
-      if (!snapshot.empty) {
+      if (data && data.length > 0) {
         logger.info('[MessageHistory] Mensagem já enviada anteriormente', {
           estudanteId,
           contatoTelefone,
           anoReferencia,
           mesReferencia,
           quantidadeFaltas,
-          existingRecords: snapshot.size
+          existingRecords: data.length
         });
         return true;
       }
@@ -59,23 +59,40 @@ export class MessageHistoryService {
    */
   static async recordSent(data: Omit<WhatsAppMessageHistory, 'dataPrimeiroEnvio'>): Promise<string | null> {
     try {
-      const historyRecord: Omit<WhatsAppMessageHistory, 'dataPrimeiroEnvio'> & {
-        dataPrimeiroEnvio: ReturnType<typeof serverTimestamp>;
-      } = {
-        ...data,
-        dataPrimeiroEnvio: serverTimestamp() as any
+      // Map Firebase field names to Supabase snake_case
+      const historyRecord = {
+        estudante_id: data.estudanteId,
+        contato_telefone: data.contatoTelefone,
+        ano_referencia: data.anoReferencia,
+        mes_referencia: data.mesReferencia,
+        quantidade_faltas: data.quantidadeFaltas,
+        estudante_nome: data.estudanteNome,
+        contato_nome: data.contatoNome,
+        task_id: data.taskId || null,
+        status: data.status,
+        message_id: data.messageId || null,
+        sent_at: data.sentAt || null,
+        retry_count: data.retryCount || 0,
+        is_dry_run: data.isDryRun || false,
+        // data_primeiro_envio será preenchido automaticamente pelo Supabase (default now())
       };
 
-      const docRef = await addDoc(collection(db, COLLECTION_NAME), historyRecord);
+      const { data: inserted, error} = await (supabase
+        .from(TABLE_NAME)
+        .insert(historyRecord as any)
+        .select('id')
+        .single() as any);
+
+      if (error) throw error;
 
       logger.info('[MessageHistory] Registro criado com sucesso', {
-        docId: docRef.id,
+        docId: inserted?.id,
         estudanteId: data.estudanteId,
         contatoTelefone: data.contatoTelefone,
         status: data.status
       });
 
-      return docRef.id;
+      return inserted?.id || null;
     } catch (error) {
       logger.error('[MessageHistory] Erro ao criar registro', error as Error);
       return null;
@@ -93,18 +110,31 @@ export class MessageHistoryService {
     try {
       const { estudanteId, anoReferencia, mesReferencia } = params;
 
-      const q = query(
-        collection(db, COLLECTION_NAME),
-        where('estudanteId', '==', estudanteId),
-        where('anoReferencia', '==', anoReferencia),
-        where('mesReferencia', '==', mesReferencia)
-      );
+      const { data, error } = await (supabase
+        .from(TABLE_NAME)
+        .select('*')
+        .eq('estudante_id', estudanteId)
+        .eq('ano_referencia', anoReferencia)
+        .eq('mes_referencia', mesReferencia) as any);
 
-      const snapshot = await getDocs(q);
+      if (error) throw error;
 
-      return snapshot.docs.map(doc => ({
-        ...doc.data(),
-        dataPrimeiroEnvio: doc.data().dataPrimeiroEnvio?.toDate?.()?.toISOString() || new Date().toISOString()
+      // Map Supabase snake_case back to camelCase
+      return (data || []).map((record: any) => ({
+        estudanteId: record.estudante_id,
+        contatoTelefone: record.contato_telefone,
+        anoReferencia: record.ano_referencia,
+        mesReferencia: record.mes_referencia,
+        quantidadeFaltas: record.quantidade_faltas,
+        estudanteNome: record.estudante_nome,
+        contatoNome: record.contato_nome,
+        taskId: record.task_id,
+        dataPrimeiroEnvio: record.data_primeiro_envio,
+        status: record.status,
+        messageId: record.message_id,
+        sentAt: record.sent_at,
+        retryCount: record.retry_count,
+        isDryRun: record.is_dry_run
       })) as WhatsAppMessageHistory[];
     } catch (error) {
       logger.error('[MessageHistory] Erro ao buscar histórico do estudante', error as Error);
@@ -127,26 +157,25 @@ export class MessageHistoryService {
     try {
       const { anoReferencia, mesReferencia } = params;
 
-      const q = query(
-        collection(db, COLLECTION_NAME),
-        where('anoReferencia', '==', anoReferencia),
-        where('mesReferencia', '==', mesReferencia)
-      );
+      const { data, error } = await (supabase
+        .from(TABLE_NAME)
+        .select('status')
+        .eq('ano_referencia', anoReferencia)
+        .eq('mes_referencia', mesReferencia) as any);
 
-      const snapshot = await getDocs(q);
+      if (error) throw error;
 
       const stats = {
-        total: snapshot.size,
+        total: data?.length || 0,
         success: 0,
         failed: 0,
         noContact: 0
       };
 
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.status === 'SUCCESS') stats.success++;
-        else if (data.status === 'FAILED') stats.failed++;
-        else if (data.status === 'NO_CONTACT') stats.noContact++;
+      (data || []).forEach((record: any) => {
+        if (record.status === 'SUCCESS') stats.success++;
+        else if (record.status === 'FAILED') stats.failed++;
+        else if (record.status === 'NO_CONTACT') stats.noContact++;
       });
 
       return stats;

@@ -1,14 +1,11 @@
 /**
- * WHATSAPP DATA SERVICE
+ * WHATSAPP DATA SERVICE (SUPABASE VERSION)
  *
  * Serviço centralizado para salvar verificações de WhatsApp.
- * Implementa DUAL-WRITE: salva em ambas estruturas (antiga e nova).
- *
- * FASE 3: Atualização do Código
+ * Migrado de Firebase para Supabase - remove dual-write.
  */
 
-import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/firebase.config';
+import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 
 interface WhatsAppVerificationData {
@@ -21,14 +18,12 @@ interface WhatsAppVerificationData {
 interface SaveResult {
   success: boolean;
   errors: string[];
-  savedInOld: boolean;
-  savedInNew: boolean;
   timestamp: number;
 }
 
 /**
- * Salvar verificação de WhatsApp
- * Implementa dual-write com tratamento de erros robusto
+ * Salvar verificação de WhatsApp no Supabase
+ * Atualiza tanto whatsapp_verified_numbers quanto student_contacts.whatsapp_data
  */
 export async function saveWhatsAppVerification(
   estudanteId: string,
@@ -36,7 +31,7 @@ export async function saveWhatsAppVerification(
   telefone: string,
   verificationData: WhatsAppVerificationData
 ): Promise<SaveResult> {
-  logger.info('Salvando verificação WhatsApp (dual-write)', {
+  logger.info('Salvando verificação WhatsApp (Supabase)', {
     estudanteId,
     contactId,
     telefone,
@@ -45,42 +40,64 @@ export async function saveWhatsAppVerification(
 
   const errors: string[] = [];
 
-  // DUAL-WRITE: Salvar em AMBAS estruturas simultaneamente
-  const [oldResult, newResult] = await Promise.allSettled([
-    // 1. Estrutura ANTIGA (whatsapp_verified_numbers)
-    saveToOldStructure(telefone, verificationData),
+  // Verificar se temos IDs válidos (não temporários/unknown)
+  const hasValidIds = estudanteId &&
+                      contactId &&
+                      estudanteId !== 'unknown' &&
+                      !contactId.startsWith('temp-');
 
-    // 2. Estrutura NOVA (students/{id}/contacts/{contactId})
-    saveToNewStructure(estudanteId, contactId, telefone, verificationData)
-  ]);
+  // Preparar promises
+  const promises: Promise<void>[] = [
+    // 1. Tabela whatsapp_verified_numbers (lookup table) - SEMPRE salvar
+    saveToVerifiedNumbers(telefone, verificationData)
+  ];
 
-  // Verificar resultados
-  if (oldResult.status === 'rejected') {
-    const errorMsg = `Estrutura antiga falhou: ${oldResult.reason}`;
-    errors.push(errorMsg);
-    logger.error('Estrutura ANTIGA falhou', { telefone }, oldResult.reason as Error);
+  // 2. Atualizar student_contacts.whatsapp_data - APENAS se temos IDs válidos
+  if (hasValidIds) {
+    promises.push(updateContactWhatsAppData(estudanteId, contactId, telefone, verificationData));
   } else {
-    logger.debug('Salvo na estrutura ANTIGA', { telefone });
+    logger.debug('Pulando atualização de student_contacts (IDs inválidos ou temporários)', {
+      estudanteId,
+      contactId
+    });
   }
 
-  if (newResult.status === 'rejected') {
-    const errorMsg = `Estrutura nova falhou: ${newResult.reason}`;
+  // Salvar simultaneamente
+  const results = await Promise.allSettled(promises);
+  const [verifiedNumbersResult, contactsResult] = results;
+
+  // Verificar resultados
+  if (verifiedNumbersResult.status === 'rejected') {
+    const errorMsg = `whatsapp_verified_numbers falhou: ${verifiedNumbersResult.reason}`;
     errors.push(errorMsg);
-    logger.error('Estrutura NOVA falhou', { estudanteId, contactId }, newResult.reason as Error);
+    logger.error('whatsapp_verified_numbers falhou', { telefone }, verifiedNumbersResult.reason as Error);
   } else {
-    logger.debug('Salvo na estrutura NOVA', { estudanteId, contactId });
+    logger.debug('Salvo em whatsapp_verified_numbers', { telefone });
+  }
+
+  // Verificar contactsResult apenas se existe (quando hasValidIds = true)
+  if (contactsResult) {
+    if (contactsResult.status === 'rejected') {
+      const errorMsg = `student_contacts falhou: ${contactsResult.reason}`;
+      errors.push(errorMsg);
+      logger.error('student_contacts falhou', { estudanteId, contactId }, contactsResult.reason as Error);
+    } else {
+      logger.debug('Salvo em student_contacts', { estudanteId, contactId });
+    }
   }
 
   // Se pelo menos UMA estrutura funcionou = SUCESSO
-  const success = oldResult.status === 'fulfilled' || newResult.status === 'fulfilled';
+  const success = verifiedNumbersResult.status === 'fulfilled' ||
+                  (contactsResult && contactsResult.status === 'fulfilled');
 
   if (success) {
-    logger.whatsappOperation('verify', telefone, 'success', {
-      savedInOld: oldResult.status === 'fulfilled',
-      savedInNew: newResult.status === 'fulfilled'
+    logger.info('Verificação WhatsApp salva com sucesso', {
+      telefone,
+      exists: verificationData.exists
     });
   } else {
-    logger.whatsappOperation('verify', telefone, 'failed', {
+    logger.error('Falha ao salvar verificação WhatsApp', {
+      telefone,
       errors: errors.join('; ')
     });
   }
@@ -88,50 +105,101 @@ export async function saveWhatsAppVerification(
   return {
     success,
     errors,
-    savedInOld: oldResult.status === 'fulfilled',
-    savedInNew: newResult.status === 'fulfilled',
     timestamp: Date.now()
   };
 }
 
 /**
- * Salvar na estrutura ANTIGA (whatsapp_verified_numbers)
+ * Salvar/atualizar na tabela whatsapp_verified_numbers
  */
-async function saveToOldStructure(
+async function saveToVerifiedNumbers(
   telefone: string,
   verificationData: WhatsAppVerificationData
 ): Promise<void> {
-  const whatsappRef = doc(db, 'whatsapp_verified_numbers', telefone);
+  // Primeiro, tentar buscar registro existente
+  const { data: existing, error: selectError } = await (supabase as any)
+    .from('whatsapp_verified_numbers')
+    .select('phone_number')
+    .eq('phone_number', telefone)
+    .maybeSingle(); // maybeSingle() não gera erro quando não encontra
 
-  await setDoc(whatsappRef, {
-    hasWhatsApp: verificationData.exists,
-    phone: telefone,
-    jid: verificationData.jid || null,
-    contactName: verificationData.name || null,
-    verifiedAt: serverTimestamp()
-  });
+  // Se registro existe, fazer UPDATE
+  if (existing) {
+    const { error } = await (supabase as any)
+      .from('whatsapp_verified_numbers')
+      .update({
+        is_verified: verificationData.exists,
+        whatsapp_jid: verificationData.jid || null,
+        contact_name: verificationData.name || null,
+        verified_at: new Date().toISOString()
+      })
+      .eq('phone_number', telefone);
+
+    if (error) throw error;
+  } else {
+    // Registro não existe, fazer INSERT
+    // Usar try-catch para lidar com race condition (caso outro processo insira ao mesmo tempo)
+    const { error } = await (supabase as any)
+      .from('whatsapp_verified_numbers')
+      .insert({
+        phone_number: telefone,
+        is_verified: verificationData.exists,
+        whatsapp_jid: verificationData.jid || null,
+        contact_name: verificationData.name || null,
+        verified_at: new Date().toISOString()
+      });
+
+    // Se erro de duplicação (23505), tentar UPDATE ao invés de falhar
+    if (error && error.code === '23505') {
+      logger.warn('Race condition detectada em whatsapp_verified_numbers, tentando UPDATE', { telefone });
+
+      const { error: updateError } = await (supabase as any)
+        .from('whatsapp_verified_numbers')
+        .update({
+          is_verified: verificationData.exists,
+          whatsapp_jid: verificationData.jid || null,
+          contact_name: verificationData.name || null,
+          verified_at: new Date().toISOString()
+        })
+        .eq('phone_number', telefone);
+
+      if (updateError) throw updateError;
+    } else if (error) {
+      throw error;
+    }
+  }
 }
 
 /**
- * Salvar na estrutura NOVA (students/{id}/contacts/{contactId})
+ * Atualizar whatsapp_data no contact do estudante
  */
-async function saveToNewStructure(
+async function updateContactWhatsAppData(
   estudanteId: string,
   contactId: string,
   telefone: string,
   verificationData: WhatsAppVerificationData
 ): Promise<void> {
-  const contactRef = doc(db, 'students', estudanteId, 'contacts', contactId);
+  // Build whatsapp_data JSONB object
+  const whatsappData = {
+    verified: true,
+    exists: verificationData.exists,
+    jid: verificationData.jid || null,
+    name: verificationData.name || null,
+    number: telefone,
+    verifiedAt: new Date().toISOString(),
+    verificationStatus: verificationData.exists ? 'verified' : 'unavailable'
+  };
 
-  await updateDoc(contactRef, {
-    'whatsapp.verified': true,
-    'whatsapp.exists': verificationData.exists,
-    'whatsapp.jid': verificationData.jid || null,
-    'whatsapp.name': verificationData.name || null,
-    'whatsapp.number': telefone,
-    'whatsapp.verifiedAt': serverTimestamp(),
-    'whatsapp.verificationStatus': verificationData.exists ? 'verified' : 'unavailable'
-  });
+  // Find contact by student_id and id (UUID from migration)
+  const { error } = await (supabase as any)
+    .from('student_contacts')
+    .update({
+      whatsapp_data: whatsappData
+    })
+    .eq('student_id', estudanteId)
+    .eq('id', contactId);
+
+  if (error) throw error;
 }
 
 /**
@@ -151,7 +219,7 @@ export async function saveWhatsAppVerificationBatch(
   failed: number;
   errors: string[];
 }> {
-  logger.info('Salvando verificações WhatsApp em lote', {
+  logger.info('Salvando verificações WhatsApp em lote (Supabase)', {
     totalVerifications: verifications.length
   });
 
@@ -159,29 +227,34 @@ export async function saveWhatsAppVerificationBatch(
   let successful = 0;
   let failed = 0;
 
-  for (const verification of verifications) {
-    try {
-      const result = await saveWhatsAppVerification(
-        verification.estudanteId,
-        verification.contactId,
-        verification.telefone,
-        verification.verificationData
-      );
+  // Process in parallel batches of 10
+  const batchSize = 10;
+  for (let i = 0; i < verifications.length; i += batchSize) {
+    const batch = verifications.slice(i, i + batchSize);
 
-      if (result.success) {
+    const results = await Promise.allSettled(
+      batch.map(verification =>
+        saveWhatsAppVerification(
+          verification.estudanteId,
+          verification.contactId,
+          verification.telefone,
+          verification.verificationData
+        )
+      )
+    );
+
+    results.forEach((result, idx) => {
+      if (result.status === 'fulfilled' && result.value.success) {
         successful++;
       } else {
         failed++;
-        errors.push(...result.errors);
+        const verification = batch[idx];
+        const errorMsg = result.status === 'rejected'
+          ? `${verification.telefone}: ${result.reason}`
+          : `${verification.telefone}: ${result.value.errors.join(', ')}`;
+        errors.push(errorMsg);
       }
-    } catch (error) {
-      failed++;
-      const errorMsg = `Erro ao processar ${verification.telefone}: ${error instanceof Error ? error.message : 'unknown'}`;
-      errors.push(errorMsg);
-      logger.error('Erro ao processar verificação em lote', {
-        telefone: verification.telefone
-      }, error as Error);
-    }
+    });
   }
 
   logger.info('Lote de verificações WhatsApp concluído', {
@@ -199,12 +272,9 @@ export async function saveWhatsAppVerificationBatch(
 }
 
 /**
- * QUERY FUNCTIONS - V3 Structure
- * Funções para consultar dados WhatsApp na estrutura V3
+ * QUERY FUNCTIONS - Supabase
+ * Funções para consultar dados WhatsApp
  */
-
-import { collection, getDocs, query, where, orderBy, limit, getDoc } from 'firebase/firestore';
-import { FIREBASE_PATHS_V3 } from '@/config/constants';
 
 export interface ContactWithWhatsAppStatus {
   contactId: string;
@@ -219,36 +289,37 @@ export interface ContactWithWhatsAppStatus {
     jid?: string | null;
     name?: string | null;
     number?: string;
-    verifiedAt?: any;
+    verifiedAt?: string;
     verificationStatus?: string;
   };
 }
 
 /**
  * Buscar contatos de um estudante com status WhatsApp
- * Lê da estrutura V3: students/{id}/contacts
  */
 export async function getStudentContactsWithWhatsApp(
   studentId: string
 ): Promise<ContactWithWhatsAppStatus[]> {
   try {
-    logger.debug('Buscando contatos do estudante', { studentId });
+    logger.debug('Buscando contatos do estudante (Supabase)', { studentId });
 
-    const contactsRef = collection(db, FIREBASE_PATHS_V3.contacts(studentId));
-    const contactsSnap = await getDocs(contactsRef);
+    const { data, error } = await (supabase
+      .from('student_contacts')
+      .select('*')
+      .eq('student_id', studentId)
+      .eq('deleted', false) as any);
 
-    const contacts: ContactWithWhatsAppStatus[] = contactsSnap.docs.map(doc => {
-      const data = doc.data();
-      return {
-        contactId: doc.id,
-        nome: data.nome || '',
-        parentesco: data.parentesco || '',
-        telefone: data.telefone || '',
-        telefoneNumerico: data.telefoneNumerico || '',
-        podeReceberWhatsapp: data.podeReceberWhatsapp !== false,
-        whatsapp: data.whatsapp,
-      };
-    });
+    if (error) throw error;
+
+    const contacts: ContactWithWhatsAppStatus[] = (data || []).map((contact: any) => ({
+      contactId: contact.id,
+      nome: contact.name || '',
+      parentesco: contact.relationship || '',
+      telefone: contact.phone || '',
+      telefoneNumerico: contact.phone_numeric || '',
+      podeReceberWhatsapp: contact.can_receive_whatsapp !== false,
+      whatsapp: contact.whatsapp_data || undefined,
+    }));
 
     logger.info('Contatos do estudante carregados', {
       studentId,
@@ -257,7 +328,7 @@ export async function getStudentContactsWithWhatsApp(
     return contacts;
 
   } catch (error) {
-    logger.firebaseError('getStudentContactsWithWhatsApp', error as Error, { studentId });
+    logger.error('getStudentContactsWithWhatsApp falhou', { studentId }, error as Error);
     return [];
   }
 }
@@ -280,25 +351,72 @@ export async function getEligibleContactsForWhatsApp(
 }
 
 /**
- * Verificar se um telefone específico tem WhatsApp (estrutura V3)
+ * Verificar se um telefone específico tem WhatsApp
  */
-export async function checkWhatsAppStatusV3(
+export async function checkWhatsAppStatus(
   studentId: string,
   contactId: string
 ): Promise<boolean | null> {
   try {
-    const contactRef = doc(db, FIREBASE_PATHS_V3.contact(studentId, contactId));
-    const contactSnap = await getDoc(contactRef);
+    const { data, error } = await (supabase
+      .from('student_contacts')
+      .select('whatsapp_data')
+      .eq('student_id', studentId)
+      .eq('id', contactId)
+      .single() as any);
 
-    if (!contactSnap.exists()) {
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Not found
+        return null;
+      }
+      throw error;
     }
 
-    const data = contactSnap.data();
-    return data.whatsapp?.exists === true && data.whatsapp?.verified === true;
+    const whatsappData = data?.whatsapp_data as any;
+    return whatsappData?.exists === true && whatsappData?.verified === true;
 
   } catch (error) {
-    logger.firebaseError('checkWhatsAppStatusV3', error as Error, { studentId, contactId });
+    logger.error('checkWhatsAppStatus falhou', { studentId, contactId }, error as Error);
+    return null;
+  }
+}
+
+/**
+ * Buscar número verificado na lookup table
+ */
+export async function getVerifiedNumber(telefone: string): Promise<{
+  isVerified: boolean;
+  exists: boolean;
+  jid?: string | null;
+  name?: string | null;
+  verifiedAt?: string | null;
+} | null> {
+  try {
+    const { data, error } = await (supabase
+      .from('whatsapp_verified_numbers')
+      .select('*')
+      .eq('phone_number', telefone)
+      .single() as any);
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Not found
+        return null;
+      }
+      throw error;
+    }
+
+    return {
+      isVerified: data.is_verified,
+      exists: data.is_verified, // Assume verified = exists
+      jid: data.whatsapp_jid,
+      name: data.contact_name,
+      verifiedAt: data.verified_at
+    };
+
+  } catch (error) {
+    logger.error('getVerifiedNumber falhou', { telefone }, error as Error);
     return null;
   }
 }

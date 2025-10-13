@@ -12,6 +12,13 @@ export interface Contato {
   telefone: string;
   parentesco?: string;
   podeReceberMensagem?: boolean;
+  whatsapp?: {
+    verified: boolean;
+    exists: boolean;
+    verifiedAt: string | null;
+    name: string | null;
+    number: string | null;
+  };
 }
 
 export interface Endereco {
@@ -56,6 +63,7 @@ export interface ProvaSaoPaulo {
 }
 
 export interface Student {
+  id?: string; // UUID from Supabase (optional for backward compatibility)
   estudanteId: string;
   nome: string;
   turma: string;
@@ -102,8 +110,11 @@ export interface StudentRecord {
 
 export interface AbsenceRecord {
   estudanteId: string;
-  data: string;
-  justified: boolean;
+  // ⚠️ MIGRAÇÃO FIREBASE → SUPABASE: Ambos os campos durante transição
+  data?: string;             // Firebase (LEGACY)
+  absence_date?: string;     // Supabase (NOVO)
+  justified?: boolean;       // Firebase (LEGACY)
+  is_justified?: boolean;    // Supabase (NOVO)
   atestadoId?: string;
   suspensaoId?: string;
 }

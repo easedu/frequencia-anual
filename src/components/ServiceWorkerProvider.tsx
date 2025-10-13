@@ -53,11 +53,10 @@ export function ServiceWorkerProvider({ children }: ServiceWorkerProviderProps) 
       const status = await getOfflineStatus();
       setOfflineStatus(status);
       setIsOnline(status.isOnline);
-      logger.info('Status atualizado:', { 
-        isOnline: status.isOnline, 
-        cacheSize: status.cacheSize,
-        pendingSync: status.pendingSync 
-      });
+      //   isOnline: status.isOnline,
+      //   cacheSize: status.cacheSize,
+      //   pendingSync: status.pendingSync
+      // });
     } catch (error) {
       logger.warn('Erro ao atualizar status, usando fallback:', { error: error instanceof Error ? error.message : 'Unknown error' });
       // Fallback básico mais robusto
@@ -179,32 +178,24 @@ export function ServiceWorkerProvider({ children }: ServiceWorkerProviderProps) 
 
       logger.info(`Sincronizando ${attendanceItems.length} registros de falta`);
 
-      // Importar Firebase dinâmicamente para evitar SSR issues
-      const { db } = await import('@/firebase.config');
-      const { writeBatch, collection, doc } = await import('firebase/firestore');
+      // Importar Supabase services dinamicamente para evitar SSR issues
+      const { AbsenceService } = await import('@/services/supabase/absenceService');
 
       // Processar cada item de falta pendente
       for (const item of attendanceItems) {
         try {
           const { data: attendanceData } = item;
-          
+
           if (attendanceData && attendanceData.absences) {
-            const batch = writeBatch(db);
-            const controleColRef = collection(db, '2025', 'faltas', 'controle');
-            
-            // Adicionar cada ausência ao batch
-            attendanceData.absences.forEach((absence: any) => {
-              const absenceDoc = {
+            // Adicionar cada ausência via Supabase
+            for (const absence of attendanceData.absences) {
+              await AbsenceService.create({
                 estudanteId: absence.estudanteId,
                 data: absence.data,
-                turma: absence.turma,
-                timestamp: attendanceData.timestamp
-              };
-              const newDocRef = doc(controleColRef);
-              batch.set(newDocRef, absenceDoc);
-            });
+                justified: absence.justificationType !== 'NAO_JUSTIFICADA',
+              });
+            }
 
-            await batch.commit();
             logger.info(`✅ Sincronizado: ${attendanceData.absences.length} faltas da turma ${attendanceData.class}`);
           }
         } catch (syncError) {
@@ -215,12 +206,12 @@ export function ServiceWorkerProvider({ children }: ServiceWorkerProviderProps) 
       // Limpar dados sincronizados
       localStorage.removeItem('pending_attendance');
       localStorage.setItem('lastSync', new Date().toISOString());
-      
+
       // Atualizar status
       await debouncedRefreshStatus();
-      
+
       logger.info('🎉 Sincronização de faltas concluída com sucesso!');
-      
+
     } catch (error) {
       logger.error('Erro na sincronização de faltas:', { error });
     }

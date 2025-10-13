@@ -1,26 +1,32 @@
-import * as admin from 'firebase-admin';
+/**
+ * Firebase Admin SDK Configuration
+ *
+ * Este arquivo configura o Firebase Admin SDK para uso server-side
+ * em API routes do Next.js.
+ */
 
+import admin from 'firebase-admin';
+
+// Inicializar Firebase Admin se ainda não foi inicializado
 if (!admin.apps.length) {
   try {
-    // Para ambiente de produção com service account
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
-    } else {
-      // Para desenvolvimento local - usa Application Default Credentials
-      // ou configuração manual com project ID
-      admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
-      });
-    }
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        // A private key precisa ter as quebras de linha substituídas
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+      databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`,
+    });
+    console.log('✅ Firebase Admin inicializado com sucesso');
   } catch (error) {
-    console.error('Firebase admin initialization error', error);
+    console.error('❌ Erro ao inicializar Firebase Admin:', error);
   }
 }
 
+// Exportar instâncias
 export const adminDb = admin.firestore();
 export const adminAuth = admin.auth();
+
 export default admin;

@@ -4,10 +4,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from 'next/navigation';
 import { useDebounce } from "@/hooks/useDebounce";
 import { Toaster, toast } from "sonner";
-import { db } from "@/firebase.config";
-import { doc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where, deleteField, writeBatch } from "firebase/firestore";
 import { StudentDataService } from "@/services/studentDataService";
 import { getAuth } from "firebase/auth";
+import { UserProfilesService } from "@/services/supabase/userProfilesService";
+import { AbsenceControlService } from "@/services/supabase/absenceControlService";
+import { AbsenceService } from "@/services/supabase/absenceService";
+import { MedicalCertificatesService } from "@/services/supabase/medicalCertificatesService";
+import { StudentSuspensionsService } from "@/services/supabase/studentSuspensionsService";
+import { InteractionService } from "@/services/supabase/interactionService";
 import { logger } from "@/utils/logger";
 import { headerImageBase64 } from "@/assets/headerImage";
 import SearchByNameCard from "@/components/students/SearchByNameCard";
@@ -76,7 +80,7 @@ export default function StudentProfilePage() {
     const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
     const [selectedContact, setSelectedContact] = useState<Contato | null>(null);
     const [verifiedWhatsAppNumbers, setVerifiedWhatsAppNumbers] = useState<Set<string>>(new Set());
-    const [contactVerificationData, setContactVerificationData] = useState<Map<string, { verificationStatus?: string; hasWhatsApp?: boolean }>>(new Map());
+    const [contactVerificationData, setContactVerificationData] = useState<Map<string, any>>(new Map());
 
     // WhatsApp interaction states (para o card de interação)
     const [selectedWhatsAppPhones, setSelectedWhatsAppPhones] = useState<Set<string>>(new Set());
@@ -116,16 +120,16 @@ export default function StudentProfilePage() {
             setLoadingUserRole(true);
             try {
                 const user = auth.currentUser;
-                if (!user || !user.email) {
+                if (!user || !user.uid) {
                     setUserRole("user");
                     return;
                 }
-                const q = query(collection(db, "users"), where("email", "==", user.email));
-                const querySnapshot = await getDocs(q);
-                if (!querySnapshot.empty) {
-                    const userDoc = querySnapshot.docs[0];
-                    const userData = userDoc.data();
-                    setUserRole(userData.perfil || "user");
+
+                // Buscar perfil do usuário via Supabase
+                const userProfile = await UserProfilesService.getByFirebaseUid(user.uid);
+
+                if (userProfile) {
+                    setUserRole(userProfile.role?.toLowerCase() || "user");
                 } else {
                     setUserRole("user");
                 }
@@ -163,13 +167,15 @@ export default function StudentProfilePage() {
             try {
                 const verificationMap = new Map();
 
+                // Migrado para Supabase - usar whatsappDataService
+                const { getVerifiedNumber } = await import('@/services/whatsappDataService');
+
                 for (const contato of student.contatos) {
                     const cleanPhone = contato.telefone.replace(/\D/g, '');
-                    const docRef = doc(db, 'whatsapp_verified_numbers', cleanPhone);
-                    const docSnap = await getDoc(docRef);
+                    const verificationData = await getVerifiedNumber(cleanPhone);
 
-                    if (docSnap.exists()) {
-                        verificationMap.set(cleanPhone, docSnap.data());
+                    if (verificationData) {
+                        verificationMap.set(cleanPhone, verificationData);
                     }
                 }
 
@@ -211,18 +217,30 @@ export default function StudentProfilePage() {
 
     const fetchBimesterDates = useCallback(async () => {
         try {
-            const docRef = doc(db, process.env.NEXT_PUBLIC_SCHOOL_YEAR || "2025", "ano_letivo");
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const anoData = docSnap.data() as AnoLetivoData;
-                const dates: BimesterDates = {
-                    1: { start: anoData["1º Bimestre"]?.startDate || "01/01/2025", end: anoData["1º Bimestre"]?.endDate || "31/12/2025" },
-                    2: { start: anoData["2º Bimestre"]?.startDate || "01/01/2025", end: anoData["2º Bimestre"]?.endDate || "31/12/2025" },
-                    3: { start: anoData["3º Bimestre"]?.startDate || "01/01/2025", end: anoData["3º Bimestre"]?.endDate || "31/12/2025" },
-                    4: { start: anoData["4º Bimestre"]?.startDate || "01/01/2025", end: anoData["4º Bimestre"]?.endDate || "31/12/2025" },
-                };
-                setBimesterDates(dates);
+            const year = parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || "2025");
+
+            // Buscar dados de controle de ausências do Supabase (contém períodos dos bimestres)
+            const absenceControlData = await AbsenceControlService.getByYear(year);
+
+            const dates: BimesterDates = {};
+            absenceControlData.forEach((bimester) => {
+                if (bimester.startDate && bimester.endDate) {
+                    dates[bimester.bimester] = {
+                        start: bimester.startDate,
+                        end: bimester.endDate,
+                    };
+                }
+            });
+
+            // Fallback para datas padrão se não houver dados
+            if (Object.keys(dates).length === 0) {
+                dates[1] = { start: "01/01/2025", end: "31/12/2025" };
+                dates[2] = { start: "01/01/2025", end: "31/12/2025" };
+                dates[3] = { start: "01/01/2025", end: "31/12/2025" };
+                dates[4] = { start: "01/01/2025", end: "31/12/2025" };
             }
+
+            setBimesterDates(dates);
         } catch (error) {
             logger.error("Erro ao buscar períodos dos bimestres", error as Error);
         }
@@ -251,40 +269,39 @@ export default function StudentProfilePage() {
                 return;
             }
 
-            // Fetch absences
-            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
-            const absenceRecords: AbsenceRecord[] = absenceSnapshot.docs
-                .map((doc) => ({
-                    estudanteId: doc.data().estudanteId as string,
-                    data: formatFirebaseDate(doc.data().data as string),
-                    justified: doc.data().justified || false,
-                    atestadoId: doc.data().atestadoId || undefined,
-                    suspensaoId: doc.data().suspensaoId || undefined,
+            // Fetch absences via Supabase
+            const supabaseAbsences = await AbsenceService.getStudentAbsences(studentId);
+            const absenceRecords: AbsenceRecord[] = supabaseAbsences
+                .map((absence: any) => ({
+                    estudanteId: absence.estudanteId,
+                    data: absence.absence_date || absence.data,
+                    justified: absence.is_justified || absence.justified,
+                    atestadoId: absence.atestadoId || undefined,
+                    suspensaoId: absence.suspensionId || undefined,
                 }))
-                .filter((record: AbsenceRecord) => record.estudanteId === studentId)
-                .sort((a, b) => (parseDateToFirebase(a.data)?.localeCompare(parseDateToFirebase(b.data) || "") || 0));
+                .sort((a: any, b: any) => (parseDateToFirebase(a.data)?.localeCompare(parseDateToFirebase(b.data) || "") || 0));
 
             setAbsences(absenceRecords);
 
-            // Fetch atestados
-            const atestadosSnapshot = await getDocs(collection(db, FIREBASE_PATHS.medicalCertificates(studentId)));
-            const atestadoRecords: Atestado[] = atestadosSnapshot.docs.map((doc) => ({
-                id: doc.id,
-                startDate: formatFirebaseDate(doc.data().startDate as string),
-                days: doc.data().days as number,
-                description: doc.data().description as string,
-                createdBy: doc.data().createdBy as string || "Não informado",
+            // Fetch atestados via Supabase
+            const supabaseAtestados = await MedicalCertificatesService.getByStudentId(studentId);
+            const atestadoRecords: Atestado[] = supabaseAtestados.map((cert) => ({
+                id: cert.id,
+                startDate: formatFirebaseDate(cert.startDate),
+                days: cert.daysCovered || 0,
+                description: cert.diagnosis || cert.doctorName || '',
+                createdBy: cert.createdBy || "Não informado",
             })).sort((a, b) => (parseDateToFirebase(b.startDate)?.localeCompare(parseDateToFirebase(a.startDate) || "") || 0));
             setAtestados(atestadoRecords);
 
-            // Fetch suspensoes
-            const suspensoesSnapshot = await getDocs(collection(db, FIREBASE_PATHS.suspensions(studentId)));
-            const suspensaoRecords: Suspensao[] = suspensoesSnapshot.docs.map((doc) => ({
-                id: doc.id,
-                startDate: formatFirebaseDate(doc.data().startDate as string),
-                days: doc.data().days as number,
-                description: doc.data().description as string,
-                createdBy: doc.data().createdBy as string || "Não informado",
+            // Fetch suspensoes via Supabase
+            const supabaseSuspensoes = await StudentSuspensionsService.getByStudentId(studentId);
+            const suspensaoRecords: Suspensao[] = supabaseSuspensoes.map((suspension) => ({
+                id: suspension.id,
+                startDate: formatFirebaseDate(suspension.startDate),
+                days: suspension.daysSuspended || 0,
+                description: suspension.reason || suspension.description || '',
+                createdBy: suspension.createdBy || "Não informado",
             })).sort((a, b) => (parseDateToFirebase(b.startDate)?.localeCompare(parseDateToFirebase(a.startDate) || "") || 0));
             setSuspensoes(suspensaoRecords);
 
@@ -294,13 +311,14 @@ export default function StudentProfilePage() {
             const diasLetivos = await calculateDiasLetivos(startDate.toLocaleDateString("pt-BR"), today.toLocaleDateString("pt-BR"));
 
             // Calculate for all absences
-            const faltasB1 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 1).length;
-            const faltasB2 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 2).length;
-            const faltasB3 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 3).length;
-            const faltasB4 = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 4).length;
+            const faltasB1 = absenceRecords.filter((d: AbsenceRecord) => d.data && getBimesterByDate(d.data, bimesterDates) === 1).length;
+            const faltasB2 = absenceRecords.filter((d: AbsenceRecord) => d.data && getBimesterByDate(d.data, bimesterDates) === 2).length;
+            const faltasB3 = absenceRecords.filter((d: AbsenceRecord) => d.data && getBimesterByDate(d.data, bimesterDates) === 3).length;
+            const faltasB4 = absenceRecords.filter((d: AbsenceRecord) => d.data && getBimesterByDate(d.data, bimesterDates) === 4).length;
             const totalFaltas = faltasB1 + faltasB2 + faltasB3 + faltasB4;
 
             const totalFaltasAteHoje = absenceRecords.filter((record: AbsenceRecord) => {
+                if (!record.data) return false;
                 const date = parseDate(record.data);
                 return date !== null && date >= startDate && date <= today;
             }).length;
@@ -329,13 +347,14 @@ export default function StudentProfilePage() {
             setStudentRecord(aggregated);
 
             // Calculate excluding justified absences
-            const faltasB1NoJustified = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 1 && !d.justified).length;
-            const faltasB2NoJustified = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 2 && !d.justified).length;
-            const faltasB3NoJustified = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 3 && !d.justified).length;
-            const faltasB4NoJustified = absenceRecords.filter((d: AbsenceRecord) => getBimesterByDate(d.data, bimesterDates) === 4 && !d.justified).length;
+            const faltasB1NoJustified = absenceRecords.filter((d: AbsenceRecord) => d.data && getBimesterByDate(d.data, bimesterDates) === 1 && !d.justified).length;
+            const faltasB2NoJustified = absenceRecords.filter((d: AbsenceRecord) => d.data && getBimesterByDate(d.data, bimesterDates) === 2 && !d.justified).length;
+            const faltasB3NoJustified = absenceRecords.filter((d: AbsenceRecord) => d.data && getBimesterByDate(d.data, bimesterDates) === 3 && !d.justified).length;
+            const faltasB4NoJustified = absenceRecords.filter((d: AbsenceRecord) => d.data && getBimesterByDate(d.data, bimesterDates) === 4 && !d.justified).length;
             const totalFaltasNoJustified = faltasB1NoJustified + faltasB2NoJustified + faltasB3NoJustified + faltasB4NoJustified;
 
             const totalFaltasAteHojeNoJustified = absenceRecords.filter((record: AbsenceRecord) => {
+                if (!record.data) return false;
                 const date = parseDate(record.data);
                 return date !== null && date >= startDate && date <= today && !record.justified;
             }).length;
@@ -363,55 +382,23 @@ export default function StudentProfilePage() {
             };
             setStudentRecordWithoutJustified(aggregatedNoJustified);
 
-            // ✅ CORREÇÃO: Buscar interações em V1 E V3 (dual-read)
-            logger.debug('Buscando interações V1 + V3');
+            // Buscar interações via Supabase
+            logger.debug('Buscando interações via Supabase');
 
-            // V1: 2025/interactions/{studentId}
-            const interactionsV1Snapshot = await getDocs(collection(db, FIREBASE_PATHS.interactions(studentId)));
-            const interactionsV1: (FamilyInteraction & { _collection: string })[] = interactionsV1Snapshot.docs.map(doc => ({
-                id: doc.id,
-                type: doc.data().type as string,
-                date: formatFirebaseDate(doc.data().date as string),
-                description: doc.data().description as string,
-                createdBy: doc.data().createdBy as string || "Não informado",
-                sensitive: doc.data().sensitive as boolean || false,
+            const supabaseInteractions = await InteractionService.getStudentInteractions(studentId);
+            const interactionRecords: FamilyInteraction[] = supabaseInteractions.map((interaction: any) => ({
+                id: interaction.id,
+                type: interaction.type,
+                date: interaction.date,
+                description: interaction.description || '',
+                createdBy: interaction.createdBy || "Não informado",
+                sensitive: interaction.sensitive || false,
                 studentId: studentId,
-                whatsappMessage: doc.data().whatsappMessage as string | undefined,
-                whatsappPhones: doc.data().whatsappPhones as string[] | undefined,
-                _collection: 'v1'
-            } as FamilyInteraction & { _collection: string }));
+                whatsappMessage: interaction.whatsappMessage,
+                whatsappPhones: interaction.whatsappPhones,
+            }));
 
-            // V3: students/{studentId}/interactions
-            const interactionsV3Snapshot = await getDocs(collection(db, 'students', studentId, 'interactions'));
-            const interactionsV3: (FamilyInteraction & { _collection: string })[] = interactionsV3Snapshot.docs.map(doc => ({
-                id: doc.id,
-                type: doc.data().type as string,
-                date: formatFirebaseDate(doc.data().date as string),
-                description: doc.data().description as string,
-                createdBy: doc.data().createdBy as string || "Não informado",
-                sensitive: doc.data().sensitive as boolean || false,
-                studentId: studentId,
-                whatsappMessage: doc.data().whatsappMessage as string | undefined,
-                whatsappPhones: doc.data().whatsappPhones as string[] | undefined,
-                _collection: 'v3'
-            } as FamilyInteraction & { _collection: string }));
-
-            // Combinar e remover duplicatas (usar ID como chave única)
-            const combinedMap = new Map<string, FamilyInteraction & { _collection: string }>();
-
-            // Adicionar V1 primeiro
-            interactionsV1.forEach(interaction => {
-                combinedMap.set(interaction.id, interaction);
-            });
-
-            // Adicionar V3 (sobrescreve se duplicado - V3 é mais recente)
-            interactionsV3.forEach(interaction => {
-                combinedMap.set(interaction.id, interaction);
-            });
-
-            const interactionRecords = Array.from(combinedMap.values());
-
-            logger.info('Interações carregadas', { v1: interactionsV1.length, v3: interactionsV3.length, unique: interactionRecords.length });
+            logger.info('Interações carregadas do Supabase', { total: interactionRecords.length });
 
             // Ordenar por data
             interactionRecords.sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
@@ -546,8 +533,8 @@ export default function StudentProfilePage() {
                 }
             }
 
-            // FASE 2: Salvar interação com DUAL-WRITE (V1 + V3)
-            const interactionData: Omit<FamilyInteraction, "id"> = {
+            // FASE 2: Salvar interação via Supabase
+            await InteractionService.createInteraction(selectedStudentId, {
                 studentId: selectedStudentId,
                 type: interactionType,
                 date: formattedDate,
@@ -556,20 +543,11 @@ export default function StudentProfilePage() {
                 sensitive: interactionSensitive,
                 ...(interactionType === "Contato digital" && whatsAppMessage && {
                     whatsappMessage: whatsAppMessage,
-                    whatsappPhones: Array.from(selectedWhatsAppPhones) // Salvar telefones que receberam mensagem
+                    whatsappPhones: Array.from(selectedWhatsAppPhones) // Salvar como array
                 })
-            };
-
-            // V1: 2025/interactions/{studentId}
-            const interactionRefV1 = await addDoc(collection(db, FIREBASE_PATHS.interactions(selectedStudentId)), interactionData);
-
-            // V3: students/{studentId}/interactions (usar mesmo ID via setDoc não funciona com addDoc, então criar separado)
-            await addDoc(collection(db, 'students', selectedStudentId, 'interactions'), {
-                ...interactionData,
-                anoLetivo: '2025'
             });
 
-            logger.interactionOperation('create', selectedStudentId, interactionType, { v1Id: interactionRefV1.id });
+            logger.interactionOperation('create', selectedStudentId, interactionType, { supabase: true });
 
             // Limpar todos os campos (incluindo WhatsApp)
             setInteractionType("");
@@ -605,29 +583,15 @@ export default function StudentProfilePage() {
         }
 
         try {
-            const updatedData = {
+            // Atualizar interação via Supabase
+            await InteractionService.updateInteraction(editingInteraction.id, {
                 type: interactionType,
                 date: formattedDate,
                 description: interactionDescription,
                 sensitive: interactionSensitive,
-                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
-            };
+            });
 
-            // Atualizar em V1
-            const interactionRefV1 = doc(db, FIREBASE_PATHS.interactions(selectedStudentId), editingInteraction.id);
-            await updateDoc(interactionRefV1, updatedData);
-
-            // Tentar atualizar em V3 (pode não existir se for interação antiga)
-            try {
-                const interactionRefV3 = doc(db, 'students', selectedStudentId, 'interactions', editingInteraction.id);
-                await updateDoc(interactionRefV3, {
-                    ...updatedData,
-                    anoLetivo: '2025'
-                });
-                logger.interactionOperation('update', selectedStudentId, editingInteraction.type, { v1AndV3: true });
-            } catch (v3Error) {
-                logger.interactionOperation('update', selectedStudentId, editingInteraction.type, { v1Only: true });
-            }
+            logger.interactionOperation('update', selectedStudentId, editingInteraction.type, { supabase: true });
 
             setEditingInteraction(null);
             setInteractionType("");
@@ -645,18 +609,10 @@ export default function StudentProfilePage() {
     const handleDeleteInteraction = async (interactionId: string): Promise<void> => {
         if (!selectedStudentId) return;
         try {
-            // Deletar de V1
-            const interactionRefV1 = doc(db, FIREBASE_PATHS.interactions(selectedStudentId), interactionId);
-            await deleteDoc(interactionRefV1);
+            // Deletar via Supabase
+            await InteractionService.deleteInteraction(interactionId);
 
-            // Tentar deletar de V3 (pode não existir se for interação antiga)
-            try {
-                const interactionRefV3 = doc(db, 'students', selectedStudentId, 'interactions', interactionId);
-                await deleteDoc(interactionRefV3);
-                logger.interactionOperation('delete', selectedStudentId, 'unknown', { v1AndV3: true });
-            } catch (v3Error) {
-                logger.interactionOperation('delete', selectedStudentId, 'unknown', { v1Only: true });
-            }
+            logger.interactionOperation('delete', selectedStudentId, 'unknown', { supabase: true });
 
             await fetchStudentData(selectedStudentId);
             toast.success("Interação excluída com sucesso!");
@@ -699,17 +655,14 @@ export default function StudentProfilePage() {
             const endDate = new Date(startDate);
             endDate.setDate(startDate.getDate() + days - 1);
 
-            // ✅ VALIDAÇÃO: Verificar duplicatas antes de salvar
-            const existingAtestadosSnapshot = await getDocs(
-                collection(db, FIREBASE_PATHS.medicalCertificates(selectedStudentId))
-            );
+            // ✅ VALIDAÇÃO: Verificar duplicatas antes de salvar via Supabase
+            const existingAtestados = await MedicalCertificatesService.getByStudentId(selectedStudentId);
 
-            const isDuplicate = existingAtestadosSnapshot.docs.some(doc => {
-                const data = doc.data();
+            const isDuplicate = existingAtestados.some(cert => {
                 return (
-                    data.startDate === formattedDate &&
-                    data.days === days &&
-                    data.description === atestadoDescription
+                    cert.startDate === formattedDate &&
+                    cert.daysCovered === days &&
+                    (cert.diagnosis || cert.doctorName) === atestadoDescription
                 );
             });
 
@@ -719,42 +672,41 @@ export default function StudentProfilePage() {
                 return;
             }
 
-            const atestadoData: Omit<Atestado, "id"> = {
+            // Criar atestado via Supabase
+            const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
+            const newCertificate = await MedicalCertificatesService.create({
+                studentId: selectedStudentId,
                 startDate: formattedDate,
-                days,
-                description: atestadoDescription,
-                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
-            };
+                endDate: endDate.toISOString().split('T')[0], // YYYY-MM-DD
+                diagnosis: atestadoDescription,
+                createdBy: currentUser,
+            });
 
-            const atestadoRef = await addDoc(collection(db, FIREBASE_PATHS.medicalCertificates(selectedStudentId)), atestadoData);
-            const atestadoId = atestadoRef.id;
+            if (!newCertificate) {
+                throw new Error("Falha ao criar atestado");
+            }
+
+            const atestadoId = newCertificate.id;
 
             // Obter os dias letivos no período do atestado
             const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
 
-            // Obter as faltas já existentes para o aluno
-            const faltasSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
+            // Obter as faltas já existentes para o aluno via Supabase
+            const supabaseAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
             const faltasExistentes = new Map();
 
-            faltasSnapshot.docs.forEach(doc => {
-                const data = doc.data();
-                if (data.estudanteId === selectedStudentId) {
-                    const dataFormatada = formatFirebaseDate(data.data);
-                    faltasExistentes.set(dataFormatada, {
-                        id: doc.id,
-                        justified: data.justified || false,
-                        atestadoId: data.atestadoId
-                    });
-                }
+            supabaseAbsences.forEach((absence: any) => {
+                const dataFormatada = formatFirebaseDate(absence.absenceDate);
+                faltasExistentes.set(dataFormatada, {
+                    id: absence.id,
+                    justified: absence.justificationType !== 'NAO_JUSTIFICADA',
+                    atestadoId: absence.certificateId
+                });
             });
 
             // Criar ou atualizar registros de faltas para os dias letivos
-            const batch = writeBatch(db);
-            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
-
             for (const dataLetiva of diasLetivos) {
                 // dataLetiva vem em formato ISO (YYYY-MM-DD) de getDiasLetivosNoPeriodo
-                // Precisamos garantir que está no formato correto para o Firebase
                 let dataFirebase: string;
 
                 // Se já está em formato YYYY-MM-DD, usar direto
@@ -772,26 +724,24 @@ export default function StudentProfilePage() {
                 const faltaExistente = faltasExistentes.get(dataBrasileira);
 
                 if (faltaExistente) {
-                    // Atualizar falta existente
-                    const faltaRef = doc(db, FIREBASE_PATHS.absenceControl(), faltaExistente.id);
-                    batch.update(faltaRef, {
-                        justified: true,
-                        atestadoId
-                    });
-                } else {
-                    // Criar nova falta justificada
-                    const newFaltaRef = doc(controleColRef);
-                    batch.set(newFaltaRef, {
+                    // Atualizar falta existente via Supabase (delete + add)
+                    await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
+                    await AbsenceService.addAbsence({
                         estudanteId: selectedStudentId,
                         data: dataFirebase,
-                        turma: student?.turma || "",
-                        justified: true,
-                        atestadoId
+                        justified: true, // ATESTADO = justified
+                        atestadoId: atestadoId,
+                    });
+                } else {
+                    // Criar nova falta justificada via Supabase
+                    await AbsenceService.addAbsence({
+                        estudanteId: selectedStudentId,
+                        data: dataFirebase,
+                        justified: true, // ATESTADO = justified
+                        atestadoId: atestadoId,
                     });
                 }
             }
-
-            await batch.commit();
 
             setAtestadoStartDate("");
             setAtestadoDays("");
@@ -827,53 +777,53 @@ export default function StudentProfilePage() {
         }
 
         try {
-            const atestadoRef = doc(db, FIREBASE_PATHS.medicalCertificates(selectedStudentId), editingAtestado.id);
-            await updateDoc(atestadoRef, {
-                startDate: formattedDate,
-                days,
-                description: atestadoDescription,
-                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
-            });
-
-            // Reset absences previously justified by this atestado
-            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
-            const batch = writeBatch(db);
-
-            // Primeiro, remover as justificativas das faltas anteriores
-            for (const doc of absenceSnapshot.docs) {
-                if (doc.data().atestadoId === editingAtestado.id) {
-                    batch.update(doc.ref, {
-                        justified: false,
-                        atestadoId: deleteField(),
-                    });
-                }
-            }
-
-            // Update absences within the new atestado period
+            // Atualizar atestado via Supabase
             const startDate = parseDate(atestadoStartDate);
             if (!startDate) throw new Error("Data inválida");
             const endDate = new Date(startDate);
             endDate.setDate(startDate.getDate() + days - 1);
 
+            const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
+
+            await MedicalCertificatesService.update(editingAtestado.id, {
+                startDate: formattedDate,
+                endDate: endDate.toISOString().split('T')[0],
+                diagnosis: atestadoDescription,
+            });
+
+            // Reset absences previously justified by this atestado via Supabase
+            const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
+
+            // Primeiro, remover as justificativas das faltas anteriores
+            for (const absence of allAbsences) {
+                if (absence.atestadoId === editingAtestado.id) {
+                    const absenceDate = absence.absence_date || absence.data;
+                    if (!absenceDate) continue;
+
+                    // Update via delete + add (sem certificado)
+                    await AbsenceService.deleteAbsence(selectedStudentId, absenceDate);
+                    await AbsenceService.addAbsence({
+                        estudanteId: selectedStudentId,
+                        data: absenceDate,
+                        justified: false, // Remove justificativa
+                        atestadoId: undefined,
+                    });
+                }
+            }
+
             // Obter os dias letivos no período do atestado atualizado
             const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
 
-            // Mapear as faltas existentes
+            // Mapear as faltas existentes (reutilizar allAbsences já carregado)
             const faltasExistentes = new Map();
-            absenceSnapshot.docs.forEach(doc => {
-                const data = doc.data();
-                if (data.estudanteId === selectedStudentId) {
-                    const dataFormatada = formatFirebaseDate(data.data);
-                    faltasExistentes.set(dataFormatada, {
-                        id: doc.id,
-                        ref: doc.ref
-                    });
-                }
+            allAbsences.forEach((absence: any) => {
+                const absenceDate = absence.absence_date || absence.data;
+                if (!absenceDate) return;
+                const dataFormatada = formatFirebaseDate(absenceDate);
+                faltasExistentes.set(dataFormatada, absence); // Guarda o objeto completo
             });
 
             // Criar ou atualizar registros de faltas para os dias letivos no novo período
-            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
-
             for (const dataLetiva of diasLetivos) {
                 // dataLetiva vem em formato ISO (YYYY-MM-DD) de getDiasLetivosNoPeriodo
                 let dataFirebase: string;
@@ -891,25 +841,24 @@ export default function StudentProfilePage() {
                 const faltaExistente = faltasExistentes.get(dataBrasileira);
 
                 if (faltaExistente) {
-                    // Atualizar falta existente
-                    batch.update(faltaExistente.ref, {
-                        justified: true,
-                        atestadoId: editingAtestado.id
-                    });
-                } else {
-                    // Criar nova falta justificada
-                    const newFaltaRef = doc(controleColRef);
-                    batch.set(newFaltaRef, {
+                    // Atualizar falta existente via Supabase (delete + add)
+                    await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
+                    await AbsenceService.addAbsence({
                         estudanteId: selectedStudentId,
                         data: dataFirebase,
-                        turma: student?.turma || "",
-                        justified: true,
-                        atestadoId: editingAtestado.id
+                        justified: true, // ATESTADO = justified
+                        atestadoId: editingAtestado.id,
+                    });
+                } else {
+                    // Criar nova falta justificada via Supabase
+                    await AbsenceService.addAbsence({
+                        estudanteId: selectedStudentId,
+                        data: dataFirebase,
+                        justified: true, // ATESTADO = justified
+                        atestadoId: editingAtestado.id,
                     });
                 }
             }
-
-            await batch.commit();
 
             setEditingAtestado(null);
             setAtestadoStartDate("");
@@ -926,23 +875,28 @@ export default function StudentProfilePage() {
     const handleDeleteAtestado = async (atestadoId: string): Promise<void> => {
         if (!selectedStudentId) return;
         try {
-            const atestadoRef = doc(db, FIREBASE_PATHS.medicalCertificates(selectedStudentId), atestadoId);
-            await deleteDoc(atestadoRef);
+            // Deletar atestado via Supabase
+            await MedicalCertificatesService.delete(atestadoId);
 
-            // Reset absences justified by this atestado
-            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
-            const batch = writeBatch(db);
+            // Reset absences justified by this atestado via Supabase
+            const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
 
-            for (const doc of absenceSnapshot.docs) {
-                if (doc.data().atestadoId === atestadoId) {
-                    batch.update(doc.ref, {
-                        justified: false,
-                        atestadoId: deleteField(),
+            for (const absence of allAbsences) {
+                if (absence.atestadoId === atestadoId) {
+                    const absenceDate = absence.absence_date || absence.data;
+                    if (!absenceDate) continue;
+
+                    // Update via delete + add (remove certificate)
+                    await AbsenceService.deleteAbsence(selectedStudentId, absenceDate);
+                    await AbsenceService.addAbsence({
+                        estudanteId: selectedStudentId,
+                        data: absenceDate,
+                        justified: false, // Remove justificativa
+                        atestadoId: undefined,
                     });
                 }
             }
 
-            await batch.commit();
             await fetchStudentData(selectedStudentId);
             toast.success("Atestado excluído com sucesso!");
         } catch (error) {
@@ -976,39 +930,43 @@ export default function StudentProfilePage() {
             const endDate = new Date(startDate);
             endDate.setDate(startDate.getDate() + days - 1);
 
-            const suspensaoData: Omit<Suspensao, "id"> = {
+            // Criar suspensão via Supabase
+            const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
+            const newSuspension = await StudentSuspensionsService.create({
+                studentId: selectedStudentId,
                 startDate: formattedDate,
-                days,
+                endDate: endDate.toISOString().split('T')[0],
+                reason: suspensaoDescription,
                 description: suspensaoDescription,
-                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
-            };
+                severity: 'MODERADA', // Severity padrão
+                decisionBy: currentUser,
+                decisionDate: formattedDate, // Data da decisão
+                createdBy: currentUser,
+            });
 
-            const suspensaoRef = await addDoc(collection(db, FIREBASE_PATHS.suspensions(selectedStudentId)), suspensaoData);
-            const suspensaoId = suspensaoRef.id;
+            if (!newSuspension) {
+                throw new Error("Falha ao criar suspensão");
+            }
+
+            const suspensaoId = newSuspension.id;
 
             // Obter os dias letivos no período da suspensão
             const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
 
-            // Obter as faltas já existentes para o aluno
-            const faltasSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
+            // Obter as faltas já existentes para o aluno via Supabase
+            const supabaseAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
             const faltasExistentes = new Map();
 
-            faltasSnapshot.docs.forEach(doc => {
-                const data = doc.data();
-                if (data.estudanteId === selectedStudentId) {
-                    const dataFormatada = formatFirebaseDate(data.data);
-                    faltasExistentes.set(dataFormatada, {
-                        id: doc.id,
-                        justified: data.justified || false,
-                        suspensaoId: data.suspensaoId
-                    });
-                }
+            supabaseAbsences.forEach((absence: any) => {
+                const dataFormatada = formatFirebaseDate(absence.absenceDate);
+                faltasExistentes.set(dataFormatada, {
+                    id: absence.id,
+                    justified: absence.justificationType !== 'NAO_JUSTIFICADA',
+                    suspensaoId: absence.suspensionId
+                });
             });
 
             // Criar ou atualizar registros de faltas para os dias letivos (NÃO justificadas)
-            const batch = writeBatch(db);
-            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
-
             for (const dataLetiva of diasLetivos) {
                 let dataFirebase: string;
 
@@ -1024,26 +982,24 @@ export default function StudentProfilePage() {
                 const faltaExistente = faltasExistentes.get(dataBrasileira);
 
                 if (faltaExistente) {
-                    // Atualizar falta existente (NÃO justificada)
-                    const faltaRef = doc(db, FIREBASE_PATHS.absenceControl(), faltaExistente.id);
-                    batch.update(faltaRef, {
-                        justified: false,
-                        suspensaoId
-                    });
-                } else {
-                    // Criar nova falta NÃO justificada
-                    const newFaltaRef = doc(controleColRef);
-                    batch.set(newFaltaRef, {
+                    // Atualizar falta existente (NÃO justificada) via Supabase (delete + add)
+                    await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
+                    await AbsenceService.addAbsence({
                         estudanteId: selectedStudentId,
                         data: dataFirebase,
-                        turma: student?.turma || "",
-                        justified: false,
-                        suspensaoId
+                        justified: false, // Suspensão = não justificada
+                        suspensaoId: suspensaoId,
+                    });
+                } else {
+                    // Criar nova falta NÃO justificada via Supabase
+                    await AbsenceService.addAbsence({
+                        estudanteId: selectedStudentId,
+                        data: dataFirebase,
+                        justified: false, // Suspensão = não justificada
+                        suspensaoId: suspensaoId,
                     });
                 }
             }
-
-            await batch.commit();
 
             setSuspensaoStartDate("");
             setSuspensaoDays("");
@@ -1077,52 +1033,54 @@ export default function StudentProfilePage() {
         }
 
         try {
-            const suspensaoRef = doc(db, FIREBASE_PATHS.suspensions(selectedStudentId), editingSuspensao.id);
-            await updateDoc(suspensaoRef, {
-                startDate: formattedDate,
-                days,
-                description: suspensaoDescription,
-                createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido",
-            });
-
-            // Reset absences previously marked by this suspensao
-            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
-            const batch = writeBatch(db);
-
-            // Primeiro, remover as marcações das faltas anteriores
-            for (const doc of absenceSnapshot.docs) {
-                if (doc.data().suspensaoId === editingSuspensao.id) {
-                    batch.update(doc.ref, {
-                        suspensaoId: deleteField(),
-                    });
-                }
-            }
-
-            // Update absences within the new suspensao period
+            // Atualizar suspensão via Supabase
             const startDate = parseDate(suspensaoStartDate);
             if (!startDate) throw new Error("Data inválida");
             const endDate = new Date(startDate);
             endDate.setDate(startDate.getDate() + days - 1);
 
+            const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
+
+            await StudentSuspensionsService.update(editingSuspensao.id, {
+                startDate: formattedDate,
+                endDate: endDate.toISOString().split('T')[0],
+                reason: suspensaoDescription,
+                description: suspensaoDescription,
+            });
+
+            // Reset absences previously marked by this suspensao via Supabase
+            const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
+
+            // Primeiro, remover as marcações das faltas anteriores
+            for (const absence of allAbsences) {
+                if (absence.suspensaoId === editingSuspensao.id) {
+                    const absenceDate = absence.absence_date || absence.data;
+                    if (!absenceDate) continue;
+
+                    // Update via delete + add (remove suspension mark)
+                    await AbsenceService.deleteAbsence(selectedStudentId, absenceDate);
+                    await AbsenceService.addAbsence({
+                        estudanteId: selectedStudentId,
+                        data: absenceDate,
+                        justified: false, // Mantém não justificada
+                        suspensaoId: undefined, // Remove suspensão
+                    });
+                }
+            }
+
             // Obter os dias letivos no período da suspensão atualizada
             const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
 
-            // Mapear as faltas existentes
+            // Mapear as faltas existentes (reutilizar allAbsences já carregado)
             const faltasExistentes = new Map();
-            absenceSnapshot.docs.forEach(doc => {
-                const data = doc.data();
-                if (data.estudanteId === selectedStudentId) {
-                    const dataFormatada = formatFirebaseDate(data.data);
-                    faltasExistentes.set(dataFormatada, {
-                        id: doc.id,
-                        ref: doc.ref
-                    });
-                }
+            allAbsences.forEach((absence: any) => {
+                const absenceDate = absence.absence_date || absence.data;
+                if (!absenceDate) return;
+                const dataFormatada = formatFirebaseDate(absenceDate);
+                faltasExistentes.set(dataFormatada, absence); // Guarda o objeto completo
             });
 
             // Criar ou atualizar registros de faltas para os dias letivos no novo período
-            const controleColRef = collection(db, FIREBASE_PATHS.absenceControl());
-
             for (const dataLetiva of diasLetivos) {
                 let dataFirebase: string;
 
@@ -1138,25 +1096,24 @@ export default function StudentProfilePage() {
                 const faltaExistente = faltasExistentes.get(dataBrasileira);
 
                 if (faltaExistente) {
-                    // Atualizar falta existente (NÃO justificada)
-                    batch.update(faltaExistente.ref, {
-                        justified: false,
-                        suspensaoId: editingSuspensao.id
-                    });
-                } else {
-                    // Criar nova falta NÃO justificada
-                    const newFaltaRef = doc(controleColRef);
-                    batch.set(newFaltaRef, {
+                    // Atualizar falta existente (NÃO justificada) via Supabase (delete + add)
+                    await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
+                    await AbsenceService.addAbsence({
                         estudanteId: selectedStudentId,
                         data: dataFirebase,
-                        turma: student?.turma || "",
-                        justified: false,
-                        suspensaoId: editingSuspensao.id
+                        justified: false, // Suspensão = não justificada
+                        suspensaoId: editingSuspensao.id,
+                    });
+                } else{
+                    // Criar nova falta NÃO justificada via Supabase
+                    await AbsenceService.addAbsence({
+                        estudanteId: selectedStudentId,
+                        data: dataFirebase,
+                        justified: false, // Suspensão = não justificada
+                        suspensaoId: editingSuspensao.id,
                     });
                 }
             }
-
-            await batch.commit();
 
             setEditingSuspensao(null);
             setSuspensaoStartDate("");
@@ -1173,22 +1130,28 @@ export default function StudentProfilePage() {
     const handleDeleteSuspensao = async (suspensaoId: string): Promise<void> => {
         if (!selectedStudentId) return;
         try {
-            const suspensaoRef = doc(db, FIREBASE_PATHS.suspensions(selectedStudentId), suspensaoId);
-            await deleteDoc(suspensaoRef);
+            // Deletar suspensão via Supabase
+            await StudentSuspensionsService.delete(suspensaoId);
 
-            // Remove absences marked by this suspensao
-            const absenceSnapshot = await getDocs(collection(db, FIREBASE_PATHS.absenceControl()));
-            const batch = writeBatch(db);
+            // Remove absences marked by this suspensao via Supabase
+            const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
 
-            for (const doc of absenceSnapshot.docs) {
-                if (doc.data().suspensaoId === suspensaoId) {
-                    batch.update(doc.ref, {
-                        suspensaoId: deleteField(),
+            for (const absence of allAbsences) {
+                if (absence.suspensaoId === suspensaoId) {
+                    const absenceDate = absence.absence_date || absence.data;
+                    if (!absenceDate) continue;
+
+                    // Update via delete + add (remove suspension mark)
+                    await AbsenceService.deleteAbsence(selectedStudentId, absenceDate);
+                    await AbsenceService.addAbsence({
+                        estudanteId: selectedStudentId,
+                        data: absenceDate,
+                        justified: false, // Mantém não justificada
+                        suspensaoId: undefined, // Remove suspensão
                     });
                 }
             }
 
-            await batch.commit();
             await fetchStudentData(selectedStudentId);
             toast.success("Suspensão excluída com sucesso!");
         } catch (error) {
@@ -1226,14 +1189,14 @@ export default function StudentProfilePage() {
             if (result.success) {
                 toast.success(result.hasWhatsApp ? "WhatsApp verificado com sucesso!" : "Número sem WhatsApp");
 
-                // Recarregar dados de verificação
+                // Recarregar dados de verificação via Supabase
+                const { getVerifiedNumber } = await import('@/services/whatsappDataService');
                 const cleanPhone = contact.telefone.replace(/\D/g, '');
-                const docRef = doc(db, 'whatsapp_verified_numbers', cleanPhone);
-                const docSnap = await getDoc(docRef);
+                const verificationData = await getVerifiedNumber(cleanPhone);
 
-                if (docSnap.exists()) {
+                if (verificationData) {
                     const updatedData = new Map(contactVerificationData);
-                    updatedData.set(cleanPhone, docSnap.data());
+                    updatedData.set(cleanPhone, verificationData);
                     setContactVerificationData(updatedData);
                 }
 
