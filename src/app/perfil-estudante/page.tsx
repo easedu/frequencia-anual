@@ -652,8 +652,12 @@ export default function StudentProfilePage() {
 
             const startDate = parseDate(atestadoStartDate);
             if (!startDate) throw new Error("Data inválida");
-            const endDate = new Date(startDate);
-            endDate.setDate(startDate.getDate() + days - 1);
+            // ✅ Calcular endDate usando UTC para evitar problemas de timezone
+            const endDate = new Date(Date.UTC(
+                startDate.getUTCFullYear(),
+                startDate.getUTCMonth(),
+                startDate.getUTCDate() + days - 1
+            ));
 
             // ✅ VALIDAÇÃO: Verificar duplicatas antes de salvar via Supabase
             const existingAtestados = await MedicalCertificatesService.getByStudentId(selectedStudentId);
@@ -723,23 +727,33 @@ export default function StudentProfilePage() {
                 const dataBrasileira = formatFirebaseDate(dataFirebase);
                 const faltaExistente = faltasExistentes.get(dataBrasileira);
 
-                if (faltaExistente) {
-                    // Atualizar falta existente via Supabase (delete + add)
-                    await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
-                    await AbsenceService.addAbsence({
-                        estudanteId: selectedStudentId,
-                        data: dataFirebase,
-                        justified: true, // ATESTADO = justified
-                        atestadoId: atestadoId,
-                    });
-                } else {
-                    // Criar nova falta justificada via Supabase
-                    await AbsenceService.addAbsence({
-                        estudanteId: selectedStudentId,
-                        data: dataFirebase,
-                        justified: true, // ATESTADO = justified
-                        atestadoId: atestadoId,
-                    });
+                try {
+                    if (faltaExistente) {
+                        // Atualizar falta existente via Supabase (delete + add)
+                        await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
+                        await AbsenceService.addAbsence({
+                            estudanteId: selectedStudentId,
+                            data: dataFirebase,
+                            justified: true, // ATESTADO = justified
+                            atestadoId: atestadoId,
+                        });
+                    } else {
+                        // Criar nova falta justificada via Supabase
+                        await AbsenceService.addAbsence({
+                            estudanteId: selectedStudentId,
+                            data: dataFirebase,
+                            justified: true, // ATESTADO = justified
+                            atestadoId: atestadoId,
+                        });
+                    }
+                } catch (error: any) {
+                    // ⚠️ Se for erro de duplicata (23505), apenas ignorar e continuar
+                    if (error?.code === '23505') {
+                        // Falta já existe, pular silenciosamente
+                    } else {
+                        // Outros erros devem propagar
+                        throw error;
+                    }
                 }
             }
 
@@ -780,8 +794,12 @@ export default function StudentProfilePage() {
             // Atualizar atestado via Supabase
             const startDate = parseDate(atestadoStartDate);
             if (!startDate) throw new Error("Data inválida");
-            const endDate = new Date(startDate);
-            endDate.setDate(startDate.getDate() + days - 1);
+            // ✅ Calcular endDate usando UTC para evitar problemas de timezone
+            const endDate = new Date(Date.UTC(
+                startDate.getUTCFullYear(),
+                startDate.getUTCMonth(),
+                startDate.getUTCDate() + days - 1
+            ));
 
             const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
@@ -927,8 +945,12 @@ export default function StudentProfilePage() {
         try {
             const startDate = parseDate(suspensaoStartDate);
             if (!startDate) throw new Error("Data inválida");
-            const endDate = new Date(startDate);
-            endDate.setDate(startDate.getDate() + days - 1);
+            // ✅ Calcular endDate usando UTC para evitar problemas de timezone
+            const endDate = new Date(Date.UTC(
+                startDate.getUTCFullYear(),
+                startDate.getUTCMonth(),
+                startDate.getUTCDate() + days - 1
+            ));
 
             // Criar suspensão via Supabase
             const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
@@ -1036,8 +1058,12 @@ export default function StudentProfilePage() {
             // Atualizar suspensão via Supabase
             const startDate = parseDate(suspensaoStartDate);
             if (!startDate) throw new Error("Data inválida");
-            const endDate = new Date(startDate);
-            endDate.setDate(startDate.getDate() + days - 1);
+            // ✅ Calcular endDate usando UTC para evitar problemas de timezone
+            const endDate = new Date(Date.UTC(
+                startDate.getUTCFullYear(),
+                startDate.getUTCMonth(),
+                startDate.getUTCDate() + days - 1
+            ));
 
             const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 

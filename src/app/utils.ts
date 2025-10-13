@@ -76,14 +76,16 @@ export function parseDate(dateStr: string): Date | null {
     if (dateStr.includes('-')) {
         const [year, month, day] = dateStr.split('-').map(Number);
         if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
-        return new Date(year, month - 1, day);
+        // ✅ Usar Date.UTC para evitar problemas de timezone
+        return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
     }
 
     // Se está em formato BR (DD/MM/YYYY)
     if (dateStr.includes('/')) {
         const [day, month, year] = dateStr.split('/').map(Number);
         if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
-        return new Date(year, month - 1, day);
+        // ✅ Usar Date.UTC para evitar problemas de timezone
+        return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
     }
 
     return null;

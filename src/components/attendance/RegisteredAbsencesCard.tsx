@@ -75,56 +75,59 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
         if (!dateString) return dateString;
 
         try {
-            let date: Date;
+            let day: number, month: number, year: number;
 
             // Verificar se a string já está no formato dd/mm/yyyy
             if (dateString.includes('/')) {
                 const parts = dateString.split('/');
                 if (parts.length === 3) {
-                    // Assumir que pode estar em formato dd/mm/yyyy ou mm/dd/yyyy
-                    const day = parseInt(parts[0]);
-                    const month = parseInt(parts[1]);
-                    const year = parseInt(parts[2]);
+                    day = parseInt(parts[0]);
+                    month = parseInt(parts[1]);
+                    year = parseInt(parts[2]);
 
                     // Se o primeiro número é maior que 12, assumir que está em dd/mm/yyyy
                     if (day > 12) {
-                        date = new Date(year, month - 1, day);
+                        // Está correto: dd/mm/yyyy
                     }
-                    // Se o segundo número é maior que 12, assumir que está em mm/dd/yyyy
+                    // Se o segundo número é maior que 12, assumir que está em mm/dd/yyyy (trocar)
                     else if (month > 12) {
-                        date = new Date(year, day - 1, month);
+                        const temp = day;
+                        day = month;
+                        month = temp;
                     }
-                    // Se ambos são <= 12, tentar detectar pelo contexto ou assumir dd/mm/yyyy
-                    else {
-                        // Assumir dd/mm/yyyy como padrão brasileiro
-                        date = new Date(year, month - 1, day);
-                    }
+                    // Se ambos são <= 12, assumir dd/mm/yyyy como padrão brasileiro
                 } else {
-                    // Fallback para new Date se o formato não for reconhecido
-                    date = new Date(dateString);
+                    logger.warn("Formato de data inesperado", { dateString });
+                    return dateString;
                 }
             }
-            // Verificar se está no formato ISO (yyyy-mm-dd ou yyyy-mm-ddThh:mm:ss)
+            // Verificar se está no formato ISO (yyyy-mm-dd)
             else if (dateString.includes('-')) {
-                date = new Date(dateString);
+                const parts = dateString.split('T')[0].split('-'); // Remover parte de hora se existir
+                if (parts.length === 3) {
+                    year = parseInt(parts[0]);
+                    month = parseInt(parts[1]);
+                    day = parseInt(parts[2]);
+                } else {
+                    logger.warn("Formato ISO inválido", { dateString });
+                    return dateString;
+                }
             }
             // Outros formatos
             else {
-                date = new Date(dateString);
+                logger.warn("Formato de data não reconhecido", { dateString });
+                return dateString;
             }
 
-            // Verificar se a data é válida
-            if (isNaN(date.getTime())) {
-                logger.warn("Data inválida ao formatar", { dateString });
+            // Validar valores
+            if (isNaN(day) || isNaN(month) || isNaN(year) ||
+                day < 1 || day > 31 || month < 1 || month > 12 || year < 1900) {
+                logger.warn("Data inválida ao formatar", { dateString, day, month, year });
                 return dateString;
             }
 
             // Sempre retornar no formato dd/mm/yyyy
-            const day = date.getDate().toString().padStart(2, '0');
-            const month = (date.getMonth() + 1).toString().padStart(2, '0');
-            const year = date.getFullYear();
-
-            return `${day}/${month}/${year}`;
+            return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
         } catch (error) {
             logger.error("Erro ao formatar a data", { dateString }, error as Error);
             return dateString;
@@ -136,18 +139,38 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
 
         setIsDeleting(true);
         try {
-            // Converter a data para o formato ISO (YYYY-MM-DD)
-            const [day, month, year] = absenceDate.split('/');
-            const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            // ✅ VALIDAÇÃO: Verificar se a falta é justificada (atestado ou suspensão)
+            const absence = absences.find((a: AbsenceRecord) => {
+                const dateToCompare = a.absence_date || a.data;
+                return dateToCompare === absenceDate || (dateToCompare && formatDate(dateToCompare) === absenceDate);
+            });
 
-            // Buscar faltas no Supabase
-            const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
-            const absences = allAbsences.filter((a: any) =>
-                (a.absence_date === formattedDate || a.data === formattedDate)
-            );
+            if (absence?.justified || absence?.is_justified || absence?.atestadoId) {
+                toast.error("Não é possível deletar faltas justificadas por atestado. Delete o atestado ao invés disso.");
+                setIsDeleting(false);
+                setShowDeleteDialog(null);
+                return;
+            }
 
-            if (!absences || absences.length === 0) {
-                toast.error("Falta não encontrada no banco de dados.");
+            if (absence?.suspensaoId) {
+                toast.error("Não é possível deletar faltas justificadas por suspensão. Delete a suspensão ao invés disso.");
+                setIsDeleting(false);
+                setShowDeleteDialog(null);
+                return;
+            }
+
+            // Verificar se já está em formato ISO (YYYY-MM-DD) ou precisa converter de DD/MM/YYYY
+            let formattedDate: string;
+
+            if (absenceDate.includes('-')) {
+                // Já está em formato ISO (YYYY-MM-DD)
+                formattedDate = absenceDate;
+            } else if (absenceDate.includes('/')) {
+                // Está em formato DD/MM/YYYY, converter para ISO
+                const [day, month, year] = absenceDate.split('/');
+                formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            } else {
+                toast.error("Formato de data inválido.");
                 return;
             }
 

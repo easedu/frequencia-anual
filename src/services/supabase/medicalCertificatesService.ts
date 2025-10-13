@@ -3,30 +3,35 @@
  *
  * Gerencia atestados médicos dos estudantes.
  * Substitui: collection(db, 'students', studentId, 'medicalCertificates')
+ *
+ * IMPORTANTE: Sincronizado com schema SQL-CRIAR-TABELAS-FALTANTES.sql
  */
 
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 
 /**
- * Interface do atestado (Supabase)
+ * Interface do atestado (Supabase) - Sincronizada com schema real
+ * Ver: docs/archives/sql/SQL-CRIAR-TABELAS-FALTANTES.sql
  */
 interface SupabaseMedicalCertificate {
   id: string;
   student_id: string;
   start_date: string;
   end_date: string;
-  days_covered: number;
+  days_covered: number; // GENERATED ALWAYS AS (end_date - start_date + 1) STORED
+  cid_code: string | null;
   diagnosis: string | null;
   doctor_name: string | null;
   doctor_crm: string | null;
-  clinic_name: string | null;
-  file_url: string | null;
-  file_name: string | null;
-  verified: boolean;
-  verified_by: string | null;
-  verified_at: string | null;
-  notes: string | null;
+  document_url: string | null;
+  document_type: string | null;
+  submitted_date: string;
+  submitted_by: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
   created_by: string;
   updated_by: string | null;
   created_at: string;
@@ -34,7 +39,7 @@ interface SupabaseMedicalCertificate {
 }
 
 /**
- * Interface do atestado (Aplicação)
+ * Interface do atestado (Aplicação) - mantém compatibilidade com código existente
  */
 export interface MedicalCertificate {
   id: string;
@@ -42,16 +47,18 @@ export interface MedicalCertificate {
   startDate: string;
   endDate: string;
   daysCovered: number;
+  cidCode?: string;
   diagnosis?: string;
   doctorName?: string;
   doctorCrm?: string;
-  clinicName?: string;
-  fileUrl?: string;
-  fileName?: string;
-  verified: boolean;
-  verifiedBy?: string;
-  verifiedAt?: string;
-  notes?: string;
+  documentUrl?: string;
+  documentType?: string;
+  submittedDate: string;
+  submittedBy: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNotes?: string;
   createdBy: string;
   updatedBy?: string;
   createdAt: string;
@@ -62,22 +69,22 @@ export interface MedicalCertificate {
  * Dados para criar atestado
  */
 export interface CreateMedicalCertificateData {
-  studentId: string;
-  startDate: string;
-  endDate: string;
+  studentId: string; // Pode ser UUID externo ou interno (resolvido automaticamente)
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  cidCode?: string;
   diagnosis?: string;
   doctorName?: string;
   doctorCrm?: string;
-  clinicName?: string;
-  fileUrl?: string;
-  fileName?: string;
-  notes?: string;
+  documentUrl?: string;
+  documentType?: string;
+  submittedDate?: string; // YYYY-MM-DD (default: hoje)
   createdBy: string;
 }
 
 export class MedicalCertificatesService {
   /**
-   * Converter registro do Supabase
+   * Converter registro do Supabase para formato da aplicação
    */
   private static mapSupabaseToCertificate(
     record: SupabaseMedicalCertificate
@@ -88,40 +95,22 @@ export class MedicalCertificatesService {
       startDate: record.start_date,
       endDate: record.end_date,
       daysCovered: record.days_covered,
+      cidCode: record.cid_code || undefined,
       diagnosis: record.diagnosis || undefined,
       doctorName: record.doctor_name || undefined,
       doctorCrm: record.doctor_crm || undefined,
-      clinicName: record.clinic_name || undefined,
-      fileUrl: record.file_url || undefined,
-      fileName: record.file_name || undefined,
-      verified: record.verified,
-      verifiedBy: record.verified_by || undefined,
-      verifiedAt: record.verified_at || undefined,
-      notes: record.notes || undefined,
+      documentUrl: record.document_url || undefined,
+      documentType: record.document_type || undefined,
+      submittedDate: record.submitted_date,
+      submittedBy: record.submitted_by,
+      status: record.status,
+      reviewedBy: record.reviewed_by || undefined,
+      reviewedAt: record.reviewed_at || undefined,
+      reviewNotes: record.review_notes || undefined,
       createdBy: record.created_by,
       updatedBy: record.updated_by || undefined,
       createdAt: record.created_at,
       updatedAt: record.updated_at,
-    };
-  }
-
-  /**
-   * Converter para formato Supabase (sem student_id, que é resolvido no create)
-   */
-  private static mapCertificateToSupabase(
-    data: CreateMedicalCertificateData
-  ): Omit<Partial<SupabaseMedicalCertificate>, 'student_id'> {
-    return {
-      start_date: data.startDate,
-      end_date: data.endDate,
-      diagnosis: data.diagnosis || null,
-      doctor_name: data.doctorName || null,
-      doctor_crm: data.doctorCrm || null,
-      clinic_name: data.clinicName || null,
-      file_url: data.fileUrl || null,
-      file_name: data.fileName || null,
-      notes: data.notes || null,
-      created_by: data.createdBy,
     };
   }
 
@@ -244,10 +233,35 @@ export class MedicalCertificatesService {
         logger.debug('ID interno resolvido', { externalId: data.studentId, internalId: internalStudentId });
       }
 
-      // 2. Criar payload com ID interno correto
+      // 2. Preparar dados para inserção (apenas campos que existem no schema)
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+      // ⚠️ IMPORTANTE: CHECK constraint exige submitted_date <= start_date
+      // Se o atestado é retroativo (start_date no passado), usar start_date como submitted_date
+      let submittedDate = data.submittedDate || today;
+      if (submittedDate > data.startDate) {
+        logger.debug('Ajustando submitted_date para respeitar constraint', {
+          original: submittedDate,
+          adjusted: data.startDate
+        });
+        submittedDate = data.startDate;
+      }
+
       const supabaseData = {
-        ...this.mapCertificateToSupabase(data),
-        student_id: internalStudentId, // ✅ Sempre usa ID interno
+        student_id: internalStudentId,
+        start_date: data.startDate,
+        end_date: data.endDate,
+        // days_covered é GENERATED ALWAYS - não podemos passar
+        cid_code: data.cidCode || null,
+        diagnosis: data.diagnosis || null,
+        doctor_name: data.doctorName || null,
+        doctor_crm: data.doctorCrm || null,
+        document_url: data.documentUrl || null,
+        document_type: data.documentType || null,
+        submitted_date: submittedDate, // ✅ Sempre <= start_date
+        submitted_by: data.createdBy,
+        status: 'PENDING' as const,
+        created_by: data.createdBy,
       };
 
       // 3. Inserir no Supabase
@@ -257,11 +271,15 @@ export class MedicalCertificatesService {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        logger.error('Erro do Supabase ao inserir atestado', { error, supabaseData });
+        throw error;
+      }
 
       logger.info('Atestado criado no Supabase', {
         externalStudentId: data.studentId,
         internalStudentId,
+        certificateId: result.id,
         startDate: data.startDate,
         endDate: data.endDate,
       });
@@ -274,28 +292,59 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Verificar atestado
+   * Aprovar atestado (muda status de PENDING para APPROVED)
    */
-  static async verify(
+  static async approve(
     certificateId: string,
-    verifiedBy: string
+    reviewedBy: string,
+    reviewNotes?: string
   ): Promise<boolean> {
     try {
       const { error } = await (supabase.from('medical_certificates') as any)
         .update({
-          verified: true,
-          verified_by: verifiedBy,
-          verified_at: new Date().toISOString(),
+          status: 'APPROVED',
+          reviewed_by: reviewedBy,
+          reviewed_at: new Date().toISOString(),
+          review_notes: reviewNotes || null,
         })
         .eq('id', certificateId);
 
       if (error) throw error;
 
-      logger.info('Atestado verificado no Supabase', { certificateId, verifiedBy });
+      logger.info('Atestado aprovado no Supabase', { certificateId, reviewedBy });
 
       return true;
     } catch (error) {
-      logger.error('Erro ao verificar atestado', { certificateId }, error as Error);
+      logger.error('Erro ao aprovar atestado', { certificateId }, error as Error);
+      return false;
+    }
+  }
+
+  /**
+   * Rejeitar atestado (muda status de PENDING para REJECTED)
+   */
+  static async reject(
+    certificateId: string,
+    reviewedBy: string,
+    reviewNotes: string
+  ): Promise<boolean> {
+    try {
+      const { error } = await (supabase.from('medical_certificates') as any)
+        .update({
+          status: 'REJECTED',
+          reviewed_by: reviewedBy,
+          reviewed_at: new Date().toISOString(),
+          review_notes: reviewNotes,
+        })
+        .eq('id', certificateId);
+
+      if (error) throw error;
+
+      logger.info('Atestado rejeitado no Supabase', { certificateId, reviewedBy });
+
+      return true;
+    } catch (error) {
+      logger.error('Erro ao rejeitar atestado', { certificateId }, error as Error);
       return false;
     }
   }
@@ -312,18 +361,13 @@ export class MedicalCertificatesService {
 
       if (updates.startDate) supabaseUpdates.start_date = updates.startDate;
       if (updates.endDate) supabaseUpdates.end_date = updates.endDate;
-      if (updates.diagnosis !== undefined)
-        supabaseUpdates.diagnosis = updates.diagnosis || null;
-      if (updates.doctorName !== undefined)
-        supabaseUpdates.doctor_name = updates.doctorName || null;
-      if (updates.doctorCrm !== undefined)
-        supabaseUpdates.doctor_crm = updates.doctorCrm || null;
-      if (updates.clinicName !== undefined)
-        supabaseUpdates.clinic_name = updates.clinicName || null;
-      if (updates.fileUrl !== undefined) supabaseUpdates.file_url = updates.fileUrl || null;
-      if (updates.fileName !== undefined)
-        supabaseUpdates.file_name = updates.fileName || null;
-      if (updates.notes !== undefined) supabaseUpdates.notes = updates.notes || null;
+      // days_covered é recalculado automaticamente
+      if (updates.cidCode !== undefined) supabaseUpdates.cid_code = updates.cidCode || null;
+      if (updates.diagnosis !== undefined) supabaseUpdates.diagnosis = updates.diagnosis || null;
+      if (updates.doctorName !== undefined) supabaseUpdates.doctor_name = updates.doctorName || null;
+      if (updates.doctorCrm !== undefined) supabaseUpdates.doctor_crm = updates.doctorCrm || null;
+      if (updates.documentUrl !== undefined) supabaseUpdates.document_url = updates.documentUrl || null;
+      if (updates.documentType !== undefined) supabaseUpdates.document_type = updates.documentType || null;
 
       const { error } = await (supabase.from('medical_certificates') as any)
         .update(supabaseUpdates)
@@ -378,6 +422,26 @@ export class MedicalCertificatesService {
       return (data || []).map(this.mapSupabaseToCertificate);
     } catch (error) {
       logger.error('Erro ao buscar atestados por data', { studentId, date }, error as Error);
+      return [];
+    }
+  }
+
+  /**
+   * Buscar atestados pendentes de revisão
+   */
+  static async getPending(): Promise<MedicalCertificate[]> {
+    try {
+      const { data, error } = await supabase
+        .from('medical_certificates')
+        .select('*')
+        .eq('status', 'PENDING')
+        .order('submitted_date', { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map(this.mapSupabaseToCertificate);
+    } catch (error) {
+      logger.error('Erro ao buscar atestados pendentes', error as Error);
       return [];
     }
   }

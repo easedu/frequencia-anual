@@ -41,12 +41,15 @@ export class AbsenceService {
 
       if (error) throw error;
 
-      // 🔧 FIX: Retornar campos SUPABASE nativos (não converter para formato legado)
+      // 🔧 FIX: Retornar no formato esperado pelos componentes legados
       return (data || []).map((absence: any) => ({
+        id: absence.id,
         estudanteId: firebaseStudentId,
-        absence_date: absence.absence_date,  // ✅ Campo Supabase
-        is_justified: absence.is_justified,  // ✅ Campo Supabase
+        data: absence.absence_date,  // ✅ Mapear absence_date → data (para compatibilidade)
+        justified: absence.is_justified,  // ✅ Mapear is_justified → justified
         atestadoId: absence.medical_certificate_id || undefined,
+        suspensaoId: absence.suspension_id || undefined,
+        absenceDate: absence.absence_date,  // ✅ Manter também formato Supabase
       }));
     } catch (error) {
       logger.error('Erro ao buscar faltas do estudante', { firebaseStudentId }, error as Error);
