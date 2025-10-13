@@ -3,19 +3,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Home, LogOut, GraduationCap, Menu, X, User, Settings, Wifi, WifiOff, Shield, Trash2 } from "lucide-react";
+import { Home, LogOut, GraduationCap, Menu, X, User, Settings, Wifi, WifiOff } from "lucide-react";
 import { useServiceWorkerContext } from "@/components/shared/ServiceWorkerProvider";
 import { useAuth } from "@/components/layout/AuthProvider";
 
 export default function Header() {
     const router = useRouter();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
     const { isOnline, offlineStatus } = useServiceWorkerContext();
     const { signOut: authSignOut, user, userProfile } = useAuth();
-    const adminMenuRef = useRef<HTMLDivElement>(null);
-
-    const isAdmin = userProfile?.perfil === 'admin';
 
     const handleSignOut = async () => {
         await authSignOut();
@@ -24,22 +20,6 @@ export default function Header() {
     const toggleMobileMenu = () => {
         setIsMobileMenuOpen(!isMobileMenuOpen);
     };
-
-    // Fechar dropdown admin ao clicar fora
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
-                setIsAdminMenuOpen(false);
-            }
-        }
-
-        if (isAdminMenuOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-            return () => {
-                document.removeEventListener('mousedown', handleClickOutside);
-            };
-        }
-    }, [isAdminMenuOpen]);
 
     return (
         <header className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50 shadow-lg shadow-slate-900/5 sticky top-0 z-50">
@@ -94,42 +74,6 @@ export default function Header() {
                             <Home className="w-4 h-4" />
                             <span>Home</span>
                         </Link>
-
-                        {/* Menu Admin (apenas para admins) */}
-                        {isAdmin && (
-                            <>
-                                <div className="h-6 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
-
-                                <div className="relative" ref={adminMenuRef}>
-                                    <button
-                                        onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)}
-                                        className="flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-purple-50 dark:hover:bg-purple-900/20 text-slate-700 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400 transition-all duration-200 font-medium"
-                                    >
-                                        <Shield className="w-4 h-4" />
-                                        <span>Admin</span>
-                                    </button>
-
-                                    {/* Dropdown Admin */}
-                                    {isAdminMenuOpen && (
-                                        <div className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-2 z-50">
-                                            <Link
-                                                href="/admin/clean-atestados"
-                                                onClick={() => setIsAdminMenuOpen(false)}
-                                                className="flex items-center gap-3 px-4 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-slate-700 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400 transition-all duration-200"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                                <div>
-                                                    <div className="font-medium">Limpeza de Atestados</div>
-                                                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                                                        Remover duplicatas
-                                                    </div>
-                                                </div>
-                                            </Link>
-                                        </div>
-                                    )}
-                                </div>
-                            </>
-                        )}
 
                         <div className="h-6 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
 
@@ -214,29 +158,6 @@ export default function Header() {
                             <Home className="w-5 h-5" />
                             <span>Home</span>
                         </Link>
-
-                        {/* Menu Admin Mobile (apenas para admins) */}
-                        {isAdmin && (
-                            <>
-                                <div className="border-t border-slate-200 dark:border-slate-600 pt-2 mt-2"></div>
-                                <div className="px-2 py-1 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                    Administração
-                                </div>
-                                <Link
-                                    href="/admin/clean-atestados"
-                                    onClick={() => setIsMobileMenuOpen(false)}
-                                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-white dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400 transition-all duration-200 font-medium"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                    <div>
-                                        <div>Limpeza de Atestados</div>
-                                        <div className="text-xs text-slate-500 dark:text-slate-400">
-                                            Remover duplicatas
-                                        </div>
-                                    </div>
-                                </Link>
-                            </>
-                        )}
 
                         <div className="border-t border-slate-200 dark:border-slate-600 pt-2 mt-2">
                             <button
