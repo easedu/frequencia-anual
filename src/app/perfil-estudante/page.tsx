@@ -175,7 +175,15 @@ export default function StudentProfilePage() {
                     const verificationData = await getVerifiedNumber(cleanPhone);
 
                     if (verificationData) {
-                        verificationMap.set(cleanPhone, verificationData);
+                        // ✅ Mapear campos do Supabase para formato esperado pelo componente
+                        verificationMap.set(cleanPhone, {
+                            hasWhatsApp: verificationData.isVerified || verificationData.exists,
+                            verificationStatus: verificationData.isVerified ? 'verified' : 'error',
+                            isVerified: verificationData.isVerified,
+                            jid: verificationData.jid,
+                            name: verificationData.name,
+                            verifiedAt: verificationData.verifiedAt
+                        });
                     }
                 }
 

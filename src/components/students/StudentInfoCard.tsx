@@ -63,7 +63,19 @@ const StudentInfoCard = memo(function StudentInfoCard({
     // Helper function to check if number is verified
     const isNumberVerified = (phone: string): boolean => {
         const cleanPhone = phone.replace(/\D/g, '');
-        return verifiedWhatsAppNumbers.has(cleanPhone);
+
+        // ✅ Verificar primeiro no Set global
+        if (verifiedWhatsAppNumbers.has(cleanPhone)) {
+            return true;
+        }
+
+        // ✅ Fallback: verificar no contactVerificationData individual
+        const data = contactVerificationData.get(cleanPhone);
+        if (data && data.hasWhatsApp && data.verificationStatus !== 'unavailable' && data.verificationStatus !== 'error') {
+            return true;
+        }
+
+        return false;
     };
 
     // Helper function to get verification status
