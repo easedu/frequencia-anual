@@ -14,22 +14,44 @@
  * SCHEMA VERSION: V2 (Standardized - English + snake_case)
  */
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+let _supabaseInstance: SupabaseClient<Database> | null = null
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    '❌ Missing Supabase environment variables!\n' +
-    'Make sure to set:\n' +
-    '- NEXT_PUBLIC_SUPABASE_URL\n' +
-    '- NEXT_PUBLIC_SUPABASE_ANON_KEY\n' +
-    'in your .env.local file'
-  )
+/**
+ * Get Supabase client instance (lazy initialization)
+ *
+ * Only creates the client when first accessed, not at module import time.
+ * This prevents build errors when environment variables are not available.
+ */
+function getSupabaseClient(): SupabaseClient<Database> {
+  if (_supabaseInstance) {
+    return _supabaseInstance
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      '❌ Missing Supabase environment variables!\n' +
+      'Make sure to set:\n' +
+      '- NEXT_PUBLIC_SUPABASE_URL\n' +
+      '- NEXT_PUBLIC_SUPABASE_ANON_KEY\n' +
+      'in your Vercel environment variables'
+    )
+  }
+
+  _supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey)
+  return _supabaseInstance
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+// Export as a getter to maintain backwards compatibility
+export const supabase = new Proxy({} as SupabaseClient<Database>, {
+  get(_, prop) {
+    return (getSupabaseClient() as any)[prop]
+  }
+})
 
 // ═══════════════════════════════════════════════════════════
 // DATABASE TYPES (Schema V2 - Standardized)

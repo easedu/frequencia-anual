@@ -20,21 +20,44 @@
  * SCHEMA VERSION: V2 (Standardized - English + snake_case)
  */
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from './supabaseClient'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+let _supabaseAdminInstance: SupabaseClient<Database> | null = null
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error(
-    '❌ Missing Supabase service role key!\n' +
-    'Make sure to set:\n' +
-    '- NEXT_PUBLIC_SUPABASE_URL\n' +
-    '- SUPABASE_SERVICE_ROLE_KEY\n' +
-    'in your .env.local file\n\n' +
-    '⚠️ IMPORTANT: Never expose SUPABASE_SERVICE_ROLE_KEY in client-side code!'
-  )
+/**
+ * Get Supabase admin client instance (lazy initialization)
+ *
+ * Only creates the client when first accessed, not at module import time.
+ * This prevents build errors when environment variables are not available.
+ */
+function getSupabaseAdminClient(): SupabaseClient<Database> {
+  if (_supabaseAdminInstance) {
+    return _supabaseAdminInstance
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error(
+      '❌ Missing Supabase service role key!\n' +
+      'Make sure to set:\n' +
+      '- NEXT_PUBLIC_SUPABASE_URL\n' +
+      '- SUPABASE_SERVICE_ROLE_KEY\n' +
+      'in your Vercel environment variables\n\n' +
+      '⚠️ IMPORTANT: Never expose SUPABASE_SERVICE_ROLE_KEY in client-side code!'
+    )
+  }
+
+  _supabaseAdminInstance = createClient<Database>(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
+
+  return _supabaseAdminInstance
 }
 
 /**
@@ -47,10 +70,9 @@ if (!supabaseUrl || !supabaseServiceKey) {
  *
  * Use with caution!
  */
-export const supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+export const supabaseAdmin = new Proxy({} as SupabaseClient<Database>, {
+  get(_, prop) {
+    return (getSupabaseAdminClient() as any)[prop]
   }
 })
 
