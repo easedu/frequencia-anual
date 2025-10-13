@@ -17,8 +17,6 @@ interface SupabaseInteraction {
   description: string;
   created_by: string;
   is_sensitive: boolean;
-  whatsapp_message?: string;
-  whatsapp_phones?: string[];
   created_at?: string;
 }
 
@@ -35,8 +33,6 @@ export class InteractionService {
       description: record.description,
       createdBy: record.created_by,
       sensitive: record.is_sensitive,
-      whatsappMessage: record.whatsapp_message,
-      whatsappPhones: record.whatsapp_phones,
     };
   }
 
@@ -51,8 +47,6 @@ export class InteractionService {
       description: interaction.description,
       created_by: interaction.createdBy,
       is_sensitive: interaction.sensitive,
-      whatsapp_message: interaction.whatsappMessage,
-      whatsapp_phones: interaction.whatsappPhones,
     };
   }
 
@@ -62,23 +56,23 @@ export class InteractionService {
   static async getInteractionById(firebaseStudentId: string, interactionId: string): Promise<FamilyInteraction | null> {
     try {
       // 🔧 FIX: Buscar ID interno do Supabase a partir do Firebase UUID
-      const { data: student, error: studentError } = await supabase
+      const { data: student, error: studentError } = await (supabase
         .from('students')
         .select('id')
         .eq('student_id', firebaseStudentId)
-        .single();
+        .single() as any);
 
       if (studentError || !student) {
         logger.error('Estudante não encontrado', { firebaseStudentId }, studentError as Error);
         return null;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from('family_interactions')
         .select('*')
         .eq('id', interactionId)
-        .eq('student_id', student.id)  // ✅ Usar ID interno do Supabase
-        .single();
+        .eq('student_id', (student as any).id)  // ✅ Usar ID interno do Supabase
+        .single() as any);
 
       if (error) {
         if (error.code === 'PGRST116') return null; // Not found
@@ -98,11 +92,11 @@ export class InteractionService {
   static async getStudentInteractions(firebaseStudentId: string): Promise<FamilyInteraction[]> {
     try {
       // 🔧 FIX: Buscar ID interno do Supabase a partir do Firebase UUID
-      const { data: student, error: studentError } = await supabase
+      const { data: student, error: studentError } = await (supabase
         .from('students')
         .select('id')
         .eq('student_id', firebaseStudentId)
-        .single();
+        .single() as any);
 
       if (studentError || !student) {
         logger.error('Estudante não encontrado', { firebaseStudentId }, studentError as Error);
@@ -112,7 +106,7 @@ export class InteractionService {
       const { data, error } = await supabase
         .from('family_interactions')
         .select('*')
-        .eq('student_id', student.id)  // ✅ Usar ID interno do Supabase
+        .eq('student_id', (student as any).id)  // ✅ Usar ID interno do Supabase
         .order('interaction_date', { ascending: false });
 
       if (error) throw error;
@@ -139,11 +133,11 @@ export class InteractionService {
   ): Promise<FamilyInteraction> {
     try {
       // 🔧 FIX: Buscar ID interno do Supabase a partir do Firebase UUID
-      const { data: student, error: studentError } = await supabase
+      const { data: student, error: studentError } = await (supabase
         .from('students')
         .select('id')
         .eq('student_id', firebaseStudentId)
-        .single();
+        .single() as any);
 
       if (studentError || !student) {
         throw new Error(`Estudante não encontrado: ${firebaseStudentId}`);
@@ -152,7 +146,7 @@ export class InteractionService {
       // Substituir o Firebase UUID pelo ID interno do Supabase
       const insertData = {
         ...this.mapInteractionToSupabase(interaction),
-        student_id: student.id  // ✅ Usar ID interno do Supabase
+        student_id: (student as any).id  // ✅ Usar ID interno do Supabase
       };
 
       const { data, error } = await ((supabase
@@ -186,8 +180,6 @@ export class InteractionService {
       if (updates.description !== undefined) updateData.description = updates.description;
       if (updates.createdBy !== undefined) updateData.created_by = updates.createdBy;
       if (updates.sensitive !== undefined) updateData.is_sensitive = updates.sensitive;
-      if (updates.whatsappMessage !== undefined) updateData.whatsapp_message = updates.whatsappMessage;
-      if (updates.whatsappPhones !== undefined) updateData.whatsapp_phones = updates.whatsappPhones;
 
       const { error } = await ((supabase
         .from('family_interactions') as any)

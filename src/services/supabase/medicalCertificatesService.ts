@@ -147,7 +147,7 @@ export class MedicalCertificatesService {
           logger.warn('Erro ao buscar ID interno do estudante', { studentId }, studentError);
         } else if (studentData) {
           // Encontrou o ID interno, buscar atestados novamente
-          const internalId = studentData.id;
+          const internalId = (studentData as any).id;
           logger.debug('ID interno encontrado, buscando atestados...', { studentId, internalId });
 
           const result = await supabase
@@ -215,11 +215,11 @@ export class MedicalCertificatesService {
       if (!studentCheck) {
         logger.debug('ID direto não encontrado, tentando buscar por student_id externo...', { studentId: data.studentId });
 
-        const { data: externalStudent, error: externalError } = await supabase
+        const { data: externalStudent, error: externalError } = await (supabase
           .from('students')
           .select('id, student_id')
           .eq('student_id', data.studentId)
-          .maybeSingle();
+          .maybeSingle() as any);
 
         if (externalError) {
           throw new Error(`Erro ao buscar estudante: ${externalError.message}`);
@@ -229,7 +229,7 @@ export class MedicalCertificatesService {
           throw new Error(`Estudante não encontrado com ID: ${data.studentId}`);
         }
 
-        internalStudentId = externalStudent.id;
+        internalStudentId = (externalStudent as any).id;
         logger.debug('ID interno resolvido', { externalId: data.studentId, internalId: internalStudentId });
       }
 

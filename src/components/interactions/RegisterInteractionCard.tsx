@@ -114,23 +114,10 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
             setInteractionDate(editingInteraction.date);
             setInteractionDescription(editingInteraction.description);
             setInteractionSensitive(editingInteraction.sensitive || false);
-
-            // Carregar dados WhatsApp se existir (para exibição read-only)
-            if (editingInteraction.type === "Contato digital") {
-                // Carregar mensagem
-                if (editingInteraction.whatsappMessage) {
-                    onWhatsAppMessageChange(editingInteraction.whatsappMessage);
-                }
-
-                // Carregar telefones selecionados
-                if (editingInteraction.whatsappPhones && editingInteraction.whatsappPhones.length > 0) {
-                    onWhatsAppPhonesChange(new Set(editingInteraction.whatsappPhones));
-                }
-            }
         }
         // Não limpar campos se editingInteraction for null/undefined
         // Isso permite que o componente seja usado em modais sem resetar
-    }, [editingInteraction, setInteractionType, setInteractionDate, setInteractionDescription, setInteractionSensitive, onWhatsAppMessageChange, onWhatsAppPhonesChange]);
+    }, [editingInteraction, setInteractionType, setInteractionDate, setInteractionDescription, setInteractionSensitive]);
 
     const handleSensitiveChange = (checked: boolean | string) => {
         const isChecked = typeof checked === "boolean" ? checked : checked === "true";

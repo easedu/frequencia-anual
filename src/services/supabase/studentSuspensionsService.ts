@@ -172,7 +172,7 @@ export class StudentSuspensionsService {
           logger.warn('Erro ao buscar ID interno do estudante', { studentId }, studentError);
         } else if (studentData) {
           // Encontrou o ID interno, buscar suspensões novamente
-          const internalId = studentData.id;
+          const internalId = (studentData as any).id;
           logger.debug('ID interno encontrado, buscando suspensões...', { studentId, internalId });
 
           const result = await supabase

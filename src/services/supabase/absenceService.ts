@@ -292,11 +292,11 @@ export class AbsenceService {
   static async addAbsence(record: Omit<AbsenceRecord, 'id'>): Promise<void> {
     try {
       // 🔧 FIX: Buscar o ID interno do Supabase a partir do student_id do Firebase
-      const { data: student, error: studentError } = await supabase
+      const { data: student, error: studentError } = await (supabase
         .from('students')
         .select('id')
         .eq('student_id', record.estudanteId)
-        .single();
+        .single() as any);
 
       if (studentError || !student) {
         throw new Error(`Estudante não encontrado: ${record.estudanteId}`);
@@ -307,6 +307,7 @@ export class AbsenceService {
         absence_date: record.data || '',
         is_justified: record.justified ?? false,
         medical_certificate_id: record.atestadoId || null,
+        suspension_id: record.suspensaoId || null,
         bimester: null, // Será calculado via trigger ou view
       };
 
@@ -331,16 +332,16 @@ export class AbsenceService {
       // 🔧 FIX: Buscar IDs internos do Supabase para todos os estudantes
       const firebaseStudentIds = [...new Set(records.map(r => r.estudanteId))];
 
-      const { data: students, error: studentsError } = await supabase
+      const { data: students, error: studentsError } = await (supabase
         .from('students')
         .select('id, student_id')
-        .in('student_id', firebaseStudentIds);
+        .in('student_id', firebaseStudentIds) as any);
 
       if (studentsError) throw studentsError;
 
       // Criar mapa de Firebase UUID → Supabase ID
       const idMap = new Map<string, string>();
-      students?.forEach(s => idMap.set(s.student_id, s.id));
+      (students as any[])?.forEach((s: any) => idMap.set(s.student_id, s.id));
 
       const absencesInsert: StudentAbsenceInsert[] = records.map(record => {
         const supabaseId = idMap.get(record.estudanteId);
@@ -353,6 +354,7 @@ export class AbsenceService {
           absence_date: record.data || '',
           is_justified: record.justified ?? false,
           medical_certificate_id: record.atestadoId || null,
+          suspension_id: record.suspensaoId || null,
           bimester: null,
         };
       });
@@ -377,11 +379,11 @@ export class AbsenceService {
   static async deleteAbsence(studentId: string, absenceDate: string): Promise<void> {
     try {
       // 🔧 FIX: Buscar o ID interno do Supabase a partir do student_id do Firebase
-      const { data: student, error: studentError } = await supabase
+      const { data: student, error: studentError } = await (supabase
         .from('students')
         .select('id')
         .eq('student_id', studentId)
-        .single();
+        .single() as any);
 
       if (studentError || !student) {
         throw new Error(`Estudante não encontrado: ${studentId}`);
@@ -390,7 +392,7 @@ export class AbsenceService {
       const { error } = await supabase
         .from('student_absences')
         .delete()
-        .eq('student_id', student.id) // ✅ Usar ID interno do Supabase
+        .eq('student_id', (student as any).id) // ✅ Usar ID interno do Supabase
         .eq('absence_date', absenceDate);
 
       if (error) throw error;

@@ -125,6 +125,7 @@ export type Database = {
           bimester: string | null
           is_justified: boolean
           medical_certificate_id: string | null
+          suspension_id: string | null
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['student_absences']['Row'], 'id' | 'created_at'>
@@ -157,17 +158,26 @@ export type Database = {
           id: string
           student_id: string
           start_date: string
-          end_date: string | null
-          days_covered: number | null
-          reason: string | null
+          end_date: string
+          days_covered: number
           cid_code: string | null
+          diagnosis: string | null
           doctor_name: string | null
-          file_url: string | null
-          file_name: string | null
+          doctor_crm: string | null
+          document_url: string | null
+          document_type: string | null
+          submitted_date: string
+          submitted_by: string
+          status: 'PENDING' | 'APPROVED' | 'REJECTED'
+          reviewed_by: string | null
+          reviewed_at: string | null
+          review_notes: string | null
+          created_by: string
+          updated_by: string | null
           created_at: string
           updated_at: string
         }
-        Insert: Omit<Database['public']['Tables']['medical_certificates']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Insert: Omit<Database['public']['Tables']['medical_certificates']['Row'], 'id' | 'days_covered' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['medical_certificates']['Insert']>
       }
 
@@ -263,6 +273,38 @@ export type Database = {
         }
         Insert: Omit<Database['public']['Tables']['automation_executions']['Row'], 'id' | 'executed_at'>
         Update: Partial<Database['public']['Tables']['automation_executions']['Insert']>
+      }
+
+      // ──────────────────────────────────────────────────────
+      // student_suspensions (suspensões escolares)
+      // ──────────────────────────────────────────────────────
+      student_suspensions: {
+        Row: {
+          id: string
+          student_id: string
+          start_date: string
+          end_date: string
+          days_suspended: number
+          reason: string
+          description: string | null
+          severity: 'LEVE' | 'MODERADA' | 'GRAVE' | null
+          decision_by: string
+          decision_date: string
+          document_number: string | null
+          family_notified: boolean
+          notification_date: string | null
+          notification_method: string | null
+          parent_signature: boolean
+          follow_up_notes: string | null
+          reintegration_date: string | null
+          reintegration_status: string | null
+          created_by: string
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['student_suspensions']['Row'], 'id' | 'days_suspended' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['student_suspensions']['Insert']>
       }
     }
 

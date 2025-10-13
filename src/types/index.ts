@@ -147,8 +147,6 @@ export interface FamilyInteraction {
   description: string;
   createdBy: string;
   sensitive: boolean;
-  whatsappMessage?: string; // Mensagem enviada via WhatsApp (obrigatório para type "Contato digital")
-  whatsappPhones?: string[]; // Telefones que receberam a mensagem WhatsApp (para type "Contato digital")
 }
 
 export interface Occurrence {
