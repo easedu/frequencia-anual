@@ -106,13 +106,12 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Converter para formato Supabase
+   * Converter para formato Supabase (sem student_id, que é resolvido no create)
    */
   private static mapCertificateToSupabase(
     data: CreateMedicalCertificateData
-  ): Partial<SupabaseMedicalCertificate> {
+  ): Omit<Partial<SupabaseMedicalCertificate>, 'student_id'> {
     return {
-      student_id: data.studentId,
       start_date: data.startDate,
       end_date: data.endDate,
       diagnosis: data.diagnosis || null,
@@ -207,11 +206,51 @@ export class MedicalCertificatesService {
 
   /**
    * Criar novo atestado
+   *
+   * IMPORTANTE: studentId pode ser UUID externo (student.student_id) ou interno (student.id).
+   * Este método resolve automaticamente para o ID interno necessário pela FK.
    */
   static async create(data: CreateMedicalCertificateData): Promise<MedicalCertificate | null> {
     try {
-      const supabaseData = this.mapCertificateToSupabase(data);
+      // 1. Resolver studentId para ID interno
+      let internalStudentId = data.studentId;
 
+      // Tentar primeiro assumindo que é o ID interno (mais rápido)
+      const { data: studentCheck, error: checkError } = await supabase
+        .from('students')
+        .select('id, student_id')
+        .eq('id', data.studentId)
+        .maybeSingle();
+
+      // Se não encontrou, pode ser UUID externo
+      if (!studentCheck) {
+        logger.debug('ID direto não encontrado, tentando buscar por student_id externo...', { studentId: data.studentId });
+
+        const { data: externalStudent, error: externalError } = await supabase
+          .from('students')
+          .select('id, student_id')
+          .eq('student_id', data.studentId)
+          .maybeSingle();
+
+        if (externalError) {
+          throw new Error(`Erro ao buscar estudante: ${externalError.message}`);
+        }
+
+        if (!externalStudent) {
+          throw new Error(`Estudante não encontrado com ID: ${data.studentId}`);
+        }
+
+        internalStudentId = externalStudent.id;
+        logger.debug('ID interno resolvido', { externalId: data.studentId, internalId: internalStudentId });
+      }
+
+      // 2. Criar payload com ID interno correto
+      const supabaseData = {
+        ...this.mapCertificateToSupabase(data),
+        student_id: internalStudentId, // ✅ Sempre usa ID interno
+      };
+
+      // 3. Inserir no Supabase
       const { data: result, error } = await (supabase
         .from('medical_certificates') as any)
         .insert(supabaseData)
@@ -221,7 +260,8 @@ export class MedicalCertificatesService {
       if (error) throw error;
 
       logger.info('Atestado criado no Supabase', {
-        studentId: data.studentId,
+        externalStudentId: data.studentId,
+        internalStudentId,
         startDate: data.startDate,
         endDate: data.endDate,
       });
