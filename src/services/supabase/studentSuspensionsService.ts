@@ -7,6 +7,7 @@
 
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
+import { resolveToInternalId } from '@/utils/studentIdResolver';
 
 export type SuspensionSeverity = 'LEVE' | 'MODERADA' | 'GRAVE';
 
@@ -142,49 +143,25 @@ export class StudentSuspensionsService {
   /**
    * Buscar suspensões de um estudante
    *
-   * IMPORTANTE: studentId pode ser:
-   * 1. UUID externo (student.student_id do Firebase) - MAIS COMUM
-   * 2. UUID interno (student.id do Supabase) - MENOS COMUM
-   *
-   * O método tenta ambos para garantir compatibilidade.
+   * @param studentId - Firebase UUID (student.student_id)
+   * @returns Array de suspensões
    */
   static async getByStudentId(studentId: string): Promise<StudentSuspension[]> {
     try {
-      // Primeiro, tentar buscar diretamente (caso seja o ID interno)
-      let { data, error } = await supabase
+      // Resolver Firebase UUID → Internal ID (com cache)
+      const internalId = await resolveToInternalId(studentId);
+
+      if (!internalId) {
+        logger.warn('Estudante não encontrado', { studentId });
+        return [];
+      }
+
+      // Buscar suspensões com Internal ID
+      const { data, error } = await supabase
         .from('student_suspensions')
         .select('*')
-        .eq('student_id', studentId)
+        .eq('student_id', internalId)
         .order('start_date', { ascending: false });
-
-      // Se não encontrou, pode ser que studentId seja o UUID externo (student.student_id)
-      // Nesse caso, precisamos buscar o ID interno primeiro
-      if (!error && (!data || data.length === 0)) {
-        logger.debug('Nenhuma suspensão encontrada com ID direto, tentando buscar ID interno...', { studentId });
-
-        const { data: studentData, error: studentError } = await supabase
-          .from('students')
-          .select('id')
-          .eq('student_id', studentId)
-          .maybeSingle();
-
-        if (studentError) {
-          logger.warn('Erro ao buscar ID interno do estudante', { studentId }, studentError);
-        } else if (studentData) {
-          // Encontrou o ID interno, buscar suspensões novamente
-          const internalId = (studentData as any).id;
-          logger.debug('ID interno encontrado, buscando suspensões...', { studentId, internalId });
-
-          const result = await supabase
-            .from('student_suspensions')
-            .select('*')
-            .eq('student_id', internalId)
-            .order('start_date', { ascending: false });
-
-          data = result.data;
-          error = result.error;
-        }
-      }
 
       if (error) throw error;
 
@@ -220,10 +197,24 @@ export class StudentSuspensionsService {
 
   /**
    * Criar nova suspensão
+   *
+   * @param data - Dados da suspensão (studentId é Firebase UUID)
+   * @returns Suspensão criada ou null se houver erro
    */
   static async create(data: CreateSuspensionData): Promise<StudentSuspension | null> {
     try {
-      const supabaseData = this.mapSuspensionToSupabase(data);
+      // Resolver Firebase UUID → Internal ID (com cache)
+      const internalStudentId = await resolveToInternalId(data.studentId);
+
+      if (!internalStudentId) {
+        throw new Error(`Estudante não encontrado no Supabase: ${data.studentId}`);
+      }
+
+      // Substituir o Firebase UUID pelo ID interno do Supabase
+      const supabaseData = {
+        ...this.mapSuspensionToSupabase(data),
+        student_id: internalStudentId, // ✅ Usar ID interno do Supabase
+      };
 
       const { data: result, error } = await (supabase
         .from('student_suspensions') as any)
@@ -232,12 +223,6 @@ export class StudentSuspensionsService {
         .single();
 
       if (error) throw error;
-
-      logger.info('Suspensão criada no Supabase', {
-        studentId: data.studentId,
-        startDate: data.startDate,
-        endDate: data.endDate,
-      });
 
       return this.mapSupabaseToSuspension(result);
     } catch (error) {

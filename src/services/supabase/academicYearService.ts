@@ -554,8 +554,6 @@ export class AcademicYearService {
       }
 
       // 3. SINCRONIZAR com tabela absence_control (usada por 4 páginas)
-      logger.info('🔄 Sincronizando absence_control...');
-
       for (let i = 0; i < bimesterKeys.length; i++) {
         const bimesterKey = bimesterKeys[i];
         const bimesterData = bimestersData[bimesterKey];
@@ -585,8 +583,6 @@ export class AcademicYearService {
           // Não lançar erro - absence_control é secundário
         }
       }
-
-      logger.info(`✅ Ano letivo ${year} salvo e sincronizado com sucesso no Supabase`);
     } catch (error) {
       logger.error(`Erro ao salvar ano letivo ${year}`, error as Error);
       throw error;
@@ -608,8 +604,6 @@ export class AcademicYearService {
       const bimesters = await this.getBimesters(year);
       const result: any = {};
 
-      logger.info(`🔍 getAcademicYearComplete(${year}): ${bimesters.length} bimestres encontrados`);
-
       const bimesterKeys = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
 
       for (const bimester of bimesters) {
@@ -625,7 +619,6 @@ export class AcademicYearService {
         if (error) throw error;
 
         const checkedDays = (schoolDays || []).filter((d: any) => d.is_checked);
-        logger.info(`   ${bimesterKey}: ${checkedDays.length} dias letivos (de ${schoolDays?.length || 0} datas)`);
 
         result[bimesterKey] = {
           startDate: this.convertFromISO(bimester.start_date),
@@ -640,8 +633,6 @@ export class AcademicYearService {
       const totalSchoolDays = Object.values(result).reduce((sum: number, bim: any) => {
         return sum + bim.dates.filter((d: any) => d.isChecked).length;
       }, 0);
-
-      logger.info(`✅ getAcademicYearComplete retornando ${Object.keys(result).length} bimestres, ${totalSchoolDays} dias letivos`);
 
       return result;
     } catch (error) {

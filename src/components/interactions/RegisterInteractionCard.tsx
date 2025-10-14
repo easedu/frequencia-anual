@@ -111,13 +111,54 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
     useEffect(() => {
         if (editingInteraction) {
             setInteractionType(editingInteraction.type);
-            setInteractionDate(editingInteraction.date);
-            setInteractionDescription(editingInteraction.description);
+
+            // Formatar data de YYYY-MM-DD para DD/MM/YYYY
+            const formattedDate = editingInteraction.date.includes('-')
+                ? editingInteraction.date.split('-').reverse().join('/')
+                : editingInteraction.date;
+            setInteractionDate(formattedDate);
+
             setInteractionSensitive(editingInteraction.sensitive || false);
+
+            // Para "Contato digital", usar campos whatsappMessage e whatsappPhones do banco
+            if (editingInteraction.type === "Contato digital") {
+                // Se tem whatsappMessage salvo no banco, usar ele (NOVO)
+                if (editingInteraction.whatsappMessage) {
+                    console.log('✅ Usando whatsappMessage do banco:', editingInteraction.whatsappMessage);
+                    onWhatsAppMessageChange(editingInteraction.whatsappMessage);
+                    setInteractionDescription(editingInteraction.description);
+
+                    // Carregar telefones salvos
+                    if (editingInteraction.whatsappPhones && editingInteraction.whatsappPhones.length > 0) {
+                        onWhatsAppPhonesChange(new Set(editingInteraction.whatsappPhones));
+                    }
+                } else {
+                    // FALLBACK: Tentar extrair da descrição (dados antigos)
+                    const match = editingInteraction.description.match(/Mensagem enviada via WhatsApp para: .+ - (\d+)\n\n([\s\S]*)/);
+
+                    console.log('⚠️ whatsappMessage não encontrado, tentando extrair da descrição');
+
+                    if (match) {
+                        const phoneNumber = match[1];
+                        const extractedMessage = match[2];
+
+                        onWhatsAppPhonesChange(new Set([phoneNumber]));
+                        onWhatsAppMessageChange(extractedMessage);
+                        setInteractionDescription(extractedMessage);
+                    } else {
+                        // Último recurso: usar descrição completa
+                        console.warn('⚠️ Não foi possível extrair mensagem, usando descrição completa');
+                        setInteractionDescription(editingInteraction.description);
+                        onWhatsAppMessageChange(editingInteraction.description);
+                    }
+                }
+            } else {
+                setInteractionDescription(editingInteraction.description);
+            }
         }
         // Não limpar campos se editingInteraction for null/undefined
         // Isso permite que o componente seja usado em modais sem resetar
-    }, [editingInteraction, setInteractionType, setInteractionDate, setInteractionDescription, setInteractionSensitive]);
+    }, [editingInteraction, setInteractionType, setInteractionDate, setInteractionDescription, setInteractionSensitive, onWhatsAppPhonesChange, onWhatsAppMessageChange]);
 
     const handleSensitiveChange = (checked: boolean | string) => {
         const isChecked = typeof checked === "boolean" ? checked : checked === "true";
@@ -130,6 +171,9 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
         setInteractionDate(new Date().toLocaleDateString("pt-BR"));
         setInteractionDescription("");
         setInteractionSensitive(false);
+        // Limpar campos WhatsApp
+        onWhatsAppPhonesChange(new Set());
+        onWhatsAppMessageChange("");
     };
 
     // Usar tipos permitidos se fornecidos, senão usar lista completa
@@ -232,6 +276,7 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
                             verifiedNumbers={verifiedWhatsAppNumbers}
                             contactVerificationData={contactVerificationData}
                             readonly={!!editingInteraction}
+                            singleSelection={true}
                         />
                     )}
 
@@ -338,16 +383,14 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
                             )}
                         </Button>
 
-                        {editingInteraction && (
-                            <Button
-                                variant="outline"
-                                onClick={handleCancel}
-                                className="flex-1 sm:flex-initial border-gray-300 hover:bg-gray-50 transition-colors duration-200 flex items-center justify-center space-x-1.5 h-8 text-sm"
-                            >
-                                <X className="w-3.5 h-3.5" />
-                                <span>Cancelar</span>
-                            </Button>
-                        )}
+                        <Button
+                            variant="outline"
+                            onClick={handleCancel}
+                            className="flex-1 sm:flex-initial border-gray-300 hover:bg-gray-50 transition-colors duration-200 flex items-center justify-center space-x-1.5 h-8 text-sm"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                            <span>{editingInteraction ? "Cancelar" : "Limpar"}</span>
+                        </Button>
                     </div>
                 </div>
             </CardContent>

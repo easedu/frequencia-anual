@@ -120,10 +120,10 @@ node scripts/migrate-absence-control-from-backup.mjs
 
 **Resultado esperado:**
 ```
-📅 1º Bimestre: 54 dias letivos (de 85 datas)
-📅 2º Bimestre: 42 dias letivos (de 64 datas)
-📅 3º Bimestre: 52 dias letivos (de 72 datas)
-📅 4º Bimestre: 52 dias letivos (de 80 datas)
+📅 1º Bimestre: 54 dia letivos (de 85 datas)
+📅 2º Bimestre: 42 dia letivos (de 64 datas)
+📅 3º Bimestre: 52 dia letivos (de 72 datas)
+📅 4º Bimestre: 52 dia letivos (de 80 datas)
 
 Total: 200 dias letivos no ano 2025
 ```

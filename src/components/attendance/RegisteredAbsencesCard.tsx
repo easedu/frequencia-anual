@@ -58,7 +58,10 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
     const filteredAbsences = absences.filter((absence) => {
         return absence.data && getBimesterByDate(absence.data, bimesterDates) === bimester;
     });
-    const justifiedCount = filteredAbsences.filter(absence => absence.justified).length;
+    // Contar justificadas (atestado OU suspensão)
+    const justifiedCount = filteredAbsences.filter(absence =>
+        absence.justified || absence.suspensaoId
+    ).length;
     const unjustifiedCount = filteredAbsences.length - justifiedCount;
 
     const getBimesterColor = (bimester: number) => {
@@ -152,7 +155,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                 return;
             }
 
-            if (absence?.suspensaoId) {
+            if (absence?.suspensaoId || (absence as any)?.suspension_id) {
                 toast.error("Não é possível deletar faltas justificadas por suspensão. Delete a suspensão ao invés disso.");
                 setIsDeleting(false);
                 setShowDeleteDialog(null);
@@ -263,17 +266,33 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                             <p className="text-sm">Nenhuma falta registrada</p>
                         </div>
                     ) : (
-                        filteredAbsences.map((absence, index) => (
-                            <TooltipProvider key={index}>
-                                <Tooltip>
-                                    <div className={`group relative bg-white rounded-lg border-2 p-3 transition-all duration-200 hover:shadow-md ${absence.justified
-                                        ? 'border-green-200 hover:border-green-300 bg-green-50'
-                                        : 'border-red-200 hover:border-red-300 bg-red-50'
-                                        }`}>
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center space-x-3">
-                                                <div className={`w-3 h-3 rounded-full ${absence.justified ? 'bg-green-500' : 'bg-red-500'
-                                                    }`} />
+                        filteredAbsences.map((absence, index) => {
+                            // Determinar cor baseado no tipo de justificativa
+                            const isJustifiedByAtestado = absence.justified && absence.atestadoId;
+                            const isJustifiedBySuspensao = absence.suspensaoId;
+                            const isUnjustified = !absence.justified && !absence.suspensaoId;
+
+                            let borderColor = 'border-red-200 hover:border-red-300';
+                            let bgColor = 'bg-red-50';
+                            let dotColor = 'bg-red-500';
+
+                            if (isJustifiedByAtestado) {
+                                borderColor = 'border-green-200 hover:border-green-300';
+                                bgColor = 'bg-green-50';
+                                dotColor = 'bg-green-500';
+                            } else if (isJustifiedBySuspensao) {
+                                borderColor = 'border-orange-200 hover:border-orange-300';
+                                bgColor = 'bg-orange-50';
+                                dotColor = 'bg-orange-500';
+                            }
+
+                            return (
+                                <TooltipProvider key={index}>
+                                    <Tooltip>
+                                        <div className={`group relative bg-white rounded-lg border-2 p-3 transition-all duration-200 hover:shadow-md ${borderColor} ${bgColor}`}>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className={`w-3 h-3 rounded-full ${dotColor}`} />
                                                 <div>
                                                     <p className="font-medium text-gray-900 text-sm">
                                                         {absence.data ? formatDate(absence.data) : '-'}
@@ -291,7 +310,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                     </TooltipTrigger>
                                                 )}
 
-                                                {!absence.justified && absence.suspensaoId && (
+                                                {absence.suspensaoId && (
                                                     <TooltipTrigger asChild>
                                                         <Badge variant="secondary" className="bg-orange-100 text-orange-800 hover:bg-orange-200 cursor-pointer">
                                                             <AlertCircle className="w-3 h-3 mr-1" />
@@ -359,7 +378,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                         </TooltipContent>
                                     )}
 
-                                    {!absence.justified && absence.suspensaoId && (
+                                    {absence.suspensaoId && (
                                         <TooltipContent className="p-4 max-w-[300px] bg-white border shadow-xl">
                                             <div className="space-y-2">
                                                 <div className="flex items-center space-x-2 text-orange-600 font-medium">
@@ -404,7 +423,8 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                     )}
                                 </Tooltip>
                             </TooltipProvider>
-                        ))
+                        );
+                        })
                     )}
                 </div>
             </div>
@@ -476,7 +496,10 @@ const RegisteredAbsencesCard = memo(function RegisteredAbsencesCard({
     selectedStudentId
 }: RegisteredAbsencesCardProps) {
     const totalAbsences = absences.length;
-    const justifiedAbsences = absences.filter(absence => absence.justified).length;
+    // Contar justificadas (atestado OU suspensão)
+    const justifiedAbsences = absences.filter(absence =>
+        absence.justified || absence.suspensaoId
+    ).length;
     const unjustifiedAbsences = totalAbsences - justifiedAbsences;
 
     return (

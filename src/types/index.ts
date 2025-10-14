@@ -147,6 +147,8 @@ export interface FamilyInteraction {
   description: string;
   createdBy: string;
   sensitive: boolean;
+  whatsappMessage?: string; // Mensagem WhatsApp original (para tipo "Contato digital")
+  whatsappPhones?: string[]; // Telefones dos contatos WhatsApp
 }
 
 export interface Occurrence {

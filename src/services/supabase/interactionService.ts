@@ -17,6 +17,8 @@ interface SupabaseInteraction {
   description: string;
   created_by: string;
   is_sensitive: boolean;
+  whatsapp_message?: string; // Mensagem WhatsApp original
+  whatsapp_phones?: string[]; // Telefones WhatsApp (array JSONB)
   created_at?: string;
 }
 
@@ -33,6 +35,8 @@ export class InteractionService {
       description: record.description,
       createdBy: record.created_by,
       sensitive: record.is_sensitive,
+      whatsappMessage: record.whatsapp_message,
+      whatsappPhones: record.whatsapp_phones,
     };
   }
 
@@ -47,6 +51,8 @@ export class InteractionService {
       description: interaction.description,
       created_by: interaction.createdBy,
       is_sensitive: interaction.sensitive,
+      whatsapp_message: interaction.whatsappMessage,
+      whatsapp_phones: interaction.whatsappPhones,
     };
   }
 

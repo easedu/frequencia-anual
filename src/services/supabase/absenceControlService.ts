@@ -196,12 +196,6 @@ export class AbsenceControlService {
 
       if (error) throw error;
 
-      logger.info('Dias letivos atualizados no Supabase', {
-        year,
-        bimester,
-        schoolDays,
-      });
-
       return true;
     } catch (error) {
       logger.error(
@@ -225,11 +219,6 @@ export class AbsenceControlService {
         .eq('bimester', bimester);
 
       if (error) throw error;
-
-      logger.info('Controle de faltas deletado do Supabase', {
-        year,
-        bimester,
-      });
 
       return true;
     } catch (error) {

@@ -9,6 +9,7 @@
 
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
+import { resolveToInternalId } from '@/utils/studentIdResolver';
 
 /**
  * Interface do atestado (Supabase) - Sincronizada com schema real
@@ -117,49 +118,25 @@ export class MedicalCertificatesService {
   /**
    * Buscar atestados de um estudante
    *
-   * IMPORTANTE: studentId pode ser:
-   * 1. UUID externo (student.student_id do Firebase) - MAIS COMUM
-   * 2. UUID interno (student.id do Supabase) - MENOS COMUM
-   *
-   * O método tenta ambos para garantir compatibilidade.
+   * @param studentId - Firebase UUID (student.student_id)
+   * @returns Array de atestados médicos
    */
   static async getByStudentId(studentId: string): Promise<MedicalCertificate[]> {
     try {
-      // Primeiro, tentar buscar diretamente (caso seja o ID interno)
-      let { data, error } = await supabase
+      // Resolver Firebase UUID → Internal ID (com cache)
+      const internalId = await resolveToInternalId(studentId);
+
+      if (!internalId) {
+        logger.warn('Estudante não encontrado', { studentId });
+        return [];
+      }
+
+      // Buscar atestados com Internal ID
+      const { data, error } = await supabase
         .from('medical_certificates')
         .select('*')
-        .eq('student_id', studentId)
+        .eq('student_id', internalId)
         .order('start_date', { ascending: false });
-
-      // Se não encontrou, pode ser que studentId seja o UUID externo (student.student_id)
-      // Nesse caso, precisamos buscar o ID interno primeiro
-      if (!error && (!data || data.length === 0)) {
-        logger.debug('Nenhum atestado encontrado com ID direto, tentando buscar ID interno...', { studentId });
-
-        const { data: studentData, error: studentError } = await supabase
-          .from('students')
-          .select('id')
-          .eq('student_id', studentId)
-          .maybeSingle();
-
-        if (studentError) {
-          logger.warn('Erro ao buscar ID interno do estudante', { studentId }, studentError);
-        } else if (studentData) {
-          // Encontrou o ID interno, buscar atestados novamente
-          const internalId = (studentData as any).id;
-          logger.debug('ID interno encontrado, buscando atestados...', { studentId, internalId });
-
-          const result = await supabase
-            .from('medical_certificates')
-            .select('*')
-            .eq('student_id', internalId)
-            .order('start_date', { ascending: false });
-
-          data = result.data;
-          error = result.error;
-        }
-      }
 
       if (error) throw error;
 
@@ -196,41 +173,16 @@ export class MedicalCertificatesService {
   /**
    * Criar novo atestado
    *
-   * IMPORTANTE: studentId pode ser UUID externo (student.student_id) ou interno (student.id).
-   * Este método resolve automaticamente para o ID interno necessário pela FK.
+   * @param data - Dados do atestado (studentId é Firebase UUID)
+   * @returns Atestado criado ou null se houver erro
    */
   static async create(data: CreateMedicalCertificateData): Promise<MedicalCertificate | null> {
     try {
-      // 1. Resolver studentId para ID interno
-      let internalStudentId = data.studentId;
+      // 1. Resolver Firebase UUID → Internal ID (com cache)
+      const internalStudentId = await resolveToInternalId(data.studentId);
 
-      // Tentar primeiro assumindo que é o ID interno (mais rápido)
-      const { data: studentCheck, error: checkError } = await supabase
-        .from('students')
-        .select('id, student_id')
-        .eq('id', data.studentId)
-        .maybeSingle();
-
-      // Se não encontrou, pode ser UUID externo
-      if (!studentCheck) {
-        logger.debug('ID direto não encontrado, tentando buscar por student_id externo...', { studentId: data.studentId });
-
-        const { data: externalStudent, error: externalError } = await (supabase
-          .from('students')
-          .select('id, student_id')
-          .eq('student_id', data.studentId)
-          .maybeSingle() as any);
-
-        if (externalError) {
-          throw new Error(`Erro ao buscar estudante: ${externalError.message}`);
-        }
-
-        if (!externalStudent) {
-          throw new Error(`Estudante não encontrado com ID: ${data.studentId}`);
-        }
-
-        internalStudentId = (externalStudent as any).id;
-        logger.debug('ID interno resolvido', { externalId: data.studentId, internalId: internalStudentId });
+      if (!internalStudentId) {
+        throw new Error(`Estudante não encontrado com ID: ${data.studentId}`);
       }
 
       // 2. Preparar dados para inserção (apenas campos que existem no schema)
@@ -240,10 +192,6 @@ export class MedicalCertificatesService {
       // Se o atestado é retroativo (start_date no passado), usar start_date como submitted_date
       let submittedDate = data.submittedDate || today;
       if (submittedDate > data.startDate) {
-        logger.debug('Ajustando submitted_date para respeitar constraint', {
-          original: submittedDate,
-          adjusted: data.startDate
-        });
         submittedDate = data.startDate;
       }
 
@@ -275,14 +223,6 @@ export class MedicalCertificatesService {
         logger.error('Erro do Supabase ao inserir atestado', { error, supabaseData });
         throw error;
       }
-
-      logger.info('Atestado criado no Supabase', {
-        externalStudentId: data.studentId,
-        internalStudentId,
-        certificateId: result.id,
-        startDate: data.startDate,
-        endDate: data.endDate,
-      });
 
       return this.mapSupabaseToCertificate(result);
     } catch (error) {

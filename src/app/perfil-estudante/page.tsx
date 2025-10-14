@@ -201,7 +201,6 @@ export default function StudentProfilePage() {
     const fetchAllStudents = useCallback(async (): Promise<void> => {
         try {
             setLoadingStudents(true);
-            logger.debug('Buscando estudantes via StudentDataService (V3)');
 
             // PERFORMANCE: Não carregar contatos na listagem inicial (false = 1 query vs 736 queries)
             const allStudentsData = await StudentDataService.getStudents(false, false);
@@ -215,7 +214,6 @@ export default function StudentProfilePage() {
                 }));
 
             setAllStudents(activeStudents.sort((a, b) => a.nome.localeCompare(b.nome)));
-            logger.info('Estudantes ativos carregados', { count: activeStudents.length });
         } catch (error) {
             logger.error("Erro ao buscar lista de estudantes", error as Error);
         } finally {
@@ -259,19 +257,13 @@ export default function StudentProfilePage() {
 
         try {
             setLoadingProfile(true);
-            logger.debug('Buscando estudante', { studentId });
 
             // SEMPRE buscar estudante completo COM contatos via StudentDataService
             // (O cache inicial não tem contatos para performance)
-            logger.debug('Buscando estudante completo COM contatos');
             const studentData = await StudentDataService.getStudentById(studentId);
 
             if (studentData) {
                 setStudent(studentData);
-                logger.debug('Estudante carregado', {
-                    nome: studentData.nome,
-                    contatos: studentData.contatos?.length || 0
-                });
             } else {
                 logger.warn('Estudante não encontrado');
                 return;
@@ -285,7 +277,7 @@ export default function StudentProfilePage() {
                     data: absence.absence_date || absence.data,
                     justified: absence.is_justified || absence.justified,
                     atestadoId: absence.atestadoId || undefined,
-                    suspensaoId: absence.suspensionId || undefined,
+                    suspensaoId: absence.suspensaoId || undefined,
                 }))
                 .sort((a: any, b: any) => (parseDateToFirebase(a.data)?.localeCompare(parseDateToFirebase(b.data) || "") || 0));
 
@@ -391,13 +383,11 @@ export default function StudentProfilePage() {
             setStudentRecordWithoutJustified(aggregatedNoJustified);
 
             // Buscar interações via Supabase
-            logger.debug('Buscando interações via Supabase');
-
             const supabaseInteractions = await InteractionService.getStudentInteractions(studentId);
             const interactionRecords: FamilyInteraction[] = supabaseInteractions.map((interaction: any) => ({
                 id: interaction.id,
                 type: interaction.type,
-                date: interaction.date,
+                date: formatFirebaseDate(interaction.date), // Converter YYYY-MM-DD → DD/MM/YYYY
                 description: interaction.description || '',
                 createdBy: interaction.createdBy || "Não informado",
                 sensitive: interaction.sensitive || false,
@@ -405,8 +395,6 @@ export default function StudentProfilePage() {
                 whatsappMessage: interaction.whatsappMessage,
                 whatsappPhones: interaction.whatsappPhones,
             }));
-
-            logger.info('Interações carregadas do Supabase', { total: interactionRecords.length });
 
             // Ordenar por data
             interactionRecords.sort((a, b) => (parseDateToFirebase(b.date)?.localeCompare(parseDateToFirebase(a.date) || "") || 0));
@@ -437,7 +425,6 @@ export default function StudentProfilePage() {
             // Verificar se o ID existe nos estudantes carregados
             const foundStudent = allStudents.find(s => s.estudanteId === studentIdFromQuery);
             if (foundStudent) {
-                logger.info('Carregando estudante a partir da URL', { nome: foundStudent.nome });
                 setSelectedStudentId(studentIdFromQuery);
                 setSearchName(foundStudent.nome);
                 // Limpar sugestões e resetar turma
@@ -446,7 +433,6 @@ export default function StudentProfilePage() {
                 // Feedback para o usuário
                 toast.success(`Perfil do estudante ${foundStudent.nome} carregado automaticamente`);
             } else {
-                logger.warn('Estudante não encontrado com ID', { studentId: studentIdFromQuery });
                 toast.error('Estudante não encontrado');
             }
         }
@@ -473,8 +459,8 @@ export default function StudentProfilePage() {
 
         // Validação específica para "Contato digital"
         if (interactionType === "Contato digital") {
-            if (selectedWhatsAppPhones.size === 0) {
-                toast.error("Selecione pelo menos um contato para enviar WhatsApp.");
+            if (selectedWhatsAppPhones.size !== 1) {
+                toast.error("Selecione exatamente 1 contato para enviar WhatsApp.");
                 return;
             }
 
@@ -542,17 +528,31 @@ export default function StudentProfilePage() {
             }
 
             // FASE 2: Salvar interação via Supabase
+            // Para "Contato digital", incluir telefone na descrição
+            let finalDescription = interactionDescription;
+            let whatsappData: { whatsappMessage?: string; whatsappPhones?: string[] } = {};
+
+            if (interactionType === "Contato digital" && selectedWhatsAppPhones.size === 1 && student?.contatos) {
+                const phoneNumber = Array.from(selectedWhatsAppPhones)[0];
+                const contact = student.contatos.find(c => c.telefone.replace(/\D/g, '') === phoneNumber);
+                const contactName = contact ? `${contact.nome}${contact.parentesco ? ` (${contact.parentesco})` : ''}` : phoneNumber;
+                finalDescription = `Mensagem enviada via WhatsApp para: ${contactName} - ${phoneNumber}\n\n${interactionDescription}`;
+
+                // Salvar mensagem WhatsApp original e telefones
+                whatsappData = {
+                    whatsappMessage: whatsAppMessage, // Mensagem original enviada
+                    whatsappPhones: [phoneNumber],
+                };
+            }
+
             await InteractionService.createInteraction(selectedStudentId, {
                 studentId: selectedStudentId,
                 type: interactionType,
                 date: formattedDate,
-                description: interactionDescription,
+                description: finalDescription,
                 createdBy: currentUser,
                 sensitive: interactionSensitive,
-                ...(interactionType === "Contato digital" && whatsAppMessage && {
-                    whatsappMessage: whatsAppMessage,
-                    whatsappPhones: Array.from(selectedWhatsAppPhones) // Salvar como array
-                })
+                ...whatsappData, // Incluir whatsappMessage e whatsappPhones se for Contato digital
             });
 
             logger.interactionOperation('create', selectedStudentId, interactionType, { supabase: true });
@@ -1012,12 +1012,12 @@ export default function StudentProfilePage() {
                 const faltaExistente = faltasExistentes.get(dataBrasileira);
 
                 if (faltaExistente) {
-                    // Atualizar falta existente (NÃO justificada) via Supabase (delete + add)
+                    // Atualizar falta existente (justificada) via Supabase (delete + add)
                     await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
                     await AbsenceService.addAbsence({
                         estudanteId: selectedStudentId,
                         data: dataFirebase,
-                        justified: false, // Suspensão = não justificada
+                        justified: false, // ❌ Suspensão = NÃO justificada (diferente de atestado)
                         suspensaoId: suspensaoId,
                     });
                 } else {
@@ -1025,7 +1025,7 @@ export default function StudentProfilePage() {
                     await AbsenceService.addAbsence({
                         estudanteId: selectedStudentId,
                         data: dataFirebase,
-                        justified: false, // Suspensão = não justificada
+                        justified: false, // ❌ Suspensão = NÃO justificada (diferente de atestado)
                         suspensaoId: suspensaoId,
                     });
                 }
@@ -1135,7 +1135,7 @@ export default function StudentProfilePage() {
                     await AbsenceService.addAbsence({
                         estudanteId: selectedStudentId,
                         data: dataFirebase,
-                        justified: false, // Suspensão = não justificada
+                        justified: false, // ❌ Suspensão = NÃO justificada (diferente de atestado)
                         suspensaoId: editingSuspensao.id,
                     });
                 } else{
@@ -1143,7 +1143,7 @@ export default function StudentProfilePage() {
                     await AbsenceService.addAbsence({
                         estudanteId: selectedStudentId,
                         data: dataFirebase,
-                        justified: false, // Suspensão = não justificada
+                        justified: false, // ❌ Suspensão = NÃO justificada (diferente de atestado)
                         suspensaoId: editingSuspensao.id,
                     });
                 }

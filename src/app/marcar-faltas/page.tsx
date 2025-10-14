@@ -127,12 +127,10 @@ function getValidDates(academicYearData: AcademicYearData | null, role: Role | n
 
     const validDates: string[] = [];
     const bimesterKeys = Object.keys(academicYearData);
-    logger.info(`🔍 getValidDates: Processando ${bimesterKeys.length} bimestres`);
 
     Object.entries(academicYearData).forEach(([key, bimData]) => {
         const datesCount = bimData?.dates?.length || 0;
         const checkedCount = bimData?.dates?.filter(d => d.isChecked).length || 0;
-        logger.info(`   ${key}: ${checkedCount} marcadas (de ${datesCount} datas)`);
 
         bimData?.dates?.forEach((d) => {
             if (d.isChecked) {
@@ -141,8 +139,6 @@ function getValidDates(academicYearData: AcademicYearData | null, role: Role | n
             }
         });
     });
-
-    logger.info(`   Total de datas válidas (isChecked=true): ${validDates.length}`);
 
     const today = new Date();
     const sortedDates = validDates
@@ -163,18 +159,14 @@ function getValidDates(academicYearData: AcademicYearData | null, role: Role | n
         (d) => d.timestamp <= todayTimestamp
     );
 
-    logger.info(`   Filtradas até hoje: ${filteredDates.length} datas`);
-
     // Para perfil "user", retorna apenas os últimos 5 dias letivos
     if (role === "user") {
         const result = filteredDates.slice(-5).map((d) => d.date);
-        logger.info(`   Role "user": retornando últimos 5 dias`);
         return result;
     }
 
     // Para outros perfis, retorna todas as datas válidas
     const result = filteredDates.map((d) => d.date);
-    logger.info(`   Retornando ${result.length} datas para role "${role}"`);
     return result;
 }
 
@@ -257,11 +249,6 @@ export default function MarcarFaltasPage() {
                     const totalSchoolDays = Object.values(yearData).reduce((sum, bimester) => {
                         return sum + (bimester.dates?.filter(d => d.isChecked).length || 0);
                     }, 0);
-
-                    logger.info('Dados do ano letivo carregados do Supabase', {
-                        bimesters: Object.keys(yearData).length,
-                        totalSchoolDays
-                    });
                 } else {
                     setErrorMessage("Dados do ano letivo não encontrados.");
                 }
@@ -313,10 +300,8 @@ export default function MarcarFaltasPage() {
                 if (userProfile) {
                     const userRole = (userProfile.role?.toLowerCase() as Role) || "user";
                     setRole(userRole);
-                    logger.info("Perfil do usuário carregado:", { role: userRole });
                 } else {
                     setRole("user");
-                    logger.info("Usuário não encontrado, definindo perfil padrão como 'user'");
                 }
             } catch (error) {
                 logger.error("Erro ao buscar usuário", error as Error);
@@ -407,13 +392,8 @@ export default function MarcarFaltasPage() {
             if (!selectedClass || !selectedDate) return;
             const formattedDate = convertToISO(selectedDate);
             try {
-                logger.info(`📋 Buscando faltas existentes: Turma ${selectedClass}, Data selecionada: "${selectedDate}" → Convertida para ISO: "${formattedDate}"`);
-
                 // Buscar faltas da turma na data específica via Supabase
                 const absences = await AbsenceService.getByTurmaAndDate(selectedClass, formattedDate);
-
-                logger.info(`   ✅ ${absences.length} faltas encontradas`, { absences });
-
                 const newExistingAbsences: { [key: string]: boolean } = {};
                 const newExistingAbsenceDocs: { [key: string]: string } = {};
 
@@ -421,17 +401,11 @@ export default function MarcarFaltasPage() {
                     const estudanteId = absence.estudanteId;
                     newExistingAbsences[estudanteId] = true;
                     newExistingAbsenceDocs[estudanteId] = absence.id;
-                    logger.info(`      - Estudante ${estudanteId} tem falta (ID: ${absence.id})`);
                 });
-
-                logger.info(`   📦 Estado newExistingAbsences:`, newExistingAbsences);
-                logger.info(`   🔄 Atualizando estados com ${Object.keys(newExistingAbsences).length} faltas`);
 
                 setExistingAbsences(newExistingAbsences);
                 setExistingAbsenceDocs(newExistingAbsenceDocs);
                 setMarkedAbsences(newExistingAbsences);
-
-                logger.info(`   ✅ Estados atualizados! markedAbsences agora tem ${Object.keys(newExistingAbsences).length} estudantes com falta`);
             } catch (error) {
                 logger.error("Erro ao carregar faltas existentes", error as Error);
             }
@@ -779,11 +753,6 @@ export default function MarcarFaltasPage() {
                                             // Isso evita o erro "Checkbox is changing from uncontrolled to controlled"
                                             const isAbsent = markedAbsences[est.estudanteId] === true;
                                             const coverage = checkCoverageForStudent(est.estudanteId, selectedDate);
-
-                                            // Debug: Log para primeiros 5 estudantes apenas
-                                            if (filteredStudents.indexOf(est) < 5) {
-                                                logger.info(`   🎨 Render ${est.nome}: isAbsent=${isAbsent}, markedAbsences[${est.estudanteId}]=${markedAbsences[est.estudanteId]}`);
-                                            }
 
                                             return (
                                                 <div

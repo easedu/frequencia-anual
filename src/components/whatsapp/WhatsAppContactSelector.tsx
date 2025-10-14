@@ -53,6 +53,7 @@ interface WhatsAppContactSelectorProps extends VariantProps<typeof contactItemVa
         };
     }>;
     readonly?: boolean; // Modo read-only para edição
+    singleSelection?: boolean; // Permitir apenas 1 seleção (para Contato digital)
 }
 
 export default function WhatsAppContactSelector({
@@ -65,6 +66,7 @@ export default function WhatsAppContactSelector({
     variant,
     size,
     readonly = false,
+    singleSelection = false,
 }: WhatsAppContactSelectorProps) {
     const [whatsAppContacts, setWhatsAppContacts] = useState<Contato[]>([]);
 
@@ -94,10 +96,21 @@ export default function WhatsAppContactSelector({
         const cleanPhone = phone.replace(/\D/g, '');
         const newSelection = new Set(selectedPhones);
 
-        if (newSelection.has(cleanPhone)) {
-            newSelection.delete(cleanPhone);
+        if (singleSelection) {
+            // Modo seleção única: desmarcar se já está selecionado, senão marcar apenas este
+            if (newSelection.has(cleanPhone)) {
+                newSelection.clear();
+            } else {
+                newSelection.clear();
+                newSelection.add(cleanPhone);
+            }
         } else {
-            newSelection.add(cleanPhone);
+            // Modo seleção múltipla (comportamento original)
+            if (newSelection.has(cleanPhone)) {
+                newSelection.delete(cleanPhone);
+            } else {
+                newSelection.add(cleanPhone);
+            }
         }
 
         onSelectionChange(newSelection);
@@ -120,11 +133,11 @@ export default function WhatsAppContactSelector({
             <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium text-gray-700 flex items-center space-x-1">
                     <Phone className="w-3 h-3 text-blue-600" />
-                    <span>Selecione os contatos</span>
+                    <span>Selecione {singleSelection ? 'o contato' : 'os contatos'}</span>
                     {!readonly && <span className="text-red-500">*</span>}
                 </Label>
                 <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 text-xs px-2 py-0">
-                    {selectedPhones.size}/{whatsAppContacts.length}
+                    {selectedPhones.size}/{singleSelection ? '1' : whatsAppContacts.length}
                 </Badge>
             </div>
 
@@ -170,7 +183,11 @@ export default function WhatsAppContactSelector({
             {/* Hint */}
             <p className="text-xs text-gray-500 flex items-center space-x-1">
                 <AlertCircle className="w-3 h-3 flex-shrink-0" />
-                <span>Clique nos contatos para selecionar/desselecionar</span>
+                <span>
+                    {singleSelection
+                        ? 'Clique no contato para selecionar (apenas 1)'
+                        : 'Clique nos contatos para selecionar/desselecionar'}
+                </span>
             </p>
         </div>
     );
