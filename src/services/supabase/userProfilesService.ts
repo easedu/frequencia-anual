@@ -41,6 +41,15 @@ interface SupabaseUserProfile {
 }
 
 /**
+ * Metadados do usuário (favoritos, preferências, etc)
+ */
+export interface UserMetadata {
+  favorites?: string[];
+  theme?: 'light' | 'dark' | 'system';
+  [key: string]: any; // Permite outros campos customizados
+}
+
+/**
  * Interface do perfil de usuário (Aplicação)
  */
 export interface UserProfile {
@@ -56,6 +65,7 @@ export interface UserProfile {
   lastLogin?: string;
   notificationPreferences: NotificationPreferences;
   themePreference: string;
+  metadata?: UserMetadata; // NOVO: metadados flexíveis
   createdBy?: string;
   updatedBy?: string;
   createdAt: string;
@@ -154,6 +164,7 @@ export class UserProfilesService {
         email: string;
         name: string | null;
         role: 'admin' | 'user' | 'teacher';
+        metadata: Record<string, any> | null;
         created_at: string;
         updated_at: string;
         last_login_at: string | null;
@@ -175,7 +186,8 @@ export class UserProfilesService {
           email: true,
           whatsapp: false,
         },
-        themePreference: 'light', // Default
+        themePreference: user.metadata?.theme || 'light',
+        metadata: user.metadata as UserMetadata | undefined,
         createdBy: undefined,
         updatedBy: undefined,
         createdAt: user.created_at,
@@ -227,6 +239,7 @@ export class UserProfilesService {
         email: string;
         name: string | null;
         role: 'admin' | 'user' | 'teacher';
+        metadata: Record<string, any> | null;
         created_at: string;
         updated_at: string;
         last_login_at: string | null;
@@ -248,7 +261,8 @@ export class UserProfilesService {
           email: true,
           whatsapp: false,
         },
-        themePreference: 'light',
+        themePreference: user.metadata?.theme || 'light',
+        metadata: user.metadata as UserMetadata | undefined,
         createdBy: undefined,
         updatedBy: undefined,
         createdAt: user.created_at,
@@ -305,7 +319,8 @@ export class UserProfilesService {
           email: true,
           whatsapp: false,
         },
-        themePreference: 'light',
+        themePreference: result.metadata?.theme || 'light',
+        metadata: result.metadata as UserMetadata | undefined,
         createdBy: undefined,
         updatedBy: undefined,
         createdAt: result.created_at,
@@ -388,19 +403,70 @@ export class UserProfilesService {
   }
 
   /**
+   * Atualizar metadados do usuário (favoritos, tema, etc)
+   *
+   * NOVO: Usa campo metadata (JSONB) para armazenar preferências
+   */
+  static async updateMetadata(
+    firebaseUid: string,
+    metadata: Partial<UserMetadata>
+  ): Promise<boolean> {
+    try {
+      // Buscar metadados atuais
+      const currentUser = await this.getByFirebaseUid(firebaseUid);
+      const currentMetadata = currentUser?.metadata || {};
+
+      // Mesclar com novos metadados
+      const updatedMetadata = {
+        ...currentMetadata,
+        ...metadata,
+      };
+
+      const { error } = await (supabase.from('users') as any)
+        .update({
+          metadata: updatedMetadata,
+        })
+        .eq('firebase_uid', firebaseUid);
+
+      if (error) throw error;
+
+      logger.info('Metadados do usuário atualizados', { firebaseUid, metadata });
+
+      return true;
+    } catch (error) {
+      logger.error('Erro ao atualizar metadados', { firebaseUid }, error as Error);
+      return false;
+    }
+  }
+
+  /**
+   * Atualizar favoritos do usuário
+   *
+   * Atalho para atualizar apenas o campo favorites nos metadados
+   */
+  static async updateFavorites(firebaseUid: string, favorites: string[]): Promise<boolean> {
+    return this.updateMetadata(firebaseUid, { favorites });
+  }
+
+  /**
    * Atualizar preferências de notificação
    *
-   * ⚠️ NÃO SUPORTADO: Tabela 'users' não possui campo notification_preferences
-   * Retorna false silenciosamente para não quebrar código existente
+   * ⚠️ DEPRECATED: Use updateMetadata() para salvar preferências personalizadas
+   * Mantido para compatibilidade, mas redireciona para updateMetadata
    */
   static async updateNotificationPreferences(
     firebaseUid: string,
-    preferences: NotificationPreferences
+    preferences: any
   ): Promise<boolean> {
-    logger.warn('updateNotificationPreferences não suportado pela tabela users simplificada', {
+    // Se preferences contém 'favorites', salvar em metadata
+    if (preferences.favorites) {
+      return this.updateFavorites(firebaseUid, preferences.favorites);
+    }
+
+    logger.warn('updateNotificationPreferences: use updateMetadata() para salvar preferências', {
       firebaseUid,
     });
-    return false;
+    return this.updateMetadata(firebaseUid, preferences);
   }
 
   /**
@@ -437,6 +503,7 @@ export class UserProfilesService {
         email: string;
         name: string | null;
         role: 'admin' | 'user' | 'teacher';
+        metadata: Record<string, any> | null;
         created_at: string;
         updated_at: string;
         last_login_at: string | null;
@@ -457,7 +524,8 @@ export class UserProfilesService {
           email: true,
           whatsapp: false,
         },
-        themePreference: 'light',
+        themePreference: user.metadata?.theme || 'light',
+        metadata: user.metadata as UserMetadata | undefined,
         createdBy: undefined,
         updatedBy: undefined,
         createdAt: user.created_at,
@@ -490,6 +558,7 @@ export class UserProfilesService {
         email: string;
         name: string | null;
         role: 'admin' | 'user' | 'teacher';
+        metadata: Record<string, any> | null;
         created_at: string;
         updated_at: string;
         last_login_at: string | null;
@@ -510,7 +579,8 @@ export class UserProfilesService {
           email: true,
           whatsapp: false,
         },
-        themePreference: 'light',
+        themePreference: user.metadata?.theme || 'light',
+        metadata: user.metadata as UserMetadata | undefined,
         createdBy: undefined,
         updatedBy: undefined,
         createdAt: user.created_at,

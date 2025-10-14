@@ -58,9 +58,9 @@ export default function Home() {
                     setRole(userRole);
                     setUserName(userProfile.fullName || auth.currentUser?.displayName || auth.currentUser?.email || "Usuário");
 
-                    // Buscar favoritos do notification_preferences (se existirem)
-                    if (userProfile.notificationPreferences && (userProfile.notificationPreferences as any).favorites) {
-                        setFavorites((userProfile.notificationPreferences as any).favorites || []);
+                    // Buscar favoritos dos metadados do usuário
+                    if (userProfile.metadata?.favorites) {
+                        setFavorites(userProfile.metadata.favorites);
                     }
                 } else {
                     setRole("user");

@@ -231,6 +231,7 @@ export type Database = {
           email: string
           name: string | null
           role: 'admin' | 'user' | 'teacher'
+          metadata: Record<string, any> | null // JSONB: {favorites: string[], theme: string, ...}
           created_at: string
           updated_at: string
           last_login_at: string | null
