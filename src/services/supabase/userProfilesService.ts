@@ -430,8 +430,6 @@ export class UserProfilesService {
 
       if (error) throw error;
 
-      logger.info('Metadados do usuário atualizados', { firebaseUid, metadata });
-
       return true;
     } catch (error) {
       logger.error('Erro ao atualizar metadados', { firebaseUid }, error as Error);

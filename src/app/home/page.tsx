@@ -613,13 +613,6 @@ export default function Home() {
                                         {/* Efeito de gradiente no fundo */}
                                         <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-300`}></div>
 
-                                        {/* Badge de favorito */}
-                                        <div className="absolute top-3 right-3">
-                                            <div className="p-1 bg-yellow-500 rounded-full shadow-lg">
-                                                <Star className="w-3 h-3 text-white fill-current" />
-                                            </div>
-                                        </div>
-
                                         <div className="relative z-10">
                                             <div className={`p-3 ${colors.icon} rounded-xl mb-4 w-fit`}>
                                                 <card.icon className="w-6 h-6" />
@@ -640,9 +633,10 @@ export default function Home() {
                                                 e.stopPropagation();
                                                 toggleFavorite(card.key);
                                             }}
-                                            className="absolute bottom-3 right-3 p-2 bg-slate-100 dark:bg-slate-700 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                                            aria-label="Remover dos favoritos"
+                                            className="absolute top-3 right-3 p-2 bg-yellow-100 dark:bg-yellow-900/30 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-all duration-200 z-20"
                                         >
-                                            <StarOff className="w-4 h-4 text-slate-600 dark:text-slate-400 hover:text-red-500" />
+                                            <Star className="w-4 h-4 text-yellow-500 fill-current hover:text-red-500 transition-colors" />
                                         </button>
                                     </div>
                                 );
@@ -720,9 +714,10 @@ export default function Home() {
                                             e.stopPropagation();
                                             toggleFavorite(card.key);
                                         }}
-                                        className={`absolute bottom-3 right-3 p-2 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 ${isFavorite
-                                            ? 'bg-yellow-100 dark:bg-yellow-900/30 hover:bg-yellow-200 dark:hover:bg-yellow-900/50'
-                                            : 'bg-slate-100 dark:bg-slate-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/30'
+                                        aria-label={isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                                        className={`absolute top-3 right-3 p-2 rounded-lg transition-all duration-200 z-20 ${isFavorite
+                                            ? 'bg-yellow-100 dark:bg-yellow-900/30 hover:bg-yellow-200 dark:hover:bg-yellow-900/50 opacity-100'
+                                            : 'bg-slate-100/80 dark:bg-slate-700/80 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 opacity-60 group-hover:opacity-100'
                                             }`}
                                     >
                                         <Star className={`w-4 h-4 transition-colors ${isFavorite
