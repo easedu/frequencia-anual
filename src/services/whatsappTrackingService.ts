@@ -210,38 +210,69 @@ export class WhatsAppTrackingService {
 
     /**
      * Get all verified numbers (with WhatsApp) for cache preloading
-     * MIGRADO: Usa Supabase
+     * MIGRADO: Usa Supabase com paginação completa
+     *
+     * ⚠️ FIX: Supabase tem limite padrão de 1000 registros.
+     * Esta implementação usa paginação para buscar TODOS os registros.
      */
     static async getAllVerifiedNumbers(): Promise<Set<string>> {
         try {
             const { supabase } = await import('@/lib/supabaseClient');
-
-            const { data, error } = await supabase
-                .from('whatsapp_verified_numbers')
-                .select('phone_number, is_verified')
-                .eq('is_verified', true);
-
-            if (error) throw error;
-
             const verifiedNumbers = new Set<string>();
 
-            (data || []).forEach((record: any) => {
-                if (record.phone_number) {
-                    verifiedNumbers.add(record.phone_number);
+            const PAGE_SIZE = 1000;
+            let from = 0;
+            let hasMore = true;
+            let totalPages = 0;
 
-                    // Update cache
-                    this.cache.set(record.phone_number, {
-                        phone: record.phone_number,
-                        hasWhatsApp: true,
-                        verifiedAt: new Date(),
-                        messageCount: 0,
-                        verificationStatus: 'verified'
-                    });
-                    this.cacheExpiry.set(record.phone_number, Date.now() + this.CACHE_DURATION);
+            while (hasMore) {
+                const { data, error } = await supabase
+                    .from('whatsapp_verified_numbers')
+                    .select('phone_number, is_verified')
+                    .eq('is_verified', true)
+                    .range(from, from + PAGE_SIZE - 1)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                if (!data || data.length === 0) {
+                    hasMore = false;
+                    break;
                 }
+
+                totalPages++;
+
+                // Adicionar registros ao Set e cache
+                data.forEach((record: any) => {
+                    if (record.phone_number) {
+                        verifiedNumbers.add(record.phone_number);
+
+                        // Update cache
+                        this.cache.set(record.phone_number, {
+                            phone: record.phone_number,
+                            hasWhatsApp: true,
+                            verifiedAt: new Date(),
+                            messageCount: 0,
+                            verificationStatus: 'verified'
+                        });
+                        this.cacheExpiry.set(record.phone_number, Date.now() + this.CACHE_DURATION);
+                    }
+                });
+
+                // Se retornou menos que PAGE_SIZE, não há mais registros
+                if (data.length < PAGE_SIZE) {
+                    hasMore = false;
+                } else {
+                    from += PAGE_SIZE;
+                }
+            }
+
+            logger.info("Loaded verified WhatsApp numbers (Supabase)", {
+                count: verifiedNumbers.size,
+                pages: totalPages,
+                paginationUsed: totalPages > 1
             });
 
-            logger.info("Loaded verified WhatsApp numbers (Supabase)", { count: verifiedNumbers.size });
             return verifiedNumbers;
 
         } catch (error) {
