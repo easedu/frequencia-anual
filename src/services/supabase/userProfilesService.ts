@@ -127,11 +127,15 @@ export class UserProfilesService {
 
   /**
    * Buscar perfil por Firebase UID
+   *
+   * NOTA: Tabela 'users' possui schema simplificado. Campos faltantes:
+   * - phone, department, turmas_assigned, is_active, notification_preferences, etc.
+   * Para funcionalidade completa, migrar para tabela 'user_profiles' no futuro.
    */
   static async getByFirebaseUid(firebaseUid: string): Promise<UserProfile | null> {
     try {
       const { data, error } = await supabase
-        .from('user_profiles')
+        .from('users')
         .select('*')
         .eq('firebase_uid', firebaseUid)
         .maybeSingle();
@@ -141,10 +145,60 @@ export class UserProfilesService {
         throw error;
       }
 
-      return data ? this.mapSupabaseToUserProfile(data) : null;
+      if (!data) return null;
+
+      // Cast para o tipo correto da tabela users
+      const user = data as {
+        id: string;
+        firebase_uid: string | null;
+        email: string;
+        name: string | null;
+        role: 'admin' | 'user' | 'teacher';
+        created_at: string;
+        updated_at: string;
+        last_login_at: string | null;
+      };
+
+      // Mapear tabela 'users' (schema simplificado) para UserProfile
+      return {
+        id: user.id,
+        firebaseUid: user.firebase_uid || '',
+        fullName: user.name || 'Usuário',
+        email: user.email,
+        phone: undefined, // Campo não existe na tabela 'users'
+        role: this.mapSimpleRoleToUserRole(user.role),
+        department: undefined, // Campo não existe
+        turmasAssigned: undefined, // Campo não existe
+        isActive: true, // Assume ativo (campo não existe)
+        lastLogin: user.last_login_at || undefined,
+        notificationPreferences: {
+          email: true,
+          whatsapp: false,
+        },
+        themePreference: 'light', // Default
+        createdBy: undefined,
+        updatedBy: undefined,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at,
+      };
     } catch (error) {
       logger.error('Erro ao buscar perfil por Firebase UID', { firebaseUid }, error as Error);
       return null;
+    }
+  }
+
+  /**
+   * Mapear roles simples ('admin', 'user', 'teacher') para UserRole
+   */
+  private static mapSimpleRoleToUserRole(simpleRole: 'admin' | 'user' | 'teacher'): UserRole {
+    switch (simpleRole) {
+      case 'admin':
+        return 'ADMIN';
+      case 'teacher':
+        return 'PROFESSOR';
+      case 'user':
+      default:
+        return 'PROFESSOR'; // Fallback
     }
   }
 
@@ -154,7 +208,7 @@ export class UserProfilesService {
   static async getByEmail(email: string): Promise<UserProfile | null> {
     try {
       const { data, error } = await supabase
-        .from('user_profiles')
+        .from('users')
         .select('*')
         .eq('email', email)
         .maybeSingle();
@@ -164,7 +218,42 @@ export class UserProfilesService {
         throw error;
       }
 
-      return data ? this.mapSupabaseToUserProfile(data) : null;
+      if (!data) return null;
+
+      // Cast para o tipo correto da tabela users
+      const user = data as {
+        id: string;
+        firebase_uid: string | null;
+        email: string;
+        name: string | null;
+        role: 'admin' | 'user' | 'teacher';
+        created_at: string;
+        updated_at: string;
+        last_login_at: string | null;
+      };
+
+      // Usar mesmo mapeamento simplificado
+      return {
+        id: user.id,
+        firebaseUid: user.firebase_uid || '',
+        fullName: user.name || 'Usuário',
+        email: user.email,
+        phone: undefined,
+        role: this.mapSimpleRoleToUserRole(user.role),
+        department: undefined,
+        turmasAssigned: undefined,
+        isActive: true,
+        lastLogin: user.last_login_at || undefined,
+        notificationPreferences: {
+          email: true,
+          whatsapp: false,
+        },
+        themePreference: 'light',
+        createdBy: undefined,
+        updatedBy: undefined,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at,
+      };
     } catch (error) {
       logger.error('Erro ao buscar perfil por email', { email }, error as Error);
       return null;
@@ -173,14 +262,23 @@ export class UserProfilesService {
 
   /**
    * Criar novo perfil de usuário
+   *
+   * NOTA: Usando tabela 'users' simplificada. Campos ignorados:
+   * - phone, department, turmas_assigned
    */
   static async create(data: CreateUserProfileData): Promise<UserProfile | null> {
     try {
-      const supabaseData = this.mapUserProfileToSupabase(data);
+      // Mapear para schema simplificado da tabela 'users'
+      const simpleUserData = {
+        firebase_uid: data.firebaseUid,
+        email: data.email,
+        name: data.fullName,
+        role: this.mapUserRoleToSimpleRole(data.role),
+      };
 
       const { data: result, error } = await (supabase
-        .from('user_profiles') as any)
-        .insert(supabaseData)
+        .from('users') as any)
+        .insert(simpleUserData)
         .select()
         .single();
 
@@ -191,7 +289,28 @@ export class UserProfilesService {
         email: data.email,
       });
 
-      return this.mapSupabaseToUserProfile(result);
+      // Retornar usando mapeamento simplificado
+      return {
+        id: result.id,
+        firebaseUid: result.firebase_uid,
+        fullName: result.name || 'Usuário',
+        email: result.email,
+        phone: undefined,
+        role: this.mapSimpleRoleToUserRole(result.role),
+        department: undefined,
+        turmasAssigned: undefined,
+        isActive: true,
+        lastLogin: result.last_login_at || undefined,
+        notificationPreferences: {
+          email: true,
+          whatsapp: false,
+        },
+        themePreference: 'light',
+        createdBy: undefined,
+        updatedBy: undefined,
+        createdAt: result.created_at,
+        updatedAt: result.updated_at,
+      };
     } catch (error) {
       logger.error('Erro ao criar perfil de usuário', data, error as Error);
       throw error;
@@ -199,7 +318,25 @@ export class UserProfilesService {
   }
 
   /**
+   * Mapear UserRole para roles simples da tabela 'users'
+   */
+  private static mapUserRoleToSimpleRole(userRole: UserRole): 'admin' | 'user' | 'teacher' {
+    switch (userRole) {
+      case 'ADMIN':
+        return 'admin';
+      case 'PROFESSOR':
+        return 'teacher';
+      case 'COORDENADOR':
+      case 'DIRETOR':
+      default:
+        return 'user'; // Fallback
+    }
+  }
+
+  /**
    * Atualizar perfil de usuário
+   *
+   * NOTA: Tabela 'users' simplificada - apenas name, email, role suportados
    */
   static async update(
     firebaseUid: string,
@@ -208,18 +345,14 @@ export class UserProfilesService {
     try {
       const supabaseUpdates: any = {};
 
-      if (updates.fullName) supabaseUpdates.full_name = updates.fullName;
+      // Mapear apenas campos que existem na tabela 'users'
+      if (updates.fullName) supabaseUpdates.name = updates.fullName;
       if (updates.email) supabaseUpdates.email = updates.email;
-      if (updates.phone !== undefined) supabaseUpdates.phone = updates.phone || null;
-      if (updates.role) supabaseUpdates.role = updates.role;
-      if (updates.department !== undefined)
-        supabaseUpdates.department = updates.department || null;
-      if (updates.turmasAssigned !== undefined)
-        supabaseUpdates.turmas_assigned = updates.turmasAssigned || null;
-      if (updates.isActive !== undefined) supabaseUpdates.is_active = updates.isActive;
-      if (updates.updatedBy) supabaseUpdates.updated_by = updates.updatedBy;
+      if (updates.role) supabaseUpdates.role = this.mapUserRoleToSimpleRole(updates.role);
 
-      const { error } = await (supabase.from('user_profiles') as any)
+      // Ignorar campos não suportados: phone, department, turmas_assigned, is_active, updated_by
+
+      const { error } = await (supabase.from('users') as any)
         .update(supabaseUpdates)
         .eq('firebase_uid', firebaseUid);
 
@@ -239,9 +372,9 @@ export class UserProfilesService {
    */
   static async updateLastLogin(firebaseUid: string): Promise<boolean> {
     try {
-      const { error } = await (supabase.from('user_profiles') as any)
+      const { error } = await (supabase.from('users') as any)
         .update({
-          last_login: new Date().toISOString(),
+          last_login_at: new Date().toISOString(),
         })
         .eq('firebase_uid', firebaseUid);
 
@@ -256,65 +389,80 @@ export class UserProfilesService {
 
   /**
    * Atualizar preferências de notificação
+   *
+   * ⚠️ NÃO SUPORTADO: Tabela 'users' não possui campo notification_preferences
+   * Retorna false silenciosamente para não quebrar código existente
    */
   static async updateNotificationPreferences(
     firebaseUid: string,
     preferences: NotificationPreferences
   ): Promise<boolean> {
-    try {
-      const { error } = await (supabase.from('user_profiles') as any)
-        .update({
-          notification_preferences: preferences,
-        })
-        .eq('firebase_uid', firebaseUid);
-
-      if (error) throw error;
-
-      logger.info('Preferências de notificação atualizadas', { firebaseUid });
-
-      return true;
-    } catch (error) {
-      logger.error('Erro ao atualizar preferências', { firebaseUid }, error as Error);
-      return false;
-    }
+    logger.warn('updateNotificationPreferences não suportado pela tabela users simplificada', {
+      firebaseUid,
+    });
+    return false;
   }
 
   /**
    * Ativar/Desativar usuário
+   *
+   * ⚠️ NÃO SUPORTADO: Tabela 'users' não possui campo is_active
+   * Retorna false silenciosamente para não quebrar código existente
    */
   static async setActive(firebaseUid: string, isActive: boolean): Promise<boolean> {
-    try {
-      const { error } = await (supabase.from('user_profiles') as any)
-        .update({
-          is_active: isActive,
-        })
-        .eq('firebase_uid', firebaseUid);
-
-      if (error) throw error;
-
-      logger.info('Status do usuário atualizado', { firebaseUid, isActive });
-
-      return true;
-    } catch (error) {
-      logger.error('Erro ao atualizar status', { firebaseUid }, error as Error);
-      return false;
-    }
+    logger.warn('setActive não suportado pela tabela users simplificada', {
+      firebaseUid,
+      isActive,
+    });
+    return false;
   }
 
   /**
    * Listar todos os usuários ativos
+   *
+   * NOTA: Tabela 'users' não possui campo is_active, retorna TODOS os usuários
    */
   static async getAllActive(): Promise<UserProfile[]> {
     try {
       const { data, error } = await supabase
-        .from('user_profiles')
+        .from('users')
         .select('*')
-        .eq('is_active', true)
-        .order('full_name', { ascending: true });
+        .order('name', { ascending: true });
 
       if (error) throw error;
 
-      return (data || []).map(this.mapSupabaseToUserProfile);
+      type UserRow = {
+        id: string;
+        firebase_uid: string | null;
+        email: string;
+        name: string | null;
+        role: 'admin' | 'user' | 'teacher';
+        created_at: string;
+        updated_at: string;
+        last_login_at: string | null;
+      };
+
+      return (data as UserRow[] || []).map((user) => ({
+        id: user.id,
+        firebaseUid: user.firebase_uid || '',
+        fullName: user.name || 'Usuário',
+        email: user.email,
+        phone: undefined,
+        role: this.mapSimpleRoleToUserRole(user.role),
+        department: undefined,
+        turmasAssigned: undefined,
+        isActive: true,
+        lastLogin: user.last_login_at || undefined,
+        notificationPreferences: {
+          email: true,
+          whatsapp: false,
+        },
+        themePreference: 'light',
+        createdBy: undefined,
+        updatedBy: undefined,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at,
+      }));
     } catch (error) {
       logger.error('Erro ao listar usuários ativos', {}, error as Error);
       return [];
@@ -326,16 +474,48 @@ export class UserProfilesService {
    */
   static async getByRole(role: UserRole): Promise<UserProfile[]> {
     try {
+      const simpleRole = this.mapUserRoleToSimpleRole(role);
+
       const { data, error } = await supabase
-        .from('user_profiles')
+        .from('users')
         .select('*')
-        .eq('role', role)
-        .eq('is_active', true)
-        .order('full_name', { ascending: true });
+        .eq('role', simpleRole)
+        .order('name', { ascending: true });
 
       if (error) throw error;
 
-      return (data || []).map(this.mapSupabaseToUserProfile);
+      type UserRow = {
+        id: string;
+        firebase_uid: string | null;
+        email: string;
+        name: string | null;
+        role: 'admin' | 'user' | 'teacher';
+        created_at: string;
+        updated_at: string;
+        last_login_at: string | null;
+      };
+
+      return (data as UserRow[] || []).map((user) => ({
+        id: user.id,
+        firebaseUid: user.firebase_uid || '',
+        fullName: user.name || 'Usuário',
+        email: user.email,
+        phone: undefined,
+        role: this.mapSimpleRoleToUserRole(user.role),
+        department: undefined,
+        turmasAssigned: undefined,
+        isActive: true,
+        lastLogin: user.last_login_at || undefined,
+        notificationPreferences: {
+          email: true,
+          whatsapp: false,
+        },
+        themePreference: 'light',
+        createdBy: undefined,
+        updatedBy: undefined,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at,
+      }));
     } catch (error) {
       logger.error('Erro ao buscar usuários por função', { role }, error as Error);
       return [];
