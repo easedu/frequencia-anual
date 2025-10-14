@@ -61,8 +61,8 @@ Escolas públicas municipais (EMEF - Ensino Médio e Fundamental)
 - **Tabelas**: TanStack Table
 
 #### Backend / Infraestrutura
-- **Database**: Firebase Firestore
-- **Autenticação**: Firebase Auth
+- **Database**: Supabase PostgreSQL ✅ **MIGRADO**
+- **Autenticação**: Firebase Auth (⏳ **temporário**, migrar para Supabase Auth)
 - **Hosting**: Vercel
 - **File Processing**:
   - PapaParse (CSV)
@@ -74,12 +74,20 @@ Escolas públicas municipais (EMEF - Ensino Médio e Fundamental)
 - **Bundle Analysis**: @next/bundle-analyzer
 - **Migration Tools**: tsx
 
-### Versão do Firestore
-**ATENÇÃO**: Projeto em migração de V2 para V3
+### ✅ Migração Firestore → Supabase CONCLUÍDA
 
-- **V2 (Legacy)**: `estudantes/{estudanteId}` - ID numérico (timestamp)
-- **V3 (Atual)**: `estudantes/{estudanteId}` - UUID v4
-- **Estratégia**: Dual-write durante migração
+**Status**: Todos os dados agora usam **Supabase PostgreSQL**
+
+- ✅ **Estudantes**: Tabela `students` (UUID v4)
+- ✅ **Contatos**: Tabela `student_contacts` (FK para students)
+- ✅ **Faltas**: Tabela `student_absences`
+- ✅ **Atestados**: Tabela `medical_certificates`
+- ✅ **Suspensões**: Tabela `student_suspensions`
+- ✅ **Interações**: Tabela `family_interactions`
+- ✅ **Tarefas**: Tabela `user_tasks`
+- ✅ **WhatsApp**: Dados integrados em `student_contacts.whatsapp_data`
+
+**Firebase**: Usado **APENAS para Auth** (próximo passo: migrar auth para Supabase)
 
 ---
 

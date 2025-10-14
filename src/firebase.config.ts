@@ -3,14 +3,13 @@
  *
  * ✅ MIGRAÇÃO CONCLUÍDA PARA SUPABASE
  *
- * Firebase agora é usado APENAS para autenticação (Firebase Auth).
- * Todos os dados (leitura/escrita) usam exclusivamente Supabase.
+ * Firebase é usado APENAS para autenticação (Firebase Auth).
+ * Todos os dados (leitura/escrita) usam exclusivamente Supabase PostgreSQL.
  *
- * Firestore mantido temporariamente apenas para ferramentas de diagnóstico.
+ * PRÓXIMO: Migrar auth para Supabase Auth e remover Firebase completamente.
  */
 import { initializeApp } from "firebase/app";
-import { getAuth, connectAuthEmulator } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -23,18 +22,8 @@ const firebaseConfig = {
 
 export const firebaseApp = initializeApp(firebaseConfig);
 export const auth = getAuth(firebaseApp);
-export const db = getFirestore(firebaseApp);
 
-// 🔥 Auth Emulator - DESABILITADO por padrão
-// Para habilitar: defina NEXT_PUBLIC_USE_AUTH_EMULATOR=true no .env.local
-// E rode: firebase emulators:start --only auth
-if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === 'true') {
-    try {
-        connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
-        console.log('🔥 Conectado ao Firebase Auth Emulator (porta 9099)');
-    } catch (error) {
-        console.warn('⚠️ Erro ao conectar ao Auth Emulator:', error);
-    }
-} else if (typeof window !== 'undefined') {
-    console.log('🌐 Usando Firebase Auth em PRODUÇÃO');
+if (typeof window !== 'undefined') {
+    console.log('🔐 Firebase Auth inicializado (apenas autenticação)');
+    console.log('📊 Todos os dados vêm do Supabase PostgreSQL');
 }

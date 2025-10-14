@@ -23,16 +23,7 @@
     "icons:shortcuts": "node scripts/generate-icons.js --shortcuts",
     "clean": "rm -rf .next out dist",
     "quality": "npm run lint && npm run type-check && npm run test && npm run build",
-    "ci:full": "npm run quality && npm run analyze && npm run bundle:report",
-    "emulators": "firebase emulators:start --import=./firebase-data --export-on-exit",
-    "emulators:start": "firebase emulators:start",
-    "emulators:export": "firebase emulators:export ./firebase-data",
-    "emulators:import": "firebase emulators:start --import=./firebase-data",
-    "list:collections": "node scripts/list-firestore-collections.mjs",
-    "export:prod": "node scripts/export-firestore-to-local.mjs",
-    "generate:mock": "node scripts/generate-mock-data.mjs",
-    "import:emulators": "node scripts/import-json-to-emulators.mjs",
-    "sync:prod-to-local": "node scripts/sync-prod-to-local.mjs"
+    "ci:full": "npm run quality && npm run analyze && npm run bundle:report"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",

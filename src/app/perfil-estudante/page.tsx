@@ -158,36 +158,41 @@ export default function StudentProfilePage() {
 
     // Load contact verification data when student changes
     useEffect(() => {
-        const loadContactVerificationData = async () => {
+        const loadContactVerificationData = () => {
             if (!student?.contatos || student.contatos.length === 0) {
                 setContactVerificationData(new Map());
+                setVerifiedWhatsAppNumbers(new Set());
                 return;
             }
 
             try {
                 const verificationMap = new Map();
+                const verifiedNumbers = new Set<string>();
 
-                // Migrado para Supabase - usar whatsappDataService
-                const { getVerifiedNumber } = await import('@/services/whatsappDataService');
-
+                // ✅ Usar dados DIRETO da estrutura V3 (igual telefones/page.tsx linhas 100-104)
                 for (const contato of student.contatos) {
                     const cleanPhone = contato.telefone.replace(/\D/g, '');
-                    const verificationData = await getVerifiedNumber(cleanPhone);
 
-                    if (verificationData) {
-                        // ✅ Mapear campos do Supabase para formato esperado pelo componente
+                    // Dados já vêm do StudentDataService com campo 'whatsapp'
+                    if (contato.whatsapp) {
+                        const { verified, exists, verifiedAt } = contato.whatsapp;
+
                         verificationMap.set(cleanPhone, {
-                            hasWhatsApp: verificationData.isVerified || verificationData.exists,
-                            verificationStatus: verificationData.isVerified ? 'verified' : 'error',
-                            isVerified: verificationData.isVerified,
-                            jid: verificationData.jid,
-                            name: verificationData.name,
-                            verifiedAt: verificationData.verifiedAt
+                            hasWhatsApp: exists || false,
+                            verificationStatus: verified ? 'verified' : 'error',
+                            isVerified: verified || false,
+                            verifiedAt: verifiedAt
                         });
+
+                        // Adicionar ao Set se tem WhatsApp verificado
+                        if (exists) {
+                            verifiedNumbers.add(cleanPhone);
+                        }
                     }
                 }
 
                 setContactVerificationData(verificationMap);
+                setVerifiedWhatsAppNumbers(verifiedNumbers);
             } catch (error) {
                 logger.error("Erro ao carregar dados de verificação dos contatos", {}, error as Error);
             }
@@ -1223,20 +1228,9 @@ export default function StudentProfilePage() {
             if (result.success) {
                 toast.success(result.hasWhatsApp ? "WhatsApp verificado com sucesso!" : "Número sem WhatsApp");
 
-                // Recarregar dados de verificação via Supabase
-                const { getVerifiedNumber } = await import('@/services/whatsappDataService');
-                const cleanPhone = contact.telefone.replace(/\D/g, '');
-                const verificationData = await getVerifiedNumber(cleanPhone);
-
-                if (verificationData) {
-                    const updatedData = new Map(contactVerificationData);
-                    updatedData.set(cleanPhone, verificationData);
-                    setContactVerificationData(updatedData);
-                }
-
-                // Atualizar números verificados se necessário
-                if (result.hasWhatsApp) {
-                    setVerifiedWhatsAppNumbers(prev => new Set([...prev, cleanPhone]));
+                // ✅ Recarregar dados do estudante completo (inclui verificação V3)
+                if (selectedStudentId) {
+                    await fetchStudentData(selectedStudentId);
                 }
             } else {
                 const errorMessage = result.error || "Erro na verificação";

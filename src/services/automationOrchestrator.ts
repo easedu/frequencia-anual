@@ -458,15 +458,32 @@ export async function processAbsencesWithCheckpoint(
   const startTime = Date.now();
 
   try {
-    // 1. BUSCAR ESTUDANTES
+    // 1. VERIFICAR SE JÁ EXISTE EXECUÇÃO RUNNING (Race Condition Check)
+    console.log(`🔒 Verificando se há execução em andamento...`);
+    const runningExecution = await AutomationExecutionService.getLastRunningExecution();
+
+    if (runningExecution && runningExecution.id !== executionId) {
+      const errorMsg = `❌ Já existe execução rodando: ${runningExecution.id}`;
+      console.error(errorMsg);
+
+      // Marcar esta execução como CANCELLED
+      await AutomationExecutionService.updateStatus(executionId, 'CANCELLED');
+      await AutomationExecutionService.updateError(executionId, errorMsg);
+
+      throw new Error(errorMsg);
+    }
+
+    console.log(`✅ Nenhuma execução em andamento, prosseguindo...`);
+
+    // 2. BUSCAR ESTUDANTES
     console.log(`🔍 Buscando estudantes com ${params.absenceMultiple} faltas...`);
     const students = await fetchStudentsWithAbsences(params.absenceMultiple);
     console.log(`✅ ${students.length} estudantes encontrados`);
 
-    // 2. ATUALIZAR STATUS PARA RUNNING NO SUPABASE
+    // 3. ATUALIZAR STATUS PARA RUNNING NO SUPABASE
     await AutomationExecutionService.updateStatus(executionId, 'RUNNING');
 
-    // 3. VERIFICAR SE É RETOMADA (estudantes já processados)
+    // 4. VERIFICAR SE É RETOMADA (estudantes já processados)
     const execution = await AutomationExecutionService.getExecutionById(executionId);
     const processedIds = execution?.processedStudentIds || [];
 
@@ -477,7 +494,7 @@ export async function processAbsencesWithCheckpoint(
 
     console.log(`📊 Total: ${students.length} | Processados: ${processedIds.length} | Restantes: ${remainingStudents.length}`);
 
-    // 4. PROCESSAR CADA ESTUDANTE COM CHECKPOINT
+    // 5. PROCESSAR CADA ESTUDANTE COM CHECKPOINT
     const results = {
       messagesSucceeded: 0,
       messagesFailed: 0,
@@ -537,7 +554,7 @@ export async function processAbsencesWithCheckpoint(
       }
     }
 
-    // 5. CRIAR SUMÁRIO FINAL
+    // 6. CRIAR SUMÁRIO FINAL
     const endTime = Date.now();
     const studentsWithContacts = students.filter(s => s.contatos && s.contatos.length > 0).length;
     const studentsWithoutContacts = students.length - studentsWithContacts;
@@ -563,7 +580,7 @@ export async function processAbsencesWithCheckpoint(
       errors: results.errors
     };
 
-    // 6. FINALIZAR NO SUPABASE
+    // 7. FINALIZAR NO SUPABASE
     await AutomationExecutionService.updateStatus(executionId, 'COMPLETED');
     await AutomationExecutionService.updateCheckpoint(executionId, {
       processedStudents: students.length,
@@ -580,7 +597,7 @@ export async function processAbsencesWithCheckpoint(
 
     console.log(`\n✅ Processamento concluído!`);
 
-    // 7. ENVIAR RELATÓRIO
+    // 8. ENVIAR RELATÓRIO
     await sendExecutionReport(params.notificationPhone, summary, params.dryRun);
 
     return summary;
