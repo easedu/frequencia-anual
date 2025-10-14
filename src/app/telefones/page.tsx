@@ -98,9 +98,9 @@ export default function TelefonesPage() {
                 turma: student.turma,
                 turno: student.turno,
                 // INCLUIR dados de WhatsApp que já vêm do StudentDataService
-                whatsAppVerified: contato.whatsappVerified || false,
-                hasWhatsApp: contato.hasWhatsApp || false,
-                lastVerified: contato.whatsappVerifiedAt || undefined,
+                whatsAppVerified: contato.whatsapp?.verified || false,
+                hasWhatsApp: contato.whatsapp?.exists || false,
+                lastVerified: contato.whatsapp?.verifiedAt || undefined,
               });
             }
           }
@@ -278,25 +278,25 @@ export default function TelefonesPage() {
       const result = await response.json();
 
       if (result.success) {
-        console.log('[TELEFONES-VERIFY] ✅ Verificação bem-sucedida, salvando no Firestore...');
+        console.log('[TELEFONES-VERIFY] ✅ Verificação bem-sucedida, salvando no Supabase...');
 
-        // BUSCAR O ID REAL DO CONTATO NO FIRESTORE
+        // BUSCAR O ID REAL DO CONTATO NO SUPABASE
         const contactId = await getContactId(contact.estudanteId, phone);
 
         console.log('[TELEFONES-VERIFY] contactId encontrado:', contactId || 'não encontrado');
 
         try {
-          // Salvar usando WhatsAppTrackingService (dual-write automático)
+          // Salvar usando WhatsAppTrackingService (salva no Supabase)
           await WhatsAppTrackingService.markNumberAsVerified(
             phone,
             result.hasWhatsApp,
             contact.estudanteId,
             contact.nome,
             'verified',
-            contactId // ID REAL do documento no Firestore
+            contactId // ID REAL do documento no Supabase
           );
 
-          console.log('[TELEFONES-VERIFY] ✅ Salvo no Firestore com dual-write');
+          console.log('[TELEFONES-VERIFY] ✅ Salvo no Supabase');
 
           // Atualizar estado local
           setPhoneContacts(prev => prev.map(c =>
@@ -316,7 +316,7 @@ export default function TelefonesPage() {
               : "Número verificado e salvo - WhatsApp não encontrado"
           );
         } catch (saveError) {
-          console.error('[TELEFONES-VERIFY] ❌ Erro ao salvar no Firestore:', saveError);
+          console.error('[TELEFONES-VERIFY] ❌ Erro ao salvar no Supabase:', saveError);
           toast.error('Verificação OK, mas erro ao salvar. Tente novamente.');
           throw saveError;
         }

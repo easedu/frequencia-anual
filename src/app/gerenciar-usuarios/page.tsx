@@ -17,6 +17,7 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
 } from "@/components/ui/dialog";
 import {
     Select,
@@ -442,6 +443,11 @@ export default function UserManagementPage() {
                                     </>
                                 )}
                             </DialogTitle>
+                            <DialogDescription>
+                                {editingUser
+                                    ? 'Atualize as informações do usuário no formulário abaixo'
+                                    : 'Preencha os dados para criar um novo usuário no sistema'}
+                            </DialogDescription>
                         </DialogHeader>
 
                         <div className="space-y-6 mt-6">
