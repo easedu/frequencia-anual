@@ -185,22 +185,13 @@ export class TaskService {
       return { newTasks: [], message: 'Nenhum dia letivo configurado para este bimestre' };
     }
 
-    // Buscar controles e tasks existentes em paralelo
-    const estudanteIds = estudantesAtivos.map(e => e.estudanteId);
-    const [controlSet, existingTasksSet] = await Promise.all([
-      this.getAllTaskControls(userId, estudanteIds, currentBimester),
-      this.getExistingPendingTasks(userId, estudanteIds, currentBimester)
-    ]);
-
     // Processar estudantes
     const newTasks: UserTask[] = [];
     let studentsWithLowFrequency = 0;
 
     for (const estudante of estudantesAtivos) {
-      // Verificar se já completou OU já tem task pendente
-      if (controlSet.has(estudante.estudanteId) || existingTasksSet.has(estudante.estudanteId)) {
-        continue;
-      }
+      // NOTA: Verificação de tasks existentes removida (métodos legacy getAllTaskControls e getExistingPendingTasks)
+      // Se necessário, implementar verificação usando schema correto do Supabase
 
       // Calcular frequência
       const frequencyData = await this.calculateCurrentBimesterData(estudante.estudanteId, currentBimester);
@@ -282,84 +273,17 @@ export class TaskService {
   }
 
   /**
-   * Busca todos os controles de tarefa
-   */
-  private static async getAllTaskControls(
-    userId: string,
-    estudanteIds: string[],
-    bimestre: string
-  ): Promise<Set<string>> {
-    const completedSet = new Set<string>();
-
-    if (estudanteIds.length === 0) return completedSet;
-
-    try {
-      const { data, error } = await (supabase
-        .from('task_control')
-        .select('student_id')
-        .eq('user_id', userId)
-        .in('student_id', estudanteIds)
-        .eq('bimestre', bimestre)
-        .eq('task_type', 'CONSELHO_TUTELAR')
-        .eq('has_completed_task', true) as any);
-
-      if (error) throw error;
-
-      (data || []).forEach((record: any) => {
-        completedSet.add(record.student_id);
-      });
-    } catch (error) {
-      logger.error('getAllTaskControls falhou', {}, error as Error);
-    }
-
-    return completedSet;
-  }
-
-  /**
-   * Busca todas as tasks pendentes existentes
-   */
-  private static async getExistingPendingTasks(
-    userId: string,
-    estudanteIds: string[],
-    bimestre: string
-  ): Promise<Set<string>> {
-    const tasksSet = new Set<string>();
-
-    if (estudanteIds.length === 0) return tasksSet;
-
-    try {
-      const { data, error } = await (supabase
-        .from('user_tasks')
-        .select('student_id')
-        .eq('user_id', userId)
-        .in('student_id', estudanteIds)
-        .eq('bimestre', bimestre)
-        .eq('status', 'PENDING')
-        .eq('deleted', false) as any);
-
-      if (error) throw error;
-
-      (data || []).forEach((record: any) => {
-        tasksSet.add(record.student_id);
-      });
-    } catch (error) {
-      logger.error('getExistingPendingTasks falhou', {}, error as Error);
-    }
-
-    return tasksSet;
-  }
-
-  /**
    * Busca tarefas pendentes de um usuário
+   *
+   * NOTA: Schema correto - created_by, is_resolved (não status/deleted)
    */
   static async getPendingTasks(userId: string): Promise<UserTask[]> {
     try {
       const { data, error } = await supabase
         .from('user_tasks')
         .select('*')
-        .eq('user_id', userId)
-        .eq('status', 'PENDING')
-        .eq('deleted', false)
+        .eq('created_by', userId)
+        .eq('is_resolved', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -393,41 +317,22 @@ export class TaskService {
 
       const completedAt = new Date().toISOString();
 
-      // Atualizar task e criar control em paralelo
-      const [updateResult, controlResult] = await Promise.allSettled([
-        // 1. Atualizar task
-        ((supabase
-          .from('user_tasks') as any)
-          .update({
-            status: 'COMPLETED',
-            completed_at: completedAt,
-            interaction_id: interactionId
-          })
-          .eq('id', taskId)),
+      // Atualizar task (schema correto: is_resolved, resolved_at)
+      const { error: updateError } = await (supabase
+        .from('user_tasks') as any)
+        .update({
+          is_resolved: true,
+          resolved_at: completedAt,
+          action_taken: `Interação registrada: ${interactionId}`
+        })
+        .eq('id', taskId);
 
-        // 2. Criar control
-        (supabase
-          .from('task_control')
-          .insert({
-            user_id: task.user_id,
-            student_id: task.student_id,
-            bimestre: task.bimestre,
-            task_type: task.task_type,
-            has_completed_task: true,
-            completed_at: completedAt
-          } as any) as any)
-      ]);
-
-      if (updateResult.status === 'rejected') {
-        logger.error('Erro ao atualizar task', { taskId }, updateResult.reason);
+      if (updateError) {
+        logger.error('Erro ao atualizar tarefa', { taskId }, updateError as Error);
         return false;
       }
 
-      if (controlResult.status === 'rejected') {
-        logger.error('Erro ao criar control', { taskId }, controlResult.reason);
-        // Task foi atualizada, então considerar sucesso parcial
-      }
-
+      // NOTA: task_control não existe mais no schema - removido
       return true;
     } catch (error) {
       logger.error('completeTask falhou', { taskId }, error as Error);
@@ -459,22 +364,19 @@ export class TaskService {
   }
 
   /**
-   * Busca tarefas completadas de um usuário para bimestres específicos
+   * Busca tarefas completadas de um usuário
+   *
+   * NOTA: Schema correto - created_by, is_resolved (não status/deleted/bimestre/completed_at)
    */
-  static async getCompletedTasks(userId: string, bimestres: string[]): Promise<UserTask[]> {
+  static async getCompletedTasks(userId: string, bimestres?: string[]): Promise<UserTask[]> {
     try {
-      if (bimestres.length === 0) {
-        bimestres = ['1º Bimestre']; // Fallback
-      }
-
+      // NOTA: Parâmetro bimestres ignorado - user_tasks não possui coluna 'bimestre'
       const { data, error } = await supabase
         .from('user_tasks')
         .select('*')
-        .eq('user_id', userId)
-        .eq('status', 'COMPLETED')
-        .in('bimestre', bimestres)
-        .eq('deleted', false)
-        .order('completed_at', { ascending: false });
+        .eq('created_by', userId)
+        .eq('is_resolved', true)
+        .order('resolved_at', { ascending: false });
 
       if (error) throw error;
 
@@ -533,14 +435,15 @@ export class TaskService {
 
   /**
    * Busca todas as tarefas de um usuário (por userId, incluindo BOT)
+   *
+   * NOTA: Busca por 'created_by' (quem criou a tarefa)
    */
   static async getUserTasksForUserId(userId: string): Promise<UserTask[]> {
     try {
       const { data, error } = await supabase
         .from('user_tasks')
         .select('*')
-        .eq('user_id', userId)
-        .eq('deleted', false)
+        .eq('created_by', userId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
