@@ -1,5 +1,6 @@
-import { AnoLetivoData, BimesterDate, BimesterDates } from "@/types";
+import { BimesterDates } from "@/types";
 import { logger } from "@/utils/logger";
+import { AcademicYearService } from "@/services/supabase/academicYearService";
 
 export function formatFirebaseDate(dateStr: string | undefined): string {
     if (!dateStr || typeof dateStr !== "string") return "01/01/1970";
@@ -117,8 +118,7 @@ export function getFrequencyColor(percentual: number): string {
  */
 export const calculateDiasLetivos = async (start: string, end: string): Promise<{ ateHoje: number; b1: number; b2: number; b3: number; b4: number; anual: number }> => {
     try {
-        // Usar Supabase via AcademicYearService
-        const { AcademicYearService } = await import('@/services/supabase/academicYearService');
+        // Usar Supabase via AcademicYearService (import estático)
         const currentYear = new Date().getFullYear();
 
         const startDateObj = parseDate(start);
@@ -181,7 +181,7 @@ export const calculateDiasLetivos = async (start: string, end: string): Promise<
  */
 export async function getDiasLetivosNoPeriodo(startDate: Date, endDate: Date): Promise<string[]> {
     try {
-        const { AcademicYearService } = await import('@/services/supabase/academicYearService');
+        // Usar import estático (já importado no topo do arquivo)
         const currentYear = new Date().getFullYear();
 
         // Buscar dados do ano letivo completo via Supabase
