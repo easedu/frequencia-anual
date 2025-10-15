@@ -70,7 +70,7 @@ export default function WhatsAppContactSelector({
 }: WhatsAppContactSelectorProps) {
     const [whatsAppContacts, setWhatsAppContacts] = useState<Contato[]>([]);
 
-    // Filtrar contatos com WhatsApp verificado E que podem receber mensagem
+    // Filtrar contatos com WhatsApp verificado (independente de podeReceberMensagem)
     useEffect(() => {
         const filteredContacts = contacts.filter(contact => {
             const cleanPhone = contact.telefone.replace(/\D/g, '');
@@ -80,18 +80,20 @@ export default function WhatsAppContactSelector({
             const hasWhatsAppData = verificationData?.whatsapp?.exists ||
                                     verificationData?.hasWhatsApp;
 
-            // Verificar se pode receber mensagem
-            const canReceiveMessages = contact.podeReceberMensagem !== false;
-
-            return hasWhatsAppData && canReceiveMessages;
+            // ✅ MOSTRAR todos os contatos com WhatsApp, independente de podeReceberMensagem
+            // O campo podeReceberMensagem será usado apenas para desabilitar a seleção
+            return hasWhatsAppData;
         });
 
         setWhatsAppContacts(filteredContacts);
     }, [contacts, contactVerificationData]);
 
-    const handleContactToggle = (phone: string) => {
+    const handleContactToggle = (phone: string, contact: Contato) => {
         // Não permitir alteração se estiver em modo read-only
         if (readonly) return;
+
+        // ✅ Bloquear se contato não pode receber mensagem
+        if (contact.podeReceberMensagem === false) return;
 
         const cleanPhone = phone.replace(/\D/g, '');
         const newSelection = new Set(selectedPhones);
@@ -147,15 +149,20 @@ export default function WhatsAppContactSelector({
                     {whatsAppContacts.map((contato) => {
                         const cleanPhone = contato.telefone.replace(/\D/g, '');
                         const isSelected = selectedPhones.has(cleanPhone);
+                        const cannotReceiveMessage = contato.podeReceberMensagem === false;
 
                         return (
                             <div
                                 key={cleanPhone}
-                                onClick={() => handleContactToggle(contato.telefone)}
-                                className={cn(contactItemVariants({
-                                    variant: isSelected ? "selected" : "default",
-                                    size
-                                }), readonly && "cursor-not-allowed opacity-70")}
+                                onClick={() => handleContactToggle(contato.telefone, contato)}
+                                className={cn(
+                                    contactItemVariants({
+                                        variant: isSelected ? "selected" : "default",
+                                        size
+                                    }),
+                                    readonly && "cursor-not-allowed opacity-70",
+                                    cannotReceiveMessage && "cursor-not-allowed opacity-50 bg-gray-100"
+                                )}
                             >
                                 {/* Nome e número (similar ao StudentInfoCard) */}
                                 <div className="flex items-center gap-2 min-w-0">

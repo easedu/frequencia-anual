@@ -47,6 +47,13 @@ interface RegisterInteractionCardProps {
     // Loading/Success states
     isSendingWhatsApp?: boolean;
     whatsAppSendSuccess?: boolean;
+    // 🆕 Modal mode props (para envio direto de WhatsApp)
+    readonlyDate?: boolean; // Bloquear edição de data
+    preselectedPhones?: string[]; // Telefones pré-selecionados
+    hideFields?: {
+        type?: boolean; // Esconder select de tipo
+        date?: boolean; // Esconder input de data
+    };
 }
 
 /**
@@ -87,9 +94,21 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
     contactVerificationData = new Map(),
     isSendingWhatsApp = false,
     whatsAppSendSuccess = false,
+    // 🆕 Modal mode props
+    readonlyDate = false,
+    preselectedPhones = [],
+    hideFields = {},
 }: RegisterInteractionCardProps) {
     const whatsappTextareaRef = useRef<HTMLTextAreaElement>(null);
     const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // 🆕 Pré-selecionar telefones no modo modal - DESABILITADO para evitar loops
+    // useEffect(() => {
+    //     if (preselectedPhones.length > 0 && !editingInteraction) {
+    //         onWhatsAppPhonesChange(new Set(preselectedPhones));
+    //     }
+    //     // eslint-disable-next-line react-hooks/exhaustive-deps
+    // }, [preselectedPhones, editingInteraction]);
 
     // Auto-resize do textarea WhatsApp baseado no conteúdo
     useEffect(() => {
@@ -163,7 +182,8 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
         }
         // Não limpar campos se editingInteraction for null/undefined
         // Isso permite que o componente seja usado em modais sem resetar
-    }, [editingInteraction, setInteractionType, setInteractionDate, setInteractionDescription, setInteractionSensitive, onWhatsAppPhonesChange, onWhatsAppMessageChange]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editingInteraction]);
 
     const handleSensitiveChange = (checked: boolean | string) => {
         const isChecked = typeof checked === "boolean" ? checked : checked === "true";
@@ -262,52 +282,59 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
 
             <CardContent className="p-3">
                 <div className="space-y-2.5">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                            <Label htmlFor="interaction-type" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
-                                <MessageSquare className="w-3 h-3 text-blue-600" />
-                                <span>Tipo de Interação</span>
-                            </Label>
-                            {readonlyType || (editingInteraction && interactionType === "Contato digital") ? (
-                                <div className="h-8 px-2.5 py-1.5 border border-gray-300 rounded-md bg-gray-50 flex items-center text-sm">
-                                    <span className="text-gray-700">{interactionType}</span>
+                    {/* Grid de Tipo e Data - renderizar apenas se não estiverem escondidos */}
+                    {(!hideFields.type || !hideFields.date) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {!hideFields.type && (
+                                <div className="space-y-1">
+                                    <Label htmlFor="interaction-type" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
+                                        <MessageSquare className="w-3 h-3 text-blue-600" />
+                                        <span>Tipo de Interação</span>
+                                    </Label>
+                                    {readonlyType || (editingInteraction && interactionType === "Contato digital") ? (
+                                        <div className="h-8 px-2.5 py-1.5 border border-gray-300 rounded-md bg-gray-50 flex items-center text-sm">
+                                            <span className="text-gray-700">{interactionType}</span>
+                                        </div>
+                                    ) : (
+                                        <Select value={interactionType} onValueChange={setInteractionType}>
+                                            <SelectTrigger id="interaction-type" className="h-8 border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors text-sm">
+                                                <SelectValue placeholder="Selecione o tipo" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {interactionTypes.map((type) => (
+                                                    <SelectItem key={type} value={type} className="text-sm">
+                                                        {type}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    )}
                                 </div>
-                            ) : (
-                                <Select value={interactionType} onValueChange={setInteractionType}>
-                                    <SelectTrigger id="interaction-type" className="h-8 border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors text-sm">
-                                        <SelectValue placeholder="Selecione o tipo" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {interactionTypes.map((type) => (
-                                            <SelectItem key={type} value={type} className="text-sm">
-                                                {type}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                            )}
+
+                            {!hideFields.date && (
+                                <div className="space-y-1">
+                                    <Label htmlFor="interaction-date" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
+                                        <Calendar className="w-3 h-3 text-blue-600" />
+                                        <span>Data</span>
+                                    </Label>
+                                    <Input
+                                        id="interaction-date"
+                                        value={interactionDate}
+                                        onChange={(e) => setInteractionDate(formatDateInput(e.target.value))}
+                                        placeholder="dd/mm/aaaa"
+                                        maxLength={10}
+                                        disabled={readonlyDate || !!(editingInteraction && interactionType === "Contato digital")}
+                                        className={`h-8 transition-colors text-sm ${
+                                            readonlyDate || (editingInteraction && interactionType === "Contato digital")
+                                                ? "bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
+                                                : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                        }`}
+                                    />
+                                </div>
                             )}
                         </div>
-
-                        <div className="space-y-1">
-                            <Label htmlFor="interaction-date" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
-                                <Calendar className="w-3 h-3 text-blue-600" />
-                                <span>Data</span>
-                            </Label>
-                            <Input
-                                id="interaction-date"
-                                value={interactionDate}
-                                onChange={(e) => setInteractionDate(formatDateInput(e.target.value))}
-                                placeholder="dd/mm/aaaa"
-                                maxLength={10}
-                                disabled={!!(editingInteraction && interactionType === "Contato digital")}
-                                className={`h-8 transition-colors text-sm ${
-                                    editingInteraction && interactionType === "Contato digital"
-                                        ? "bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
-                                        : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                                }`}
-                            />
-                        </div>
-                    </div>
+                    )}
 
                     {/* WhatsApp Contact Selector - Exibir apenas quando "Contato digital" for selecionado */}
                     {interactionType === "Contato digital" && contacts.length > 0 && (
@@ -322,53 +349,94 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
                         />
                     )}
 
-                    {/* Grid: Mensagem WhatsApp e Descrição lado a lado (quando Contato digital) */}
-                    {interactionType === "Contato digital" ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {/* Mensagem WhatsApp */}
-                            <div className="space-y-1">
-                                <Label htmlFor="whatsapp-message" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
-                                    <Send className="w-3 h-3 text-blue-600" />
-                                    <span>Mensagem WhatsApp</span>
-                                    {!editingInteraction && <span className="text-red-500">*</span>}
-                                </Label>
-                                <Textarea
-                                    ref={whatsappTextareaRef}
-                                    id="whatsapp-message"
-                                    value={whatsAppMessage}
-                                    onChange={(e) => onWhatsAppMessageChange(e.target.value)}
-                                    placeholder={editingInteraction ? "Mensagem já enviada" : "Digite a mensagem que será enviada..."}
-                                    disabled={!!editingInteraction}
-                                    className={`min-h-[180px] text-sm overflow-hidden ${
-                                        editingInteraction
-                                            ? "resize-none bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
-                                            : "resize-none border-blue-300 focus:border-blue-500 focus:ring-blue-500 bg-white"
-                                    }`}
-                                />
-                            </div>
-
-                            {/* Descrição da Interação */}
-                            <div className="space-y-1">
-                                <Label htmlFor="interaction-description" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
-                                    <MessageSquare className="w-3 h-3 text-blue-600" />
-                                    <span>Descrição da Interação</span>
-                                    <span className="text-red-500">*</span>
-                                </Label>
-                                <Textarea
-                                    ref={descriptionTextareaRef}
-                                    id="interaction-description"
-                                    value={interactionDescription}
-                                    onChange={(e) => setInteractionDescription(e.target.value)}
-                                    placeholder="Descrição da interação (ex: 'Mensagens enviadas para Rafaela')..."
-                                    disabled={editingInteraction?.createdBy === "AUTOMAÇÃO"}
-                                    className={`min-h-[180px] text-sm overflow-hidden ${
-                                        editingInteraction?.createdBy === "AUTOMAÇÃO"
-                                            ? "resize-none bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
-                                            : "resize-none border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                                    }`}
-                                />
+                    {/* ⚠️ Verificar se contato selecionado pode receber mensagem */}
+                    {interactionType === "Contato digital" && selectedWhatsAppPhones.size > 0 && (() => {
+                        const selectedPhone = Array.from(selectedWhatsAppPhones)[0];
+                        const selectedContact = contacts.find(c => c.telefone.replace(/\D/g, '') === selectedPhone);
+                        return selectedContact?.podeReceberMensagem === false;
+                    })() && (
+                        <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-4">
+                            <div className="flex items-start gap-3">
+                                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                <div className="space-y-2">
+                                    <h4 className="font-semibold text-amber-900 text-sm">
+                                        Contato não pode receber mensagens
+                                    </h4>
+                                    <p className="text-sm text-amber-800">
+                                        O contato selecionado está marcado como "não pode receber mensagem".
+                                        Para enviar mensagens via WhatsApp, atualize as configurações do contato no perfil do estudante.
+                                    </p>
+                                </div>
                             </div>
                         </div>
+                    )}
+
+                    {/* Grid: Mensagem WhatsApp e Descrição lado a lado (quando Contato digital) */}
+                    {interactionType === "Contato digital" ? (
+                        (() => {
+                            // Verificar se contato selecionado pode receber mensagem
+                            const selectedPhone = selectedWhatsAppPhones.size > 0 ? Array.from(selectedWhatsAppPhones)[0] : null;
+                            const selectedContact = selectedPhone ? contacts.find(c => c.telefone.replace(/\D/g, '') === selectedPhone) : null;
+                            const cannotReceiveMessage = selectedContact?.podeReceberMensagem === false;
+
+                            return (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {/* Mensagem WhatsApp */}
+                                    <div className="space-y-1">
+                                        <Label htmlFor="whatsapp-message" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
+                                            <Send className="w-3 h-3 text-blue-600" />
+                                            <span>Mensagem WhatsApp</span>
+                                            {!editingInteraction && !cannotReceiveMessage && <span className="text-red-500">*</span>}
+                                        </Label>
+                                        <Textarea
+                                            ref={whatsappTextareaRef}
+                                            id="whatsapp-message"
+                                            value={whatsAppMessage}
+                                            onChange={(e) => onWhatsAppMessageChange(e.target.value)}
+                                            placeholder={
+                                                cannotReceiveMessage
+                                                    ? "Contato não pode receber mensagens"
+                                                    : editingInteraction
+                                                        ? "Mensagem já enviada"
+                                                        : "Digite a mensagem que será enviada..."
+                                            }
+                                            disabled={!!editingInteraction || cannotReceiveMessage}
+                                            className={`min-h-[180px] text-sm overflow-hidden ${
+                                                editingInteraction || cannotReceiveMessage
+                                                    ? "resize-none bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
+                                                    : "resize-none border-blue-300 focus:border-blue-500 focus:ring-blue-500 bg-white"
+                                            }`}
+                                        />
+                                    </div>
+
+                                    {/* Descrição da Interação */}
+                                    <div className="space-y-1">
+                                        <Label htmlFor="interaction-description" className="text-xs font-medium text-gray-700 flex items-center space-x-1">
+                                            <MessageSquare className="w-3 h-3 text-blue-600" />
+                                            <span>Descrição da Interação</span>
+                                            {!cannotReceiveMessage && <span className="text-red-500">*</span>}
+                                        </Label>
+                                        <Textarea
+                                            ref={descriptionTextareaRef}
+                                            id="interaction-description"
+                                            value={interactionDescription}
+                                            onChange={(e) => setInteractionDescription(e.target.value)}
+                                            placeholder={
+                                                cannotReceiveMessage
+                                                    ? "Contato não pode receber mensagens"
+                                                    : "Descrição da interação (ex: 'Mensagens enviadas para Rafaela')..."
+                                            }
+                                            disabled={editingInteraction?.createdBy === "AUTOMAÇÃO" || cannotReceiveMessage}
+                                            className={`min-h-[180px] text-sm overflow-hidden ${
+                                                editingInteraction?.createdBy === "AUTOMAÇÃO" || cannotReceiveMessage
+                                                    ? "resize-none bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed"
+                                                    : "resize-none border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                            }`}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        })()
                     ) : (
                         /* Descrição normal quando não for Contato digital */
                         <div className="space-y-1">
@@ -405,7 +473,16 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
                     <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-gray-200">
                         <Button
                             onClick={editingInteraction ? onEditInteraction : onAddInteraction}
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white transition-colors duration-200 flex items-center justify-center space-x-1.5 h-8 text-sm"
+                            disabled={(() => {
+                                // Desabilitar se contato não puder receber mensagem
+                                if (interactionType === "Contato digital" && selectedWhatsAppPhones.size > 0) {
+                                    const selectedPhone = Array.from(selectedWhatsAppPhones)[0];
+                                    const selectedContact = contacts.find(c => c.telefone.replace(/\D/g, '') === selectedPhone);
+                                    return selectedContact?.podeReceberMensagem === false;
+                                }
+                                return false;
+                            })()}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white transition-colors duration-200 flex items-center justify-center space-x-1.5 h-8 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {editingInteraction ? (
                                 <>

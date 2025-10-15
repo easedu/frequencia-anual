@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,13 +32,16 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { useStudents } from '@/hooks/useStudents';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { WhatsAppTrackingService } from '@/services/whatsappTrackingService';
+import { InteractionService } from '@/services/supabase/interactionService';
 import { FullPageSkeleton, FiltersSkeleton, StatsSkeleton, StudentTableSkeleton } from '@/components/shared/LoadingSkeletons';
 // Firebase removido - migramos para Supabase StudentDataService
 // Removido xlsx por vulnerabilidades de segurança - usando CSV nativo + papaparse
 import Papa from 'papaparse';
-import WhatsAppModal from '@/components/whatsapp/WhatsAppModal';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import { logger } from '@/utils/logger';
 import { getStudentContacts } from '@/services/studentDataService';
 import { getAuth } from 'firebase/auth';
@@ -54,12 +57,14 @@ interface PhoneContact {
   hasWhatsApp?: boolean;
   whatsAppVerified?: boolean;
   lastVerified?: string;
+  podeReceberMensagem?: boolean; // ✅ Adicionar campo do banco
 }
 
 export default function TelefonesPage() {
   // PERFORMANCE: includeContacts=true (página PRECISA de contatos para extrair telefones)
   const { students, loading: studentsLoading } = useStudents(false, true);
   const auth = getAuth();
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   const [phoneContacts, setPhoneContacts] = useState<PhoneContact[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -79,6 +84,21 @@ export default function TelefonesPage() {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<PhoneContact | null>(null);
   const [verifiedWhatsAppNumbers, setVerifiedWhatsAppNumbers] = useState<Set<string>>(new Set());
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+  const [whatsAppSendSuccess, setWhatsAppSendSuccess] = useState(false);
+  const [contactVerificationData, setContactVerificationData] = useState<Map<string, {
+    verificationStatus?: string;
+    hasWhatsApp?: boolean;
+    whatsapp?: {
+      verified?: boolean;
+      exists?: boolean;
+    };
+  }>>(new Map());
+  // Estados para o formulário do modal
+  const [whatsAppMessage, setWhatsAppMessage] = useState('');
+  const [selectedWhatsAppPhones, setSelectedWhatsAppPhones] = useState<Set<string>>(new Set());
+  const [interactionDescription, setInteractionDescription] = useState('');
+  const [interactionSensitive, setInteractionSensitive] = useState(false);
 
   // Extrair todos os telefones dos estudantes COM dados de WhatsApp já incluídos
   const extractPhoneContacts = useMemo(() => {
@@ -103,6 +123,7 @@ export default function TelefonesPage() {
                 whatsAppVerified: contato.whatsapp?.verified || false,
                 hasWhatsApp: contato.whatsapp?.exists || false,
                 lastVerified: contato.whatsapp?.verifiedAt || undefined,
+                podeReceberMensagem: contato.podeReceberMensagem, // ✅ Popular do banco
               });
             }
           }
@@ -126,12 +147,37 @@ export default function TelefonesPage() {
 
       // Atualizar conjunto de números verificados
       const numbersWithWhatsApp = new Set<string>();
+      const verificationDataMap = new Map<string, {
+        verificationStatus?: string;
+        hasWhatsApp?: boolean;
+        isVerified?: boolean;
+        verifiedAt?: string;
+        whatsapp?: {
+          verified?: boolean;
+          exists?: boolean;
+        };
+      }>();
+
       extractPhoneContacts.forEach(contact => {
         if (contact.hasWhatsApp) {
           numbersWithWhatsApp.add(contact.telefone);
         }
+
+        // Popular contactVerificationData para cada contato (igual perfil-estudante)
+        verificationDataMap.set(contact.telefone, {
+          hasWhatsApp: contact.hasWhatsApp || false,
+          verificationStatus: contact.whatsAppVerified ? 'verified' : 'error',
+          isVerified: contact.whatsAppVerified || false,
+          verifiedAt: contact.lastVerified,
+          whatsapp: {
+            verified: contact.whatsAppVerified,
+            exists: contact.hasWhatsApp
+          }
+        });
       });
+
       setVerifiedWhatsAppNumbers(numbersWithWhatsApp);
+      setContactVerificationData(verificationDataMap);
       setLoadingWhatsAppData(false);
     }
   }, [extractPhoneContacts]);
@@ -357,6 +403,8 @@ export default function TelefonesPage() {
   // Função para abrir modal do WhatsApp
   const openWhatsAppModal = (contact: PhoneContact) => {
     setSelectedContact(contact);
+    // Pré-selecionar telefone
+    setSelectedWhatsAppPhones(new Set([contact.telefone.replace(/\D/g, '')]));
     setIsWhatsAppModalOpen(true);
   };
 
@@ -430,6 +478,106 @@ export default function TelefonesPage() {
       };
     }
   };
+
+  // Função estável para salvar interação do WhatsApp modal
+  const handleSaveWhatsAppInteraction = useCallback(async () => {
+    if (!selectedContact || selectedWhatsAppPhones.size === 0) return;
+
+    try {
+      // Ativar loading visual
+      setIsSendingWhatsApp(true);
+      setWhatsAppSendSuccess(false);
+
+      const whatsappPhones = Array.from(selectedWhatsAppPhones);
+      const whatsappMessageText = whatsAppMessage;
+
+      // FASE 1: Enviar WhatsApp
+      let whatsappMessageId: string | undefined;
+      if (whatsappPhones.length > 0) {
+        const toastId = toast.loading(`Enviando mensagem...`);
+
+        try {
+          const response = await fetch('/api/evolution/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              phone: whatsappPhones[0],
+              message: whatsappMessageText.trim()
+            })
+          });
+
+          const result = await response.json();
+
+          if (!result.success) {
+            throw new Error(result.error || result.message || "Falha ao enviar mensagem");
+          }
+
+          whatsappMessageId = result.data?.messageId;
+
+          // Atualizar contador de mensagens
+          await WhatsAppTrackingService.updateMessageCount(whatsappPhones[0]);
+
+          toast.dismiss(toastId);
+          toast.success("Mensagem enviada com sucesso!");
+        } catch (error) {
+          toast.dismiss(toastId);
+          toast.error("Falha ao enviar mensagem. A interação NÃO foi salva.");
+          setIsSendingWhatsApp(false);
+          setWhatsAppSendSuccess(false);
+          return;
+        }
+      }
+
+      // FASE 2: Salvar interação via Supabase
+      const phoneNumber = whatsappPhones[0];
+      const contactName = selectedContact.parentesco
+        ? `${selectedContact.nome} (${selectedContact.parentesco})`
+        : selectedContact.nome;
+      const finalDescription = `Mensagem enviada via WhatsApp para: ${contactName} - ${phoneNumber}\n\n${interactionDescription}`;
+
+      const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
+
+      await InteractionService.createInteraction(selectedContact.estudanteId, {
+        studentId: selectedContact.estudanteId,
+        type: 'Contato digital',
+        date: new Date().toISOString().split('T')[0],
+        description: finalDescription,
+        createdBy: currentUser,
+        sensitive: interactionSensitive,
+        whatsappMessage: whatsappMessageText,
+        whatsappPhones: whatsappPhones,
+        whatsappMessageId: whatsappMessageId,
+        whatsappStatus: 'SENT' as const,
+        whatsappSentAt: new Date().toISOString(),
+      } as any);
+
+      logger.interactionOperation('create', selectedContact.estudanteId, 'Contato digital', { supabase: true });
+
+      // Mostrar sucesso visual
+      setWhatsAppSendSuccess(true);
+      setIsSendingWhatsApp(false);
+
+      setTimeout(() => {
+        setWhatsAppSendSuccess(false);
+        setIsWhatsAppModalOpen(false);
+        setSelectedContact(null);
+        // Limpar campos
+        setWhatsAppMessage('');
+        setSelectedWhatsAppPhones(new Set());
+        setInteractionDescription('');
+        setInteractionSensitive(false);
+      }, 2000);
+
+      toast.success("Interação salva com sucesso!");
+    } catch (error) {
+      logger.error("Erro ao cadastrar interação", error as Error);
+      toast.error("Erro ao salvar interação. Tente novamente.");
+      setIsSendingWhatsApp(false);
+      setWhatsAppSendSuccess(false);
+    }
+  }, [selectedContact, auth.currentUser, selectedWhatsAppPhones, whatsAppMessage, interactionDescription, interactionSensitive]);
 
   // Função para processar arquivo CSV de verificação (substituindo Excel)
   const processExcelFile = async (file: File) => {
@@ -1021,32 +1169,66 @@ export default function TelefonesPage() {
           </CardContent>
         </Card>
 
-        {/* WhatsApp Modal */}
-        <WhatsAppModal
-          isOpen={isWhatsAppModalOpen}
-          onClose={() => {
-            setIsWhatsAppModalOpen(false);
-            setSelectedContact(null);
+        {/* WhatsApp Interaction Modal */}
+        <Dialog
+          open={isWhatsAppModalOpen && !!selectedContact}
+          onOpenChange={(open) => {
+            setIsWhatsAppModalOpen(open);
+            if (!open) {
+              setSelectedContact(null);
+            }
           }}
-          student={{
-            nome: selectedContact?.estudanteNome || '',
-            estudanteId: selectedContact?.estudanteId || '',
-            turma: selectedContact?.turma || '',
-            turno: (selectedContact?.turno as "MANHÃ" | "TARDE") || "MANHÃ",
-            status: "ATIVO",
-            bolsaFamilia: "NÃO",
-            contatos: selectedContact ? [{
-              nome: selectedContact.nome,
-              telefone: selectedContact.telefone
-            }] : []
-          }}
-          selectedContact={selectedContact ? {
-            nome: selectedContact.nome,
-            telefone: selectedContact.telefone
-          } : null}
-          onSendMessage={handleSendWhatsAppMessage}
-          verifiedNumbers={verifiedWhatsAppNumbers}
-        />
+        >
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                Enviar WhatsApp - {selectedContact?.estudanteNome || ''}
+              </DialogTitle>
+              <DialogDescription>
+                Preencha os campos abaixo para enviar uma mensagem via WhatsApp e registrar a interação
+              </DialogDescription>
+            </DialogHeader>
+
+            <RegisterInteractionCard
+              interactionType="Contato digital"
+              interactionDate={new Date().toLocaleDateString('pt-BR')}
+              interactionDescription={interactionDescription}
+              interactionSensitive={interactionSensitive}
+              editingInteraction={null}
+              userRole={userRole}
+              setInteractionType={() => {}}
+              setInteractionDate={() => {}}
+              setInteractionDescription={setInteractionDescription}
+              setInteractionSensitive={setInteractionSensitive}
+              setEditingInteraction={() => {}}
+              onAddInteraction={handleSaveWhatsAppInteraction}
+              onEditInteraction={async () => {}}
+              readonlyType={true}
+              readonlyDate={true}
+              hideFields={{ type: true, date: true }}
+              contacts={selectedContact ?
+                // ✅ Buscar TODOS os contatos do estudante (igual ao perfil-estudante)
+                phoneContacts
+                  .filter(c => c.estudanteId === selectedContact.estudanteId)
+                  .map(c => ({
+                    nome: c.nome,
+                    telefone: c.telefone,
+                    parentesco: c.parentesco,
+                    podeReceberMensagem: c.podeReceberMensagem
+                  }))
+                : []
+              }
+              selectedWhatsAppPhones={selectedWhatsAppPhones}
+              onWhatsAppPhonesChange={setSelectedWhatsAppPhones}
+              whatsAppMessage={whatsAppMessage}
+              onWhatsAppMessageChange={setWhatsAppMessage}
+              verifiedWhatsAppNumbers={verifiedWhatsAppNumbers}
+              contactVerificationData={contactVerificationData}
+              isSendingWhatsApp={isSendingWhatsApp}
+              whatsAppSendSuccess={whatsAppSendSuccess}
+            />
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

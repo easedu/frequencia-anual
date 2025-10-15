@@ -30,7 +30,7 @@ import SuspensaoHistoryCard from "@/components/interactions/SuspensaoHistoryCard
 import RegisterInteractionCard from "@/components/interactions/RegisterInteractionCard";
 import InteractionHistoryCard from "@/components/interactions/InteractionHistoryCard";
 import ProvaSaoPauloCard from "@/components/students/ProvaSaoPauloCard";
-import WhatsAppModal from "@/components/whatsapp/WhatsAppModal";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Student, StudentRecord, FamilyInteraction, Atestado, Suspensao, AbsenceRecord, BimesterDates, AnoLetivoData, Contato } from "@/types";
 import { calculateDiasLetivos, parseDate, parseDateToFirebase, formatFirebaseDate, getBimesterByDate, getDiasLetivosNoPeriodo } from "../utils";
 import { Card, CardContent } from "@/components/ui/card";
@@ -193,13 +193,29 @@ export default function StudentProfilePage() {
                             hasWhatsApp: exists || false,
                             verificationStatus: verified ? 'verified' : 'error',
                             isVerified: verified || false,
-                            verifiedAt: verifiedAt
+                            verifiedAt: verifiedAt,
+                            whatsapp: {
+                                verified: verified,
+                                exists: exists
+                            }
                         });
 
                         // Adicionar ao Set se tem WhatsApp verificado
                         if (exists) {
                             verifiedNumbers.add(cleanPhone);
                         }
+                    } else {
+                        // ✅ Se não tem dados de whatsapp, assumir que TEM WhatsApp (comportamento padrão)
+                        verificationMap.set(cleanPhone, {
+                            hasWhatsApp: true,
+                            verificationStatus: 'verified',
+                            isVerified: true,
+                            whatsapp: {
+                                verified: true,
+                                exists: true
+                            }
+                        });
+                        verifiedNumbers.add(cleanPhone);
                     }
                 }
 
@@ -1263,6 +1279,8 @@ export default function StudentProfilePage() {
     // WhatsApp functions
     const handleWhatsAppClick = (contact: Contato) => {
         setSelectedContact(contact);
+        // Pré-selecionar telefone
+        setSelectedWhatsAppPhones(new Set([contact.telefone.replace(/\D/g, '')]));
         setIsWhatsAppModalOpen(true);
     };
 
@@ -1385,6 +1403,107 @@ export default function StudentProfilePage() {
             };
         }
     };
+
+    // Função estável para salvar interação do WhatsApp modal
+    const handleSaveWhatsAppInteraction = useCallback(async () => {
+        if (!selectedStudentId || !student || selectedWhatsAppPhones.size === 0) return;
+
+        try {
+            // Ativar loading visual
+            setIsSendingWhatsApp(true);
+            setWhatsAppSendSuccess(false);
+
+            const whatsappPhones = Array.from(selectedWhatsAppPhones);
+            const whatsappMessageText = whatsAppMessage;
+
+            // FASE 1: Enviar WhatsApp
+            let whatsappMessageId: string | undefined;
+            if (whatsappPhones.length > 0) {
+                const toastId = toast.loading(`Enviando mensagem...`);
+
+                try {
+                    const response = await fetch('/api/evolution/send', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            phone: whatsappPhones[0],
+                            message: whatsappMessageText.trim()
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        throw new Error(result.error || result.message || "Falha ao enviar mensagem");
+                    }
+
+                    whatsappMessageId = result.data?.messageId;
+
+                    // Atualizar contador de mensagens
+                    await WhatsAppTrackingService.updateMessageCount(whatsappPhones[0]);
+
+                    toast.dismiss(toastId);
+                    toast.success("Mensagem enviada com sucesso!");
+                } catch (error) {
+                    toast.dismiss(toastId);
+                    toast.error("Falha ao enviar mensagem. A interação NÃO foi salva.");
+                    setIsSendingWhatsApp(false);
+                    setWhatsAppSendSuccess(false);
+                    return;
+                }
+            }
+
+            // FASE 2: Salvar interação via Supabase
+            const phoneNumber = whatsappPhones[0];
+            const contact = student.contatos?.find(c => c.telefone.replace(/\D/g, '') === phoneNumber);
+            const contactName = contact ? `${contact.nome}${contact.parentesco ? ` (${contact.parentesco})` : ''}` : phoneNumber;
+            const finalDescription = `Mensagem enviada via WhatsApp para: ${contactName} - ${phoneNumber}\n\n${interactionDescription}`;
+
+            const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
+
+            await InteractionService.createInteraction(selectedStudentId, {
+                studentId: selectedStudentId,
+                type: 'Contato digital',
+                date: new Date().toISOString().split('T')[0],
+                description: finalDescription,
+                createdBy: currentUser,
+                sensitive: interactionSensitive,
+                whatsappMessage: whatsappMessageText,
+                whatsappPhones: whatsappPhones,
+                whatsappMessageId: whatsappMessageId,
+                whatsappStatus: 'SENT' as const,
+                whatsappSentAt: new Date().toISOString(),
+            } as Omit<FamilyInteraction, 'id'>);
+
+            logger.interactionOperation('create', selectedStudentId, 'Contato digital', { supabase: true });
+
+            await fetchStudentData(selectedStudentId);
+
+            // Mostrar sucesso visual
+            setWhatsAppSendSuccess(true);
+            setIsSendingWhatsApp(false);
+
+            setTimeout(() => {
+                setWhatsAppSendSuccess(false);
+                setIsWhatsAppModalOpen(false);
+                setSelectedContact(null);
+                // Limpar campos
+                setWhatsAppMessage('');
+                setSelectedWhatsAppPhones(new Set());
+                setInteractionDescription('');
+                setInteractionSensitive(false);
+            }, 2000);
+
+            toast.success("Interação salva com sucesso!");
+        } catch (error) {
+            logger.error("Erro ao cadastrar interação", error as Error);
+            toast.error("Erro ao salvar interação. Tente novamente.");
+            setIsSendingWhatsApp(false);
+            setWhatsAppSendSuccess(false);
+        }
+    }, [selectedStudentId, student, auth.currentUser, selectedWhatsAppPhones, whatsAppMessage, interactionDescription, interactionSensitive]);
 
     const handleSearchName = (value: string) => {
         setSearchName(value);
@@ -1672,18 +1791,55 @@ export default function StudentProfilePage() {
                 </>
             )}
 
-            {/* WhatsApp Modal */}
-            <WhatsAppModal
-                isOpen={isWhatsAppModalOpen}
-                onClose={() => {
-                    setIsWhatsAppModalOpen(false);
-                    setSelectedContact(null);
+            {/* WhatsApp Interaction Modal */}
+            <Dialog
+                open={isWhatsAppModalOpen && !!selectedContact}
+                onOpenChange={(open) => {
+                    setIsWhatsAppModalOpen(open);
+                    if (!open) {
+                        setSelectedContact(null);
+                    }
                 }}
-                student={student}
-                selectedContact={selectedContact}
-                onSendMessage={handleSendWhatsAppMessage}
-                verifiedNumbers={verifiedWhatsAppNumbers}
-            />
+            >
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>
+                            Enviar WhatsApp - {student?.nome || ''}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Preencha os campos abaixo para enviar uma mensagem via WhatsApp e registrar a interação
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <RegisterInteractionCard
+                        interactionType="Contato digital"
+                        interactionDate={new Date().toLocaleDateString('pt-BR')}
+                        interactionDescription={interactionDescription}
+                        interactionSensitive={interactionSensitive}
+                        editingInteraction={null}
+                        userRole={userRole}
+                        setInteractionType={() => {}}
+                        setInteractionDate={() => {}}
+                        setInteractionDescription={setInteractionDescription}
+                        setInteractionSensitive={setInteractionSensitive}
+                        setEditingInteraction={() => {}}
+                        onAddInteraction={handleSaveWhatsAppInteraction}
+                        onEditInteraction={async () => {}}
+                        readonlyType={true}
+                        readonlyDate={true}
+                        hideFields={{ type: true, date: true }}
+                        contacts={student?.contatos || []}
+                        selectedWhatsAppPhones={selectedWhatsAppPhones}
+                        onWhatsAppPhonesChange={setSelectedWhatsAppPhones}
+                        whatsAppMessage={whatsAppMessage}
+                        onWhatsAppMessageChange={setWhatsAppMessage}
+                        verifiedWhatsAppNumbers={verifiedWhatsAppNumbers}
+                        contactVerificationData={contactVerificationData}
+                        isSendingWhatsApp={isSendingWhatsApp}
+                        whatsAppSendSuccess={whatsAppSendSuccess}
+                    />
+                </DialogContent>
+            </Dialog>
         </div>
         </ErrorBoundary>
     );
