@@ -55,11 +55,23 @@ export class MessageStatusService {
       });
 
       // 1. Buscar registro existente
-      const { data: existing, error: fetchError } = await supabase
+      const { data: existing, error: fetchError } = await (supabase
         .from('whatsapp_message_history')
-        .select('id, current_status, status_history, estudante_nome, contato_telefone')
+        .select('id, current_status, status_history, estudante_nome, contato_telefone, delivered_at, read_at, played_at')
         .eq('message_id', messageId)
-        .maybeSingle();
+        .maybeSingle() as unknown as Promise<{
+          data: {
+            id: string;
+            current_status?: string;
+            status_history?: any;
+            estudante_nome?: string;
+            contato_telefone?: string;
+            delivered_at?: string;
+            read_at?: string;
+            played_at?: string;
+          } | null;
+          error: any;
+        }>);
 
       if (fetchError) {
         throw fetchError;
@@ -120,13 +132,14 @@ export class MessageStatusService {
       }
 
       // 6. Executar atualização
-      const { error: updateError } = await supabase
+      const updateResult = await supabase
         .from('whatsapp_message_history')
+        // @ts-ignore - Supabase types issue with dynamic update fields
         .update(updateFields)
         .eq('message_id', messageId);
 
-      if (updateError) {
-        throw updateError;
+      if (updateResult.error) {
+        throw updateResult.error;
       }
 
       logger.info('[MessageStatus] Status atualizado com sucesso', {
@@ -172,11 +185,20 @@ export class MessageStatusService {
     playedAt?: string;
   } | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from('whatsapp_message_history')
         .select('current_status, status_history, delivered_at, read_at, played_at')
         .eq('message_id', messageId)
-        .maybeSingle();
+        .maybeSingle() as unknown as Promise<{
+          data: {
+            current_status?: string;
+            status_history?: any;
+            delivered_at?: string;
+            read_at?: string;
+            played_at?: string;
+          } | null;
+          error: any;
+        }>);
 
       if (error) throw error;
       if (!data) return null;

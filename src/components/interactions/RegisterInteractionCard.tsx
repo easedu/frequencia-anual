@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Save, X, Calendar, MessageSquare, AlertTriangle, Edit3, Send } from "lucide-react";
+import { Plus, Save, X, Calendar, MessageSquare, AlertTriangle, Edit3, Send, Loader2, CheckCircle2 } from "lucide-react";
 import { FamilyInteraction, Contato } from "@/types";
 import { formatDateInput } from "@/app/utils";
 import WhatsAppContactSelector from "@/components/whatsapp/WhatsAppContactSelector";
@@ -44,6 +44,9 @@ interface RegisterInteractionCardProps {
             exists?: boolean;
         };
     }>;
+    // Loading/Success states
+    isSendingWhatsApp?: boolean;
+    whatsAppSendSuccess?: boolean;
 }
 
 /**
@@ -82,6 +85,8 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
     onWhatsAppMessageChange = () => {},
     verifiedWhatsAppNumbers = new Set(),
     contactVerificationData = new Map(),
+    isSendingWhatsApp = false,
+    whatsAppSendSuccess = false,
 }: RegisterInteractionCardProps) {
     const whatsappTextareaRef = useRef<HTMLTextAreaElement>(null);
     const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -192,7 +197,7 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
     ];
 
     return (
-        <Card id={id} className="shadow-lg border-0">
+        <Card id={id} className="shadow-lg border-0 relative">
             <CardHeader className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-t-lg py-2.5 px-4">
                 <div className="flex items-center justify-between">
                     <CardTitle className="text-sm font-bold flex items-center space-x-2">
@@ -217,6 +222,43 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
                     )}
                 </div>
             </CardHeader>
+
+            {/* 🔄 Loading/Success Overlay */}
+            {(isSendingWhatsApp || whatsAppSendSuccess) && (
+                <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 z-50 flex items-center justify-center rounded-lg backdrop-blur-sm">
+                    <div className="flex flex-col items-center space-y-4">
+                        {isSendingWhatsApp && !whatsAppSendSuccess && (
+                            <>
+                                <Loader2 className="w-16 h-16 text-blue-600 animate-spin" />
+                                <div className="text-center">
+                                    <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                        Enviando mensagem...
+                                    </p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                        Aguarde enquanto processamos o envio
+                                    </p>
+                                </div>
+                            </>
+                        )}
+                        {whatsAppSendSuccess && (
+                            <>
+                                <div className="relative">
+                                    <CheckCircle2 className="w-20 h-20 text-green-500 animate-in zoom-in-50 duration-300" />
+                                    <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping" />
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                                        Mensagem Enviada!
+                                    </p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                        Interação registrada com sucesso
+                                    </p>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <CardContent className="p-3">
                 <div className="space-y-2.5">

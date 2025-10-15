@@ -55,11 +55,24 @@ export class InteractionStatusService {
       console.log('[InteractionStatus] 🔍 Buscando interação...');
       console.log('  messageId:', messageId);
 
-      const { data: existing, error: fetchError } = await supabase
+      const { data: existing, error: fetchError } = await (supabase
         .from('family_interactions')
-        .select('id, whatsapp_status, whatsapp_status_history, student_id, description')
+        .select('id, whatsapp_status, whatsapp_status_history, whatsapp_sent_at, whatsapp_delivered_at, whatsapp_read_at, whatsapp_played_at, student_id, description')
         .eq('whatsapp_message_id', messageId)
-        .maybeSingle();
+        .maybeSingle() as unknown as Promise<{
+          data: {
+            id: string;
+            whatsapp_status?: string;
+            whatsapp_status_history?: any;
+            whatsapp_sent_at?: string;
+            whatsapp_delivered_at?: string;
+            whatsapp_read_at?: string;
+            whatsapp_played_at?: string;
+            student_id: number;
+            description: string;
+          } | null;
+          error: any;
+        }>);
 
       console.log('[InteractionStatus] Resultado da busca:');
       console.log('  found:', !!existing);
@@ -128,13 +141,14 @@ export class InteractionStatusService {
       }
 
       // 6. Executar atualização
-      const { error: updateError } = await supabase
+      const updateResult = await supabase
         .from('family_interactions')
+        // @ts-ignore - Supabase types issue with dynamic update fields
         .update(updateFields)
         .eq('whatsapp_message_id', messageId);
 
-      if (updateError) {
-        throw updateError;
+      if (updateResult.error) {
+        throw updateResult.error;
       }
 
       logger.info('[InteractionStatus] Status WhatsApp atualizado com sucesso', {
@@ -180,11 +194,21 @@ export class InteractionStatusService {
     sentAt?: string;
   } | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from('family_interactions')
         .select('whatsapp_status, whatsapp_status_history, whatsapp_sent_at, whatsapp_delivered_at, whatsapp_read_at, whatsapp_played_at')
         .eq('whatsapp_message_id', messageId)
-        .maybeSingle();
+        .maybeSingle() as unknown as Promise<{
+          data: {
+            whatsapp_status?: string;
+            whatsapp_status_history?: any;
+            whatsapp_sent_at?: string;
+            whatsapp_delivered_at?: string;
+            whatsapp_read_at?: string;
+            whatsapp_played_at?: string;
+          } | null;
+          error: any;
+        }>);
 
       if (error) throw error;
       if (!data) return null;

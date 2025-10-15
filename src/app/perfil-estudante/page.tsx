@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from 'next/navigation';
 import { useDebounce } from "@/hooks/useDebounce";
+import { useWhatsAppStatusPolling } from "@/hooks/useWhatsAppStatusPolling";
 import { Toaster, toast } from "sonner";
 import { StudentDataService } from "@/services/studentDataService";
 import { getAuth } from "firebase/auth";
@@ -49,6 +50,15 @@ export default function StudentProfilePage() {
     const [atestados, setAtestados] = useState<Atestado[]>([]);
     const [suspensoes, setSuspensoes] = useState<Suspensao[]>([]);
     const [interactions, setInteractions] = useState<FamilyInteraction[]>([]);
+
+    // 🔄 Auto-refresh de status WhatsApp (polling adaptativo)
+    const interactionsWithLiveStatus = useWhatsAppStatusPolling(interactions, {
+        enabled: !!selectedStudentId,
+        fastInterval: 5000, // 5s para SENT
+        slowInterval: 60000, // 60s para DELIVERED
+        studentId: selectedStudentId
+    });
+
     const [interactionType, setInteractionType] = useState<string>("");
     const [interactionDate, setInteractionDate] = useState<string>(new Date().toLocaleDateString("pt-BR"));
     const [interactionDescription, setInteractionDescription] = useState<string>("");
@@ -85,6 +95,8 @@ export default function StudentProfilePage() {
     // WhatsApp interaction states (para o card de interação)
     const [selectedWhatsAppPhones, setSelectedWhatsAppPhones] = useState<Set<string>>(new Set());
     const [whatsAppMessage, setWhatsAppMessage] = useState<string>("");
+    const [isSendingWhatsApp, setIsSendingWhatsApp] = useState<boolean>(false);
+    const [whatsAppSendSuccess, setWhatsAppSendSuccess] = useState<boolean>(false);
 
     const auth = getAuth();
 
@@ -485,6 +497,10 @@ export default function StudentProfilePage() {
         }
 
         try {
+            // 🔄 Ativar loading visual
+            setIsSendingWhatsApp(true);
+            setWhatsAppSendSuccess(false);
+
             const scrollPosition = window.scrollY;
             const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
@@ -575,7 +591,7 @@ export default function StudentProfilePage() {
                     whatsappMessage: whatsAppMessage, // Mensagem original enviada
                     whatsappPhones: [phoneNumber],
                     whatsappMessageId: whatsappMessageId, // 🆕 ID da mensagem (para webhook encontrar)
-                    whatsappStatus: 'SENT', // 🆕 Status inicial (será atualizado pelo webhook)
+                    whatsappStatus: 'SENT' as const, // 🆕 Status inicial (será atualizado pelo webhook)
                     whatsappSentAt: new Date().toISOString(), // 🆕 Timestamp de envio
                 };
             }
@@ -587,8 +603,8 @@ export default function StudentProfilePage() {
                 description: finalDescription,
                 createdBy: currentUser,
                 sensitive: interactionSensitive,
-                ...whatsappData, // Incluir whatsappMessage e whatsappPhones se for Contato digital
-            });
+                ...whatsappData, // Incluir whatsappMessage, whatsappPhones, whatsappStatus, etc.
+            } as Omit<FamilyInteraction, 'id'>);
 
             logger.interactionOperation('create', selectedStudentId, interactionType, { supabase: true });
 
@@ -602,6 +618,15 @@ export default function StudentProfilePage() {
 
             await fetchStudentData(selectedStudentId);
 
+            // ✅ Mostrar sucesso visual
+            setWhatsAppSendSuccess(true);
+            setIsSendingWhatsApp(false);
+
+            // Manter sucesso visual por 2 segundos antes de limpar
+            setTimeout(() => {
+                setWhatsAppSendSuccess(false);
+            }, 2000);
+
             window.scrollTo(0, scrollPosition);
             document.getElementById("interaction-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
 
@@ -609,6 +634,10 @@ export default function StudentProfilePage() {
         } catch (error) {
             logger.error("Erro ao cadastrar interação", error as Error);
             toast.error("Erro ao salvar interação. Os campos foram mantidos para você tentar novamente.");
+
+            // ❌ Desativar loading em caso de erro
+            setIsSendingWhatsApp(false);
+            setWhatsAppSendSuccess(false);
             // NÃO limpar campos em caso de erro (conforme solicitado)
         }
     };
@@ -1604,9 +1633,11 @@ export default function StudentProfilePage() {
                         onWhatsAppMessageChange={setWhatsAppMessage}
                         verifiedWhatsAppNumbers={verifiedWhatsAppNumbers}
                         contactVerificationData={contactVerificationData}
+                        isSendingWhatsApp={isSendingWhatsApp}
+                        whatsAppSendSuccess={whatsAppSendSuccess}
                     />
                     <InteractionHistoryCard
-                        interactions={interactions}
+                        interactions={interactionsWithLiveStatus}
                         student={student}
                         studentRecord={studentRecord}
                         userRole={userRole}
