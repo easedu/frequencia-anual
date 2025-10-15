@@ -59,51 +59,66 @@ function validateWebhook(webhook: any): webhook is MessageStatusWebhook {
 export async function POST(request: NextRequest) {
   try {
     // 1. Parse do body
-    const webhook: MessageStatusWebhook = await request.json();
+    const webhook: any = await request.json();
 
-    logger.info('[Webhook] Recebido evento de status', {
+    logger.info('[Webhook] Recebido evento', {
       event: webhook.event,
       instance: webhook.instance,
-      messageId: webhook.data?.key?.id,
-      statusCode: webhook.data?.update?.status
     });
 
-    // 2. Validar estrutura do webhook
-    if (!validateWebhook(webhook)) {
-      logger.warn('[Webhook] Evento inválido ou não suportado', {
+    // 2. Verificar se é evento de atualização de mensagem
+    if (webhook.event !== 'messages.update' && webhook.event !== 'MESSAGES_UPDATE') {
+      logger.info('[Webhook] Evento não suportado, ignorando', {
         event: webhook.event
       });
 
       return NextResponse.json({
+        success: true,
+        message: 'Evento ignorado'
+      });
+    }
+
+    // 3. Extrair dados (suporta ambos os formatos: Evolution API real e formato antigo)
+    const data = webhook.data;
+
+    // Formato Evolution API real (priority)
+    let messageId = data.keyId;
+    let evolutionStatus = data.status;
+    let fromMe = data.fromMe;
+    let phoneNumber = data.remoteJid?.replace('@s.whatsapp.net', '') || '';
+
+    // Fallback para formato antigo (se não encontrar no formato novo)
+    if (!messageId && data.key?.id) {
+      messageId = data.key.id;
+      fromMe = data.key.fromMe;
+      phoneNumber = extractPhoneFromJid(data.key.remoteJid);
+
+      // Status numérico do formato antigo
+      if (data.update?.status !== undefined) {
+        const statusCode = data.update.status;
+        evolutionStatus = mapStatusCode(statusCode);
+      }
+    }
+
+    if (!messageId) {
+      logger.warn('[Webhook] messageId não encontrado');
+      return NextResponse.json({
         success: false,
-        error: 'Evento inválido ou não suportado'
+        error: 'messageId não encontrado'
       }, { status: 400 });
     }
 
-    // 3. Extrair dados do webhook
-    const { key, update } = webhook.data;
-    const messageId = key.id;
-    const statusCode = update.status;
-    const timestamp = update.timestamp ? update.timestamp * 1000 : Date.now(); // Segundos → ms
-    const phoneNumber = extractPhoneFromJid(key.remoteJid);
-
-    // 4. Mapear status code numérico para WhatsAppMessageStatus
-    const newStatus = mapStatusCode(statusCode);
-
-    logger.info('[Webhook] Processando atualização de status', {
+    logger.info('[Webhook] Processando atualização', {
       messageId,
-      phoneNumber,
-      statusCode,
-      newStatus,
-      timestamp,
-      fromMe: key.fromMe
+      evolutionStatus,
+      fromMe,
+      phoneNumber
     });
 
-    // 5. Verificar se mensagem é nossa (fromMe = true)
-    if (!key.fromMe) {
+    // 4. Verificar se mensagem é nossa (fromMe = true)
+    if (!fromMe) {
       logger.info('[Webhook] Mensagem recebida (não enviada por nós), ignorando', {
-        messageId,
-        phoneNumber
+        messageId
       });
 
       return NextResponse.json({
@@ -112,51 +127,60 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 6. Atualizar status em family_interactions (PRINCIPAL - onde é visualizado)
+    // 5. Mapear status Evolution para nosso formato
+    const newStatus = typeof evolutionStatus === 'string'
+      ? mapEvolutionStringStatus(evolutionStatus)
+      : evolutionStatus;
+
+    logger.info('[Webhook] Status mapeado', {
+      messageId,
+      evolutionStatus,
+      newStatus
+    });
+
+    // 6. Atualizar status em family_interactions
     const interactionResult = await InteractionStatusService.updateStatus(
       messageId,
       newStatus,
-      timestamp
+      Date.now()
     );
 
-    // 7. Atualizar status em whatsapp_message_history (SECUNDÁRIO - índice para buscas)
+    // 7. Atualizar status em whatsapp_message_history (opcional)
     const historyResult = await MessageStatusService.updateStatus(
       messageId,
       newStatus,
-      timestamp
+      Date.now()
     );
 
-    // 8. Verificar se pelo menos uma atualização foi bem-sucedida
-    if (!interactionResult.success && !historyResult.success) {
-      logger.warn('[Webhook] Falha ao atualizar status em ambas as tabelas', {
+    // 8. Verificar se pelo menos interaction foi atualizada (principal)
+    if (!interactionResult.success) {
+      logger.warn('[Webhook] Falha ao atualizar interaction', {
         messageId,
-        newStatus,
-        interactionError: interactionResult.error,
-        historyError: historyResult.error
+        error: interactionResult.error
       });
 
       return NextResponse.json({
         success: false,
-        error: interactionResult.error || historyResult.error || 'Erro ao atualizar status'
+        error: interactionResult.error || 'Erro ao atualizar status'
       }, { status: 404 });
     }
 
     // 9. Sucesso!
     logger.info('[Webhook] Status atualizado com sucesso', {
       messageId,
-      oldStatus: interactionResult.oldStatus || historyResult.oldStatus,
-      newStatus: interactionResult.newStatus || historyResult.newStatus,
-      phoneNumber,
-      updatedInteraction: interactionResult.success,
-      updatedHistory: historyResult.success
+      oldStatus: interactionResult.oldStatus,
+      newStatus: interactionResult.newStatus,
+      evolutionStatus,
+      phoneNumber
     });
 
     return NextResponse.json({
       success: true,
       data: {
         messageId,
-        oldStatus: interactionResult.oldStatus || historyResult.oldStatus,
-        newStatus: interactionResult.newStatus || historyResult.newStatus,
+        oldStatus: interactionResult.oldStatus,
+        newStatus: interactionResult.newStatus,
+        evolutionStatus,
         phoneNumber,
         updatedInteraction: interactionResult.success,
         updatedHistory: historyResult.success
@@ -171,6 +195,23 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Erro interno do servidor'
     }, { status: 500 });
   }
+}
+
+/**
+ * Mapear status string da Evolution API para nosso enum
+ */
+function mapEvolutionStringStatus(status: string): 'SENT' | 'DELIVERED' | 'READ' | 'PENDING' | 'FAILED' {
+  const statusMap: Record<string, 'SENT' | 'DELIVERED' | 'READ' | 'PENDING' | 'FAILED'> = {
+    'PENDING': 'PENDING',
+    'SERVER_ACK': 'SENT',
+    'DELIVERY_ACK': 'DELIVERED',
+    'READ': 'READ',
+    'PLAYED': 'READ',
+    'ERROR': 'FAILED',
+    'FAILED': 'FAILED',
+  };
+
+  return statusMap[status] || 'SENT';
 }
 
 /**
