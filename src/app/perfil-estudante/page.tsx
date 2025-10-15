@@ -399,6 +399,15 @@ export default function StudentProfilePage() {
                 studentId: studentId,
                 whatsappMessage: interaction.whatsappMessage,
                 whatsappPhones: interaction.whatsappPhones,
+                // 🆕 Campos de status WhatsApp (webhook)
+                whatsappMessageId: interaction.whatsappMessageId,
+                whatsappStatus: interaction.whatsappStatus,
+                whatsappStatusHistory: interaction.whatsappStatusHistory,
+                whatsappSentAt: interaction.whatsappSentAt,
+                whatsappDeliveredAt: interaction.whatsappDeliveredAt,
+                whatsappReadAt: interaction.whatsappReadAt,
+                whatsappPlayedAt: interaction.whatsappPlayedAt,
+                whatsappUpdatedAt: interaction.whatsappUpdatedAt,
             }));
 
             // Ordenar por data
@@ -480,6 +489,7 @@ export default function StudentProfilePage() {
             const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
             // FASE 1: Se for "Contato digital", enviar WhatsApp PRIMEIRO
+            let whatsappMessageId: string | undefined;
             if (interactionType === "Contato digital" && selectedWhatsAppPhones.size > 0) {
                 const toastId = toast.loading(`Enviando mensagens para ${selectedWhatsAppPhones.size} contato(s)...`);
 
@@ -524,7 +534,12 @@ export default function StudentProfilePage() {
                         // Atualizar contador de mensagens
                         await WhatsAppTrackingService.updateMessageCount(phone);
 
-                        return { phone, success: true };
+                        // 🆕 Retornar messageId para salvar na interação
+                        return {
+                            phone,
+                            success: true,
+                            messageId: result.data?.messageId
+                        };
                     } catch (error) {
                         logger.error("Erro ao enviar WhatsApp", { phone }, error as Error);
                         return { phone, success: false, error: error instanceof Error ? error.message : "Erro desconhecido" };
@@ -534,6 +549,12 @@ export default function StudentProfilePage() {
                 const results = await Promise.allSettled(sendPromises);
                 const successCount = results.filter(r => r.status === "fulfilled" && r.value.success).length;
                 const failCount = results.length - successCount;
+
+                // 🆕 Capturar messageId da primeira mensagem bem-sucedida
+                const firstSuccess = results.find(r => r.status === "fulfilled" && r.value.success);
+                if (firstSuccess && firstSuccess.status === "fulfilled") {
+                    whatsappMessageId = firstSuccess.value.messageId;
+                }
 
                 toast.dismiss(toastId);
 
@@ -554,7 +575,13 @@ export default function StudentProfilePage() {
             // FASE 2: Salvar interação via Supabase
             // Para "Contato digital", incluir telefone na descrição
             let finalDescription = interactionDescription;
-            let whatsappData: { whatsappMessage?: string; whatsappPhones?: string[] } = {};
+            let whatsappData: {
+                whatsappMessage?: string;
+                whatsappPhones?: string[];
+                whatsappMessageId?: string;
+                whatsappStatus?: string;
+                whatsappSentAt?: string;
+            } = {};
 
             if (interactionType === "Contato digital" && selectedWhatsAppPhones.size === 1 && student?.contatos) {
                 const phoneNumber = Array.from(selectedWhatsAppPhones)[0];
@@ -562,10 +589,13 @@ export default function StudentProfilePage() {
                 const contactName = contact ? `${contact.nome}${contact.parentesco ? ` (${contact.parentesco})` : ''}` : phoneNumber;
                 finalDescription = `Mensagem enviada via WhatsApp para: ${contactName} - ${phoneNumber}\n\n${interactionDescription}`;
 
-                // Salvar mensagem WhatsApp original e telefones
+                // Salvar mensagem WhatsApp original, telefones, messageId e status inicial
                 whatsappData = {
                     whatsappMessage: whatsAppMessage, // Mensagem original enviada
                     whatsappPhones: [phoneNumber],
+                    whatsappMessageId: whatsappMessageId, // 🆕 ID da mensagem (para webhook encontrar)
+                    whatsappStatus: 'SENT', // 🆕 Status inicial (será atualizado pelo webhook)
+                    whatsappSentAt: new Date().toISOString(), // 🆕 Timestamp de envio
                 };
             }
 

@@ -19,6 +19,15 @@ interface SupabaseInteraction {
   is_sensitive: boolean;
   whatsapp_message?: string; // Mensagem WhatsApp original
   whatsapp_phones?: string[]; // Telefones WhatsApp (array JSONB)
+  // 🆕 Campos de status WhatsApp (webhook)
+  whatsapp_message_id?: string;
+  whatsapp_status?: string;
+  whatsapp_status_history?: any; // JSONB array
+  whatsapp_sent_at?: string;
+  whatsapp_delivered_at?: string;
+  whatsapp_read_at?: string;
+  whatsapp_played_at?: string;
+  whatsapp_updated_at?: string;
   created_at?: string;
 }
 
@@ -37,6 +46,15 @@ export class InteractionService {
       sensitive: record.is_sensitive,
       whatsappMessage: record.whatsapp_message,
       whatsappPhones: record.whatsapp_phones,
+      // 🆕 Campos de status WhatsApp (webhook)
+      whatsappMessageId: record.whatsapp_message_id,
+      whatsappStatus: record.whatsapp_status,
+      whatsappStatusHistory: record.whatsapp_status_history,
+      whatsappSentAt: record.whatsapp_sent_at,
+      whatsappDeliveredAt: record.whatsapp_delivered_at,
+      whatsappReadAt: record.whatsapp_read_at,
+      whatsappPlayedAt: record.whatsapp_played_at,
+      whatsappUpdatedAt: record.whatsapp_updated_at,
     };
   }
 
@@ -53,6 +71,15 @@ export class InteractionService {
       is_sensitive: interaction.sensitive,
       whatsapp_message: interaction.whatsappMessage,
       whatsapp_phones: interaction.whatsappPhones,
+      // 🆕 Campos de status WhatsApp
+      whatsapp_message_id: interaction.whatsappMessageId,
+      whatsapp_status: interaction.whatsappStatus,
+      whatsapp_status_history: interaction.whatsappStatusHistory,
+      whatsapp_sent_at: interaction.whatsappSentAt,
+      whatsapp_delivered_at: interaction.whatsappDeliveredAt,
+      whatsapp_read_at: interaction.whatsappReadAt,
+      whatsapp_played_at: interaction.whatsappPlayedAt,
+      whatsapp_updated_at: interaction.whatsappUpdatedAt,
     };
   }
 

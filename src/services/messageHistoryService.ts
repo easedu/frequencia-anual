@@ -59,6 +59,10 @@ export class MessageHistoryService {
    */
   static async recordSent(data: Omit<WhatsAppMessageHistory, 'dataPrimeiroEnvio'>): Promise<string | null> {
     try {
+      // Determinar status inicial baseado no sucesso do envio
+      const initialStatus = data.status === 'SUCCESS' ? 'SENT' : 'FAILED';
+      const timestamp = data.sentAt || Date.now();
+
       // Map Firebase field names to Supabase snake_case
       const historyRecord = {
         estudante_id: data.estudanteId,
@@ -69,11 +73,21 @@ export class MessageHistoryService {
         estudante_nome: data.estudanteNome,
         contato_nome: data.contatoNome,
         task_id: data.taskId || null,
-        status: data.status,
+        status: data.status,  // LEGACY: SUCCESS/FAILED/NO_CONTACT
         message_id: data.messageId || null,
         sent_at: data.sentAt || null,
         retry_count: data.retryCount || 0,
         is_dry_run: data.isDryRun || false,
+        // 🆕 Novos campos de rastreamento de status
+        current_status: initialStatus,
+        status_history: [
+          {
+            status: initialStatus,
+            timestamp,
+            source: 'api'
+          }
+        ],
+        updated_at: new Date(timestamp).toISOString(),
         // data_primeiro_envio será preenchido automaticamente pelo Supabase (default now())
       };
 
@@ -89,7 +103,9 @@ export class MessageHistoryService {
         docId: inserted?.id,
         estudanteId: data.estudanteId,
         contatoTelefone: data.contatoTelefone,
-        status: data.status
+        status: data.status,
+        currentStatus: initialStatus,
+        messageId: data.messageId
       });
 
       return inserted?.id || null;

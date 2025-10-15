@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Pencil, Trash, FileText, AlertTriangle, History, User, Calendar, MessageSquare } from "lucide-react";
+import { Pencil, Trash, FileText, AlertTriangle, History, User, Calendar, MessageSquare, CheckCheck, Check, Clock, XCircle, Play } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { FamilyInteraction, Student, StudentRecord } from "@/types";
 
@@ -24,6 +24,100 @@ function formatDateBR(dateString: string): string {
     }
 
     return dateString;
+}
+
+/**
+ * Formatar timestamp ISO para formato brasileiro com hora
+ */
+function formatTimestamp(timestamp?: string): string {
+    if (!timestamp) return '';
+
+    try {
+        const date = new Date(timestamp);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+
+        return `${day}/${month}/${year} às ${hours}:${minutes}`;
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Renderizar badge de status WhatsApp com ícone e cores apropriadas
+ */
+function getWhatsAppStatusBadge(interaction: FamilyInteraction) {
+    const status = interaction.whatsappStatus;
+    if (!status) return null;
+
+    const statusConfig = {
+        'DELIVERED': {
+            icon: <CheckCheck className="h-3 w-3" />,
+            label: 'Entregue',
+            className: 'bg-blue-100 text-blue-700 border-blue-200',
+            tooltip: interaction.whatsappDeliveredAt
+                ? `Entregue em ${formatTimestamp(interaction.whatsappDeliveredAt)}`
+                : 'Mensagem entregue ao WhatsApp'
+        },
+        'READ': {
+            icon: <CheckCheck className="h-3 w-3" />,
+            label: 'Lido',
+            className: 'bg-green-100 text-green-700 border-green-200',
+            tooltip: interaction.whatsappReadAt
+                ? `Lido em ${formatTimestamp(interaction.whatsappReadAt)}`
+                : 'Mensagem lida pelo destinatário'
+        },
+        'SENT': {
+            icon: <Check className="h-3 w-3" />,
+            label: 'Enviado',
+            className: 'bg-gray-100 text-gray-700 border-gray-200',
+            tooltip: interaction.whatsappSentAt
+                ? `Enviado em ${formatTimestamp(interaction.whatsappSentAt)}`
+                : 'Mensagem enviada'
+        },
+        'PENDING': {
+            icon: <Clock className="h-3 w-3" />,
+            label: 'Pendente',
+            className: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+            tooltip: 'Aguardando envio'
+        },
+        'FAILED': {
+            icon: <XCircle className="h-3 w-3" />,
+            label: 'Falhou',
+            className: 'bg-red-100 text-red-700 border-red-200',
+            tooltip: 'Falha no envio da mensagem'
+        },
+        'PLAYED': {
+            icon: <Play className="h-3 w-3" />,
+            label: 'Ouvido',
+            className: 'bg-purple-100 text-purple-700 border-purple-200',
+            tooltip: interaction.whatsappPlayedAt
+                ? `Áudio ouvido em ${formatTimestamp(interaction.whatsappPlayedAt)}`
+                : 'Áudio ouvido pelo destinatário'
+        }
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig];
+    if (!config) return null;
+
+    return (
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <Badge variant="outline" className={`text-xs ${config.className} cursor-help`}>
+                        {config.icon}
+                        <span className="ml-1">{config.label}</span>
+                    </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                    <p>{config.tooltip}</p>
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
 }
 
 interface InteractionHistoryCardProps {
@@ -125,7 +219,7 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
                                                 }`}
                                         >
                                             <TableCell className="py-2">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="text-sm font-medium text-gray-900">{interaction.type}</span>
                                                     {interaction.sensitive && (
                                                         <Badge variant="destructive" className="text-xs bg-red-100 text-red-700 border-red-200">
@@ -133,6 +227,7 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
                                                             Sensível
                                                         </Badge>
                                                     )}
+                                                    {interaction.whatsappStatus && getWhatsAppStatusBadge(interaction)}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="py-2">

@@ -147,8 +147,20 @@ export interface FamilyInteraction {
   description: string;
   createdBy: string;
   sensitive: boolean;
-  whatsappMessage?: string; // Mensagem WhatsApp original (para tipo "Contato digital")
-  whatsappPhones?: string[]; // Telefones dos contatos WhatsApp
+
+  // 📱 Dados WhatsApp (para tipo "Contato digital")
+  whatsappMessage?: string;           // Conteúdo completo da mensagem enviada
+  whatsappPhones?: string[];          // Telefones que receberam ["11987654321"]
+
+  // 🆕 Rastreamento de Status WhatsApp
+  whatsappMessageId?: string;         // ID da mensagem (Evolution API)
+  whatsappStatus?: WhatsAppMessageStatus;  // Status atual (SENT, DELIVERED, READ, etc)
+  whatsappStatusHistory?: StatusHistoryEntry[];  // Histórico de mudanças
+  whatsappSentAt?: string;            // ISO 8601 - Quando foi enviada
+  whatsappDeliveredAt?: string;       // ISO 8601 - Quando foi entregue (2 checks)
+  whatsappReadAt?: string;            // ISO 8601 - Quando foi lida (2 checks azuis)
+  whatsappPlayedAt?: string;          // ISO 8601 - Quando mídia foi reproduzida
+  whatsappUpdatedAt?: string;         // ISO 8601 - Última atualização (webhook)
 }
 
 export interface Occurrence {
@@ -284,8 +296,28 @@ export interface PerformanceMetrics {
 // ============================================================================
 
 /**
+ * Status de mensagem WhatsApp (ciclo de vida completo)
+ */
+export type WhatsAppMessageStatus =
+  | 'PENDING'    // Mensagem na fila
+  | 'SENT'       // Enviada para servidores WhatsApp (1 check)
+  | 'DELIVERED'  // Entregue no celular do destinatário (2 checks cinzas)
+  | 'READ'       // Lida pelo destinatário (2 checks azuis)
+  | 'PLAYED'     // Mídia reproduzida (áudio/vídeo)
+  | 'FAILED';    // Falha no envio
+
+/**
+ * Entrada do histórico de status
+ */
+export interface StatusHistoryEntry {
+  status: WhatsAppMessageStatus;
+  timestamp: number;       // Unix timestamp (ms)
+  source?: 'webhook' | 'api' | 'migration';
+}
+
+/**
  * Histórico de Mensagens WhatsApp Enviadas
- * Usado para prevenção de duplicatas
+ * Usado para prevenção de duplicatas e rastreamento de status
  */
 export interface WhatsAppMessageHistory {
   // Chave de unicidade (5 campos)
@@ -301,13 +333,21 @@ export interface WhatsAppMessageHistory {
   taskId: string;
   dataPrimeiroEnvio: string; // ISO 8601
 
-  // Status
+  // Status (LEGACY - manter para compatibilidade)
   status: 'SUCCESS' | 'FAILED' | 'NO_CONTACT';
 
   // Dados WhatsApp (se enviado)
   messageId?: string;
   sentAt?: number;
   retryCount?: number;
+
+  // 🆕 Rastreamento de Status (Webhooks)
+  currentStatus?: WhatsAppMessageStatus;       // Status atual da mensagem
+  statusHistory?: StatusHistoryEntry[];        // Histórico completo de mudanças
+  deliveredAt?: number;                        // Timestamp de entrega (DELIVERED)
+  readAt?: number;                             // Timestamp de leitura (READ)
+  playedAt?: number;                           // Timestamp de reprodução (PLAYED)
+  updatedAt?: string;                          // ISO 8601 da última atualização
 
   // Controle
   isDryRun?: boolean;
