@@ -41,6 +41,7 @@ import Papa from 'papaparse';
 import WhatsAppModal from '@/components/whatsapp/WhatsAppModal';
 import { logger } from '@/utils/logger';
 import { getStudentContacts } from '@/services/studentDataService';
+import { getAuth } from 'firebase/auth';
 
 interface PhoneContact {
   telefone: string;
@@ -58,6 +59,7 @@ interface PhoneContact {
 export default function TelefonesPage() {
   // PERFORMANCE: includeContacts=true (página PRECISA de contatos para extrair telefones)
   const { students, loading: studentsLoading } = useStudents(false, true);
+  const auth = getAuth();
 
   const [phoneContacts, setPhoneContacts] = useState<PhoneContact[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -255,16 +257,25 @@ export default function TelefonesPage() {
         nome: contact.nome
       });
 
-      // Usar API route em vez de chamar o serviço diretamente
-      const response = await fetch('/api/whatsapp/verify', {
+      // Obter token JWT do usuário autenticado
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error("Usuário não autenticado. Faça login novamente.");
+        setVerifyingPhone(null);
+        return;
+      }
+
+      const token = await user.getIdToken();
+
+      // Usar Evolution API para verificação
+      const response = await fetch('/api/evolution/check', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          phone: phone,
-          studentId: contact?.estudanteId,
-          contactName: contact?.nome
+          phone: phone
         })
       });
 
@@ -277,7 +288,7 @@ export default function TelefonesPage() {
 
       const result = await response.json();
 
-      if (result.success) {
+      if (result.success && result.data) {
         console.log('[TELEFONES-VERIFY] ✅ Verificação bem-sucedida, salvando no Supabase...');
 
         // BUSCAR O ID REAL DO CONTATO NO SUPABASE
@@ -289,7 +300,7 @@ export default function TelefonesPage() {
           // Salvar usando WhatsAppTrackingService (salva no Supabase)
           await WhatsAppTrackingService.markNumberAsVerified(
             phone,
-            result.hasWhatsApp,
+            result.data.hasWhatsApp,
             contact.estudanteId,
             contact.nome,
             'verified',
@@ -303,7 +314,7 @@ export default function TelefonesPage() {
             c.telefone === phone
               ? {
                   ...c,
-                  hasWhatsApp: result.hasWhatsApp,
+                  hasWhatsApp: result.data.hasWhatsApp,
                   whatsAppVerified: true,
                   lastVerified: new Date().toISOString()
                 }
@@ -311,8 +322,8 @@ export default function TelefonesPage() {
           ));
 
           toast.success(
-            result.hasWhatsApp
-              ? `WhatsApp encontrado e salvo! ${result.whatsappName ? `(${result.whatsappName})` : ''}`
+            result.data.hasWhatsApp
+              ? "WhatsApp encontrado e salvo!"
               : "Número verificado e salvo - WhatsApp não encontrado"
           );
         } catch (saveError) {
@@ -356,11 +367,25 @@ export default function TelefonesPage() {
     checkWhatsApp: boolean = false
   ) => {
     try {
-      // Usar API route para envio de mensagens
-      const response = await fetch('/api/whatsapp/send', {
+      // Obter token JWT do usuário autenticado
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error("Usuário não autenticado. Faça login novamente.");
+        return {
+          success: false,
+          message: "Usuário não autenticado",
+          error: "AUTH_ERROR"
+        };
+      }
+
+      const token = await user.getIdToken();
+
+      // Usar Evolution API para envio de mensagens
+      const response = await fetch('/api/evolution/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           phone,
@@ -381,13 +406,13 @@ export default function TelefonesPage() {
         return {
           success: true,
           message: "Mensagem enviada com sucesso!",
-          data: result
+          data: result.data
         };
       } else {
-        toast.error(result.message || "Falha ao enviar mensagem");
+        toast.error(result.error || "Falha ao enviar mensagem");
         return {
           success: false,
-          message: result.message || "Falha ao enviar mensagem"
+          message: result.error || "Falha ao enviar mensagem"
         };
       }
     } catch (error) {

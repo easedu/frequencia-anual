@@ -483,12 +483,31 @@ export default function StudentProfilePage() {
             if (interactionType === "Contato digital" && selectedWhatsAppPhones.size > 0) {
                 const toastId = toast.loading(`Enviando mensagens para ${selectedWhatsAppPhones.size} contato(s)...`);
 
+                // Obter token JWT do usuário autenticado
+                const user = auth.currentUser;
+                if (!user) {
+                    toast.dismiss(toastId);
+                    toast.error("Usuário não autenticado. Faça login novamente.");
+                    return;
+                }
+
+                let token: string;
+                try {
+                    token = await user.getIdToken();
+                } catch (error) {
+                    toast.dismiss(toastId);
+                    logger.error("Erro ao obter token de autenticação", {}, error as Error);
+                    toast.error("Erro de autenticação. Faça login novamente.");
+                    return;
+                }
+
                 const sendPromises = Array.from(selectedWhatsAppPhones).map(async (phone) => {
                     try {
-                        const response = await fetch('/api/whatsapp/send', {
+                        const response = await fetch('/api/evolution/send', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`, // 🔑 Autenticação Firebase
                             },
                             body: JSON.stringify({
                                 phone,
@@ -499,7 +518,7 @@ export default function StudentProfilePage() {
                         const result = await response.json();
 
                         if (!result.success) {
-                            throw new Error(result.message || "Falha ao enviar mensagem");
+                            throw new Error(result.error || result.message || "Falha ao enviar mensagem");
                         }
 
                         // Atualizar contador de mensagens
@@ -1211,22 +1230,30 @@ export default function StudentProfilePage() {
         try {
             toast.info("Verificando WhatsApp...");
 
-            const response = await fetch('/api/whatsapp/verify', {
+            // Obter token JWT do usuário autenticado
+            const user = auth.currentUser;
+            if (!user) {
+                toast.error("Usuário não autenticado. Faça login novamente.");
+                return;
+            }
+
+            const token = await user.getIdToken();
+
+            const response = await fetch('/api/evolution/check', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                    phone: contact.telefone,
-                    studentId: selectedStudentId,
-                    contactName: contact.nome
+                    phone: contact.telefone
                 })
             });
 
             const result = await response.json();
 
-            if (result.success) {
-                toast.success(result.hasWhatsApp ? "WhatsApp verificado com sucesso!" : "Número sem WhatsApp");
+            if (result.success && result.data) {
+                toast.success(result.data.hasWhatsApp ? "WhatsApp verificado com sucesso!" : "Número sem WhatsApp");
 
                 // ✅ Recarregar dados do estudante completo (inclui verificação V3)
                 if (selectedStudentId) {
@@ -1256,11 +1283,24 @@ export default function StudentProfilePage() {
         error?: string;
     }> => {
         try {
-            // Usar API route para envio de mensagens (mesma da página de telefones)
-            const response = await fetch('/api/whatsapp/send', {
+            // Obter token JWT do usuário autenticado
+            const user = auth.currentUser;
+            if (!user) {
+                toast.error("Usuário não autenticado. Faça login novamente.");
+                return {
+                    success: false,
+                    message: "Usuário não autenticado",
+                    error: "AUTH_ERROR"
+                };
+            }
+
+            const token = await user.getIdToken();
+
+            const response = await fetch('/api/evolution/send', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
                 },
                 body: JSON.stringify({
                     phone,
@@ -1281,13 +1321,13 @@ export default function StudentProfilePage() {
                 return {
                     success: true,
                     message: "Mensagem enviada com sucesso!",
-                    data: result
+                    data: result.data
                 };
             } else {
-                toast.error(result.message || "Falha ao enviar mensagem");
+                toast.error(result.error || "Falha ao enviar mensagem");
                 return {
                     success: false,
-                    message: result.message || "Falha ao enviar mensagem"
+                    message: result.error || "Falha ao enviar mensagem"
                 };
             }
         } catch (error) {

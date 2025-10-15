@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { getVerifiedNumber } from '@/services/whatsappDataService';
 import { studentCompleteFormSchema } from '@/schemas/studentSchemas';
+import { getAuth } from 'firebase/auth';
 
 // Types
 interface SelectOption {
@@ -210,26 +211,36 @@ const ContactField = memo(({
         setWhatsappStatus(prev => ({ ...prev, isVerifying: true }));
 
         try {
-            // Usar API route em vez de chamar o serviço diretamente
-            const response = await fetch('/api/whatsapp/verify', {
+            // Obter token JWT do usuário autenticado
+            const auth = getAuth();
+            const user = auth.currentUser;
+            if (!user) {
+                toast.error("Usuário não autenticado. Faça login novamente.");
+                setWhatsappStatus({ isVerifying: false, verified: false });
+                return;
+            }
+
+            const token = await user.getIdToken();
+
+            // Usar Evolution API para verificação
+            const response = await fetch('/api/evolution/check', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                    phone: cleanPhone,
-                    studentId: undefined, // será definido ao salvar o estudante
-                    contactName: form.getValues(`contatos.${index}.nome`)
+                    phone: cleanPhone
                 })
             });
 
             const result = await response.json();
 
-            if (result.success) {
+            if (result.success && result.data) {
                 setWhatsappStatus({
                     isVerifying: false,
-                    hasWhatsApp: result.hasWhatsApp,
-                    whatsappName: result.whatsappName,
+                    hasWhatsApp: result.data.hasWhatsApp,
+                    whatsappName: undefined, // Evolution API não retorna nome diretamente
                     verified: true
                 });
 
@@ -238,9 +249,9 @@ const ContactField = memo(({
                     const { WhatsAppTrackingService } = await import('@/services/whatsappTrackingService');
                     await WhatsAppTrackingService.markNumberAsVerified(
                         cleanPhone,
-                        result.hasWhatsApp,
+                        result.data.hasWhatsApp,
                         undefined, // studentId será definido ao salvar o estudante
-                        form.getValues(`contatos.${index}.nome`) || result.whatsappName,
+                        form.getValues(`contatos.${index}.nome`),
                         'verified'
                     );
                 } catch (saveError) {
@@ -248,27 +259,20 @@ const ContactField = memo(({
                     // Não mostrar erro ao usuário - verificação foi feita com sucesso
                 }
 
-                if (result.hasWhatsApp) {
-                    toast.success(`WhatsApp encontrado! ${result.whatsappName ? `(${result.whatsappName})` : ''}`);
+                if (result.data.hasWhatsApp) {
+                    toast.success('WhatsApp encontrado!');
                 } else {
                     toast.info('Número verificado - WhatsApp não encontrado');
                 }
             } else {
-                // Tratar diferentes tipos de erro
-                const isUnavailable = result.verificationStatus === 'unavailable';
-
                 setWhatsappStatus({
                     isVerifying: false,
                     hasWhatsApp: false,
-                    verified: isUnavailable ? 'unavailable' : false,
+                    verified: false,
                     error: result.error
                 });
 
-                if (isUnavailable) {
-                    toast.warning('Verificação indisponível - contato salvo para verificar depois');
-                } else {
-                    toast.error(`Erro na verificação: ${result.error}`);
-                }
+                toast.error(`Erro na verificação: ${result.error || 'Erro desconhecido'}`);
             }
         } catch (error) {
             console.error('Erro ao verificar WhatsApp:', error);
