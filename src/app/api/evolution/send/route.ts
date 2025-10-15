@@ -22,28 +22,17 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { validateAuth } from '@/middleware/auth';
 import { validateEvolutionConfig } from '@/lib/whatsapp/evolutionConfig';
 import { EvolutionMessageService } from '@/services/whatsapp/evolutionMessageService';
 import { logger } from '@/utils/logger';
 
 export async function POST(request: NextRequest) {
   try {
-    // 🔒 PROTEÇÃO 1: Validar autenticação
-    const authResult = await validateAuth(request);
-
-    if (authResult instanceof NextResponse) {
-      return authResult; // Retorna erro 401
-    }
-
-    const { user } = authResult;
-
-    // 🔒 PROTEÇÃO 2: Validar configuração da Evolution API
+    // 🔒 PROTEÇÃO: Validar configuração da Evolution API
     const configValidation = validateEvolutionConfig();
     if (!configValidation.valid) {
       logger.error('Evolution API not configured', {
-        errors: configValidation.errors,
-        userId: user.id
+        errors: configValidation.errors
       });
 
       return NextResponse.json(
@@ -63,7 +52,6 @@ export async function POST(request: NextRequest) {
     // Validar campos obrigatórios
     if (!phone || !message) {
       logger.warn('Missing required fields', {
-        userId: user.id,
         hasPhone: !!phone,
         hasMessage: !!message
       });
@@ -79,8 +67,6 @@ export async function POST(request: NextRequest) {
 
     // Enviar mensagem via Evolution API
     logger.info('Processing WhatsApp send request', {
-      userId: user.id,
-      userEmail: user.email,
       hasDelay: !!delay,
       linkPreview
     });
@@ -92,7 +78,6 @@ export async function POST(request: NextRequest) {
 
     if (!result.success) {
       logger.error('Failed to send message via Evolution API', {
-        userId: user.id,
         error: result.error
       });
 
@@ -107,7 +92,6 @@ export async function POST(request: NextRequest) {
 
     // Sucesso!
     logger.info('WhatsApp message sent successfully via Evolution API', {
-      userId: user.id,
       messageId: result.messageId
     });
 

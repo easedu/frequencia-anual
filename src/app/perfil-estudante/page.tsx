@@ -493,31 +493,12 @@ export default function StudentProfilePage() {
             if (interactionType === "Contato digital" && selectedWhatsAppPhones.size > 0) {
                 const toastId = toast.loading(`Enviando mensagens para ${selectedWhatsAppPhones.size} contato(s)...`);
 
-                // Obter token JWT do usuário autenticado
-                const user = auth.currentUser;
-                if (!user) {
-                    toast.dismiss(toastId);
-                    toast.error("Usuário não autenticado. Faça login novamente.");
-                    return;
-                }
-
-                let token: string;
-                try {
-                    token = await user.getIdToken();
-                } catch (error) {
-                    toast.dismiss(toastId);
-                    logger.error("Erro ao obter token de autenticação", {}, error as Error);
-                    toast.error("Erro de autenticação. Faça login novamente.");
-                    return;
-                }
-
                 const sendPromises = Array.from(selectedWhatsAppPhones).map(async (phone) => {
                     try {
                         const response = await fetch('/api/evolution/send', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${token}`, // 🔑 Autenticação Firebase
                             },
                             body: JSON.stringify({
                                 phone,
