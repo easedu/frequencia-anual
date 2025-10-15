@@ -61,6 +61,15 @@ export async function POST(request: NextRequest) {
     // 1. Parse do body
     const webhook: any = await request.json();
 
+    // 🔍 LOG COMPLETO DO WEBHOOK
+    console.log('='.repeat(80));
+    console.log('📨 WEBHOOK RECEBIDO:', new Date().toISOString());
+    console.log('='.repeat(80));
+    console.log('Evento:', webhook.event);
+    console.log('Instância:', webhook.instance);
+    console.log('Data completa:', JSON.stringify(webhook.data, null, 2));
+    console.log('='.repeat(80));
+
     logger.info('[Webhook] Recebido evento', {
       event: webhook.event,
       instance: webhook.instance,
@@ -139,11 +148,21 @@ export async function POST(request: NextRequest) {
     });
 
     // 6. Atualizar status em family_interactions
+    console.log('🔄 Tentando atualizar status...');
+    console.log('  messageId:', messageId);
+    console.log('  newStatus:', newStatus);
+
     const interactionResult = await InteractionStatusService.updateStatus(
       messageId,
       newStatus,
       Date.now()
     );
+
+    console.log('✅ Resultado da atualização (family_interactions):');
+    console.log('  success:', interactionResult.success);
+    console.log('  oldStatus:', interactionResult.oldStatus);
+    console.log('  newStatus:', interactionResult.newStatus);
+    console.log('  error:', interactionResult.error);
 
     // 7. Atualizar status em whatsapp_message_history (opcional)
     const historyResult = await MessageStatusService.updateStatus(
@@ -152,8 +171,12 @@ export async function POST(request: NextRequest) {
       Date.now()
     );
 
+    console.log('✅ Resultado da atualização (whatsapp_message_history):');
+    console.log('  success:', historyResult.success);
+
     // 8. Verificar se pelo menos interaction foi atualizada (principal)
     if (!interactionResult.success) {
+      console.log('❌ FALHA: Interaction não foi atualizada!');
       logger.warn('[Webhook] Falha ao atualizar interaction', {
         messageId,
         error: interactionResult.error
@@ -166,6 +189,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 9. Sucesso!
+    console.log('🎉 SUCESSO: Status atualizado!');
+    console.log('='.repeat(80));
+
     logger.info('[Webhook] Status atualizado com sucesso', {
       messageId,
       oldStatus: interactionResult.oldStatus,

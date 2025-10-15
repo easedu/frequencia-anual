@@ -52,24 +52,35 @@ export class InteractionStatusService {
       });
 
       // 1. Buscar interação existente
+      console.log('[InteractionStatus] 🔍 Buscando interação...');
+      console.log('  messageId:', messageId);
+
       const { data: existing, error: fetchError } = await supabase
         .from('family_interactions')
         .select('id, whatsapp_status, whatsapp_status_history, student_id, description')
         .eq('whatsapp_message_id', messageId)
         .maybeSingle();
 
+      console.log('[InteractionStatus] Resultado da busca:');
+      console.log('  found:', !!existing);
+      console.log('  error:', fetchError);
+      if (existing) {
+        console.log('  id:', existing.id);
+        console.log('  current status:', existing.whatsapp_status);
+      }
+
       if (fetchError) {
         throw fetchError;
       }
 
       if (!existing) {
+        console.log('[InteractionStatus] ❌ Interação NÃO encontrada!');
         logger.warn('[InteractionStatus] Interação não encontrada', {
           messageId,
           newStatus
         });
         return {
           success: false,
-          messageId,
           error: 'Interação não encontrada'
         };
       }
