@@ -36,7 +36,16 @@ export class InteractionService {
    * Converter registro do Supabase para FamilyInteraction
    */
   private static mapSupabaseToInteraction(record: SupabaseInteraction): FamilyInteraction {
-    return {
+    // 🔍 LOG: Verificar mapeamento
+    if (record.whatsapp_message_id) {
+      console.log('[InteractionService] 🔄 Mapeando interação com WhatsApp:');
+      console.log('  messageId:', record.whatsapp_message_id);
+      console.log('  status (antes):', record.whatsapp_status);
+      console.log('  delivered_at (antes):', record.whatsapp_delivered_at);
+      console.log('  read_at (antes):', record.whatsapp_read_at);
+    }
+
+    const mapped = {
       id: record.id,
       studentId: record.student_id,
       type: record.interaction_type,
@@ -56,6 +65,16 @@ export class InteractionService {
       whatsappPlayedAt: record.whatsapp_played_at,
       whatsappUpdatedAt: record.whatsapp_updated_at,
     };
+
+    // 🔍 LOG: Verificar resultado do mapeamento
+    if (mapped.whatsappMessageId) {
+      console.log('[InteractionService] ✅ Após mapear:');
+      console.log('  whatsappStatus:', mapped.whatsappStatus);
+      console.log('  whatsappDeliveredAt:', mapped.whatsappDeliveredAt);
+      console.log('  whatsappReadAt:', mapped.whatsappReadAt);
+    }
+
+    return mapped;
   }
 
   /**
@@ -143,6 +162,17 @@ export class InteractionService {
         .order('interaction_date', { ascending: false });
 
       if (error) throw error;
+
+      // 🔍 LOG: Ver dados brutos do Supabase
+      console.log('[InteractionService] 📊 Dados do Supabase (family_interactions):');
+      console.log('  Total de interações:', (data || []).length);
+      if (data && data.length > 0) {
+        console.log('  Primeira interação (raw):');
+        console.log('    whatsapp_status:', data[0].whatsapp_status);
+        console.log('    whatsapp_delivered_at:', data[0].whatsapp_delivered_at);
+        console.log('    whatsapp_read_at:', data[0].whatsapp_read_at);
+        console.log('    whatsapp_message_id:', data[0].whatsapp_message_id);
+      }
 
       // ✅ FIX: Mapear e substituir studentId interno pelo Firebase UUID
       return (data || []).map(record => {
