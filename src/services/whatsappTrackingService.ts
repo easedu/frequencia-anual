@@ -267,12 +267,6 @@ export class WhatsAppTrackingService {
                 }
             }
 
-            logger.info("Loaded verified WhatsApp numbers (Supabase)", {
-                count: verifiedNumbers.size,
-                pages: totalPages,
-                paginationUsed: totalPages > 1
-            });
-
             return verifiedNumbers;
 
         } catch (error) {

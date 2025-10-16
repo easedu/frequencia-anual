@@ -25,5 +25,4 @@ export const auth = getAuth(firebaseApp);
 
 if (typeof window !== 'undefined') {
     console.log('🔐 Firebase Auth inicializado (apenas autenticação)');
-    console.log('📊 Todos os dados vêm do Supabase PostgreSQL');
 }

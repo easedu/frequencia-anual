@@ -121,7 +121,6 @@ function convertDateToDDMMYYYY(dateStr: string): string {
 // Função para extrair as datas válidas (isChecked === true) do ano letivo
 function getValidDates(academicYearData: AcademicYearData | null, role: Role | null): string[] {
     if (!academicYearData) {
-        logger.warn('getValidDates: academicYearData é null');
         return [];
     }
 

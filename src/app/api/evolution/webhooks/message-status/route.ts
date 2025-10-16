@@ -52,27 +52,62 @@ function validateWebhook(webhook: any): webhook is MessageStatusWebhook {
   );
 }
 
+// 📊 Contador global de webhooks (em memória)
+let webhookCounter = 0;
+let lastWebhookTime = Date.now();
+
+// 📝 Histórico dos últimos webhooks (últimos 50)
+interface WebhookLogEntry {
+  number: number;
+  timestamp: string;
+  messageId: string;
+  event: string;
+  status: string;
+  timeSinceLastMs: number;
+  processingTimeMs?: number;
+}
+
+const webhookHistory: WebhookLogEntry[] = [];
+
 /**
  * POST /api/evolution/webhooks/message-status
  * Recebe evento de atualização de status da Evolution API
  */
 export async function POST(request: NextRequest) {
+  const webhookStartTime = Date.now();
+  webhookCounter++;
+
+  // 📊 Calcular intervalo desde último webhook
+  const timeSinceLastWebhook = webhookStartTime - lastWebhookTime;
+  lastWebhookTime = webhookStartTime;
+
   try {
     // 1. Parse do body
     const webhook: any = await request.json();
 
-    // 🔍 LOG COMPLETO DO WEBHOOK
-    console.log('='.repeat(80));
-    console.log('📨 WEBHOOK RECEBIDO:', new Date().toISOString());
-    console.log('='.repeat(80));
-    console.log('Evento:', webhook.event);
-    console.log('Instância:', webhook.instance);
-    console.log('Data completa:', JSON.stringify(webhook.data, null, 2));
-    console.log('='.repeat(80));
-
-    logger.info('[Webhook] Recebido evento', {
+    // 📊 LOG INFO ESTRUTURADO (Para monitoramento de frequência)
+    logger.info('📨 [Webhook] Novo evento recebido', {
+      webhookNumber: webhookCounter,
+      timeSinceLastWebhookMs: timeSinceLastWebhook,
+      timeSinceLastWebhookSeconds: (timeSinceLastWebhook / 1000).toFixed(2),
       event: webhook.event,
       instance: webhook.instance,
+      timestamp: new Date().toISOString(),
+      requestHeaders: {
+        userAgent: request.headers.get('user-agent'),
+        contentType: request.headers.get('content-type'),
+        origin: request.headers.get('origin')
+      },
+      webhookData: {
+        hasData: !!webhook.data,
+        hasKey: !!webhook.data?.key,
+        hasUpdate: !!webhook.data?.update,
+        messageId: webhook.data?.key?.id || webhook.data?.keyId,
+        remoteJid: webhook.data?.key?.remoteJid || webhook.data?.remoteJid,
+        fromMe: webhook.data?.key?.fromMe ?? webhook.data?.fromMe,
+        statusCode: webhook.data?.update?.status,
+        statusString: webhook.data?.status
+      }
     });
 
     // 2. Verificar se é evento de atualização de mensagem
@@ -117,12 +152,6 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    logger.info('[Webhook] Processando atualização', {
-      messageId,
-      evolutionStatus,
-      fromMe,
-      phoneNumber
-    });
 
     // 4. Verificar se mensagem é nossa (fromMe = true)
     if (!fromMe) {
@@ -141,28 +170,41 @@ export async function POST(request: NextRequest) {
       ? mapEvolutionStringStatus(evolutionStatus)
       : evolutionStatus;
 
-    logger.info('[Webhook] Status mapeado', {
-      messageId,
-      evolutionStatus,
-      newStatus
-    });
+    // 5.5. Buscar status atual e validar progressão
+    const currentStatusData = await InteractionStatusService.getStatus(messageId);
+    const currentStatus = currentStatusData?.currentStatus;
+
+    // 5.6. Validar progressão de status
+    const isValidProgression = isValidStatusProgression(currentStatus, newStatus);
+
+    if (!isValidProgression) {
+      logger.warn('[Webhook] Regressão de status bloqueada', {
+        messageId,
+        currentStatus,
+        attemptedStatus: newStatus
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Atualização ignorada (regressão de status)',
+        data: {
+          messageId,
+          currentStatus,
+          attemptedStatus: newStatus,
+          reason: 'Regressão de status não permitida'
+        }
+      });
+    }
 
     // 6. Atualizar status em family_interactions
-    console.log('🔄 Tentando atualizar status...');
-    console.log('  messageId:', messageId);
-    console.log('  newStatus:', newStatus);
 
+    const updateStartTime = Date.now();
     const interactionResult = await InteractionStatusService.updateStatus(
       messageId,
       newStatus,
       Date.now()
     );
-
-    console.log('✅ Resultado da atualização (family_interactions):');
-    console.log('  success:', interactionResult.success);
-    console.log('  oldStatus:', interactionResult.oldStatus);
-    console.log('  newStatus:', interactionResult.newStatus);
-    console.log('  error:', interactionResult.error);
+    const updateDuration = Date.now() - updateStartTime;
 
     // 7. Atualizar status em whatsapp_message_history (opcional)
     const historyResult = await MessageStatusService.updateStatus(
@@ -171,12 +213,8 @@ export async function POST(request: NextRequest) {
       Date.now()
     );
 
-    console.log('✅ Resultado da atualização (whatsapp_message_history):');
-    console.log('  success:', historyResult.success);
-
     // 8. Verificar se pelo menos interaction foi atualizada (principal)
     if (!interactionResult.success) {
-      console.log('❌ FALHA: Interaction não foi atualizada!');
       logger.warn('[Webhook] Falha ao atualizar interaction', {
         messageId,
         error: interactionResult.error
@@ -189,15 +227,27 @@ export async function POST(request: NextRequest) {
     }
 
     // 9. Sucesso!
-    console.log('🎉 SUCESSO: Status atualizado!');
-    console.log('='.repeat(80));
+    const webhookTotalDuration = Date.now() - webhookStartTime;
 
-    logger.info('[Webhook] Status atualizado com sucesso', {
+    // 📝 Adicionar ao histórico
+    const historyEntry: WebhookLogEntry = {
+      number: webhookCounter,
+      timestamp: new Date().toISOString(),
+      messageId: messageId || 'unknown',
+      event: webhook.event,
+      status: `${interactionResult.oldStatus} → ${interactionResult.newStatus}`,
+      timeSinceLastMs: timeSinceLastWebhook,
+      processingTimeMs: webhookTotalDuration
+    };
+
+    webhookHistory.unshift(historyEntry);
+    if (webhookHistory.length > 50) {
+      webhookHistory.pop();
+    }
+
+    logger.info('[Webhook] Status atualizado', {
       messageId,
-      oldStatus: interactionResult.oldStatus,
-      newStatus: interactionResult.newStatus,
-      evolutionStatus,
-      phoneNumber
+      statusTransition: `${interactionResult.oldStatus} → ${interactionResult.newStatus}`
     });
 
     return NextResponse.json({
@@ -209,7 +259,8 @@ export async function POST(request: NextRequest) {
         evolutionStatus,
         phoneNumber,
         updatedInteraction: interactionResult.success,
-        updatedHistory: historyResult.success
+        updatedHistory: historyResult.success,
+        processingTimeMs: webhookTotalDuration
       }
     });
 
@@ -221,6 +272,56 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Erro interno do servidor'
     }, { status: 500 });
   }
+}
+
+/**
+ * Hierarquia de status WhatsApp (ordem de progressão)
+ */
+const STATUS_HIERARCHY: Record<string, number> = {
+  'PENDING': 0,
+  'SENT': 1,
+  'DELIVERED': 2,
+  'READ': 3,
+  'PLAYED': 4,
+  'FAILED': -1, // Status final (erro)
+};
+
+/**
+ * Verificar se novo status é uma progressão válida
+ *
+ * @param oldStatus - Status atual
+ * @param newStatus - Novo status proposto
+ * @returns true se é progressão válida, false se é regressão
+ *
+ * @example
+ * isValidStatusProgression('SENT', 'DELIVERED') // true (1 → 2)
+ * isValidStatusProgression('DELIVERED', 'SENT') // false (2 → 1, regressão!)
+ * isValidStatusProgression('SENT', 'SENT') // true (idempotente)
+ */
+function isValidStatusProgression(
+  oldStatus: string | undefined,
+  newStatus: string
+): boolean {
+  // Se não tem status anterior, aceitar qualquer status
+  if (!oldStatus) {
+    return true;
+  }
+
+  // Se são iguais, é idempotente (válido)
+  if (oldStatus === newStatus) {
+    return true;
+  }
+
+  const oldLevel = STATUS_HIERARCHY[oldStatus] ?? -1;
+  const newLevel = STATUS_HIERARCHY[newStatus] ?? -1;
+
+  // FAILED é status final, só aceita se for o mesmo
+  if (oldStatus === 'FAILED') {
+    return false;
+  }
+
+  // Novo status deve ser maior que o antigo (progressão)
+  return newLevel > oldLevel;
 }
 
 /**
@@ -242,14 +343,37 @@ function mapEvolutionStringStatus(status: string): 'SENT' | 'DELIVERED' | 'READ'
 
 /**
  * GET /api/evolution/webhooks/message-status
- * Endpoint de verificação de saúde (health check)
+ * Endpoint de verificação de saúde (health check) + Estatísticas
  */
-export async function GET() {
-  return NextResponse.json({
+export async function GET(request: NextRequest) {
+  const uptimeSeconds = (Date.now() - (lastWebhookTime - (webhookCounter > 0 ? Date.now() - lastWebhookTime : 0))) / 1000;
+  const averageIntervalSeconds = webhookCounter > 1 ? uptimeSeconds / webhookCounter : 0;
+
+  // Query params para controlar resposta
+  const { searchParams } = new URL(request.url);
+  const includeHistory = searchParams.get('history') === 'true';
+  const limit = parseInt(searchParams.get('limit') || '10');
+
+  const response: any = {
     status: 'online',
     endpoint: '/api/evolution/webhooks/message-status',
     description: 'Webhook receptor de status de mensagens WhatsApp (Evolution API)',
-    supportedEvents: ['MESSAGES_UPDATE'],
+    supportedEvents: ['MESSAGES_UPDATE', 'messages.update'],
+    statistics: {
+      totalWebhooksReceived: webhookCounter,
+      lastWebhookAt: webhookCounter > 0 ? new Date(lastWebhookTime).toISOString() : null,
+      timeSinceLastWebhookMs: webhookCounter > 0 ? Date.now() - lastWebhookTime : null,
+      timeSinceLastWebhookSeconds: webhookCounter > 0 ? ((Date.now() - lastWebhookTime) / 1000).toFixed(2) : null,
+      averageIntervalSeconds: averageIntervalSeconds > 0 ? averageIntervalSeconds.toFixed(2) : null,
+      webhooksPerMinute: webhookCounter > 0 && uptimeSeconds > 0 ? ((webhookCounter / uptimeSeconds) * 60).toFixed(2) : '0'
+    },
     timestamp: new Date().toISOString()
-  });
+  };
+
+  // Incluir histórico se solicitado
+  if (includeHistory) {
+    response.history = webhookHistory.slice(0, Math.min(limit, 50));
+  }
+
+  return NextResponse.json(response);
 }
