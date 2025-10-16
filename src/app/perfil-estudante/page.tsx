@@ -574,6 +574,9 @@ export default function StudentProfilePage() {
                 // Se NENHUMA mensagem foi enviada com sucesso, ABORTAR
                 if (successCount === 0) {
                     toast.error(`Falha ao enviar todas as mensagens (${failCount}). A interação NÃO foi salva.`);
+                    // ❌ Desativar loading em caso de erro
+                    setIsSendingWhatsApp(false);
+                    setWhatsAppSendSuccess(false);
                     return; // IMPORTANTE: Não salvar interação se todas falharam
                 }
 
