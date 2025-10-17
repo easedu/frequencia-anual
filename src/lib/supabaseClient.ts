@@ -18,42 +18,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 let _supabaseInstance: SupabaseClient<Database> | null = null
 
-/**
- * Proxy fetch: Intercepta requisições ao Supabase e as faz via Next.js API Route
- *
- * Resolve definitivamente problemas de QUIC/HTTP3/CORS fazendo todas as
- * requisições passarem pelo servidor Next.js
- */
-async function proxyFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-    // Detectar se é requisição ao Supabase
-    if (supabaseUrl && url.startsWith(supabaseUrl)) {
-      // Extrair path da URL
-      const urlObj = new URL(url);
-      const path = urlObj.pathname + urlObj.search;
-
-      // Construir URL do proxy
-      const proxyUrl = `/api/supabase-proxy?path=${encodeURIComponent(path)}`;
-
-      console.log('🔄 Routing through proxy:', path);
-
-      // Fazer requisição via proxy
-      return await fetch(proxyUrl, {
-        ...options,
-        // Não precisa de headers Supabase (o proxy adiciona)
-      });
-    }
-
-    // Requisições não-Supabase: usar fetch normal
-    return await fetch(url, options);
-
-  } catch (error) {
-    console.error('❌ Proxy fetch error:', error);
-    throw error;
-  }
-}
+// Proxy removido - agora usamos API Routes REST com autenticação adequada
+// Ver: src/hooks/api/* para os novos hooks que consomem /api/students, /api/contacts, etc.
 
 /**
  * Get Supabase client instance (lazy initialization)
@@ -61,7 +27,8 @@ async function proxyFetch(url: string, options: RequestInit = {}): Promise<Respo
  * Only creates the client when first accessed, not at module import time.
  * This prevents build errors when environment variables are not available.
  *
- * UPDATED: Now with retry logic to handle QUIC/HTTP3 connection issues
+ * NOTE: Agora sem proxy! Chamadas diretas ao Supabase.
+ * Para operações críticas, use os hooks de /hooks/api/* que consomem as APIs REST.
  */
 function getSupabaseClient(): SupabaseClient<Database> {
   if (_supabaseInstance) {
@@ -82,9 +49,6 @@ function getSupabaseClient(): SupabaseClient<Database> {
   }
 
   _supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-    global: {
-      fetch: proxyFetch, // Use proxy fetch to route through Next.js
-    },
     auth: {
       persistSession: false, // Don't persist session (usando Firebase Auth)
       autoRefreshToken: false,

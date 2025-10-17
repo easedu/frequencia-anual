@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { v4 as uuidv4 } from "uuid";
 
 import { useStudents } from "@/hooks/useStudents";
+import { useCreateStudent, useUpdateStudent } from "@/hooks/api"; // ✅ Novos hooks
 import { StudentFilters } from "@/components/students/StudentFilters";
 import { StudentTable } from "@/components/students/StudentTable";
 import { StudentPagination } from "@/components/students/StudentPagination";
@@ -16,7 +17,6 @@ import { StudentTableSkeleton } from "@/components/shared/LoadingSkeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "sonner";
 import { Estudante, Student } from "@/types";
-import { StudentDataService } from "@/services/studentDataService";
 import { logger } from "@/utils/logger";
 import { studentFormSchema } from "@/schemas/studentSchemas";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -29,6 +29,10 @@ const StudentDialog = lazy(() =>
 
 export default function CadastrarEstudantePage() {
     const { students, loading, error, setStudents, fetchStudents } = useStudents();
+
+    // ✅ Novos hooks de mutação
+    const { createStudent, loading: creating } = useCreateStudent();
+    const { updateStudent, loading: updating } = useUpdateStudent();
 
     // Filter states
     const [turmaFiltro, setTurmaFiltro] = useState<string>("");
@@ -325,17 +329,22 @@ export default function CadastrarEstudantePage() {
             };
             
             if (editingEstudante) {
-                // Atualizar estudante usando DUAL-WRITE (V2 + V3)
-                await StudentDataService.updateStudent(processedData);
-
-                // Atualizar o estado local
-                const updatedStudents = students.map((student) => {
-                    if (student.estudanteId === editingEstudante.estudanteId) {
-                        return { ...student, ...processedData };
-                    }
-                    return student;
+                // ✅ Atualizar estudante usando nova API REST
+                await updateStudent(editingEstudante.estudanteId, {
+                    nome: processedData.nome,
+                    turma: processedData.turma,
+                    turno: processedData.turno,
+                    status: processedData.status,
+                    dataNascimento: processedData.dataNascimento,
+                    numeroMatricula: processedData.numeroMatricula,
+                    bolsaFamilia: processedData.bolsaFamilia,
+                    endereco: processedData.endereco,
+                    contatos: processedData.contatos,
+                    deficiencias: processedData.deficiencia ? [processedData.deficiencia] : [],
                 });
-                setStudents(updatedStudents);
+
+                // Refetch para obter dados atualizados
+                await fetchStudents();
             } else {
                 // Verificar se já existe um estudante com o mesmo nome e turma
                 const exists = students.some(student =>
@@ -348,11 +357,24 @@ export default function CadastrarEstudantePage() {
                     return;
                 }
 
-                // Adicionar novo estudante usando DUAL-WRITE (V2 + V3)
-                await StudentDataService.addStudent(processedData);
+                // ✅ Adicionar novo estudante usando nova API REST
+                await createStudent({
+                    estudanteId: processedData.estudanteId,
+                    nome: processedData.nome,
+                    turma: processedData.turma,
+                    turno: processedData.turno,
+                    status: processedData.status || 'ATIVO',
+                    anoLetivo: new Date().getFullYear().toString(),
+                    dataNascimento: processedData.dataNascimento,
+                    numeroMatricula: processedData.numeroMatricula,
+                    bolsaFamilia: processedData.bolsaFamilia,
+                    endereco: processedData.endereco,
+                    contatos: processedData.contatos,
+                    deficiencias: processedData.deficiencia ? [processedData.deficiencia] : [],
+                });
 
-                // Atualizar o estado local
-                setStudents([...students, processedData]);
+                // Refetch para obter dados atualizados
+                await fetchStudents();
             }
 
             setOpenModal(false);

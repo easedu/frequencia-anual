@@ -6,7 +6,7 @@ import { logger } from "@/utils/logger";
 import { UserProfilesService } from "@/services/supabase/userProfilesService";
 import { MedicalCertificatesService } from "@/services/supabase/medicalCertificatesService";
 import { StudentSuspensionsService } from "@/services/supabase/studentSuspensionsService";
-import { AbsenceService } from "@/services/supabase/absenceService";
+import { useAbsences, useCreateAbsence, useDeleteAbsence } from "@/hooks/api"; // ✅ Novos hooks
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
