@@ -53,6 +53,19 @@ function getSupabaseClient(): SupabaseClient<Database> {
       persistSession: false, // Don't persist session (usando Firebase Auth)
       autoRefreshToken: false,
     },
+    global: {
+      fetch: (url, options = {}) => {
+        // Força HTTP/2 ao invés de QUIC/HTTP/3 para evitar ERR_QUIC_PROTOCOL_ERROR
+        // em redes que bloqueiam ou têm problemas com QUIC
+        return fetch(url, {
+          ...options,
+          headers: {
+            ...(options.headers || {}),
+            'Alt-Svc': 'clear', // Desabilita QUIC
+          }
+        })
+      }
+    }
   })
 
   return _supabaseInstance
