@@ -104,7 +104,7 @@ export class InteractionService {
         .from('family_interactions')
         .select('*')
         .eq('id', interactionId)
-        .eq('student_id', (student as any).id)  // ✅ Usar ID interno do Supabase
+        .eq('student_id', student.id)  // ✅ Usar ID interno do Supabase (sem casting)
         .single() as any);
 
       if (error) {
@@ -142,10 +142,17 @@ export class InteractionService {
         return [];
       }
 
+      // 🐛 DEBUG: Log do ID interno para diagnóstico
+      logger.debug('getStudentInteractions - ID interno encontrado', {
+        firebaseStudentId,
+        internalId: student.id,
+        studentData: student
+      });
+
       const { data, error } = await supabase
         .from('family_interactions')
         .select('*')
-        .eq('student_id', (student as any).id)  // ✅ Usar ID interno do Supabase
+        .eq('student_id', student.id)  // ✅ Usar ID interno do Supabase (sem casting)
         .order('interaction_date', { ascending: false });
 
       if (error) throw error;
@@ -185,7 +192,7 @@ export class InteractionService {
       // Substituir o Firebase UUID pelo ID interno do Supabase
       const insertData = {
         ...this.mapInteractionToSupabase(interaction),
-        student_id: (student as any).id  // ✅ Usar ID interno do Supabase
+        student_id: student.id  // ✅ Usar ID interno do Supabase (sem casting)
       };
 
       const { data, error } = await ((supabase
