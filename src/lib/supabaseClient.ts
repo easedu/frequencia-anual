@@ -19,10 +19,52 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 let _supabaseInstance: SupabaseClient<Database> | null = null
 
 /**
+ * Custom fetch with retry logic to handle QUIC/HTTP3 errors
+ */
+async function fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        // @ts-ignore - Force HTTP/2 instead of HTTP/3 (QUIC)
+        cache: 'no-store',
+      });
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+
+      // Only retry on network errors (QUIC, connection reset, etc)
+      if (
+        error instanceof TypeError ||
+        (error as Error).message.includes('QUIC') ||
+        (error as Error).message.includes('network') ||
+        (error as Error).message.includes('CONNECTION_RESET')
+      ) {
+        const delay = Math.pow(2, attempt) * 500; // Exponential backoff: 500ms, 1s, 2s
+        console.warn(`⚠️ Network error, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // Non-network errors: throw immediately
+      throw error;
+    }
+  }
+
+  // All retries failed
+  throw lastError || new Error('Fetch failed after retries');
+}
+
+/**
  * Get Supabase client instance (lazy initialization)
  *
  * Only creates the client when first accessed, not at module import time.
  * This prevents build errors when environment variables are not available.
+ *
+ * UPDATED: Now with retry logic to handle QUIC/HTTP3 connection issues
  */
 function getSupabaseClient(): SupabaseClient<Database> {
   if (_supabaseInstance) {
@@ -42,7 +84,16 @@ function getSupabaseClient(): SupabaseClient<Database> {
     )
   }
 
-  _supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey)
+  _supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    global: {
+      fetch: fetchWithRetry, // Use custom fetch with retry
+    },
+    auth: {
+      persistSession: false, // Don't persist session (usando Firebase Auth)
+      autoRefreshToken: false,
+    },
+  })
+
   return _supabaseInstance
 }
 

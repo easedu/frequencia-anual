@@ -2,10 +2,10 @@
  * Supabase Service: User Profiles
  *
  * Gerencia perfis de usuários do sistema.
- * Substitui: collection(db, 'users')
+ * ATUALIZADO: Agora usa API Routes para evitar CORS
+ * Todas as requisições passam pelo servidor Next.js
  */
 
-import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 
 export type UserRole = 'ADMIN' | 'SUPER-USER' | 'USER' | 'USER-PCD';
