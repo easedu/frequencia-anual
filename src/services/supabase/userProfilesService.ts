@@ -138,23 +138,19 @@ export class UserProfilesService {
   /**
    * Buscar perfil por Firebase UID
    *
-   * NOTA: Tabela 'users' possui schema simplificado. Campos faltantes:
-   * - phone, department, turmas_assigned, is_active, notification_preferences, etc.
-   * Para funcionalidade completa, migrar para tabela 'user_profiles' no futuro.
+   * NOTA: Agora usa API Route para evitar problemas de CORS
    */
   static async getByFirebaseUid(firebaseUid: string): Promise<UserProfile | null> {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('firebase_uid', firebaseUid)
-        .maybeSingle();
+      const response = await fetch(`/api/users/by-firebase-uid?firebase_uid=${firebaseUid}`);
 
-      if (error) {
-        if (error.code === 'PGRST116') return null;
-        throw error;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      const { data, error } = await response.json();
+
+      if (error) return null;
       if (!data) return null;
 
       // Cast para o tipo correto da tabela users
@@ -216,20 +212,20 @@ export class UserProfilesService {
 
   /**
    * Buscar perfil por email
+   *
+   * NOTA: Agora usa API Route para evitar problemas de CORS
    */
   static async getByEmail(email: string): Promise<UserProfile | null> {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .maybeSingle();
+      const response = await fetch(`/api/users/by-email?email=${encodeURIComponent(email)}`);
 
-      if (error) {
-        if (error.code === 'PGRST116') return null;
-        throw error;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      const { data, error } = await response.json();
+
+      if (error) return null;
       if (!data) return null;
 
       // Cast para o tipo correto da tabela users
@@ -277,8 +273,7 @@ export class UserProfilesService {
   /**
    * Criar novo perfil de usuário
    *
-   * NOTA: Usando tabela 'users' simplificada. Campos ignorados:
-   * - phone, department, turmas_assigned
+   * NOTA: Agora usa API Route para evitar problemas de CORS
    */
   static async create(data: CreateUserProfileData): Promise<UserProfile | null> {
     try {
@@ -290,11 +285,19 @@ export class UserProfilesService {
         role: this.mapUserRoleToSimpleRole(data.role),
       };
 
-      const { data: result, error } = await (supabase
-        .from('users') as any)
-        .insert(simpleUserData)
-        .select()
-        .single();
+      const response = await fetch('/api/users/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(simpleUserData),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const { data: result, error } = await response.json();
 
       if (error) throw error;
 
@@ -351,7 +354,7 @@ export class UserProfilesService {
   /**
    * Atualizar perfil de usuário
    *
-   * NOTA: Tabela 'users' simplificada - apenas name, email, role suportados
+   * NOTA: Agora usa API Route para evitar problemas de CORS
    */
   static async update(
     firebaseUid: string,
@@ -367,11 +370,24 @@ export class UserProfilesService {
 
       // Ignorar campos não suportados: phone, department, turmas_assigned, is_active, updated_by
 
-      const { error } = await (supabase.from('users') as any)
-        .update(supabaseUpdates)
-        .eq('firebase_uid', firebaseUid);
+      const response = await fetch('/api/users/update', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firebase_uid: firebaseUid,
+          updates: supabaseUpdates,
+        }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const { success } = await response.json();
+
+      if (!success) throw new Error('Falha ao atualizar usuário');
 
       logger.info('Perfil de usuário atualizado no Supabase', { firebaseUid });
 
@@ -484,14 +500,17 @@ export class UserProfilesService {
   /**
    * Listar todos os usuários ativos
    *
-   * NOTA: Tabela 'users' não possui campo is_active, retorna TODOS os usuários
+   * NOTA: Agora usa API Route para evitar problemas de CORS
    */
   static async getAllActive(): Promise<UserProfile[]> {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('name', { ascending: true });
+      const response = await fetch('/api/users/all-active');
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const { data, error } = await response.json();
 
       if (error) throw error;
 
