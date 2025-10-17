@@ -501,6 +501,16 @@ export default function Home() {
     const favoriteCards = allCards.filter(card => favorites.includes(card.key));
     const regularCards = allCards.filter(card => !favorites.includes(card.key));
 
+    console.log('📊 RENDERIZAÇÃO:', {
+        role,
+        allCards: allCards.length,
+        favoriteCards: favoriteCards.length,
+        regularCards: regularCards.length,
+        showOnlyFavorites,
+        cardsToShow: showOnlyFavorites ? favoriteCards.length : regularCards.length,
+        cardKeys: (showOnlyFavorites ? favoriteCards : regularCards).map(c => c.key)
+    });
+
     const roleInfo = getRoleInfo();
 
     return (
