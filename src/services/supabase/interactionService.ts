@@ -124,6 +124,12 @@ export class InteractionService {
    */
   static async getStudentInteractions(firebaseStudentId: string): Promise<FamilyInteraction[]> {
     try {
+      // ⚠️ Validação: não executar se ID for undefined/null/vazio
+      if (!firebaseStudentId || firebaseStudentId === 'undefined' || firebaseStudentId === 'null') {
+        logger.warn('getStudentInteractions: studentId inválido', { firebaseStudentId });
+        return [];
+      }
+
       // 🔧 FIX: Buscar ID interno do Supabase a partir do Firebase UUID
       const { data: student, error: studentError } = await (supabase
         .from('students')

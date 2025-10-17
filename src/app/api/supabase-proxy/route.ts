@@ -33,9 +33,9 @@ export async function DELETE(request: NextRequest) {
 
 async function handleProxy(request: NextRequest, method: string) {
   try {
-    const path = request.nextUrl.searchParams.get('path');
+    const pathParam = request.nextUrl.searchParams.get('path');
 
-    if (!path) {
+    if (!pathParam) {
       return NextResponse.json(
         { error: 'path query parameter is required' },
         { status: 400 }
@@ -52,15 +52,9 @@ async function handleProxy(request: NextRequest, method: string) {
       );
     }
 
-    // Construir URL completa
-    const targetUrl = new URL(path, supabaseUrl);
-
-    // Copiar todos os query params exceto 'path'
-    request.nextUrl.searchParams.forEach((value, key) => {
-      if (key !== 'path') {
-        targetUrl.searchParams.append(key, value);
-      }
-    });
+    // O path pode já incluir query params, então precisamos parseá-lo corretamente
+    const fullPath = decodeURIComponent(pathParam);
+    const targetUrl = new URL(fullPath, supabaseUrl);
 
     // Preparar headers
     const headers: HeadersInit = {
@@ -93,16 +87,24 @@ async function handleProxy(request: NextRequest, method: string) {
       }
     }
 
-    console.log(`🔄 Proxy ${method} ${targetUrl.pathname}${targetUrl.search}`);
+    const finalUrl = targetUrl.toString();
+    console.log(`🔄 Proxy ${method}:`, {
+      originalPath: pathParam,
+      decodedPath: fullPath,
+      finalUrl,
+      hasBody: !!body
+    });
 
     // Fazer requisição ao Supabase via servidor
-    const response = await fetch(targetUrl.toString(), {
+    const response = await fetch(finalUrl, {
       method,
       headers,
       body,
       // @ts-ignore - Force HTTP/1.1
       cache: 'no-store',
     });
+
+    console.log(`✅ Proxy response: ${response.status} ${response.statusText}`);
 
     // Obter resposta
     const data = await response.text();
