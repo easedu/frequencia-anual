@@ -54,7 +54,9 @@ export default function Home() {
                 const userProfile = await UserProfilesService.getByFirebaseUid(uid);
 
                 if (userProfile) {
+                    // UserRole já retorna no formato correto: 'ADMIN' | 'SUPER-USER' | 'USER' | 'USER-PCD'
                     const userRole = (userProfile.role?.toLowerCase() as Role) || "user";
+
                     setRole(userRole);
                     setUserName(userProfile.fullName || auth.currentUser?.displayName || auth.currentUser?.email || "Usuário");
 

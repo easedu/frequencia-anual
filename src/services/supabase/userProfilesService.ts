@@ -8,7 +8,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 
-export type UserRole = 'PROFESSOR' | 'COORDENADOR' | 'DIRETOR' | 'ADMIN';
+export type UserRole = 'ADMIN' | 'SUPER-USER' | 'USER' | 'USER-PCD';
 
 /**
  * Preferências de notificação
@@ -196,17 +196,18 @@ export class UserProfilesService {
   }
 
   /**
-   * Mapear roles simples ('admin', 'user', 'teacher') para UserRole
+   * Mapear roles do Supabase ('admin', 'user', 'teacher') para UserRole do sistema
    */
   private static mapSimpleRoleToUserRole(simpleRole: 'admin' | 'user' | 'teacher'): UserRole {
     switch (simpleRole) {
       case 'admin':
         return 'ADMIN';
       case 'teacher':
-        return 'PROFESSOR';
+        return 'USER'; // Professores são usuários comuns
       case 'user':
+        return 'USER';
       default:
-        return 'PROFESSOR'; // Fallback
+        return 'USER'; // Fallback
     }
   }
 
@@ -336,16 +337,18 @@ export class UserProfilesService {
   }
 
   /**
-   * Mapear UserRole para roles simples da tabela 'users'
+   * Mapear UserRole do sistema para roles do Supabase ('admin', 'user', 'teacher')
    */
   private static mapUserRoleToSimpleRole(userRole: UserRole): 'admin' | 'user' | 'teacher' {
     switch (userRole) {
       case 'ADMIN':
         return 'admin';
-      case 'PROFESSOR':
-        return 'teacher';
-      case 'COORDENADOR':
-      case 'DIRETOR':
+      case 'SUPER-USER':
+        return 'admin'; // Super-user tem privilégios de admin
+      case 'USER':
+        return 'teacher'; // Usuários comuns mapeiam para teacher
+      case 'USER-PCD':
+        return 'teacher'; // Usuários PCD também são usuários comuns
       default:
         return 'user'; // Fallback
     }
