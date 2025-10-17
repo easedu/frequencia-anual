@@ -19,43 +19,40 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 let _supabaseInstance: SupabaseClient<Database> | null = null
 
 /**
- * Custom fetch with retry logic to handle QUIC/HTTP3 errors
+ * Proxy fetch: Intercepta requisições ao Supabase e as faz via Next.js API Route
+ *
+ * Resolve definitivamente problemas de QUIC/HTTP3/CORS fazendo todas as
+ * requisições passarem pelo servidor Next.js
  */
-async function fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
-  const maxRetries = 3;
-  let lastError: Error | null = null;
+async function proxyFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const response = await fetch(url, {
+    // Detectar se é requisição ao Supabase
+    if (supabaseUrl && url.startsWith(supabaseUrl)) {
+      // Extrair path da URL
+      const urlObj = new URL(url);
+      const path = urlObj.pathname + urlObj.search;
+
+      // Construir URL do proxy
+      const proxyUrl = `/api/supabase-proxy?path=${encodeURIComponent(path)}`;
+
+      console.log('🔄 Routing through proxy:', path);
+
+      // Fazer requisição via proxy
+      return await fetch(proxyUrl, {
         ...options,
-        // @ts-ignore - Force HTTP/2 instead of HTTP/3 (QUIC)
-        cache: 'no-store',
+        // Não precisa de headers Supabase (o proxy adiciona)
       });
-      return response;
-    } catch (error) {
-      lastError = error as Error;
-
-      // Only retry on network errors (QUIC, connection reset, etc)
-      if (
-        error instanceof TypeError ||
-        (error as Error).message.includes('QUIC') ||
-        (error as Error).message.includes('network') ||
-        (error as Error).message.includes('CONNECTION_RESET')
-      ) {
-        const delay = Math.pow(2, attempt) * 500; // Exponential backoff: 500ms, 1s, 2s
-        console.warn(`⚠️ Network error, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-
-      // Non-network errors: throw immediately
-      throw error;
     }
-  }
 
-  // All retries failed
-  throw lastError || new Error('Fetch failed after retries');
+    // Requisições não-Supabase: usar fetch normal
+    return await fetch(url, options);
+
+  } catch (error) {
+    console.error('❌ Proxy fetch error:', error);
+    throw error;
+  }
 }
 
 /**
@@ -86,7 +83,7 @@ function getSupabaseClient(): SupabaseClient<Database> {
 
   _supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     global: {
-      fetch: fetchWithRetry, // Use custom fetch with retry
+      fetch: proxyFetch, // Use proxy fetch to route through Next.js
     },
     auth: {
       persistSession: false, // Don't persist session (usando Firebase Auth)
