@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FullPageSkeleton } from "@/components/shared/LoadingSkeletons";
+import { EmptySearchState } from "@/components/shared";
 import { AbsenceControlService } from "@/services/supabase/absenceControlService";
 import { AbsenceService } from "@/services/supabase/absenceService";
 import { logger } from "@/utils/logger";
@@ -627,11 +628,11 @@ export default function RelatorioFaltasPage() {
                                     <TableBody>
                                         {currentRecords.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={2 + selectedMonths.size} className="text-center py-12">
-                                                <div className="flex flex-col items-center gap-3">
-                                                    <AlertTriangle className="w-12 h-12 text-slate-400" />
-                                                    <p className="text-slate-600">Nenhum estudante encontrado com os filtros aplicados.</p>
-                                                </div>
+                                            <TableCell colSpan={2 + selectedMonths.size} className="p-0">
+                                                <EmptySearchState
+                                                    title="Nenhum estudante encontrado"
+                                                    description="Tente ajustar os filtros de busca ou meses selecionados"
+                                                />
                                             </TableCell>
                                         </TableRow>
                                     ) : (

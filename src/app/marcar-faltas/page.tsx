@@ -1,588 +1,71 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { auth } from "@/firebase.config";
-import { logger } from "@/utils/logger";
-import { UserProfilesService } from "@/services/supabase/userProfilesService";
-import { MedicalCertificatesService } from "@/services/supabase/medicalCertificatesService";
-import { StudentSuspensionsService } from "@/services/supabase/studentSuspensionsService";
-import { useAbsences, useCreateAbsence, useDeleteAbsence } from "@/hooks/api"; // ✅ Novos hooks
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-} from "@/components/ui/dialog";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { toast, Toaster } from "sonner";
-import { useStudents, Estudante } from "@/hooks/useStudents";
-import { scheduleSync } from "@/lib/serviceWorker";
+import { useStudents } from "@/hooks/useStudents";
 import { useServiceWorkerContext } from "@/components/shared/ServiceWorkerProvider";
+import { useAttendanceMarking } from "@/hooks/useAttendanceMarking";
 import {
-    Calendar,
-    Users,
-    UserCheck,
-    UserX,
+    AttendanceCalendar,
+    AttendanceStats,
+    StudentCheckboxList,
+    AttendanceConfirmDialog
+} from "@/components/attendance";
+import { ClassSelector, EmptyState } from "@/components/shared";
+import {
+    School,
     Save,
     AlertCircle,
-    School,
-    CheckCircle2,
-    Clock,
     User,
     WifiOff,
-    FileText
+    Users
 } from "lucide-react";
 
-// Constantes para coleções e documentos (SUPABASE - não mais necessário)
-// Mantidas apenas para referência histórica
-// const ACADEMIC_YEAR = "2025";
-// const DOC_ACADEMIC_YEAR = "ano_letivo";
-// const COLLECTION_FALTAS = "faltas";
-// const SUBCOLLECTION_CONTROLE = "controle";
-
-// Define os tipos possíveis para o perfil do usuário
-type Role = "admin" | "super-user" | "user";
-
-// Interfaces
-interface AcademicYearData {
-    [bimester: string]: {
-        startDate?: string;
-        endDate?: string;
-        dates?: { date: string; isChecked: boolean }[];
-    };
-}
-
-interface Atestado {
-    id: string;
-    startDate: string;
-    days: number;
-    description: string;
-    createdBy: string;
-}
-
-interface Suspensao {
-    id: string;
-    startDate: string;
-    days: number;
-    description: string;
-    createdBy: string;
-}
-
-// Funções auxiliares para datas
-function padTo2Digits(num: number): string {
-    return num.toString().padStart(2, "0");
-}
-
-function formatDateToDDMMYYYY(date: Date): string {
-    return [
-        padTo2Digits(date.getDate()),
-        padTo2Digits(date.getMonth() + 1),
-        date.getFullYear(),
-    ].join("/");
-}
-
-function convertToISO(dateStr: string): string {
-    const [day, month, year] = dateStr.split("/");
-    // FIX: Adicionar zeros à esquerda para garantir formato ISO correto (YYYY-MM-DD)
-    const paddedMonth = month.padStart(2, '0');
-    const paddedDay = day.padStart(2, '0');
-    return `${year}-${paddedMonth}-${paddedDay}`;
-}
-
-// Função auxiliar para converter data para DD/MM/YYYY
-function convertDateToDDMMYYYY(dateStr: string): string {
-    // Se já está em DD/MM/YYYY, retorna
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-        return dateStr;
-    }
-
-    // Se está em YYYY-MM-DD (ISO), converte para DD/MM/YYYY
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        const [year, month, day] = dateStr.split('-');
-        return `${day}/${month}/${year}`;
-    }
-
-    // Formato desconhecido, retorna como está
-    return dateStr;
-}
-
-// Função para extrair as datas válidas (isChecked === true) do ano letivo
-function getValidDates(academicYearData: AcademicYearData | null, role: Role | null): string[] {
-    if (!academicYearData) {
-        return [];
-    }
-
-    const validDates: string[] = [];
-    const bimesterKeys = Object.keys(academicYearData);
-
-    Object.entries(academicYearData).forEach(([key, bimData]) => {
-        const datesCount = bimData?.dates?.length || 0;
-        const checkedCount = bimData?.dates?.filter(d => d.isChecked).length || 0;
-
-        bimData?.dates?.forEach((d) => {
-            if (d.isChecked) {
-                const formattedDate = convertDateToDDMMYYYY(d.date);
-                validDates.push(formattedDate);
-            }
-        });
-    });
-
-    const today = new Date();
-    const sortedDates = validDates
-        .map((date) => {
-            const parts = date.split("/");
-            if (parts.length !== 3) return null;
-
-            const [day, month, year] = parts.map(Number);
-            if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
-
-            return { date, timestamp: new Date(year, month - 1, day).getTime() };
-        })
-        .filter((d): d is { date: string; timestamp: number } => d !== null)
-        .sort((a, b) => a.timestamp - b.timestamp);
-
-    const todayTimestamp = today.getTime();
-    const filteredDates = sortedDates.filter(
-        (d) => d.timestamp <= todayTimestamp
-    );
-
-    // Para perfil "user", retorna apenas os últimos 5 dias letivos
-    if (role === "user") {
-        const result = filteredDates.slice(-5).map((d) => d.date);
-        return result;
-    }
-
-    // Para outros perfis, retorna todas as datas válidas
-    const result = filteredDates.map((d) => d.date);
-    return result;
-}
+// ════════════════════════════════════════════════════════════════
+// COMPONENTE PRINCIPAL
+// ════════════════════════════════════════════════════════════════
 
 export default function MarcarFaltasPage() {
     const { students, loading } = useStudents();
     const { isOnline } = useServiceWorkerContext();
 
-    // Estados para dados e UI
-    const [academicYearData, setAcademicYearData] = useState<AcademicYearData | null>(null);
-    const [selectedDate, setSelectedDate] = useState<string>("");
-    const [isValidDay, setIsValidDay] = useState(false);
-    const [errorMessage, setErrorMessage] = useState("");
-    const [selectedClass, setSelectedClass] = useState("");
-    const [existingAbsences, setExistingAbsences] = useState<{ [key: string]: boolean }>({});
-    const [markedAbsences, setMarkedAbsences] = useState<{ [key: string]: boolean }>({});
-    const [, setExistingAbsenceDocs] = useState<{ [key: string]: string }>({});
-    const [openDialog, setOpenDialog] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
+    // Hook centralizado com toda lógica
+    const {
+        // Estados
+        selectedDate,
+        setSelectedDate,
+        isValidDay,
+        errorMessage,
+        selectedClass,
+        setSelectedClass,
+        existingAbsences,
+        markedAbsences,
+        openDialog,
+        setOpenDialog,
+        isSaving,
+        role,
 
-    // Estado para o perfil do usuário
-    const [role, setRole] = useState<Role | null>(null);
+        // Computed
+        filteredStudents,
+        canSave,
+        totalStudents,
+        presentStudents,
+        absentStudents,
 
-    // Estados para atestados e suspensões
-    const [atestados, setAtestados] = useState<Map<string, Atestado[]>>(new Map());
-    const [suspensoes, setSuspensoes] = useState<Map<string, Suspensao[]>>(new Map());
+        // Helpers
+        getValidDates,
+        checkCoverageForStudent,
 
-    // Função helper para verificar se uma data está coberta por atestado ou suspensão
-    const checkCoverageForStudent = (studentId: string, dateStr: string): { hasAtestado: boolean; hasSuspensao: boolean; atestado?: Atestado; suspensao?: Suspensao } => {
-        const studentAtestados = atestados.get(studentId) || [];
-        const studentSuspensoes = suspensoes.get(studentId) || [];
+        // Handlers
+        handleCheckboxChange,
+        handleSaveAbsences,
+        academicYearData,
+    } = useAttendanceMarking({ students, isOnline });
 
-        // Converter data DD/MM/YYYY para Date
-        const [day, month, year] = dateStr.split('/').map(Number);
-        const checkDate = new Date(year, month - 1, day);
-        checkDate.setHours(0, 0, 0, 0);
-
-        // Verificar atestados
-        for (const atestado of studentAtestados) {
-            const [aDay, aMonth, aYear] = atestado.startDate.split('/').map(Number);
-            const startDate = new Date(aYear, aMonth - 1, aDay);
-            startDate.setHours(0, 0, 0, 0);
-
-            const endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + atestado.days - 1);
-
-            if (checkDate >= startDate && checkDate <= endDate) {
-                return { hasAtestado: true, hasSuspensao: false, atestado };
-            }
-        }
-
-        // Verificar suspensões
-        for (const suspensao of studentSuspensoes) {
-            const [sDay, sMonth, sYear] = suspensao.startDate.split('/').map(Number);
-            const startDate = new Date(sYear, sMonth - 1, sDay);
-            startDate.setHours(0, 0, 0, 0);
-
-            const endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + suspensao.days - 1);
-
-            if (checkDate >= startDate && checkDate <= endDate) {
-                return { hasAtestado: false, hasSuspensao: true, suspensao };
-            }
-        }
-
-        return { hasAtestado: false, hasSuspensao: false };
-    };
-
-    // Carrega dados do ano letivo
-    useEffect(() => {
-        const fetchAcademicYearData = async () => {
-            try {
-                // 🔧 SUPABASE: Buscar academic_year completo (bimestres + school_days)
-                const { AcademicYearService } = await import('@/services/supabase/academicYearService');
-                const yearData = await AcademicYearService.getAcademicYearComplete(2025);
-
-                if (yearData && Object.keys(yearData).length > 0) {
-                    setAcademicYearData(yearData);
-
-                    // Contar total de dias letivos
-                    const totalSchoolDays = Object.values(yearData).reduce((sum, bimester) => {
-                        return sum + (bimester.dates?.filter(d => d.isChecked).length || 0);
-                    }, 0);
-                } else {
-                    setErrorMessage("Dados do ano letivo não encontrados.");
-                }
-            } catch (error) {
-                logger.error("Erro ao carregar ano letivo", error as Error);
-                setErrorMessage("Erro ao carregar dados do ano letivo.");
-            }
-        };
-        fetchAcademicYearData();
-    }, []);
-
-    // Define a data atual
-    useEffect(() => {
-        const today = new Date();
-        setSelectedDate(formatDateToDDMMYYYY(today));
-    }, []);
-
-    // Verifica se a data atual é válida para marcação
-    useEffect(() => {
-        if (academicYearData && selectedDate) {
-            let valid = false;
-            Object.values(academicYearData).forEach((bimData) => {
-                if (bimData?.dates) {
-                    const found = bimData.dates.find((d) => {
-                        // Converte a data do Firebase (ISO) para DD/MM/YYYY antes de comparar
-                        const dateFormatted = convertDateToDDMMYYYY(d.date);
-                        return dateFormatted === selectedDate && d.isChecked;
-                    });
-                    if (found) valid = true;
-                }
-            });
-            setIsValidDay(valid);
-            setErrorMessage(valid ? "" : "O dia selecionado não está disponível para marcação de faltas.");
-        }
-    }, [academicYearData, selectedDate]);
-
-    // Obtém o perfil do usuário via Supabase
-    useEffect(() => {
-        const fetchUserRole = async () => {
-            try {
-                const uid = auth.currentUser?.uid;
-                if (!uid) {
-                    logger.warn("Usuário não autenticado");
-                    return;
-                }
-
-                const userProfile = await UserProfilesService.getByFirebaseUid(uid);
-
-                if (userProfile) {
-                    const userRole = (userProfile.role?.toLowerCase() as Role) || "user";
-                    setRole(userRole);
-                } else {
-                    setRole("user");
-                }
-            } catch (error) {
-                logger.error("Erro ao buscar usuário", error as Error);
-                setRole("user");
-            }
-        };
-
-        fetchUserRole();
-    }, []);
-
-    // Carrega atestados e suspensões quando a turma for selecionada
-    useEffect(() => {
-        const loadAtestadosESuspensoes = async () => {
-            if (!selectedClass) return;
-
-            try {
-                const newAtestados = new Map<string, Atestado[]>();
-                const newSuspensoes = new Map<string, Suspensao[]>();
-
-                // Filtrar alunos da turma
-                const studentsInClass = students.filter(
-                    (est: Estudante) => est.status === "ATIVO" && est.turma === selectedClass
-                );
-
-                if (studentsInClass.length === 0) return;
-
-                // Buscar atestados e suspensões para cada aluno da turma via Supabase
-                for (const student of studentsInClass) {
-                    // Buscar atestados via Supabase
-                    const supabaseAtestados = await MedicalCertificatesService.getByStudentId(student.estudanteId);
-                    const studentAtestados: Atestado[] = supabaseAtestados.map((cert) => {
-                        // Converter de YYYY-MM-DD para DD/MM/YYYY
-                        const dateISO = cert.startDate;
-                        let formattedDate = dateISO;
-                        if (dateISO.includes('-')) {
-                            const [year, month, day] = dateISO.split('-');
-                            formattedDate = `${day}/${month}/${year}`;
-                        }
-                        return {
-                            id: cert.id,
-                            startDate: formattedDate,
-                            days: cert.daysCovered,
-                            description: cert.diagnosis || "Sem descrição",
-                            createdBy: cert.createdBy || "Não informado",
-                        };
-                    });
-
-                    // Buscar suspensões via Supabase
-                    const supabaseSuspensoes = await StudentSuspensionsService.getByStudentId(student.estudanteId);
-                    const studentSuspensoes: Suspensao[] = supabaseSuspensoes.map((susp) => {
-                        // Converter de YYYY-MM-DD para DD/MM/YYYY
-                        const dateISO = susp.startDate;
-                        let formattedDate = dateISO;
-                        if (dateISO.includes('-')) {
-                            const [year, month, day] = dateISO.split('-');
-                            formattedDate = `${day}/${month}/${year}`;
-                        }
-                        return {
-                            id: susp.id,
-                            startDate: formattedDate,
-                            days: susp.daysSuspended,
-                            description: susp.reason,
-                            createdBy: susp.createdBy || "Não informado",
-                        };
-                    });
-
-                    if (studentAtestados.length > 0) {
-                        newAtestados.set(student.estudanteId, studentAtestados);
-                    }
-                    if (studentSuspensoes.length > 0) {
-                        newSuspensoes.set(student.estudanteId, studentSuspensoes);
-                    }
-                }
-
-                setAtestados(newAtestados);
-                setSuspensoes(newSuspensoes);
-            } catch (error) {
-                logger.error("Erro ao carregar atestados e suspensões", error as Error);
-            }
-        };
-
-        loadAtestadosESuspensoes();
-    }, [selectedClass, students]);
-
-    // Carrega faltas existentes sempre que turma ou data mudam
-    useEffect(() => {
-        const loadAbsences = async () => {
-            if (!selectedClass || !selectedDate) return;
-            const formattedDate = convertToISO(selectedDate);
-            try {
-                // Buscar faltas da turma na data específica via Supabase
-                const absences = await AbsenceService.getByTurmaAndDate(selectedClass, formattedDate);
-                const newExistingAbsences: { [key: string]: boolean } = {};
-                const newExistingAbsenceDocs: { [key: string]: string } = {};
-
-                absences.forEach((absence: any) => {
-                    const estudanteId = absence.estudanteId;
-                    newExistingAbsences[estudanteId] = true;
-                    newExistingAbsenceDocs[estudanteId] = absence.id;
-                });
-
-                setExistingAbsences(newExistingAbsences);
-                setExistingAbsenceDocs(newExistingAbsenceDocs);
-                setMarkedAbsences(newExistingAbsences);
-            } catch (error) {
-                logger.error("Erro ao carregar faltas existentes", error as Error);
-            }
-        };
-
-        loadAbsences();
-    }, [selectedClass, selectedDate]);
-
-    // Memoriza a lista de turmas para evitar cálculos desnecessários
-    const turmas = useMemo(() => {
-        return Array.from(
-            new Set(
-                students
-                    .filter((est: Estudante) => est.status === "ATIVO")
-                    .map((est: Estudante) => est.turma)
-                    .filter(turma => turma && turma.trim() !== '') // Remove turmas vazias
-            )
-        );
-    }, [students]);
-
-    const filteredStudents = useMemo(() => {
-        return students.filter(
-            (est: Estudante) => est.status === "ATIVO" && est.turma === selectedClass
-        );
-    }, [students, selectedClass]);
-
-    // Calcula se houve mudanças em relação ao estado inicial
-    const hasChanges = useMemo(() => {
-        return filteredStudents.some((est: Estudante) => {
-            const current = !!markedAbsences[est.estudanteId];
-            const initial = !!existingAbsences[est.estudanteId];
-            return current !== initial;
-        });
-    }, [filteredStudents, markedAbsences, existingAbsences]);
-
-    // Para perfis "user" continuamos usando hasSelection para adição
-    const hasSelection = useMemo(() => {
-        return filteredStudents.some((est: Estudante) => markedAbsences[est.estudanteId]);
-    }, [filteredStudents, markedAbsences]);
-
-    // Determina se o botão de salvar deve ficar habilitado
-    const canSave = role === "user" ? hasSelection : hasChanges;
-
-    // Conta estatísticas
-    const totalStudents = filteredStudents.length;
-    const presentStudents = filteredStudents.filter(est => !markedAbsences[est.estudanteId]).length;
-    const absentStudents = filteredStudents.filter(est => markedAbsences[est.estudanteId]).length;
-
-    // Alterna ausência do aluno (respeitando restrições de perfil)
-    const handleCheckboxChange = (studentId: string) => {
-        if (role === "user" && existingAbsences[studentId]) return;
-        setMarkedAbsences((prev) => ({
-            ...prev,
-            [studentId]: !prev[studentId],
-        }));
-    };
-
-    // Função auxiliar para salvar offline
-    const saveAbsencesOffline = async () => {
-        const formattedDate = convertToISO(selectedDate);
-        
-        // Preparar dados para sincronização
-        const attendanceData = {
-            date: formattedDate,
-            class: selectedClass,
-            absences: filteredStudents
-                .filter(est => markedAbsences[est.estudanteId])
-                .map(est => ({
-                    estudanteId: est.estudanteId,
-                    nome: est.nome,
-                    turma: selectedClass,
-                    data: formattedDate
-                })),
-            role,
-            timestamp: new Date().toISOString()
-        };
-
-        // Agendar para sincronização
-        await scheduleSync('attendance', attendanceData);
-        
-        toast.success("Faltas salvas offline! Serão sincronizadas quando voltar a conexão.", {
-            description: `${attendanceData.absences.length} ausência(s) registrada(s)`
-        });
-
-        // Atualizar estado local para refletir as mudanças
-        setExistingAbsences(prev => ({
-            ...prev,
-            ...Object.fromEntries(
-                attendanceData.absences.map(absence => [absence.estudanteId, true])
-            )
-        }));
-        
-        setMarkedAbsences(prev => ({
-            ...prev,
-            ...Object.fromEntries(
-                attendanceData.absences.map(absence => [absence.estudanteId, true])
-            )
-        }));
-    };
-
-    // Salva faltas evitando duplicatas
-    const handleSaveAbsences = async () => {
-        setIsSaving(true);
-        
-        try {
-            if (!isOnline) {
-                await saveAbsencesOffline();
-                setOpenDialog(false);
-                return;
-            }
-
-            const formattedDate = convertToISO(selectedDate);
-
-            // Carrega novamente as faltas existentes via Supabase para evitar duplicatas concorrentes
-            const currentAbsencesList = await AbsenceService.getByTurmaAndDate(selectedClass, formattedDate);
-            const currentAbsences: { [key: string]: string } = {};
-            currentAbsencesList.forEach((absence: any) => {
-                currentAbsences[absence.estudanteId] = absence.id;
-            });
-
-            // Determinar bimestre atual (simplificado - pode precisar ajuste)
-            const currentBimester = 1; // TODO: calcular bimestre real baseado na data
-
-            if (role === "user") {
-                // Para "user", apenas adiciona novas faltas, ignorando existentes
-                for (const est of filteredStudents) {
-                    if (markedAbsences[est.estudanteId] && !currentAbsences[est.estudanteId]) {
-                        await AbsenceService.create({
-                            estudanteId: est.estudanteId,
-                            data: formattedDate,
-                            justified: false,
-                        });
-                    }
-                }
-            } else {
-                // Para "admin" ou "super-user", adiciona ou remove faltas
-                for (const est of filteredStudents) {
-                    const currentlyMarked = markedAbsences[est.estudanteId] || false;
-                    const previouslyMarked = !!currentAbsences[est.estudanteId];
-
-                    if (currentlyMarked && !previouslyMarked) {
-                        // Adiciona nova falta apenas se não existir
-                        await AbsenceService.create({
-                            estudanteId: est.estudanteId,
-                            data: formattedDate,
-                            justified: false,
-                        });
-                    } else if (!currentlyMarked && previouslyMarked) {
-                        // Remove falta existente
-                        const absenceId = currentAbsences[est.estudanteId];
-                        if (absenceId) {
-                            await AbsenceService.delete(absenceId);
-                        }
-                    }
-                }
-            }
-
-            toast.success("Faltas salvas com sucesso!");
-            setOpenDialog(false);
-
-            // Atualiza o estado após salvar
-            const updatedAbsences = await AbsenceService.getByTurmaAndDate(selectedClass, formattedDate);
-            const newExistingAbsences: { [key: string]: boolean } = {};
-            const newExistingAbsenceDocs: { [key: string]: string } = {};
-            updatedAbsences.forEach((absence: any) => {
-                newExistingAbsences[absence.estudanteId] = true;
-                newExistingAbsenceDocs[absence.estudanteId] = absence.id;
-            });
-            setExistingAbsences(newExistingAbsences);
-            setExistingAbsenceDocs(newExistingAbsenceDocs);
-            setMarkedAbsences(newExistingAbsences);
-        } catch (error) {
-            logger.error("Erro ao salvar faltas", error as Error);
-            toast.error("Erro ao salvar faltas.");
-        } finally {
-            setIsSaving(false);
-        }
-    };
+    // ──────────────────────────────────────────────────────────────
+    // Renderização
+    // ──────────────────────────────────────────────────────────────
 
     if (loading) {
         return (
@@ -595,6 +78,8 @@ export default function MarcarFaltasPage() {
         );
     }
 
+    const validDates = getValidDates(academicYearData, role);
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-3">
             <Toaster />
@@ -604,7 +89,7 @@ export default function MarcarFaltasPage() {
                 <div className="text-center">
                     <h1 className="text-2xl font-bold text-gray-800 mb-1">Marcação de Faltas</h1>
                     <p className="text-sm text-gray-600">Gerencie a presença dos estudantes</p>
-                    
+
                     {/* Indicador de modo offline */}
                     {!isOnline && (
                         <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-orange-100 border border-orange-200 rounded-full text-orange-700">
@@ -624,58 +109,21 @@ export default function MarcarFaltasPage() {
                     </CardHeader>
                     <CardContent className="p-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Seletor de Data */}
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
-                                    <Calendar className="w-4 h-4 text-blue-600" />
-                                    <span>Data da Aula</span>
-                                </Label>
-                                <Select onValueChange={setSelectedDate} value={selectedDate}>
-                                    <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors">
-                                        <SelectValue placeholder="Selecione a data" />
-                                    </SelectTrigger>
-                                    <SelectContent className="max-h-60">
-                                        {getValidDates(academicYearData, role)
-                                            .reverse()
-                                            .map((date) => (
-                                            <SelectItem key={date} value={date} className="py-2 text-sm">
-                                                <div className="flex items-center space-x-2">
-                                                    <Calendar className="w-3 h-3 text-gray-500" />
-                                                    <span>{date}</span>
-                                                </div>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            {/* Seletor de Data - Componente Extraído */}
+                            <AttendanceCalendar
+                                selectedDate={selectedDate}
+                                onDateChange={setSelectedDate}
+                                validDates={validDates}
+                            />
 
-                            {/* Seletor de Turma */}
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
-                                    <Users className="w-4 h-4 text-blue-600" />
-                                    <span>Turma</span>
-                                </Label>
-                                <Select onValueChange={setSelectedClass} value={selectedClass}>
-                                    <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500 transition-colors">
-                                        <SelectValue placeholder="Selecione a turma" />
-                                    </SelectTrigger>
-                                    <SelectContent className="max-h-60">
-                                        {turmas
-                                            .sort((a, b) => a.localeCompare(b))
-                                            .map((turma) => (
-                                                <SelectItem key={turma} value={turma} className="py-2 text-sm">
-                                                    <div className="flex items-center space-x-2">
-                                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                                        <span>{turma}</span>
-                                                    </div>
-                                                </SelectItem>
-                                            ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            {/* Seletor de Turma - Componente Reutilizável */}
+                            <ClassSelector
+                                students={students as any}
+                                selectedClass={selectedClass}
+                                onClassChange={setSelectedClass}
+                                filterByStatus="ATIVO"
+                            />
                         </div>
-
-
                     </CardContent>
                 </Card>
 
@@ -691,39 +139,13 @@ export default function MarcarFaltasPage() {
                     </Card>
                 )}
 
-                {/* Estatísticas */}
+                {/* Estatísticas - Componente Extraído */}
                 {isValidDay && selectedClass && filteredStudents.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2">
-                        <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-                            <CardContent className="p-2 text-center">
-                                <div className="flex items-center justify-center space-x-1">
-                                    <Users className="w-3 h-3" />
-                                    <span className="text-lg font-bold">{totalStudents}</span>
-                                </div>
-                                <p className="text-xs text-blue-100 mt-0.5">Total</p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-                            <CardContent className="p-2 text-center">
-                                <div className="flex items-center justify-center space-x-1">
-                                    <UserCheck className="w-3 h-3" />
-                                    <span className="text-lg font-bold">{presentStudents}</span>
-                                </div>
-                                <p className="text-xs text-green-100 mt-0.5">Presentes</p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white">
-                            <CardContent className="p-2 text-center">
-                                <div className="flex items-center justify-center space-x-1">
-                                    <UserX className="w-3 h-3" />
-                                    <span className="text-lg font-bold">{absentStudents}</span>
-                                </div>
-                                <p className="text-xs text-red-100 mt-0.5">Ausentes</p>
-                            </CardContent>
-                        </Card>
-                    </div>
+                    <AttendanceStats
+                        totalStudents={totalStudents}
+                        presentStudents={presentStudents}
+                        absentStudents={absentStudents}
+                    />
                 )}
 
                 {/* Lista de Alunos */}
@@ -737,86 +159,23 @@ export default function MarcarFaltasPage() {
                         </CardHeader>
                         <CardContent className="p-4">
                             {filteredStudents.length === 0 ? (
-                                <div className="text-center py-8 text-gray-500">
-                                    <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                                    <p className="text-sm font-medium text-gray-600 mb-1">Nenhum aluno encontrado</p>
-                                    <p className="text-xs text-gray-500">Não há alunos cadastrados para esta turma com status &quot;ATIVO&quot;</p>
-                                </div>
+                                <EmptyState
+                                    icon={Users}
+                                    iconSize={48}
+                                    title="Nenhum aluno encontrado"
+                                    description='Não há alunos cadastrados para esta turma com status "ATIVO"'
+                                    variant="info"
+                                />
                             ) : (
-                                <div className="space-y-2">
-                                    {filteredStudents
-                                        .sort((a, b) => a.nome.localeCompare(b.nome))
-                                        .map((est: Estudante) => {
-                                            const isLocked = role === "user" && existingAbsences[est.estudanteId];
-                                            // FIX: Garantir que isAbsent seja sempre boolean (não undefined)
-                                            // Isso evita o erro "Checkbox is changing from uncontrolled to controlled"
-                                            const isAbsent = markedAbsences[est.estudanteId] === true;
-                                            const coverage = checkCoverageForStudent(est.estudanteId, selectedDate);
-
-                                            return (
-                                                <div
-                                                    key={est.estudanteId}
-                                                    className={`
-                                                        flex items-center justify-between p-3 rounded-lg border-2 transition-all duration-200
-                                                        ${isAbsent
-                                                            ? 'bg-red-50 border-red-200 hover:bg-red-100'
-                                                            : 'bg-green-50 border-green-200 hover:bg-green-100'
-                                                        }
-                                                        ${!isLocked ? 'cursor-pointer' : 'cursor-default opacity-75'}
-                                                    `}
-                                                    onClick={!isLocked ? () => handleCheckboxChange(est.estudanteId) : undefined}
-                                                >
-                                                    <div className="flex items-center space-x-3">
-                                                        <Checkbox
-                                                            checked={isAbsent}
-                                                            disabled={isLocked}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (!isLocked) handleCheckboxChange(est.estudanteId);
-                                                            }}
-                                                            className="h-5 w-5"
-                                                        />
-                                                        <div>
-                                                            <p className="font-medium text-gray-900">{est.nome}</p>
-                                                            <div className="flex items-center space-x-2 mt-1">
-                                                                {isLocked && (
-                                                                    <p className="text-xs text-gray-500 flex items-center space-x-1">
-                                                                        <Clock className="w-3 h-3" />
-                                                                        <span>Já registrado</span>
-                                                                    </p>
-                                                                )}
-                                                                {coverage.hasAtestado && (
-                                                                    <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 border-green-200">
-                                                                        <FileText className="w-3 h-3 mr-1" />
-                                                                        Atestado
-                                                                    </Badge>
-                                                                )}
-                                                                {coverage.hasSuspensao && (
-                                                                    <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800 border-orange-200">
-                                                                        <AlertCircle className="w-3 h-3 mr-1" />
-                                                                        Suspensão
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center space-x-2">
-                                                        {isAbsent ? (
-                                                            <Badge variant="destructive" className="text-xs">
-                                                                <UserX className="w-3 h-3 mr-1" />
-                                                                Ausente
-                                                            </Badge>
-                                                        ) : (
-                                                            <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">
-                                                                <CheckCircle2 className="w-3 h-3 mr-1" />
-                                                                Presente
-                                                            </Badge>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                </div>
+                                <StudentCheckboxList
+                                    students={filteredStudents}
+                                    markedAbsences={markedAbsences}
+                                    existingAbsences={existingAbsences}
+                                    role={role}
+                                    onCheckboxChange={handleCheckboxChange}
+                                    checkCoverageForStudent={checkCoverageForStudent}
+                                    selectedDate={selectedDate}
+                                />
                             )}
                         </CardContent>
                     </Card>
@@ -852,83 +211,18 @@ export default function MarcarFaltasPage() {
                 )}
             </div>
 
-            {/* Dialog de Confirmação */}
-            <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center space-x-2 text-blue-600">
-                            <Save className="w-5 h-5" />
-                            <span>Confirmar Marcação de Faltas</span>
-                        </DialogTitle>
-                        <DialogDescription className="text-gray-600">
-                            Revise os dados antes de confirmar a marcação.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4">
-                        <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                            <div className="flex items-center space-x-2">
-                                <Calendar className="w-4 h-4 text-blue-600" />
-                                <span className="font-medium">Data:</span>
-                                <span>{selectedDate}</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                                <Users className="w-4 h-4 text-blue-600" />
-                                <span className="font-medium">Turma:</span>
-                                <span>{selectedClass}</span>
-                            </div>
-                        </div>
-
-                        <div>
-                            <p className="font-medium text-gray-700 mb-2 flex items-center space-x-2">
-                                <UserX className="w-4 h-4 text-red-600" />
-                                <span>Alunos Ausentes ({absentStudents}):</span>
-                            </p>
-                            {absentStudents > 0 ? (
-                                <ul className="space-y-1 max-h-32 overflow-y-auto">
-                                    {filteredStudents
-                                        .filter((est: Estudante) => markedAbsences[est.estudanteId])
-                                        .map((est: Estudante) => (
-                                            <li key={est.estudanteId} className="text-sm text-gray-600 flex items-center space-x-2">
-                                                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                                                <span>{est.nome}</span>
-                                            </li>
-                                        ))}
-                                </ul>
-                            ) : (
-                                <p className="text-sm text-gray-500 italic">Nenhum aluno ausente</p>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="flex justify-end space-x-2 pt-4">
-                        <Button
-                            variant="outline"
-                            onClick={() => setOpenDialog(false)}
-                            className="border-gray-300 hover:bg-gray-50"
-                        >
-                            Cancelar
-                        </Button>
-                        <Button
-                            onClick={handleSaveAbsences}
-                            disabled={isSaving}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                            {isSaving ? (
-                                <>
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                    Salvando...
-                                </>
-                            ) : (
-                                <>
-                                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                                    Confirmar
-                                </>
-                            )}
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
+            {/* Dialog de Confirmação - Componente Extraído */}
+            <AttendanceConfirmDialog
+                open={openDialog}
+                onOpenChange={setOpenDialog}
+                selectedDate={selectedDate}
+                selectedClass={selectedClass}
+                absentStudents={absentStudents}
+                filteredStudents={filteredStudents}
+                markedAbsences={markedAbsences}
+                isSaving={isSaving}
+                onConfirm={handleSaveAbsences}
+            />
         </div>
     );
 }

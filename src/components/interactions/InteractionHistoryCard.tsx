@@ -143,6 +143,22 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
     onDeleteInteraction,
     onPrintReport,
 }: InteractionHistoryCardProps) {
+    // Ordenar interações: mais recentes primeiro (por data, depois por timestamp de criação)
+    const sortedInteractions = [...interactions].sort((a, b) => {
+        // Primeiro, comparar por data da interação
+        const dateA = new Date(a.date.split('/').reverse().join('-'));
+        const dateB = new Date(b.date.split('/').reverse().join('-'));
+
+        if (dateB.getTime() !== dateA.getTime()) {
+            return dateB.getTime() - dateA.getTime();
+        }
+
+        // Se mesma data, ordenar por timestamp de criação (mais recente primeiro)
+        const timestampA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const timestampB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return timestampB - timestampA;
+    });
+
     return (
         <>
             <Card className="shadow-lg border-0">
@@ -212,7 +228,7 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {interactions.map((interaction: FamilyInteraction) => (
+                                    {sortedInteractions.map((interaction: FamilyInteraction) => (
                                         <TableRow
                                             key={interaction.id}
                                             className={`hover:bg-gray-50 transition-colors ${interaction.sensitive ? "bg-red-50/50 border-l-4 border-l-red-400" : ""

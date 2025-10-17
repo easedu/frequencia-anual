@@ -11,7 +11,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { logger } from "@/utils/logger";
+import { formatDate } from "@/utils/dateUtils";
 import { History, Pencil, Trash, Calendar, Clock, FileText, User, Shield } from "lucide-react";
 import {
     AlertDialog,
@@ -42,35 +42,11 @@ const AtestadoHistoryCard = memo(function AtestadoHistoryCard({
     setEditingAtestado,
     onDeleteAtestado,
 }: AtestadoHistoryCardProps) {
-    const formatDate = (dateString: string) => {
-        if (!dateString) return dateString;
-
-        try {
-            const parts = dateString.split('/');
-            if (parts.length !== 3) {
-                return dateString;
-            }
-
-            // CORREÇÃO: Usar o construtor numérico para evitar problemas de fuso horário (UTC).
-            // O mês no construtor Date() é 0-indexado (0=janeiro, 1=fevereiro, etc.), por isso subtraímos 1.
-            const [day, month, year] = parts.map(Number);
-            const date = new Date(year, month - 1, day);
-
-            if (isNaN(date.getTime())) {
-                return dateString;
-            }
-
-            return date.toLocaleDateString('pt-BR', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-            });
-        } catch (error) {
-            logger.error("Erro ao formatar a data", error as Error);
-            return dateString;
-        }
-    };
-
+    console.log('🔍 AtestadoHistoryCard - userRole recebido:', {
+        userRole,
+        isAdmin: userRole === "admin",
+        atestadosCount: atestados?.length || 0
+    });
 
     return (
         <>

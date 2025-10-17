@@ -19,9 +19,9 @@ interface SearchByClassCardProps {
 const SearchByClassCard = memo(function SearchByClassCard({
     selectedTurma,
     selectedStudentId,
-    uniqueTurmas,
-    studentsInTurma,
-    searchName,
+    uniqueTurmas = [],
+    studentsInTurma = [],
+    searchName = '',
     onTurmaChange,
     onStudentChange,
 }: SearchByClassCardProps) {

@@ -58,6 +58,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
     const filteredAbsences = absences.filter((absence) => {
         return absence.data && getBimesterByDate(absence.data, bimesterDates) === bimester;
     });
+
     // Contar justificadas (atestado OU suspensão)
     const justifiedCount = filteredAbsences.filter(absence =>
         absence.justified || absence.suspensaoId
@@ -346,7 +347,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                     <div className="flex items-start space-x-2">
                                                         <span className="font-medium text-gray-600 min-w-[60px]">Descrição:</span>
                                                         <span className="text-gray-900">
-                                                            {atestados.find(a => a.id === absence.atestadoId)?.description || 'Sem descrição'}
+                                                            {atestados?.find(a => a.id === absence.atestadoId)?.description || 'Sem descrição'}
                                                         </span>
                                                     </div>
 
@@ -354,7 +355,10 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                         <Calendar className="w-3 h-3 text-gray-500" />
                                                         <span className="font-medium text-gray-600">Início:</span>
                                                         <span className="text-gray-900">
-                                                            {formatDate(atestados.find(a => a.id === absence.atestadoId)?.startDate || 'Não informado')}
+                                                            {(() => {
+                                                                const startDate = atestados?.find(a => a.id === absence.atestadoId)?.startDate;
+                                                                return startDate ? formatDate(startDate) : 'Não informado';
+                                                            })()}
                                                         </span>
                                                     </div>
 
@@ -362,7 +366,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                         <Clock className="w-3 h-3 text-gray-500" />
                                                         <span className="font-medium text-gray-600">Dias:</span>
                                                         <span className="text-gray-900">
-                                                            {atestados.find(a => a.id === absence.atestadoId)?.days || 'Não informado'}
+                                                            {atestados?.find(a => a.id === absence.atestadoId)?.days || 'Não informado'}
                                                         </span>
                                                     </div>
 
@@ -370,7 +374,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                         <User className="w-3 h-3 text-gray-500" />
                                                         <span className="font-medium text-gray-600">Adicionado por:</span>
                                                         <span className="text-gray-900">
-                                                            {atestados.find(a => a.id === absence.atestadoId)?.createdBy || 'Não informado'}
+                                                            {atestados?.find(a => a.id === absence.atestadoId)?.createdBy || 'Não informado'}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -390,7 +394,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                     <div className="flex items-start space-x-2">
                                                         <span className="font-medium text-gray-600 min-w-[60px]">Descrição:</span>
                                                         <span className="text-gray-900">
-                                                            {suspensoes.find(s => s.id === absence.suspensaoId)?.description || 'Sem descrição'}
+                                                            {suspensoes?.find(s => s.id === absence.suspensaoId)?.description || 'Sem descrição'}
                                                         </span>
                                                     </div>
 
@@ -398,7 +402,10 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                         <Calendar className="w-3 h-3 text-gray-500" />
                                                         <span className="font-medium text-gray-600">Início:</span>
                                                         <span className="text-gray-900">
-                                                            {formatDate(suspensoes.find(s => s.id === absence.suspensaoId)?.startDate || 'Não informado')}
+                                                            {(() => {
+                                                                const startDate = suspensoes?.find(s => s.id === absence.suspensaoId)?.startDate;
+                                                                return startDate ? formatDate(startDate) : 'Não informado';
+                                                            })()}
                                                         </span>
                                                     </div>
 
@@ -406,7 +413,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                         <Clock className="w-3 h-3 text-gray-500" />
                                                         <span className="font-medium text-gray-600">Dias:</span>
                                                         <span className="text-gray-900">
-                                                            {suspensoes.find(s => s.id === absence.suspensaoId)?.days || 'Não informado'}
+                                                            {suspensoes?.find(s => s.id === absence.suspensaoId)?.days || 'Não informado'}
                                                         </span>
                                                     </div>
 
@@ -414,7 +421,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                         <User className="w-3 h-3 text-gray-500" />
                                                         <span className="font-medium text-gray-600">Adicionado por:</span>
                                                         <span className="text-gray-900">
-                                                            {suspensoes.find(s => s.id === absence.suspensaoId)?.createdBy || 'Não informado'}
+                                                            {suspensoes?.find(s => s.id === absence.suspensaoId)?.createdBy || 'Não informado'}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -495,6 +502,14 @@ const RegisteredAbsencesCard = memo(function RegisteredAbsencesCard({
     onAbsenceDeleted,
     selectedStudentId
 }: RegisteredAbsencesCardProps) {
+    console.log('🔍 RegisteredAbsencesCard recebeu:', {
+        absencesCount: absences.length,
+        atestadosCount: atestados?.length || 0,
+        suspensoesCount: suspensoes?.length || 0,
+        atestados: atestados,
+        absencesSample: absences.slice(0, 3)
+    });
+
     const totalAbsences = absences.length;
     // Contar justificadas (atestado OU suspensão)
     const justifiedAbsences = absences.filter(absence =>

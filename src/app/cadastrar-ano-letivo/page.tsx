@@ -6,6 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AcademicYearService } from '@/services/supabase/academicYearService';
 import { logger } from '@/utils/logger';
+import {
+  padTo2Digits,
+  formatDateToDDMMYYYY,
+  parseDateFromDDMMYYYY
+} from '@/utils/dateUtils';
 import { toast, Toaster } from 'sonner';
 import { Calendar, Save, BookOpen, Clock, CheckCircle2 } from 'lucide-react';
 
@@ -200,18 +205,8 @@ function formatInputDate(value: string): string {
     return formatted;
 }
 
-function padTo2Digits(num: number): string {
-    return num.toString().padStart(2, '0');
-}
-
-function formatDateToDDMMYYYY(date: Date): string {
-    return [padTo2Digits(date.getDate()), padTo2Digits(date.getMonth() + 1), date.getFullYear()].join('/');
-}
-
-function parseDateFromDDMMYYYY(dateString: string): Date {
-    const [day, month, year] = dateString.split('/').map(Number);
-    return new Date(year, month - 1, day);
-}
+// ✅ Funções movidas para @/utils/dateUtils
+// padTo2Digits, formatDateToDDMMYYYY, parseDateFromDDMMYYYY
 
 /* ==================== COMPONENTE BimesterCard ==================== */
 

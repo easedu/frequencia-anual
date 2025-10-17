@@ -46,6 +46,9 @@ import type { Estudante, Contato } from '@/types';
 function convertSupabaseToEstudante(
   student: Student & { student_contacts?: StudentContact[] }
 ): Estudante {
+  // Parse address JSONB que pode conter dados legados de deficiência
+  const addressData = (student.address as any) || {};
+
   return {
     estudanteId: student.student_id,
     nome: student.name,
@@ -57,8 +60,8 @@ function convertSupabaseToEstudante(
     email: undefined, // Not in Supabase schema
     dataNascimento: student.birth_date || undefined,
     contatos: student.student_contacts?.map(convertSupabaseContactToLegacy) || [],
-    endereco: (student.address as any) || undefined,
-    deficiencia: parseDisabilities(student.disabilities as any[]),
+    endereco: addressData,
+    deficiencia: parseDisabilities(student.disabilities as any[], addressData),
     provaSaoPaulo: [], // Not migrated
   };
 }
@@ -132,9 +135,35 @@ function convertContatoToSupabaseInsert(
 }
 
 /**
- * Helper: Parse disabilities from Supabase JSONB array
+ * Helper: Parse disabilities from Supabase JSONB array + legacy data in address
  */
-function parseDisabilities(disabilities: any[]): any {
+function parseDisabilities(disabilities: any[], addressData: any = {}): any {
+  // Extrair dados legados de deficiência do address JSONB (migração Firestore → Supabase)
+  const legacyDeficiencia = addressData.deficiencia || addressData;
+
+  // Se não há disabilities no Supabase MAS há dados legados, usar dados legados
+  if ((!disabilities || disabilities.length === 0) && legacyDeficiencia) {
+    // Retornar dados legados completos se existirem
+    if (legacyDeficiencia.estudanteComDeficiencia !== undefined) {
+      return {
+        estudanteComDeficiencia: legacyDeficiencia.estudanteComDeficiencia || false,
+        tipoDeficiencia: legacyDeficiencia.tipoDeficiencia || [],
+        possuiBarreiras: legacyDeficiencia.possuiBarreiras !== undefined ? legacyDeficiencia.possuiBarreiras : true,
+        horarioAtendimento: legacyDeficiencia.horarioAtendimento || 'NENHUM',
+        aee: legacyDeficiencia.aee || undefined,
+        instituicao: legacyDeficiencia.instituicao || undefined,
+        atendimentoSaude: legacyDeficiencia.atendimentoSaude || [],
+        possuiEstagiario: legacyDeficiencia.possuiEstagiario || false,
+        nomeEstagiario: legacyDeficiencia.nomeEstagiario || 'NÃO NECESSITA',
+        justificativaEstagiario: legacyDeficiencia.justificativaEstagiario || 'SEM BARREIRAS',
+        ave: legacyDeficiencia.ave || false,
+        nomeAve: legacyDeficiencia.nomeAve || '',
+        justificativaAve: legacyDeficiencia.justificativaAve || [],
+      };
+    }
+  }
+
+  // Se não há disabilities nem dados legados
   if (!disabilities || disabilities.length === 0) {
     return {
       estudanteComDeficiencia: false,
@@ -151,19 +180,28 @@ function parseDisabilities(disabilities: any[]): any {
     };
   }
 
-  // Convert array of disabilities to legacy format
+  // Convert array of disabilities to legacy format (Supabase normalizado)
+  // Extrair todos os campos do primeiro disability (normalmente só há 1-2 tipos)
+  const firstDisability = disabilities[0] || {};
+
   return {
     estudanteComDeficiencia: true,
-    tipoDeficiencia: disabilities.map(d => d.type || ''),
-    possuiBarreiras: true,
-    horarioAtendimento: disabilities[0]?.aee_type || 'NENHUM',
-    atendimentoSaude: [],
-    possuiEstagiario: false,
-    nomeEstagiario: 'NÃO NECESSITA',
-    justificativaEstagiario: 'SEM BARREIRAS',
-    ave: disabilities.some(d => d.needs_ave),
-    nomeAve: '',
-    justificativaAve: [],
+    tipoDeficiencia: disabilities.map(d => d.type || '').filter(Boolean),
+    possuiBarreiras: firstDisability.possui_barreiras !== undefined
+      ? firstDisability.possui_barreiras
+      : (legacyDeficiencia?.possuiBarreiras !== undefined ? legacyDeficiencia.possuiBarreiras : true),
+    horarioAtendimento: firstDisability.horario_atendimento || legacyDeficiencia?.horarioAtendimento || 'NENHUM',
+    aee: firstDisability.aee_type || legacyDeficiencia?.aee || undefined,
+    instituicao: firstDisability.instituicao || legacyDeficiencia?.instituicao || undefined,
+    atendimentoSaude: legacyDeficiencia?.atendimentoSaude || [],
+    possuiEstagiario: !!firstDisability.estagiario_name || legacyDeficiencia?.possuiEstagiario || false,
+    nomeEstagiario: firstDisability.estagiario_name || legacyDeficiencia?.nomeEstagiario || 'NÃO NECESSITA',
+    justificativaEstagiario: legacyDeficiencia?.justificativaEstagiario || 'SEM BARREIRAS',
+    ave: firstDisability.needs_ave || legacyDeficiencia?.ave || false,
+    nomeAve: firstDisability.ave_name || legacyDeficiencia?.nomeAve || '',
+    justificativaAve: firstDisability.ave_justification
+      ? (Array.isArray(firstDisability.ave_justification) ? firstDisability.ave_justification : [firstDisability.ave_justification])
+      : (legacyDeficiencia?.justificativaAve || []),
   };
 }
 

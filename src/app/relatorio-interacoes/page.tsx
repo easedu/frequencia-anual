@@ -16,6 +16,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { InteractionListSkeleton, ChartCardSkeleton } from "@/components/shared/LoadingSkeletons";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
+  DateRangePicker,
+  StudentSelector,
+  EmptyState,
+  InfoState,
+} from "@/components/shared";
+import {
   TrendingUp,
   Calendar,
   Users,
@@ -360,27 +366,12 @@ export default function InteractionReportsPage() {
 
       {/* Estado Vazio - Quando não há interações */}
       {!loading && interactions.length === 0 && (
-        <div className="text-center py-16">
-          <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-3xl p-12 shadow-2xl">
-            <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30 rounded-2xl flex items-center justify-center">
-              <MessageSquare className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-4">
-              Nenhuma Interação Encontrada
-            </h2>
-            <p className="text-slate-600 dark:text-slate-400 mb-6 max-w-md mx-auto">
-              Para visualizar relatórios e estatísticas, é necessário cadastrar interações com as famílias dos estudantes.
-            </p>
-            <div className="space-y-3">
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                📝 Vá para <strong>Perfil do Estudante</strong> para cadastrar interações
-              </p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                📊 Os relatórios aparecerão aqui automaticamente após o cadastro
-              </p>
-            </div>
-          </div>
-        </div>
+        <EmptyState
+          icon={MessageSquare}
+          title="Nenhuma Interação Encontrada"
+          description="Para visualizar relatórios e estatísticas, é necessário cadastrar interações com as famílias dos estudantes. Vá para Perfil do Estudante para cadastrar interações."
+          variant="info"
+        />
       )}
 
       {/* Cards de Estatísticas - Só mostra se há dados */}

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Toaster, toast } from "sonner";
 import { FileSpreadsheet, Upload, CheckCircle, AlertTriangle, Info } from "lucide-react";
+import { EmptyState, InfoState } from "@/components/shared";
 import { StudentDataService } from "@/services/studentDataService";
 import type { Student } from "@/types";
 import { logger } from "@/utils/logger";
