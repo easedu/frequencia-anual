@@ -88,9 +88,6 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
 
     // ✅ Se as datas foram alteradas, recriar faltas automaticamente
     if (sanitizedData.dataInicio || sanitizedData.dataFim) {
-      console.log('[PUT /api/suspensions/[id]] 🔄 INICIANDO RECRIAÇÃO DE FALTAS');
-      console.log('[PUT /api/suspensions/[id]] Dados recebidos:', sanitizedData);
-      console.log('[PUT /api/suspensions/[id]] Dados atualizados:', updatedData);
 
       try {
         // ✅ USAR dados já convertidos (updatedData tem YYYY-MM-DD)
@@ -98,32 +95,18 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
         const endDate = updatedData.end_date;
         const internalId = updatedData.students?.id;
 
-        console.log('[PUT /api/suspensions/[id]] 📅 Datas para buscar dias letivos:', {
-          startDate,
-          endDate,
-          formato: 'YYYY-MM-DD'
-        });
-
-        console.log('[PUT /api/suspensions/[id]] 🔍 Recriando faltas para novo período:', {
-          suspensionId: id,
-          studentId: internalId,
-          startDate,
-          endDate,
-        });
-
         // 1. ✅ DESASSOCIAR faltas antigas (NÃO DELETAR!)
-        const { error: updateOldError } = await supabaseAdmin
+        const { error: updateOldError } = (await supabaseAdmin
           .from('student_absences')
+          // @ts-ignore - Supabase types inference issue
           .update({
             suspension_id: null,
             is_justified: false
           })
-          .eq('suspension_id', id);
+          .eq('suspension_id', id)) as { error: any };
 
         if (updateOldError) {
           console.error('[PUT /api/suspensions/[id]] ❌ Erro ao desassociar faltas antigas:', updateOldError);
-        } else {
-          console.log('[PUT /api/suspensions/[id]] 🔄 Faltas antigas desassociadas e marcadas como não justificadas');
         }
 
         // 2. Buscar dias letivos no novo período
@@ -132,7 +115,6 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
 
         if (startDateObj && endDateObj) {
           const diasLetivos = await getDiasLetivosNoPeriodo(startDateObj, endDateObj);
-          console.log('[PUT /api/suspensions/[id]] 📅 Dias letivos encontrados:', diasLetivos.length);
 
           if (diasLetivos.length > 0) {
             // 3. Buscar bimesterDates
@@ -141,10 +123,10 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
             const academicYearData = await AcademicYearService.getAcademicYearComplete(currentYear);
 
             const bimesterDates = {
-              b1: { start: academicYearData?.['1º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['1º Bimestre']?.periodo?.fim || '' },
-              b2: { start: academicYearData?.['2º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['2º Bimestre']?.periodo?.fim || '' },
-              b3: { start: academicYearData?.['3º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['3º Bimestre']?.periodo?.fim || '' },
-              b4: { start: academicYearData?.['4º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['4º Bimestre']?.periodo?.fim || '' },
+              b1: { start: academicYearData?.['1º Bimestre']?.startDate || '', end: academicYearData?.['1º Bimestre']?.endDate || '' },
+              b2: { start: academicYearData?.['2º Bimestre']?.startDate || '', end: academicYearData?.['2º Bimestre']?.endDate || '' },
+              b3: { start: academicYearData?.['3º Bimestre']?.startDate || '', end: academicYearData?.['3º Bimestre']?.endDate || '' },
+              b4: { start: academicYearData?.['4º Bimestre']?.startDate || '', end: academicYearData?.['4º Bimestre']?.endDate || '' },
             };
 
             // 4. ✅ ATUALIZAR ou CRIAR faltas (UPSERT)
@@ -169,45 +151,41 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
                                  bimester === 4 ? '4º Bimestre' : null;
 
               // Verificar se falta já existe para este estudante e data
-              const { data: existingAbsence, error: checkError } = await supabaseAdmin
+              const { data: existingAbsence, error: checkError } = (await supabaseAdmin
                 .from('student_absences')
                 .select('id')
                 .eq('student_id', internalId)
                 .eq('absence_date', absenceDate)
-                .maybeSingle();
+                .maybeSingle()) as { data: { id: string } | null; error: any };
 
               if (existingAbsence) {
                 // ✅ Falta existe: ATUALIZAR para associar à suspensão
-                const { error: updateError } = await supabaseAdmin
+                const { error: updateError } = (await supabaseAdmin
                   .from('student_absences')
+                  // @ts-ignore - Supabase types inference issue
                   .update({
                     is_justified: true,
                     suspension_id: id,
                   })
-                  .eq('id', existingAbsence.id);
+                  .eq('id', existingAbsence.id)) as { error: any };
 
                 if (!updateError) updatedCount++;
               } else {
                 // ✅ Falta não existe: CRIAR nova
-                const { error: insertError } = await supabaseAdmin
+                const { error: insertError } = (await supabaseAdmin
                   .from('student_absences')
+                  // @ts-ignore - Supabase types inference issue
                   .insert({
                     student_id: internalId,
                     absence_date: absenceDate,
                     bimester: bimesterStr,
                     is_justified: true,
                     suspension_id: id,
-                  });
+                  })) as { error: any };
 
                 if (!insertError) createdCount++;
               }
             }
-
-            console.log('[PUT /api/suspensions/[id]] ✅ Faltas processadas:', {
-              atualizadas: updatedCount,
-              criadas: createdCount,
-              total: diasLetivos.length
-            });
           }
         }
       } catch (absencesErr) {
@@ -227,8 +205,6 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
       console.error('[PUT /api/suspensions/[id]] ❌ Erro ao buscar dados finais:', finalError);
       return successResponse({ id, updated: true }, 'Suspensão atualizada com sucesso');
     }
-
-    console.log('[PUT /api/suspensions/[id]] ✅ Retornando dados atualizados:', finalData);
 
     return successResponse(finalData, 'Suspensão atualizada com sucesso');
   } catch (error) {
@@ -252,20 +228,18 @@ export const DELETE = withAuth(async (req: NextRequest, userId: string, context?
     if (checkError || !existing) return notFoundResponse('Suspensão', id);
 
     // ✅ ANTES de deletar, desassociar faltas e marcar como não justificadas
-    console.log('[DELETE /api/suspensions/[id]] 🔄 Desassociando faltas antes de deletar suspensão');
 
-    const { error: updateAbsencesError } = await supabaseAdmin
+    const { error: updateAbsencesError } = (await supabaseAdmin
       .from('student_absences')
+      // @ts-ignore - Supabase types inference issue
       .update({
         suspension_id: null,
         is_justified: false
       })
-      .eq('suspension_id', id);
+      .eq('suspension_id', id)) as { error: any };
 
     if (updateAbsencesError) {
       console.error('[DELETE /api/suspensions/[id]] ❌ Erro ao desassociar faltas:', updateAbsencesError);
-    } else {
-      console.log('[DELETE /api/suspensions/[id]] ✅ Faltas desassociadas e marcadas como não justificadas');
     }
 
     // Agora deletar a suspensão
@@ -279,7 +253,6 @@ export const DELETE = withAuth(async (req: NextRequest, userId: string, context?
       return errorResponse('DATABASE_ERROR', 'Erro ao deletar suspensão', 500);
     }
 
-    console.log('[DELETE /api/suspensions/[id]] ✅ Suspensão deletada com sucesso');
     return successResponse({ id, deleted: true }, 'Suspensão deletada com sucesso');
   } catch (error) {
     return handleError(error, 'DELETE /api/suspensions/[id]');

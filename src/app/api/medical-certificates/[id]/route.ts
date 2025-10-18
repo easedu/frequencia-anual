@@ -113,13 +113,14 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
 
         // 1. ✅ DESASSOCIAR faltas antigas (NÃO DELETAR!)
         // Remover atestado e marcar como não justificadas
-        const { error: updateOldError } = await supabaseAdmin
+        const { error: updateOldError } = (await supabaseAdmin
           .from('student_absences')
+          // @ts-ignore - Supabase types inference issue
           .update({
             medical_certificate_id: null,
             is_justified: false
           })
-          .eq('medical_certificate_id', id);
+          .eq('medical_certificate_id', id)) as { error: any };
 
         if (updateOldError) {
           console.error('[PUT /api/medical-certificates/[id]] ❌ Erro ao desassociar faltas antigas:', updateOldError);
@@ -142,10 +143,10 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
             const academicYearData = await AcademicYearService.getAcademicYearComplete(currentYear);
 
             const bimesterDates = {
-              b1: { start: academicYearData?.['1º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['1º Bimestre']?.periodo?.fim || '' },
-              b2: { start: academicYearData?.['2º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['2º Bimestre']?.periodo?.fim || '' },
-              b3: { start: academicYearData?.['3º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['3º Bimestre']?.periodo?.fim || '' },
-              b4: { start: academicYearData?.['4º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['4º Bimestre']?.periodo?.fim || '' },
+              b1: { start: academicYearData?.['1º Bimestre']?.startDate || '', end: academicYearData?.['1º Bimestre']?.endDate || '' },
+              b2: { start: academicYearData?.['2º Bimestre']?.startDate || '', end: academicYearData?.['2º Bimestre']?.endDate || '' },
+              b3: { start: academicYearData?.['3º Bimestre']?.startDate || '', end: academicYearData?.['3º Bimestre']?.endDate || '' },
+              b4: { start: academicYearData?.['4º Bimestre']?.startDate || '', end: academicYearData?.['4º Bimestre']?.endDate || '' },
             };
 
             // 4. ✅ ATUALIZAR ou CRIAR faltas (UPSERT)
@@ -170,35 +171,37 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
                                  bimester === 4 ? '4º Bimestre' : null;
 
               // Verificar se falta já existe para este estudante e data
-              const { data: existing, error: checkError } = await supabaseAdmin
+              const { data: existing, error: checkError } = (await supabaseAdmin
                 .from('student_absences')
                 .select('id')
                 .eq('student_id', internalId)
                 .eq('absence_date', absenceDate)
-                .maybeSingle();
+                .maybeSingle()) as { data: { id: string } | null; error: any };
 
               if (existing) {
                 // ✅ Falta existe: ATUALIZAR para associar ao atestado
-                const { error: updateError } = await supabaseAdmin
+                const { error: updateError } = (await supabaseAdmin
                   .from('student_absences')
+                  // @ts-ignore - Supabase types inference issue
                   .update({
                     is_justified: true,
                     medical_certificate_id: id,
                   })
-                  .eq('id', existing.id);
+                  .eq('id', existing.id)) as { error: any };
 
                 if (!updateError) updatedCount++;
               } else {
                 // ✅ Falta não existe: CRIAR nova
-                const { error: insertError } = await supabaseAdmin
+                const { error: insertError } = (await supabaseAdmin
                   .from('student_absences')
+                  // @ts-ignore - Supabase types inference issue
                   .insert({
                     student_id: internalId,
                     absence_date: absenceDate,
                     bimester: bimesterStr,
                     is_justified: true,
                     medical_certificate_id: id,
-                  });
+                  })) as { error: any };
 
                 if (!insertError) createdCount++;
               }
@@ -255,13 +258,14 @@ export const DELETE = withAuth(async (req: NextRequest, userId: string, context?
     // ✅ ANTES de deletar, desassociar faltas e marcar como não justificadas
     console.log('[DELETE /api/medical-certificates/[id]] 🔄 Desassociando faltas antes de deletar atestado');
 
-    const { error: updateAbsencesError } = await supabaseAdmin
+    const { error: updateAbsencesError } = (await supabaseAdmin
       .from('student_absences')
+      // @ts-ignore - Supabase types inference issue
       .update({
         medical_certificate_id: null,
         is_justified: false
       })
-      .eq('medical_certificate_id', id);
+      .eq('medical_certificate_id', id)) as { error: any };
 
     if (updateAbsencesError) {
       console.error('[DELETE /api/medical-certificates/[id]] ❌ Erro ao desassociar faltas:', updateAbsencesError);

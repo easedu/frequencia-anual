@@ -52,11 +52,9 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     let internalStudentId: string | undefined = undefined;
 
     if (estudanteId) {
-      console.log('[GET /api/absences] 🔍 Resolvendo Firebase UUID:', estudanteId);
       const resolved = await resolveFirebaseUUIDToInternal(estudanteId);
 
       if (!resolved) {
-        console.log('[GET /api/absences] ❌ Estudante não encontrado:', estudanteId);
         return errorResponse(
           'NOT_FOUND',
           `Estudante não encontrado com ID: ${estudanteId}`,
@@ -65,7 +63,6 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       }
 
       internalStudentId = resolved;
-      console.log('[GET /api/absences] ✅ Internal ID resolvido:', internalStudentId);
     }
 
     // 3. Construir query no Supabase
@@ -76,10 +73,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
     // Aplicar filtros
     if (internalStudentId) {
-      console.log('[GET /api/absences] 🔍 Filtrando por student_id (Internal):', internalStudentId);
       query = query.eq('student_id', internalStudentId);
-    } else {
-      console.log('[GET /api/absences] ⚠️ Sem filtro de student_id - buscaria TODAS as faltas!');
     }
 
     if (bimestre) {
@@ -134,11 +128,6 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
     // 4. Converter para formato legacy
     const absences = (data || []).map(convertSupabaseToAbsence);
-
-    console.log('[GET /api/absences] ✅ Retornando', absences.length, 'faltas (total:', count, ')');
-    if (absences.length > 0) {
-      console.log('[GET /api/absences] Primeira falta:', absences[0]);
-    }
 
     // 5. Retornar com paginação
     return paginatedResponse(absences, page, limit, count || 0);
