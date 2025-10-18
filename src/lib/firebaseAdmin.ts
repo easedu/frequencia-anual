@@ -3,12 +3,22 @@
  *
  * Este arquivo configura o Firebase Admin SDK para uso server-side
  * em API routes do Next.js.
+ *
+ * IMPORTANTE: Lazy initialization para evitar erros durante build.
+ * O Firebase Admin só é inicializado quando realmente usado (runtime).
  */
 
 import admin from 'firebase-admin';
 
-// Inicializar Firebase Admin se ainda não foi inicializado
-if (!admin.apps.length) {
+/**
+ * Inicializa o Firebase Admin (lazy initialization)
+ * Chamado automaticamente pelos getters abaixo
+ */
+function initializeFirebaseAdmin() {
+  if (admin.apps.length > 0) {
+    return; // Já inicializado
+  }
+
   try {
     // Tentar usar service account JSON completo primeiro
     const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -22,24 +32,59 @@ if (!admin.apps.length) {
       console.log('✅ Firebase Admin inicializado com sucesso (service account JSON)');
     } else {
       // Fallback: usar variáveis individuais
+      const projectId = process.env.FIREBASE_PROJECT_ID;
+      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+      if (!projectId || !clientEmail || !privateKey) {
+        throw new Error('Variáveis de ambiente do Firebase Admin não configuradas');
+      }
+
       admin.initializeApp({
         credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          // A private key precisa ter as quebras de linha substituídas
-          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+          projectId,
+          clientEmail,
+          privateKey,
         }),
-        databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`,
+        databaseURL: `https://${projectId}.firebaseio.com`,
       });
       console.log('✅ Firebase Admin inicializado com sucesso (env vars individuais)');
     }
   } catch (error) {
     console.error('❌ Erro ao inicializar Firebase Admin:', error);
+    throw error;
   }
 }
 
-// Exportar instâncias
-export const adminDb = admin.firestore();
-export const adminAuth = admin.auth();
+/**
+ * Getter lazy para Firestore Admin
+ * Inicializa Firebase Admin apenas quando realmente usado
+ */
+export function getAdminDb() {
+  initializeFirebaseAdmin();
+  return admin.firestore();
+}
+
+/**
+ * Getter lazy para Auth Admin
+ * Inicializa Firebase Admin apenas quando realmente usado
+ */
+export function getAdminAuth() {
+  initializeFirebaseAdmin();
+  return admin.auth();
+}
+
+// Exportar instâncias (lazy) - mantém compatibilidade com código existente
+export const adminDb = new Proxy({} as admin.firestore.Firestore, {
+  get(_target, prop) {
+    return (getAdminDb() as any)[prop];
+  }
+});
+
+export const adminAuth = new Proxy({} as admin.auth.Auth, {
+  get(_target, prop) {
+    return (getAdminAuth() as any)[prop];
+  }
+});
 
 export default admin;
