@@ -335,7 +335,7 @@ export function useStudentProfile() {
   // 5. LOADING/ERROR/USER
   // ═══════════════════════════════════════════════════════════
 
-  const loadingProfile = loadingStudent || loadingInteractions || loadingAbsences || loadingAtestados || loadingSuspensoes;
+  const loadingProfile = loadingStudents || loadingStudent || loadingInteractions || loadingAbsences || loadingAtestados || loadingSuspensoes;
   const userRole = currentUser?.role?.toLowerCase() || "user";
 
   // ═══════════════════════════════════════════════════════════
@@ -529,6 +529,11 @@ export function useStudentProfile() {
       setSearchName("");
       setSuggestions([]);
       fetchStudentData(normalizedId);
+
+      // ✅ Limpar campos de seleção por turma após carregar o perfil
+      setTimeout(() => {
+        setSelectedTurma("");
+      }, 500); // Delay para permitir visualização do loading
 
       // Reset selecting flag after a short delay
       setTimeout(() => {
@@ -1368,6 +1373,11 @@ export function useStudentProfile() {
     setSelectedStudentId(normalizedId);
     setSearchName("");
     setSuggestions([]);
+
+    // ✅ Limpar campos de seleção por turma após selecionar por nome
+    setTimeout(() => {
+      setSelectedTurma("");
+    }, 500); // Delay para permitir visualização do loading
   }, [allStudents]);
 
   // ═══════════════════════════════════════════════════════════

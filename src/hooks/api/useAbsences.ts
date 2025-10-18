@@ -57,7 +57,7 @@ export function useAbsences(filters?: AbsenceFilters) {
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 50,
+    limit: 250,
     total: 0,
     totalPages: 0,
   });
@@ -89,7 +89,8 @@ export function useAbsences(filters?: AbsenceFilters) {
       if (filters?.dataFim) params.append('dataFim', filters.dataFim);
       if (filters?.turma) params.append('turma', filters.turma);
       if (filters?.page) params.append('page', filters.page.toString());
-      if (filters?.limit) params.append('limit', filters.limit.toString());
+      // ✅ Sempre enviar limit (default 250 para carregar todas as faltas de um estudante)
+      params.append('limit', (filters?.limit || 250).toString());
 
       const token = await user.getIdToken();
 
