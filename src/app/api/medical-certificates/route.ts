@@ -139,11 +139,11 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       created_by: body.createdBy || body.criadoPor || userId,
     };
 
-    const { data, error } = await supabaseAdmin
-      .from('medical_certificates')
+    const { data, error } = (await (supabaseAdmin
+      .from('medical_certificates') as any)
       .insert(insertData)
       .select('*')
-      .single();
+      .single()) as { data: any; error: any };
 
     if (error) {
       console.error('[POST /api/medical-certificates] Error:', error);

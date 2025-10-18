@@ -301,18 +301,27 @@ export function useDeleteMedicalCertificate() {
 // INTERACTIONS
 // ============================================================================
 
+// ✅ ATUALIZADO: Agora bate com FamilyInteraction e com o que a API retorna
 export interface Interaction {
   id: string;
-  student_id: string;
-  interaction_date: string;
-  interaction_type: string;
-  contact_person: string;
-  subject: string;
+  studentId: string;  // camelCase (API já retorna assim)
+  type: string;       // interaction_type mapeado pela API
+  date: string;       // interaction_date mapeado pela API
   description: string;
-  notes?: string | null;
-  next_action?: string | null;
-  next_action_date?: string | null;
-  created_at: string;
+  createdBy: string;  // created_by mapeado pela API
+  sensitive: boolean; // is_sensitive mapeado pela API
+  // Campos WhatsApp (retornados pela API)
+  whatsappMessage?: string;
+  whatsappPhones?: string[];
+  whatsappMessageId?: string;
+  whatsappStatus?: string;
+  whatsappStatusHistory?: any[];
+  whatsappSentAt?: string;
+  whatsappDeliveredAt?: string;
+  whatsappReadAt?: string;
+  whatsappPlayedAt?: string;
+  whatsappUpdatedAt?: string;
+  createdAt?: string;
 }
 
 export interface InteractionFilters {
@@ -346,12 +355,23 @@ export function useInteractions(filters?: InteractionFilters) {
       if (filters?.page) params.append('page', filters.page.toString());
       if (filters?.limit) params.append('limit', filters.limit.toString());
 
+      console.log('📡 [useInteractions] Buscando interações:', {
+        estudanteId: filters?.estudanteId,
+        url: `/api/interactions?${params.toString()}`
+      });
+
       const token = await user.getIdToken();
       const response = await fetch(`/api/interactions?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
       if (!response.ok) throw new Error((await response.json()).error || 'Erro ao buscar interações');
       const data: PaginatedResponse<Interaction> = await response.json();
+
+      console.log('✅ [useInteractions] Interações recebidas:', {
+        count: data.data.length,
+        sample: data.data[0]
+      });
+
       setInteractions(data.data);
       setPagination(data.pagination);
     } catch (err) {

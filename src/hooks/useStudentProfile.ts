@@ -130,20 +130,29 @@ export function useStudentProfile() {
     return selectedStudentId;
   }, [selectedStudentId, allStudents]);
 
+  // ⚡ PERFORMANCE FIX: Memoizar filtros para evitar re-criação desnecessária e múltiplos fetches
+  const interactionFilters = useMemo(() => ({
+    estudanteId: validatedStudentId || undefined,
+  }), [validatedStudentId]);
+
+  const absenceFilters = useMemo(() => ({
+    estudanteId: validatedStudentId || undefined,
+  }), [validatedStudentId]);
+
+  const certificateFilters = useMemo(() => ({
+    estudanteId: validatedStudentId || undefined,
+  }), [validatedStudentId]);
+
+  const suspensionFilters = useMemo(() => ({
+    estudanteId: validatedStudentId || undefined,
+  }), [validatedStudentId]);
+
   // Hooks condicionais para dados do estudante selecionado (usar validatedStudentId)
   const { student: studentData, loading: loadingStudent, refetch: refetchStudent } = useStudent(validatedStudentId);
-  const { interactions: interactionsData, loading: loadingInteractions, refetch: refetchInteractions } = useInteractions({
-    estudanteId: validatedStudentId || undefined,
-  });
-  const { absences: absencesData, loading: loadingAbsences, refetch: refetchAbsences } = useAbsences({
-    estudanteId: validatedStudentId || undefined,
-  });
-  const { certificates: atestadosData, loading: loadingAtestados, refetch: refetchAtestados } = useMedicalCertificates({
-    estudanteId: validatedStudentId || undefined,
-  });
-  const { suspensions: suspensoesData, loading: loadingSuspensoes, refetch: refetchSuspensoes } = useSuspensions({
-    estudanteId: validatedStudentId || undefined,
-  });
+  const { interactions: interactionsData, loading: loadingInteractions, refetch: refetchInteractions } = useInteractions(interactionFilters);
+  const { absences: absencesData, loading: loadingAbsences, refetch: refetchAbsences } = useAbsences(absenceFilters);
+  const { certificates: atestadosData, loading: loadingAtestados, refetch: refetchAtestados } = useMedicalCertificates(certificateFilters);
+  const { suspensions: suspensoesData, loading: loadingSuspensoes, refetch: refetchSuspensoes } = useSuspensions(suspensionFilters);
 
   // ═══════════════════════════════════════════════════════════
   // 2. STUDENT DATA (student, absences, atestados, suspensões, interactions)
@@ -164,15 +173,13 @@ export function useStudentProfile() {
     } as any;
   }, [studentData]);
 
+  // ✅ SIMPLIFICADO: API agora retorna tudo no formato correto (camelCase com todos os campos)
   const interactions = useMemo(() => {
-    return (interactionsData || []).map((int: any) => ({
-      ...int,
-      studentId: int.student_id || int.studentId,
-      createdBy: int.created_by || int.createdBy || 'Desconhecido',
-      date: int.interaction_date || int.date || int.created_at?.split('T')[0] || new Date().toLocaleDateString('pt-BR'),
-      type: int.interaction_type || int.type || 'Não especificado',
-      sensitive: int.is_sensitive ?? int.sensitive ?? false,
-    }));
+    console.log('🔄 [useStudentProfile] Interactions atualizadas:', {
+      count: interactionsData?.length || 0,
+      sample: interactionsData?.[0],
+    });
+    return interactionsData || [];
   }, [interactionsData]);
 
   const absences = useMemo(() => {
@@ -230,12 +237,17 @@ export function useStudentProfile() {
   const [studentRecordWithoutJustified, setStudentRecordWithoutJustified] = useState<StudentRecord | null>(null);
 
   // 🔄 Auto-refresh de status WhatsApp (polling adaptativo)
-  const interactionsWithLiveStatus = useWhatsAppStatusPolling(interactions, {
-    enabled: !!selectedStudentId,
-    fastInterval: 5000, // 5s para SENT
-    slowInterval: 60000, // 60s para DELIVERED
-    studentId: selectedStudentId,
-  });
+  // ⚠️ TEMPORARIAMENTE DESABILITADO: Estava causando delay de 30+ segundos na atualização do histórico
+  // Problema: useWhatsAppStatusPolling faz outro useInteractions() sem memoização, causando fetches duplicados
+  // TODO: Refatorar useWhatsAppStatusPolling para receber refetch ao invés de fazer fetch próprio
+  const interactionsWithLiveStatus = interactions; // Usar diretamente sem polling
+
+  // const interactionsWithLiveStatus = useWhatsAppStatusPolling(interactions, {
+  //   enabled: !!selectedStudentId,
+  //   fastInterval: 5000, // 5s para SENT
+  //   slowInterval: 60000, // 60s para DELIVERED
+  //   studentId: selectedStudentId,
+  // });
 
   // ═══════════════════════════════════════════════════════════
   // 3. FORMS STATE (interaction, atestado, suspensão)
@@ -265,6 +277,7 @@ export function useStudentProfile() {
   const [showDeleteDialog, setShowDeleteDialog] = useState<string | null>(null);
   const [showDeleteAtestadoDialog, setShowDeleteAtestadoDialog] = useState<string | null>(null);
   const [showDeleteSuspensaoDialog, setShowDeleteSuspensaoDialog] = useState<string | null>(null);
+  const [isDeletingInteraction, setIsDeletingInteraction] = useState(false);
 
   // ═══════════════════════════════════════════════════════════
   // 4. WHATSAPP (contact verification, message sending)
@@ -436,6 +449,8 @@ export function useStudentProfile() {
     async (studentId: string): Promise<void> => {
       if (!studentId) return;
 
+      console.log('🔄 [fetchStudentData] Recarregando dados do estudante:', studentId);
+
       await Promise.all([
         refetchStudent(),
         refetchInteractions(),
@@ -443,6 +458,8 @@ export function useStudentProfile() {
         refetchAtestados(),
         refetchSuspensoes(),
       ]);
+
+      console.log('✅ [fetchStudentData] Dados recarregados com sucesso');
     },
     [refetchStudent, refetchInteractions, refetchAbsences, refetchAtestados, refetchSuspensoes]
   );
@@ -477,11 +494,13 @@ export function useStudentProfile() {
       return;
     }
 
-    const formattedDate = parseDateToFirebase(interactionDate);
-    if (!formattedDate) {
+    // Converter data de DD/MM/YYYY para DDMMYYYY (formato esperado pela API)
+    const dateParts = interactionDate.split('/');
+    if (dateParts.length !== 3) {
       toast.error("Data inválida. Use o formato DD/MM/YYYY.");
       return;
     }
+    const formattedDate = dateParts.join(''); // Remove as barras: "18/10/2025" → "18102025"
 
     try {
       const scrollPosition = window.scrollY;
@@ -552,14 +571,25 @@ export function useStudentProfile() {
 
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-      // ✅ SPRINT 4 - FASE 8: Usar hook de criação
+      // Determinar responsável (contato ou genérico)
+      let responsavel = "Responsável";
+      if (interactionType === "Contato digital" && selectedWhatsAppPhones.size === 1 && student?.contatos) {
+        const phoneNumber = Array.from(selectedWhatsAppPhones)[0];
+        const contact = student.contatos.find((c: Contato) => c.telefone.replace(/\D/g, '') === phoneNumber);
+        if (contact) {
+          responsavel = contact.nome;
+        }
+      }
+
+      // ✅ SPRINT 4 - FASE 8: Usar hook de criação com campos no formato correto (português)
       await createInteraction({
-        student_id: selectedStudentId,
-        interaction_type: interactionType,
-        interaction_date: formattedDate,
-        description: finalDescription,
-        created_by: currentUser,
-        is_sensitive: interactionSensitive,
+        estudanteId: selectedStudentId,
+        tipo: interactionType,
+        data: formattedDate,
+        responsavel: responsavel,
+        assunto: interactionType, // Usar o tipo como assunto padrão
+        descricao: finalDescription,
+        criadoPor: currentUser, // Nome do usuário autenticado
         ...(whatsappData && {
           whatsapp_message: whatsappData.whatsappMessage,
           whatsapp_phones: whatsappData.whatsappPhones,
@@ -571,15 +601,22 @@ export function useStudentProfile() {
 
       logger.interactionOperation('create', selectedStudentId, interactionType, { supabase: true });
 
-      // Limpar campos
+      // Aguardar um pouco para garantir que o banco processou
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Recarregar dados do estudante
+      await fetchStudentData(selectedStudentId);
+
+      // ⚡ IMPORTANTE: Aguardar React processar a atualização antes de limpar campos
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Limpar campos após garantir que dados foram atualizados
       setInteractionType("");
       setInteractionDate(new Date().toLocaleDateString("pt-BR"));
       setInteractionDescription("");
       setInteractionSensitive(false);
       setSelectedWhatsAppPhones(new Set());
       setWhatsAppMessage("");
-
-      await fetchStudentData(selectedStudentId);
 
       setWhatsAppSendSuccess(true);
       setIsSendingWhatsApp(false);
@@ -606,29 +643,38 @@ export function useStudentProfile() {
       return;
     }
 
-    const formattedDate = parseDateToFirebase(interactionDate);
-    if (!formattedDate) {
+    // Converter data de DD/MM/YYYY para DDMMYYYY (formato esperado pela API)
+    const dateParts = interactionDate.split('/');
+    if (dateParts.length !== 3) {
       toast.error("Data inválida. Use o formato DD/MM/YYYY.");
       return;
     }
+    const formattedDate = dateParts.join(''); // Remove as barras: "18/10/2025" → "18102025"
 
     try {
-      // ✅ SPRINT 4 - FASE 8: Usar hook de update
+      // ✅ SPRINT 4 - FASE 8: Usar hook de update com campos no formato correto (português)
       await updateInteraction(editingInteraction.id, {
-        interaction_type: interactionType,
-        interaction_date: formattedDate,
-        description: interactionDescription,
-        is_sensitive: interactionSensitive,
+        tipo: interactionType,
+        data: formattedDate,
+        descricao: interactionDescription,
+        // Nota: responsavel e assunto não podem ser alterados na edição
       });
 
       logger.interactionOperation('update', selectedStudentId, editingInteraction.type, { supabase: true });
 
+      // Aguardar um pouco para garantir que o banco processou
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Recarregar dados do estudante
+      await fetchStudentData(selectedStudentId);
+
+      // Limpar campos
       setEditingInteraction(null);
       setInteractionType("");
       setInteractionDate(new Date().toLocaleDateString("pt-BR"));
       setInteractionDescription("");
       setInteractionSensitive(false);
-      await fetchStudentData(selectedStudentId);
+
       toast.success("Interação atualizada com sucesso!");
     } catch (error) {
       logger.error("Erro ao atualizar interação", error as Error);
@@ -639,16 +685,25 @@ export function useStudentProfile() {
   const handleDeleteInteraction = useCallback(async (interactionId: string): Promise<void> => {
     if (!selectedStudentId) return;
     try {
+      setIsDeletingInteraction(true);
+      setShowDeleteDialog(null); // Fechar modal imediatamente
+
       // ✅ SPRINT 4 - FASE 8: Usar hook de delete
       await deleteInteraction(interactionId);
       logger.interactionOperation('delete', selectedStudentId, 'unknown', { supabase: true });
+
+      // Recarregar dados do estudante
       await fetchStudentData(selectedStudentId);
+
+      // Aguardar um tick para garantir que a UI foi atualizada
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       toast.success("Interação excluída com sucesso!");
     } catch (error) {
       logger.error("Erro ao excluir interação", error as Error);
       toast.error("Erro ao excluir interação. Tente novamente.");
     } finally {
-      setShowDeleteDialog(null);
+      setIsDeletingInteraction(false);
     }
   }, [selectedStudentId, fetchStudentData, deleteInteraction]);
 
@@ -1576,6 +1631,7 @@ export function useStudentProfile() {
     loadingStudents,
     loadingProfile,
     userRole,
+    isDeletingInteraction,
 
     // ========================================
     // HANDLERS - STUDENT SELECTION

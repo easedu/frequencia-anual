@@ -85,6 +85,16 @@ export async function POST(request: NextRequest) {
     // 1. Parse do body
     const webhook: any = await request.json();
 
+    // 🚨🚨🚨 LOG CHAMATIVO - WEBHOOK RECEBIDO 🚨🚨🚨
+    console.log('\n' + '='.repeat(80));
+    console.log('🚨🚨🚨 WEBHOOK WHATSAPP RECEBIDO 🚨🚨🚨');
+    console.log('='.repeat(80));
+    console.log('📅 Timestamp:', new Date().toISOString());
+    console.log('📊 Webhook #', webhookCounter);
+    console.log('⏱️  Tempo desde último:', `${(timeSinceLastWebhook / 1000).toFixed(2)}s`);
+    console.log('📦 Payload completo:', JSON.stringify(webhook, null, 2));
+    console.log('='.repeat(80) + '\n');
+
     // 📊 LOG INFO ESTRUTURADO (Para monitoramento de frequência)
     logger.info('📨 [Webhook] Novo evento recebido', {
       webhookNumber: webhookCounter,
@@ -244,6 +254,17 @@ export async function POST(request: NextRequest) {
     if (webhookHistory.length > 50) {
       webhookHistory.pop();
     }
+
+    // 🎉🎉🎉 LOG CHAMATIVO - STATUS ATUALIZADO COM SUCESSO 🎉🎉🎉
+    console.log('\n' + '✅'.repeat(40));
+    console.log('✅ WEBHOOK PROCESSADO COM SUCESSO! ✅');
+    console.log('✅'.repeat(40));
+    console.log('📨 Message ID:', messageId);
+    console.log('🔄 Transição:', `${interactionResult.oldStatus} → ${interactionResult.newStatus}`);
+    console.log('⏱️  Tempo de processamento:', `${webhookTotalDuration}ms`);
+    console.log('📊 Interaction atualizada:', interactionResult.success ? '✅' : '❌');
+    console.log('📝 History atualizada:', historyResult.success ? '✅' : '❌');
+    console.log('✅'.repeat(40) + '\n');
 
     logger.info('[Webhook] Status atualizado', {
       messageId,

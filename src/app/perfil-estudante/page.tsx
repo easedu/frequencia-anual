@@ -129,6 +129,7 @@ export default function StudentProfilePage() {
                 setShowDeleteDialog={profile.setShowDeleteDialog}
                 userRole={profile.userRole}
                 loadingProfile={profile.loadingProfile}
+                isDeletingInteraction={profile.isDeletingInteraction}
               />
               </Suspense>
 

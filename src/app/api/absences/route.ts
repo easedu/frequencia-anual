@@ -22,6 +22,7 @@ import {
 } from '@/app/api/_utils/response';
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
 
 // ============================================================================
 // GET /api/absences - Listar faltas com filtros
@@ -47,15 +48,32 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       limit,
     } = validation.data;
 
-    // 2. Construir query no Supabase
+    // 2. Resolver Firebase UUID para Internal ID (se fornecido)
+    let internalStudentId: string | undefined = undefined;
+
+    if (estudanteId) {
+      const resolved = await resolveFirebaseUUIDToInternal(estudanteId);
+
+      if (!resolved) {
+        return errorResponse(
+          'NOT_FOUND',
+          `Estudante não encontrado com ID: ${estudanteId}`,
+          404
+        );
+      }
+
+      internalStudentId = resolved;
+    }
+
+    // 3. Construir query no Supabase
     let query: any = supabaseAdmin
       .from('student_absences')
       .select('*, students(name, class)', { count: 'exact' })
       .order('absence_date', { ascending: false });
 
     // Aplicar filtros
-    if (estudanteId) {
-      query = query.eq('student_id', estudanteId);
+    if (internalStudentId) {
+      query = query.eq('student_id', internalStudentId);
     }
 
     if (bimestre) {
@@ -139,27 +157,38 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     // 3. Sanitizar dados
     const sanitizedData = sanitizeObject(data);
 
-    // 4. Verificar se estudante existe e pertence ao usuário
+    // 4. Resolver Firebase UUID para Internal ID
+    const internalStudentId = await resolveFirebaseUUIDToInternal(sanitizedData.estudanteId);
+
+    if (!internalStudentId) {
+      return errorResponse(
+        'NOT_FOUND',
+        `Estudante não encontrado com ID: ${sanitizedData.estudanteId}`,
+        404
+      );
+    }
+
+    // 5. Verificar se estudante não está deletado
     const { data: student, error: studentError } = await supabaseAdmin
       .from('students')
       .select('id')
-      .eq('id', sanitizedData.estudanteId)
+      .eq('id', internalStudentId)
       .eq('deleted', false)
       .single();
 
     if (studentError || !student) {
       return errorResponse(
         'NOT_FOUND',
-        'Estudante não encontrado ou não pertence ao usuário',
+        'Estudante não encontrado ou foi removido',
         404
       );
     }
 
-    // 5. Verificar se já existe falta para esta data (prevenir duplicatas)
+    // 6. Verificar se já existe falta para esta data (prevenir duplicatas)
     const { data: existingAbsence } = await supabaseAdmin
       .from('student_absences')
       .select('id')
-      .eq('student_id', sanitizedData.estudanteId)
+      .eq('student_id', internalStudentId)
       .eq('absence_date', sanitizedData.data)
       .single();
 
@@ -171,16 +200,16 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       );
     }
 
-    // 6. Preparar dados para Supabase
+    // 7. Preparar dados para Supabase
     const absenceInsert: any = {
-      student_id: sanitizedData.estudanteId,
+      student_id: internalStudentId,
       absence_date: sanitizedData.data,
       bimester: sanitizedData.bimestre,
       is_justified: sanitizedData.justificada ?? false,
       medical_certificate_id: sanitizedData.atestadoId || null,
     };
 
-    // 7. Inserir falta
+    // 8. Inserir falta
     const { data: absenceData, error: absenceError } = (await supabaseAdmin
       .from('student_absences')
       .insert(absenceInsert)
@@ -197,7 +226,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       );
     }
 
-    // 8. Retornar sucesso
+    // 9. Retornar sucesso
     return successResponse(
       {
         id: absenceData.id,

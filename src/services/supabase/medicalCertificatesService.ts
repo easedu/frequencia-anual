@@ -15,6 +15,7 @@
  */
 
 import { logger } from '@/utils/logger';
+import { getAuthHeaders } from '@/utils/authToken';
 // ✅ studentIdResolver removido - a API agora resolve internamente
 
 /**
@@ -125,8 +126,13 @@ export class MedicalCertificatesService {
    */
   static async getByStudentId(studentId: string): Promise<MedicalCertificate[]> {
     try {
+      const headers = await getAuthHeaders();
+
       // ✅ Envia Firebase UUID direto - a API resolve no backend
-      const response = await fetch(`/api/medical-certificates?studentId=${studentId}`);
+      const response = await fetch(`/api/medical-certificates?studentId=${studentId}`, {
+        headers,
+      });
+
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
       const result = await response.json();
@@ -142,7 +148,12 @@ export class MedicalCertificatesService {
    */
   static async getById(certificateId: string): Promise<MedicalCertificate | null> {
     try {
-      const response = await fetch(`/api/medical-certificates/${certificateId}`);
+      const headers = await getAuthHeaders();
+
+      const response = await fetch(`/api/medical-certificates/${certificateId}`, {
+        headers,
+      });
+
       if (response.status === 404) return null;
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
@@ -161,10 +172,13 @@ export class MedicalCertificatesService {
    */
   static async create(data: CreateMedicalCertificateData): Promise<MedicalCertificate | null> {
     try {
+      const headers = await getAuthHeaders();
+      console.log('[DEBUG] Headers:', headers);
+
       // ✅ Envia Firebase UUID direto - a API resolve no backend
       const response = await fetch('/api/medical-certificates', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           studentId: data.studentId, // Firebase UUID (não resolve mais aqui!)
           startDate: data.startDate,
@@ -180,8 +194,12 @@ export class MedicalCertificatesService {
         }),
       });
 
+      console.log('[DEBUG] Response status:', response.status);
+      console.log('[DEBUG] Response ok:', response.ok);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.log('[DEBUG] Error data:', errorData);
         throw new Error(`API returned ${response.status}: ${errorData.error || 'Failed'}`);
       }
 
@@ -198,9 +216,11 @@ export class MedicalCertificatesService {
    */
   static async approve(certificateId: string, reviewedBy: string, reviewNotes?: string): Promise<boolean> {
     try {
+      const headers = await getAuthHeaders();
+
       const response = await fetch(`/api/medical-certificates/${certificateId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           status: 'APPROVED',
           reviewedBy,
@@ -222,9 +242,11 @@ export class MedicalCertificatesService {
    */
   static async reject(certificateId: string, reviewedBy: string, reviewNotes: string): Promise<boolean> {
     try {
+      const headers = await getAuthHeaders();
+
       const response = await fetch(`/api/medical-certificates/${certificateId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           status: 'REJECTED',
           reviewedBy,

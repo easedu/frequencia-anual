@@ -6,7 +6,8 @@
  * - InteractionHistoryCard (histórico de interações)
  */
 
-import { memo } from 'react';
+// Removido memo temporariamente para debug de state updates
+// import { memo } from 'react';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import InteractionHistoryCard from '@/components/interactions/InteractionHistoryCard';
 import { InteractionListSkeleton } from '@/components/shared/LoadingSkeletons';
@@ -60,13 +61,14 @@ interface InteractionSectionProps {
 
   // Loading
   loadingProfile: boolean;
+  isDeletingInteraction?: boolean;
 }
 
 /**
  * Seção de interações familiares com suporte a WhatsApp.
  * Inclui formulário de cadastro e histórico completo.
  */
-export const InteractionSection = memo(function InteractionSection(props: InteractionSectionProps) {
+export function InteractionSection(props: InteractionSectionProps) {
   if (!props.student) {
     return null;
   }
@@ -105,59 +107,27 @@ export const InteractionSection = memo(function InteractionSection(props: Intera
       />
 
       {/* Card: Histórico de Interações */}
-      {props.interactions.length > 0 && (
-        <InteractionHistoryCard
-          interactions={props.interactions}
-          student={props.student}
-          studentRecord={null}
-          userRole={props.userRole}
-          showDeleteDialog={props.showDeleteDialog}
-          setShowDeleteDialog={props.setShowDeleteDialog}
-          setEditingInteraction={props.setEditingInteraction}
-          onDeleteInteraction={props.handleDeleteInteraction}
-          onPrintReport={() => {}}
-        />
-      )}
+      {(() => {
+        console.log('🔍 [InteractionSection] Renderizando histórico?', {
+          interactionsLength: props.interactions.length,
+          willRender: props.interactions.length > 0,
+          interactions: props.interactions
+        });
+        return props.interactions.length > 0 && (
+          <InteractionHistoryCard
+            interactions={props.interactions}
+            student={props.student}
+            studentRecord={null}
+            userRole={props.userRole}
+            showDeleteDialog={props.showDeleteDialog}
+            setShowDeleteDialog={props.setShowDeleteDialog}
+            setEditingInteraction={props.setEditingInteraction}
+            onDeleteInteraction={props.handleDeleteInteraction}
+            onPrintReport={() => {}}
+            isDeleting={props.isDeletingInteraction}
+          />
+        );
+      })()}
     </div>
   );
-}, (prevProps, nextProps) => {
-  // Só re-renderizar se mudar estudante, interações, form states ou estados de WhatsApp
-
-  // Verificar se alguma interação mudou (status WhatsApp, por exemplo)
-  if (prevProps.interactions.length !== nextProps.interactions.length) {
-    return false; // Re-renderizar se tamanho mudou
-  }
-
-  // Verificar se o conteúdo das interações mudou (status WhatsApp, etc)
-  const interactionsChanged = prevProps.interactions.some((prev, index) => {
-    const next = nextProps.interactions[index];
-    if (!next) return true;
-
-    // Verificar mudanças em campos críticos que afetam a UI
-    return (
-      prev.id !== next.id ||
-      prev.whatsappStatus !== next.whatsappStatus ||
-      prev.whatsappDeliveredAt !== next.whatsappDeliveredAt ||
-      prev.whatsappReadAt !== next.whatsappReadAt ||
-      prev.whatsappPlayedAt !== next.whatsappPlayedAt
-    );
-  });
-
-  if (interactionsChanged) {
-    return false; // Re-renderizar se alguma interação mudou
-  }
-
-  return (
-    prevProps.student?.estudanteId === nextProps.student?.estudanteId &&
-    prevProps.editingInteraction?.id === nextProps.editingInteraction?.id &&
-    prevProps.interactionType === nextProps.interactionType &&
-    prevProps.interactionDate === nextProps.interactionDate &&
-    prevProps.interactionDescription === nextProps.interactionDescription &&
-    prevProps.interactionSensitive === nextProps.interactionSensitive &&
-    prevProps.whatsAppMessage === nextProps.whatsAppMessage &&
-    prevProps.selectedWhatsAppPhones.size === nextProps.selectedWhatsAppPhones.size &&
-    prevProps.isSendingWhatsApp === nextProps.isSendingWhatsApp &&
-    prevProps.whatsAppSendSuccess === nextProps.whatsAppSendSuccess &&
-    prevProps.loadingProfile === nextProps.loadingProfile
-  );
-});
+}

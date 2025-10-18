@@ -1,4 +1,5 @@
-import { memo } from "react";
+// Removido memo temporariamente para debug de re-renderizações
+// import { memo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -130,9 +131,10 @@ interface InteractionHistoryCardProps {
     setEditingInteraction: (value: FamilyInteraction | null) => void;
     onDeleteInteraction: (interactionId: string) => Promise<void>;
     onPrintReport: () => void;
+    isDeleting?: boolean; // Estado de loading durante exclusão
 }
 
-const InteractionHistoryCard = memo(function InteractionHistoryCard({
+function InteractionHistoryCard({
     interactions,
     student,
     studentRecord,
@@ -142,7 +144,14 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
     setEditingInteraction,
     onDeleteInteraction,
     onPrintReport,
+    isDeleting = false,
 }: InteractionHistoryCardProps) {
+    console.log('📊 [InteractionHistoryCard] Render:', {
+        interactionsCount: interactions.length,
+        isDeleting,
+        sample: interactions[0]
+    });
+
     // Ordenar interações: mais recentes primeiro (por data, depois por timestamp de criação)
     const sortedInteractions = [...interactions].sort((a, b) => {
         // Primeiro, comparar por data da interação
@@ -161,7 +170,26 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
 
     return (
         <>
-            <Card className="shadow-lg border-0">
+            <Card className="shadow-lg border-0 relative">
+                {/* 🔄 Loading Overlay durante exclusão */}
+                {isDeleting && (
+                    <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 z-50 flex items-center justify-center rounded-lg backdrop-blur-sm">
+                        <div className="flex flex-col items-center space-y-4">
+                            <div className="relative">
+                                <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+                            </div>
+                            <div className="text-center">
+                                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                    Atualizando dados...
+                                </p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                    Aguarde enquanto processamos a exclusão
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <CardHeader className="bg-gradient-to-r from-purple-400 to-violet-500 text-white rounded-t-lg py-3">
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-base font-bold flex items-center space-x-2">
@@ -261,39 +289,36 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
                                                 <TableCell className="text-right py-2">
                                                     <div className="flex justify-end items-center space-x-1">
                                                         <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        className="h-7 w-7 p-0 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                                                        onClick={() => {
-                                                                            setEditingInteraction(interaction);
-                                                                            document.getElementById("interaction-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                                                                        }}
-                                                                    >
-                                                                        <Pencil className="h-3 w-3" />
-                                                                    </Button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    <p>Editar interação</p>
-                                                                </TooltipContent>
-                                                            </Tooltip>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600 transition-colors"
-                                                                        onClick={() => setShowDeleteDialog(interaction.id)}
-                                                                    >
-                                                                        <Trash className="h-3 w-3" />
-                                                                    </Button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    <p>Excluir interação</p>
-                                                                </TooltipContent>
-                                                            </Tooltip>
+                                                            {/* Botão Editar */}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                title="Editar interação"
+                                                                className="h-7 w-7 p-0 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    setEditingInteraction(interaction);
+                                                                    document.getElementById("interaction-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                                                }}
+                                                            >
+                                                                <Pencil className="h-3 w-3" />
+                                                            </Button>
+
+                                                            {/* Botão Excluir */}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                title="Excluir interação"
+                                                                className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    setShowDeleteDialog(interaction.id);
+                                                                }}
+                                                            >
+                                                                <Trash className="h-3 w-3" />
+                                                            </Button>
                                                         </TooltipProvider>
                                                     </div>
                                                 </TableCell>
@@ -313,7 +338,14 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
                 </CardContent>
             </Card>
 
-            <AlertDialog open={!!showDeleteDialog} onOpenChange={() => setShowDeleteDialog(null)}>
+            <AlertDialog
+                open={!!showDeleteDialog}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setShowDeleteDialog(null);
+                    }
+                }}
+            >
                 <AlertDialogContent className="sm:max-w-md">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center space-x-2 text-red-600">
@@ -325,11 +357,18 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel className="border-gray-300 hover:bg-gray-50">
+                        <AlertDialogCancel
+                            className="border-gray-300 hover:bg-gray-50"
+                            onClick={() => setShowDeleteDialog(null)}
+                        >
                             Cancelar
                         </AlertDialogCancel>
                         <AlertDialogAction
-                            onClick={() => showDeleteDialog && onDeleteInteraction(showDeleteDialog)}
+                            onClick={() => {
+                                if (showDeleteDialog) {
+                                    onDeleteInteraction(showDeleteDialog);
+                                }
+                            }}
                             className="bg-red-600 hover:bg-red-700 text-white"
                         >
                             Excluir
@@ -339,6 +378,6 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
             </AlertDialog>
         </>
     );
-});
+}
 
 export default InteractionHistoryCard;

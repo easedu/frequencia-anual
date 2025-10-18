@@ -57,11 +57,14 @@ function getSupabaseClient(): SupabaseClient<Database> {
       fetch: (url, options = {}) => {
         // Força HTTP/2 ao invés de QUIC/HTTP/3 para evitar ERR_QUIC_PROTOCOL_ERROR
         // em redes que bloqueiam ou têm problemas com QUIC
+        //
+        // IMPORTANTE: Adiciona apikey manualmente para garantir que sempre seja enviado
         return fetch(url, {
           ...options,
           headers: {
             ...(options.headers || {}),
             'Alt-Svc': 'clear', // Desabilita QUIC
+            'apikey': supabaseAnonKey, // Garante que apikey seja sempre enviado
           }
         })
       }

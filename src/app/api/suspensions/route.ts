@@ -10,6 +10,7 @@ import { createSuspensionSchema, suspensionQuerySchema } from '@/app/api/_schema
 import { successResponse, errorResponse, validationErrorResponse, paginatedResponse } from '@/app/api/_utils/response';
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
 
 export const GET = withAuth(async (req: NextRequest, userId: string) => {
   try {
@@ -18,12 +19,29 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
     const { estudanteId, dataInicio, dataFim, page, limit } = validation.data;
 
+    // Resolver Firebase UUID para Internal ID (se fornecido)
+    let internalStudentId: string | undefined = undefined;
+
+    if (estudanteId) {
+      const resolved = await resolveFirebaseUUIDToInternal(estudanteId);
+
+      if (!resolved) {
+        return errorResponse(
+          'NOT_FOUND',
+          `Estudante não encontrado com ID: ${estudanteId}`,
+          404
+        );
+      }
+
+      internalStudentId = resolved;
+    }
+
     let query: any = supabaseAdmin
       .from('student_suspensions')
       .select('*, students( name, class)', { count: 'exact' })
       .order('start_date', { ascending: false });
 
-    if (estudanteId) query = query.eq('student_id', estudanteId);
+    if (internalStudentId) query = query.eq('student_id', internalStudentId);
     if (dataInicio) query = query.gte('start_date', dataInicio);
     if (dataFim) query = query.lte('end_date', dataFim);
 
@@ -50,19 +68,31 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 
     const sanitizedData = sanitizeObject(validation.data);
 
+    // Resolver Firebase UUID para Internal ID
+    const internalStudentId = await resolveFirebaseUUIDToInternal(sanitizedData.estudanteId);
+
+    if (!internalStudentId) {
+      return errorResponse(
+        'NOT_FOUND',
+        `Estudante não encontrado com ID: ${sanitizedData.estudanteId}`,
+        404
+      );
+    }
+
+    // Verificar se estudante não está deletado
     const { data: student, error: studentError } = await supabaseAdmin
       .from('students')
       .select('id')
-      .eq('id', sanitizedData.estudanteId)
+      .eq('id', internalStudentId)
       .eq('deleted', false)
       .single();
 
     if (studentError || !student) {
-      return errorResponse('NOT_FOUND', 'Estudante não encontrado', 404);
+      return errorResponse('NOT_FOUND', 'Estudante não encontrado ou foi removido', 404);
     }
 
     const suspensionInsert: any = {
-      student_id: sanitizedData.estudanteId,
+      student_id: internalStudentId, // ✅ Usar Internal ID resolvido
       start_date: sanitizedData.dataInicio,
       end_date: sanitizedData.dataFim,
       reason: sanitizedData.motivo,

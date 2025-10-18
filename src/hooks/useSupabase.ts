@@ -2,6 +2,16 @@
  * Hook otimizado para operações Supabase
  * Implementa cache, paginação manual e retry logic
  * Substitui useFirebase.ts com funcionalidade equivalente
+ *
+ * @deprecated Este hook NÃO está sendo usado no projeto.
+ * Foi criado durante a migração Firestore → Supabase mas nunca utilizado.
+ *
+ * RECOMENDAÇÃO:
+ * - Para operações client-side com RLS: Use hooks específicos (useStudents, useInteractions, etc)
+ * - Para operações complexas: Use APIs REST (/api/students, /api/absences, etc)
+ * - Este hook pode ser removido em versões futuras
+ *
+ * ÚLTIMA VERIFICAÇÃO: 2025-01-18 (Nenhum uso encontrado no projeto)
  */
 
 "use client";

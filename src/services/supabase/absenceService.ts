@@ -27,6 +27,7 @@ import type {
 } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 import type { AbsenceRecord } from '@/types';
+import { getAuthHeaders } from '@/utils/authToken';
 
 export class AbsenceService {
   /**
@@ -35,30 +36,32 @@ export class AbsenceService {
    */
   static async getStudentAbsences(firebaseStudentId: string): Promise<AbsenceRecord[]> {
     try {
-      // CRITICAL: student_absences.student_id é FK para students.id (UUID interno)
-      // Precisamos fazer JOIN para buscar pelo students.student_id (Firebase UUID)
-      const { data, error } = await supabase
-        .from('student_absences')
-        .select(`
-          *,
-          students!inner (
-            student_id
-          )
-        `)
-        .eq('students.student_id', firebaseStudentId)
-        .order('absence_date', { ascending: false });
+      // ✅ Usar API REST ao invés de Supabase direto
+      const headers = await getAuthHeaders();
 
-      if (error) throw error;
+      const response = await fetch(`/api/absences?estudanteId=${firebaseStudentId}`, {
+        headers,
+      });
 
-      // 🔧 FIX: Retornar no formato esperado pelos componentes legados
-      return (data || []).map((absence: any) => ({
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao buscar faltas');
+      }
+
+      // Converter do formato API para formato legado
+      return (result.data || []).map((absence: any) => ({
         id: absence.id,
-        estudanteId: firebaseStudentId,
-        data: absence.absence_date,  // ✅ Mapear absence_date → data (para compatibilidade)
-        justified: absence.is_justified,  // ✅ Mapear is_justified → justified
-        atestadoId: absence.medical_certificate_id || undefined,
-        suspensaoId: absence.suspension_id || undefined,
-        absenceDate: absence.absence_date,  // ✅ Manter também formato Supabase
+        estudanteId: absence.estudanteId,
+        data: absence.data,
+        justified: absence.justificada,
+        atestadoId: absence.atestadoId,
+        suspensaoId: undefined,
+        absenceDate: absence.data,
       }));
     } catch (error) {
       logger.error('Erro ao buscar faltas do estudante', { firebaseStudentId }, error as Error);
@@ -300,32 +303,33 @@ export class AbsenceService {
    */
   static async addAbsence(record: Omit<AbsenceRecord, 'id'>): Promise<void> {
     try {
-      // 🔧 FIX: Buscar o ID interno do Supabase a partir do student_id do Firebase
-      const { data: student, error: studentError } = await (supabase
-        .from('students')
-        .select('id')
-        .eq('student_id', record.estudanteId)
-        .single() as any);
+      // ✅ Usar API REST ao invés de Supabase direto
+      const headers = await getAuthHeaders();
 
-      if (studentError || !student) {
-        throw new Error(`Estudante não encontrado: ${record.estudanteId}`);
+      const response = await fetch('/api/absences', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          estudanteId: record.estudanteId, // Firebase UUID (a API resolve internamente)
+          data: record.data || '',
+          justificada: record.justified ?? false,
+          atestadoId: record.atestadoId || null,
+          bimestre: null, // Será calculado pela API
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `API returned ${response.status}`);
       }
 
-      const absenceInsert: StudentAbsenceInsert = {
-        student_id: student.id, // ✅ Usar ID interno do Supabase
-        absence_date: record.data || '',
-        is_justified: record.justified ?? false,
-        medical_certificate_id: record.atestadoId || null,
-        suspension_id: record.suspensaoId || null,
-        bimester: null, // Será calculado via trigger ou view
-      };
+      const result = await response.json();
 
-      const { error } = await (supabase
-        .from('student_absences')
-        .insert(absenceInsert as any) as any);
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao criar falta');
+      }
 
-      if (error) throw error;
-
+      logger.info('Falta registrada com sucesso via API', { absenceId: result.data?.id });
     } catch (error) {
       logger.error('Erro ao registrar falta', { record }, error as Error);
       throw error;
@@ -387,25 +391,52 @@ export class AbsenceService {
    */
   static async deleteAbsence(studentId: string, absenceDate: string): Promise<void> {
     try {
-      // 🔧 FIX: Buscar o ID interno do Supabase a partir do student_id do Firebase
-      const { data: student, error: studentError } = await (supabase
-        .from('students')
-        .select('id')
-        .eq('student_id', studentId)
-        .single() as any);
+      // ✅ Usar API REST ao invés de Supabase direto
 
-      if (studentError || !student) {
-        throw new Error(`Estudante não encontrado: ${studentId}`);
+      // 1. Primeiro, buscar o ID da falta (GET /api/absences?estudanteId=X)
+      const headers = await getAuthHeaders();
+
+      const searchResponse = await fetch(`/api/absences?estudanteId=${studentId}`, {
+        headers,
+      });
+
+      if (!searchResponse.ok) {
+        throw new Error(`API returned ${searchResponse.status}: ${searchResponse.statusText}`);
       }
 
-      const { error } = await supabase
-        .from('student_absences')
-        .delete()
-        .eq('student_id', (student as any).id) // ✅ Usar ID interno do Supabase
-        .eq('absence_date', absenceDate);
+      const searchResult = await searchResponse.json();
 
-      if (error) throw error;
+      if (!searchResult.success) {
+        throw new Error(searchResult.message || 'Erro ao buscar faltas');
+      }
 
+      // 2. Encontrar a falta com a data específica
+      const absences = searchResult.data || [];
+      const targetAbsence = absences.find((a: any) => a.data === absenceDate);
+
+      if (!targetAbsence) {
+        logger.warn('Falta não encontrada para deletar', { studentId, absenceDate });
+        return; // Não existe, nada a fazer
+      }
+
+      // 3. Deletar usando o ID da falta (DELETE /api/absences/[id])
+      const deleteResponse = await fetch(`/api/absences/${targetAbsence.id}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (!deleteResponse.ok) {
+        const errorData = await deleteResponse.json();
+        throw new Error(errorData.message || `API returned ${deleteResponse.status}`);
+      }
+
+      const deleteResult = await deleteResponse.json();
+
+      if (!deleteResult.success) {
+        throw new Error(deleteResult.message || 'Erro ao deletar falta');
+      }
+
+      logger.info('Falta deletada com sucesso via API', { absenceId: targetAbsence.id });
     } catch (error) {
       logger.error('Erro ao deletar falta', { studentId, absenceDate }, error as Error);
       throw error;

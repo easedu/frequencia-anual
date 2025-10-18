@@ -15,7 +15,7 @@
  */
 
 import { logger } from '@/utils/logger';
-import { resolveToInternalId } from '@/utils/studentIdResolver';
+import { getAuthHeaders } from '@/utils/authToken';
 
 export type SuspensionSeverity = 'LEVE' | 'MODERADA' | 'GRAVE';
 
@@ -133,22 +133,23 @@ export class StudentSuspensionsService {
    */
   static async getByStudentId(studentId: string): Promise<StudentSuspension[]> {
     try {
-      // Resolver Firebase UUID → Internal ID (com cache)
-      const internalId = await resolveToInternalId(studentId);
+      // ✅ Usar API REST com autenticação (UUID resolvido no backend)
+      const headers = await getAuthHeaders();
 
-      if (!internalId) {
-        logger.warn('Estudante não encontrado', { studentId });
-        return [];
-      }
-
-      // Buscar suspensões via API com Internal ID
-      const response = await fetch(`/api/suspensions?studentId=${internalId}`);
+      const response = await fetch(`/api/suspensions?estudanteId=${studentId}`, {
+        headers,
+      });
 
       if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
       }
 
       const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao buscar suspensões');
+      }
+
       return (result.data || []).map(this.mapApiToSuspension);
     } catch (error) {
       logger.error('Erro ao buscar suspensões do estudante', { studentId }, error as Error);
@@ -187,30 +188,18 @@ export class StudentSuspensionsService {
    */
   static async create(data: CreateSuspensionData): Promise<StudentSuspension | null> {
     try {
-      // Resolver Firebase UUID → Internal ID (com cache)
-      const internalStudentId = await resolveToInternalId(data.studentId);
-
-      if (!internalStudentId) {
-        throw new Error(`Estudante não encontrado com ID: ${data.studentId}`);
-      }
+      // ✅ Usar API REST com autenticação (UUID resolvido no backend)
+      const headers = await getAuthHeaders();
 
       const response = await fetch('/api/suspensions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          studentId: internalStudentId,
-          startDate: data.startDate,
-          endDate: data.endDate,
-          reason: data.reason,
-          description: data.description || null,
-          severity: data.severity || null,
-          decisionBy: data.decisionBy,
-          decisionDate: data.decisionDate,
-          documentNumber: data.documentNumber || null,
-          familyNotified: data.familyNotified || false,
-          notificationDate: data.notificationDate || null,
-          notificationMethod: data.notificationMethod || null,
-          createdBy: data.createdBy,
+          estudanteId: data.studentId, // Firebase UUID (a API resolve internamente)
+          dataInicio: data.startDate,
+          dataFim: data.endDate,
+          motivo: data.reason,
+          observacoes: data.description || null,
         }),
       });
 
@@ -220,8 +209,15 @@ export class StudentSuspensionsService {
       }
 
       const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao criar suspensão');
+      }
+
       logger.info('Suspensão criada via API', { studentId: data.studentId });
-      return this.mapApiToSuspension(result.data);
+
+      // Buscar suspensão criada para retornar completa
+      return await this.getById(result.data.id);
     } catch (error) {
       logger.error('Erro ao criar suspensão', data, error as Error);
       throw error;

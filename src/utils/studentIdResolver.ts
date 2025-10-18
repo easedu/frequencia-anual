@@ -1,17 +1,35 @@
 /**
- * Student ID Resolver
+ * Student ID Resolver (FRONTEND - DEPRECATED)
  *
- * Resolve Firebase UUIDs (student.student_id) para Internal IDs (student.id) do Supabase.
+ * @deprecated Este arquivo NÃO está mais sendo usado no projeto.
  *
- * CONTEXT:
- * A tabela students tem 2 UUIDs:
- * - id: UUID interno do Supabase (usado em Foreign Keys)
- * - student_id: UUID externo do Firebase (usado pela aplicação)
+ * MIGRAÇÃO COMPLETA:
+ * - Todas as APIs agora usam @/app/api/_utils/studentIdResolver (backend)
+ * - Resolução de UUID acontece no servidor (não no cliente)
+ * - Este arquivo foi substituído durante refatoração das Fases 1-4
  *
- * Este helper centraliza a conversão e adiciona cache para evitar queries repetidas.
+ * ANTES (❌ Padrão antigo):
+ * ```typescript
+ * // Frontend resolvia UUID antes de chamar API
+ * const internalId = await resolveToInternalId(firebaseUUID);
+ * const response = await fetch(`/api/students?studentId=${internalId}`);
+ * ```
  *
- * @author Claude Code
- * @date 2025-10-14
+ * AGORA (✅ Padrão novo):
+ * ```typescript
+ * // Backend resolve UUID internamente
+ * const response = await fetch(`/api/students?estudanteId=${firebaseUUID}`, {
+ *   headers: await getAuthHeaders()
+ * });
+ * ```
+ *
+ * AÇÃO RECOMENDADA:
+ * - Este arquivo pode ser REMOVIDO em versões futuras
+ * - Usar @/app/api/_utils/studentIdResolver apenas em APIs server-side
+ *
+ * ÚLTIMA VERIFICAÇÃO: 2025-01-18 (Nenhum uso encontrado no frontend)
+ *
+ * @see src/app/api/_utils/studentIdResolver.ts (Backend - EM USO)
  */
 
 import { supabase } from '@/lib/supabaseClient';

@@ -2,6 +2,16 @@
  * Generic Supabase document hook with standardized caching
  * Replaces Firebase document operations with Supabase real-time subscriptions
  * Uses centralized cache.ts for consistency across the application
+ *
+ * @deprecated Este hook NÃO está sendo usado no projeto.
+ * Foi criado durante a migração Firestore → Supabase mas nunca utilizado.
+ *
+ * RECOMENDAÇÃO:
+ * - Para buscar documento único: Use hooks específicos ou APIs REST
+ * - Para real-time: Implementar subscriptions Supabase diretamente no componente
+ * - Este hook pode ser removido em versões futuras
+ *
+ * ÚLTIMA VERIFICAÇÃO: 2025-01-18 (Nenhum uso encontrado no projeto)
  */
 
 import { useState, useEffect, useCallback } from 'react';

@@ -96,26 +96,26 @@ export default function WhatsAppContactSelector({
         if (contact.podeReceberMensagem === false) return;
 
         const cleanPhone = phone.replace(/\D/g, '');
-        const newSelection = new Set(selectedPhones);
 
         if (singleSelection) {
             // Modo seleção única: desmarcar se já está selecionado, senão marcar apenas este
-            if (newSelection.has(cleanPhone)) {
-                newSelection.clear();
+            if (selectedPhones.has(cleanPhone)) {
+                // Desmarcar: criar novo Set vazio
+                onSelectionChange(new Set());
             } else {
-                newSelection.clear();
-                newSelection.add(cleanPhone);
+                // Marcar apenas este: criar novo Set com apenas este telefone
+                onSelectionChange(new Set([cleanPhone]));
             }
         } else {
             // Modo seleção múltipla (comportamento original)
+            const newSelection = new Set(selectedPhones);
             if (newSelection.has(cleanPhone)) {
                 newSelection.delete(cleanPhone);
             } else {
                 newSelection.add(cleanPhone);
             }
+            onSelectionChange(newSelection);
         }
-
-        onSelectionChange(newSelection);
     };
 
     if (whatsAppContacts.length === 0) {

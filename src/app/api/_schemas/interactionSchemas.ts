@@ -27,6 +27,18 @@ export const createInteractionSchema = z.object({
       'EMAIL',
       'WHATSAPP',
       'OUTRO',
+      // Tipos adicionais do frontend
+      'Contato telefônico',
+      'Contato digital',
+      'Conversa com a família',
+      'Visita domiciliar da ABAE',
+      'Compensação de ausência',
+      'Carta registrada',
+      'Conselho tutelar',
+      'Desligamento',
+      'Justificativa da família',
+      'Necessário acompanhamento da família',
+      'Observações',
     ],
     {
       errorMap: () => ({ message: 'Tipo de interação inválido' }),
@@ -35,9 +47,16 @@ export const createInteractionSchema = z.object({
   responsavel: z.string().min(1, 'Nome do responsável é obrigatório').max(100),
   assunto: z.string().min(1, 'Assunto é obrigatório').max(200),
   descricao: z.string().min(1, 'Descrição é obrigatória').max(2000),
+  criadoPor: z.string().min(1, 'Nome do criador é obrigatório').max(100),
   observacoes: z.string().max(1000).optional(),
   proximaAcao: z.string().max(500).optional(),
   dataProximaAcao: z.string().regex(/^\d{8}$/).optional(),
+  // Campos WhatsApp (opcionais)
+  whatsapp_message: z.string().optional(),
+  whatsapp_phones: z.array(z.string()).optional(),
+  whatsapp_message_id: z.string().optional(),
+  whatsapp_status: z.string().optional(),
+  whatsapp_sent_at: z.string().optional(),
 });
 
 /**
@@ -54,6 +73,18 @@ export const updateInteractionSchema = z.object({
       'EMAIL',
       'WHATSAPP',
       'OUTRO',
+      // Tipos adicionais do frontend
+      'Contato telefônico',
+      'Contato digital',
+      'Conversa com a família',
+      'Visita domiciliar da ABAE',
+      'Compensação de ausência',
+      'Carta registrada',
+      'Conselho tutelar',
+      'Desligamento',
+      'Justificativa da família',
+      'Necessário acompanhamento da família',
+      'Observações',
     ])
     .optional(),
   responsavel: z.string().min(1).max(100).optional(),
@@ -78,6 +109,18 @@ export const interactionQuerySchema = z.object({
       'EMAIL',
       'WHATSAPP',
       'OUTRO',
+      // Tipos adicionais do frontend
+      'Contato telefônico',
+      'Contato digital',
+      'Conversa com a família',
+      'Visita domiciliar da ABAE',
+      'Compensação de ausência',
+      'Carta registrada',
+      'Conselho tutelar',
+      'Desligamento',
+      'Justificativa da família',
+      'Necessário acompanhamento da família',
+      'Observações',
     ])
     .optional(),
   dataInicio: z.string().regex(/^\d{8}$/).optional(),

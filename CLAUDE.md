@@ -339,6 +339,132 @@ const q = query(
 // Verificar: https://console.firebase.google.com/project/_/firestore/indexes
 ```
 
+### APIs REST e Supabase
+
+#### 1. **Pattern: Backend API Routes (✅ NOVO - Jan 2025)**
+
+**IMPORTANTE**: Todas as APIs REST devem seguir este padrão estabelecido nas Fases 1-4 de refatoração.
+
+```typescript
+// Backend API: /api/students/route.ts
+import { NextRequest } from 'next/server';
+import { withAuth } from '@/app/api/_middleware/auth';
+import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { successResponse, errorResponse } from '@/app/api/_utils/response';
+
+// ✅ BOM - API aceita Firebase UUID e resolve no backend
+export const GET = withAuth(async (req: NextRequest, userId: string) => {
+  try {
+    const { searchParams } = new URL(req.url);
+    const estudanteId = searchParams.get('estudanteId'); // Firebase UUID
+
+    // Resolver Firebase UUID → Internal ID (backend)
+    const internalId = await resolveFirebaseUUIDToInternal(estudanteId);
+
+    if (!internalId) {
+      return errorResponse('NOT_FOUND', 'Estudante não encontrado', 404);
+    }
+
+    // Query usando Internal ID
+    const { data, error } = (await supabaseAdmin
+      .from('students')
+      .select('*')
+      .eq('id', internalId)
+      .single()) as { data: any; error: any };
+
+    if (error) {
+      return errorResponse('DATABASE_ERROR', 'Erro ao buscar', 500);
+    }
+
+    return successResponse(data);
+  } catch (error) {
+    return handleError(error, 'GET /api/students');
+  }
+});
+
+// ❌ RUIM - API espera Internal ID (frontend precisa resolver)
+export const GET = async (req: NextRequest) => {
+  const studentId = searchParams.get('studentId'); // Internal ID!
+  // Frontend teve que chamar resolveToInternalId() antes!
+};
+```
+
+#### 2. **Pattern: Frontend Service (✅ NOVO - Jan 2025)**
+
+**IMPORTANTE**: Frontend **não deve** resolver UUID manualmente. Enviar Firebase UUID direto.
+
+```typescript
+// Frontend Service: src/services/MyService.ts
+import { getAuthHeaders } from '@/utils/authToken';
+import { logger } from '@/utils/logger';
+
+export class MyService {
+  // ✅ BOM - Envia Firebase UUID direto, backend resolve
+  static async getData(firebaseStudentId: string) {
+    try {
+      const headers = await getAuthHeaders(); // JWT do Firebase
+
+      const response = await fetch(`/api/students?estudanteId=${firebaseStudentId}`, {
+        headers, // Bearer Token
+      });
+
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result.data;
+    } catch (error) {
+      logger.error('Erro ao buscar dados', { firebaseStudentId }, error as Error);
+      throw error;
+    }
+  }
+
+  // ❌ RUIM - Resolve UUID no frontend (padrão antigo)
+  static async getDataOLD(firebaseStudentId: string) {
+    const internalId = await resolveToInternalId(firebaseStudentId); // ❌
+    const response = await fetch(`/api/students?studentId=${internalId}`);
+  }
+}
+```
+
+#### 3. **Type Safety com Supabase Admin**
+
+```typescript
+// ✅ BOM - Type casting explícito
+const { data, error } = (await supabaseAdmin
+  .from('students')
+  .select('id, student_id')
+  .eq('student_id', firebaseUUID)
+  .maybeSingle()) as { data: { id: string; student_id: string } | null; error: any };
+
+// ❌ RUIM - TypeScript infere como 'never'
+const { data, error } = await supabaseAdmin
+  .from('students')
+  .select('id, student_id')
+  .eq('student_id', firebaseUUID)
+  .maybeSingle();
+```
+
+#### 4. **Middleware de Autenticação**
+
+```typescript
+// ✅ BOM - Usar withAuth para proteger APIs
+import { withAuth } from '@/app/api/_middleware/auth';
+
+export const POST = withAuth(async (req: NextRequest, userId: string) => {
+  // userId já validado pelo middleware
+});
+
+// ❌ RUIM - API sem autenticação
+export async function POST(req: NextRequest) {
+  // Qualquer um pode chamar!
+}
+```
+
+**📖 Documentação Completa**: `docs/REFATORACAO-SUPABASE-FRONTEND-FASES-1-4-COMPLETA.md`
+
 ### Formulários e Validação
 
 #### 1. **React Hook Form + Zod**
@@ -3284,6 +3410,48 @@ const apiKey = "AIzaSyC...";
 // ✅ Usar variáveis de ambiente
 const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
 ```
+
+### 🚫 APIs REST e Supabase - NUNCA (✅ NOVO - Jan 2025)
+
+```typescript
+// ❌ NUNCA resolver UUID no frontend
+import { resolveToInternalId } from '@/utils/studentIdResolver'; // DEPRECIADO!
+const internalId = await resolveToInternalId(firebaseUUID);
+const response = await fetch(`/api/students?studentId=${internalId}`);
+// ✅ SEMPRE enviar Firebase UUID direto (backend resolve)
+import { getAuthHeaders } from '@/utils/authToken';
+const headers = await getAuthHeaders();
+const response = await fetch(`/api/students?estudanteId=${firebaseUUID}`, { headers });
+
+// ❌ NUNCA criar API que espera Internal ID do frontend
+export const GET = async (req: NextRequest) => {
+  const studentId = searchParams.get('studentId'); // Internal ID - ruim!
+  const { data } = await supabaseAdmin.from('students').eq('id', studentId);
+};
+// ✅ SEMPRE aceitar Firebase UUID e resolver no backend
+export const GET = withAuth(async (req: NextRequest, userId: string) => {
+  const estudanteId = searchParams.get('estudanteId'); // Firebase UUID
+  const internalId = await resolveFirebaseUUIDToInternal(estudanteId);
+  const { data } = await supabaseAdmin.from('students').eq('id', internalId);
+});
+
+// ❌ NUNCA usar supabase (client) em services para dados críticos
+import { supabase } from '@/lib/supabaseClient';
+const { data } = await supabase.from('students').select('*'); // RLS pode bloquear!
+// ✅ SEMPRE usar API REST com supabaseAdmin
+const response = await fetch('/api/students', { headers: await getAuthHeaders() });
+
+// ❌ NUNCA esquecer autenticação em APIs
+export async function POST(req: NextRequest) {
+  // Qualquer um pode chamar!
+}
+// ✅ SEMPRE usar middleware withAuth
+export const POST = withAuth(async (req: NextRequest, userId: string) => {
+  // userId já validado!
+});
+```
+
+**Ver documentação completa**: `docs/REFATORACAO-SUPABASE-FRONTEND-FASES-1-4-COMPLETA.md`
 
 ### 🚫 Firebase - NUNCA
 

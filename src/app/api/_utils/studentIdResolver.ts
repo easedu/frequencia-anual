@@ -63,28 +63,47 @@ export async function resolveFirebaseUUIDToInternal(
   const cached = serverCache.get(firebaseUUID);
   if (cached) return cached;
 
-  // 2. Buscar no Supabase
+  // 2. Buscar no Supabase por student_id (Firebase UUID)
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = (await supabaseAdmin
       .from('students')
-      .select('id')
+      .select('id, student_id')
       .eq('student_id', firebaseUUID)
-      .maybeSingle();
+      .maybeSingle()) as { data: { id: string; student_id: string } | null; error: any };
 
     if (error) {
       logger.error('[Backend] Erro ao resolver Firebase UUID', { firebaseUUID }, error);
       return null;
     }
 
-    if (!data) {
-      logger.warn('[Backend] Estudante não encontrado', { firebaseUUID });
-      return null;
+    if (data) {
+      const internalId = data.id;
+      serverCache.set(firebaseUUID, internalId);
+      return internalId;
     }
 
-    const internalId = data.id;
-    serverCache.set(firebaseUUID, internalId);
+    // 3. FALLBACK: Verificar se o UUID fornecido já é o Internal ID
+    // (Para compatibilidade com código antigo que pode estar enviando Internal ID)
+    const { data: dataById, error: errorById } = (await supabaseAdmin
+      .from('students')
+      .select('id, student_id')
+      .eq('id', firebaseUUID)
+      .maybeSingle()) as { data: { id: string; student_id: string } | null; error: any };
 
-    return internalId;
+    if (!errorById && dataById) {
+      logger.warn('[Backend] UUID fornecido era Internal ID, não Firebase UUID', {
+        providedId: firebaseUUID,
+        actualStudentId: dataById.student_id
+      });
+
+      // Cache com o student_id correto
+      serverCache.set(dataById.student_id, dataById.id);
+
+      return dataById.id;
+    }
+
+    logger.warn('[Backend] Estudante não encontrado', { firebaseUUID });
+    return null;
   } catch (error) {
     logger.error('[Backend] Erro ao buscar Internal ID', { firebaseUUID }, error as Error);
     return null;
@@ -106,11 +125,11 @@ export async function resolveInternalToFirebaseUUID(
 
   // 2. Buscar no Supabase
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = (await supabaseAdmin
       .from('students')
       .select('student_id')
       .eq('id', internalId)
-      .maybeSingle();
+      .maybeSingle()) as { data: { student_id: string } | null; error: any };
 
     if (error) {
       logger.error('[Backend] Erro ao resolver Internal ID', { internalId }, error);

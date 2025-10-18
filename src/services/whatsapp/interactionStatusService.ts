@@ -5,7 +5,7 @@
  * @rationale Status salvo onde a mensagem é exibida (melhor UX)
  */
 
-import { supabase } from '@/lib/supabaseClient';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { logger } from '@/utils/logger';
 import type { WhatsAppMessageStatus, StatusHistoryEntry } from '@/types';
 
@@ -55,7 +55,7 @@ export class InteractionStatusService {
       console.log('[InteractionStatus] 🔍 Buscando interação...');
       console.log('  messageId:', messageId);
 
-      const { data: existing, error: fetchError } = await (supabase
+      const { data: existing, error: fetchError } = await (supabaseAdmin
         .from('family_interactions')
         .select('id, whatsapp_status, whatsapp_status_history, whatsapp_sent_at, whatsapp_delivered_at, whatsapp_read_at, whatsapp_played_at, student_id, description')
         .eq('whatsapp_message_id', messageId)
@@ -141,7 +141,7 @@ export class InteractionStatusService {
       }
 
       // 6. Executar atualização
-      const updateResult = await supabase
+      const updateResult = await supabaseAdmin
         .from('family_interactions')
         // @ts-ignore - Supabase types issue with dynamic update fields
         .update(updateFields)
@@ -194,7 +194,7 @@ export class InteractionStatusService {
     sentAt?: string;
   } | null> {
     try {
-      const { data, error } = await (supabase
+      const { data, error } = await (supabaseAdmin
         .from('family_interactions')
         .select('whatsapp_status, whatsapp_status_history, whatsapp_sent_at, whatsapp_delivered_at, whatsapp_read_at, whatsapp_played_at')
         .eq('whatsapp_message_id', messageId)
@@ -240,7 +240,7 @@ export class InteractionStatusService {
     endDate?: string;
   }): Promise<Record<WhatsAppMessageStatus | 'TOTAL', number>> {
     try {
-      let query = supabase
+      let query = supabaseAdmin
         .from('family_interactions')
         .select('whatsapp_status')
         .eq('interaction_type', 'Contato digital')
