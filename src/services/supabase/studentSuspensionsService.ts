@@ -184,7 +184,12 @@ export class StudentSuspensionsService {
    */
   static async getById(suspensionId: string): Promise<StudentSuspension | null> {
     try {
-      const response = await fetch(`/api/suspensions/${suspensionId}`);
+      // ✅ Adicionar headers de autenticação
+      const headers = await getAuthHeaders();
+
+      const response = await fetch(`/api/suspensions/${suspensionId}`, {
+        headers,
+      });
 
       if (response.status === 404) {
         return null;
@@ -245,8 +250,6 @@ export class StudentSuspensionsService {
         throw new Error(result.message || 'Erro ao criar suspensão');
       }
 
-      logger.info('Suspensão criada via API', { studentId: data.studentId });
-
       // Buscar suspensão criada para retornar completa
       return await this.getById(result.data.id);
     } catch (error) {
@@ -274,11 +277,11 @@ export class StudentSuspensionsService {
 
       const apiUpdates: any = {};
 
-      if (updates.startDate) apiUpdates.startDate = convertDateFormat(updates.startDate);
-      if (updates.endDate) apiUpdates.endDate = convertDateFormat(updates.endDate);
-      if (updates.reason) apiUpdates.reason = updates.reason;
-      if (updates.description !== undefined)
-        apiUpdates.description = updates.description || null;
+      // ✅ Mapear campos do frontend (inglês) para API (português)
+      if (updates.startDate) apiUpdates.dataInicio = convertDateFormat(updates.startDate);
+      if (updates.endDate) apiUpdates.dataFim = convertDateFormat(updates.endDate);
+      if (updates.reason !== undefined) apiUpdates.motivo = updates.reason || null;
+      if (updates.description !== undefined) apiUpdates.observacoes = updates.description || null;
       if (updates.severity) apiUpdates.severity = updates.severity;
       if (updates.decisionBy) apiUpdates.decisionBy = updates.decisionBy;
       if (updates.decisionDate) apiUpdates.decisionDate = convertDateFormat(updates.decisionDate);
@@ -291,9 +294,15 @@ export class StudentSuspensionsService {
       if (updates.notificationMethod !== undefined)
         apiUpdates.notificationMethod = updates.notificationMethod || null;
 
+      // ✅ Adicionar headers de autenticação
+      const headers = await getAuthHeaders();
+
       const response = await fetch(`/api/suspensions/${suspensionId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(apiUpdates),
       });
 
@@ -301,7 +310,6 @@ export class StudentSuspensionsService {
         throw new Error(`API returned ${response.status}`);
       }
 
-      logger.info('Suspensão atualizada via API', { suspensionId });
       return true;
     } catch (error) {
       logger.error('Erro ao atualizar suspensão', { suspensionId }, error as Error);
@@ -333,7 +341,6 @@ export class StudentSuspensionsService {
         throw new Error(`API returned ${response.status}`);
       }
 
-      logger.info('Reintegração registrada via API', { suspensionId });
       return true;
     } catch (error) {
       logger.error('Erro ao registrar reintegração', { suspensionId }, error as Error);
@@ -346,15 +353,18 @@ export class StudentSuspensionsService {
    */
   static async delete(suspensionId: string): Promise<boolean> {
     try {
+      // ✅ Adicionar headers de autenticação
+      const headers = await getAuthHeaders();
+
       const response = await fetch(`/api/suspensions/${suspensionId}`, {
         method: 'DELETE',
+        headers,
       });
 
       if (!response.ok) {
         throw new Error(`API returned ${response.status}`);
       }
 
-      logger.info('Suspensão deletada via API', { suspensionId });
       return true;
     } catch (error) {
       logger.error('Erro ao deletar suspensão', { suspensionId }, error as Error);

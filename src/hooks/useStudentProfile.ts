@@ -231,14 +231,26 @@ export function useStudentProfile() {
   }, [atestadosData]);
 
   const suspensoes = useMemo(() => {
-    return (suspensoesData || []).map((susp: any) => ({
-      id: susp.id,
-      startDate: susp.start_date || susp.startDate,
-      days: susp.days_suspended || susp.days || 1,
-      description: susp.reason || susp.description || 'Sem descrição',
-      // Buscar nome do usuário via JOIN (decision_by_name)
-      createdBy: susp.decision_by_name || susp.decision_by || susp.createdBy || 'Desconhecido'
-    }));
+    return (suspensoesData || []).map((susp: any) => {
+      // ✅ CALCULAR quantidade de dias entre start_date e end_date
+      let days = 1;
+      if (susp.start_date && susp.end_date) {
+        const start = new Date(susp.start_date);
+        const end = new Date(susp.end_date);
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 porque inclui o dia inicial
+      }
+
+      return {
+        id: susp.id,
+        startDate: susp.start_date || susp.startDate,
+        endDate: susp.end_date || susp.endDate,
+        days, // ✅ Calculado dinamicamente
+        description: susp.reason || susp.description || 'Sem descrição',
+        // Buscar nome do usuário via JOIN (decision_by_name)
+        createdBy: susp.decision_by_name || susp.decision_by || susp.createdBy || 'Desconhecido'
+      };
+    });
   }, [suspensoesData]);
 
   const bimesterDates = useMemo(() => {
@@ -981,57 +993,22 @@ export function useStudentProfile() {
         throw new Error("Falha ao criar suspensão");
       }
 
-      const suspensaoId = newSuspension.id;
+      // ✅ Backend agora gerencia faltas automaticamente via API POST
+      // Código antigo de manipulação manual de faltas removido
 
-      const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
-      const supabaseAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
-      const faltasExistentes = new Map();
+      // ✅ Aguardar um momento para o banco processar
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      supabaseAbsences.forEach((absence: any) => {
-        const dataFormatada = formatFirebaseDate(absence.absenceDate);
-        faltasExistentes.set(dataFormatada, {
-          id: absence.id,
-          justified: absence.justificationType !== 'NAO_JUSTIFICADA',
-          suspensaoId: absence.suspensionId
-        });
-      });
+      // ✅ Forçar refetch dos hooks individuais (AGUARDAR)
+      await Promise.all([
+        refetchSuspensoes(),
+        refetchAbsences(),
+      ]);
 
-      for (const dataLetiva of diasLetivos) {
-        let dataFirebase: string;
-
-        if (dataLetiva.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          dataFirebase = dataLetiva;
-        } else {
-          const converted = parseDateToFirebase(dataLetiva);
-          if (!converted) continue;
-          dataFirebase = converted;
-        }
-
-        const dataBrasileira = formatFirebaseDate(dataFirebase);
-        const faltaExistente = faltasExistentes.get(dataBrasileira);
-
-        if (faltaExistente) {
-          await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
-          await AbsenceService.addAbsence({
-            estudanteId: selectedStudentId,
-            data: dataFirebase,
-            justified: false,
-            suspensaoId: suspensaoId,
-          });
-        } else {
-          await AbsenceService.addAbsence({
-            estudanteId: selectedStudentId,
-            data: dataFirebase,
-            justified: false,
-            suspensaoId: suspensaoId,
-          });
-        }
-      }
-
+      // ✅ Limpar formulário APÓS refetch
       setSuspensaoStartDate("");
       setSuspensaoDays("");
       setSuspensaoDescription("");
-      await fetchStudentData(selectedStudentId);
 
       document.getElementById("suspensao-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
 
@@ -1078,69 +1055,23 @@ export function useStudentProfile() {
         description: suspensaoDescription,
       });
 
-      const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
+      // ✅ Backend agora gerencia faltas automaticamente via API PUT
+      // Código antigo de manipulação manual de faltas removido
 
-      for (const absence of allAbsences) {
-        if (absence.suspensaoId === editingSuspensao.id) {
-          const absenceDate = absence.absence_date || absence.data;
-          if (!absenceDate) continue;
+      // ✅ Aguardar um momento para o banco processar
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-          await AbsenceService.deleteAbsence(selectedStudentId, absenceDate);
-          await AbsenceService.addAbsence({
-            estudanteId: selectedStudentId,
-            data: absenceDate,
-            justified: false,
-            suspensaoId: undefined,
-          });
-        }
-      }
+      // ✅ Forçar refetch dos hooks individuais (AGUARDAR)
+      await Promise.all([
+        refetchSuspensoes(),
+        refetchAbsences(),
+      ]);
 
-      const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
-      const faltasExistentes = new Map();
-      allAbsences.forEach((absence: any) => {
-        const absenceDate = absence.absence_date || absence.data;
-        if (!absenceDate) return;
-        const dataFormatada = formatFirebaseDate(absenceDate);
-        faltasExistentes.set(dataFormatada, absence);
-      });
-
-      for (const dataLetiva of diasLetivos) {
-        let dataFirebase: string;
-
-        if (dataLetiva.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          dataFirebase = dataLetiva;
-        } else {
-          const converted = parseDateToFirebase(dataLetiva);
-          if (!converted) continue;
-          dataFirebase = converted;
-        }
-
-        const dataBrasileira = formatFirebaseDate(dataFirebase);
-        const faltaExistente = faltasExistentes.get(dataBrasileira);
-
-        if (faltaExistente) {
-          await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
-          await AbsenceService.addAbsence({
-            estudanteId: selectedStudentId,
-            data: dataFirebase,
-            justified: false,
-            suspensaoId: editingSuspensao.id,
-          });
-        } else {
-          await AbsenceService.addAbsence({
-            estudanteId: selectedStudentId,
-            data: dataFirebase,
-            justified: false,
-            suspensaoId: editingSuspensao.id,
-          });
-        }
-      }
-
+      // ✅ Limpar formulário APÓS refetch
       setEditingSuspensao(null);
       setSuspensaoStartDate("");
       setSuspensaoDays("");
       setSuspensaoDescription("");
-      await fetchStudentData(selectedStudentId);
       toast.success("Suspensão atualizada com sucesso!");
     } catch (error) {
       logger.error("Erro ao atualizar suspensão", error as Error);
@@ -1153,24 +1084,18 @@ export function useStudentProfile() {
     try {
       await StudentSuspensionsService.delete(suspensaoId);
 
-      const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
+      // ✅ Backend agora gerencia faltas automaticamente via API DELETE
+      // Código antigo de manipulação manual de faltas removido
 
-      for (const absence of allAbsences) {
-        if (absence.suspensaoId === suspensaoId) {
-          const absenceDate = absence.absence_date || absence.data;
-          if (!absenceDate) continue;
+      // ✅ Aguardar um momento para o banco processar
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-          await AbsenceService.deleteAbsence(selectedStudentId, absenceDate);
-          await AbsenceService.addAbsence({
-            estudanteId: selectedStudentId,
-            data: absenceDate,
-            justified: false,
-            suspensaoId: undefined,
-          });
-        }
-      }
+      // ✅ Forçar refetch dos hooks individuais (AGUARDAR)
+      await Promise.all([
+        refetchSuspensoes(),
+        refetchAbsences(),
+      ]);
 
-      await fetchStudentData(selectedStudentId);
       toast.success("Suspensão excluída com sucesso!");
     } catch (error) {
       logger.error("Erro ao excluir suspensão", error as Error);
@@ -1178,7 +1103,7 @@ export function useStudentProfile() {
     } finally {
       setShowDeleteSuspensaoDialog(null);
     }
-  }, [selectedStudentId, fetchStudentData]);
+  }, [selectedStudentId, refetchSuspensoes, refetchAbsences]);
 
   // ═══════════════════════════════════════════════════════════
   // HANDLERS - WHATSAPP

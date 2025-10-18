@@ -11,6 +11,7 @@ import { successResponse, errorResponse, validationErrorResponse, paginatedRespo
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
+import { getDiasLetivosNoPeriodo, parseDate, getBimesterByDate } from '@/app/utils';
 
 export const GET = withAuth(async (req: NextRequest, userId: string) => {
   try {
@@ -132,7 +133,10 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       end_date: convertToISODate(sanitizedData.dataFim),
       reason: sanitizedData.motivo,
       description: sanitizedData.observacoes || null,
-      school_year: new Date().getFullYear().toString(),
+      severity: 'MODERADA', // Valor padrão
+      decision_by: userId, // Firebase Auth User ID
+      decision_date: convertToISODate(sanitizedData.dataInicio), // Mesma data do início da suspensão
+      created_by: userId,
     };
 
     const { data: suspensionData, error: suspensionError } = (await supabaseAdmin
@@ -144,6 +148,111 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     if (suspensionError) {
       console.error('[POST /api/suspensions] Error:', suspensionError);
       return errorResponse('DATABASE_ERROR', 'Erro ao criar suspensão', 500);
+    }
+
+    // ✅ Criar faltas automaticamente para todos os dias letivos do período da suspensão
+    try {
+      const suspensionId = suspensionData.id;
+      const startDate = suspensionInsert.start_date;
+      const endDate = suspensionInsert.end_date;
+
+      console.log('[POST /api/suspensions] 🔍 Buscando dias letivos do período:', {
+        suspensionId,
+        studentId: internalStudentId,
+        startDate,
+        endDate,
+      });
+
+      // 1. Converter datas para Date objects
+      const startDateObj = parseDate(startDate);
+      const endDateObj = parseDate(endDate);
+
+      if (!startDateObj || !endDateObj) {
+        console.error('[POST /api/suspensions] ❌ Datas inválidas');
+        throw new Error('Datas inválidas');
+      }
+
+      // 2. Buscar dias letivos no período
+      const diasLetivos = await getDiasLetivosNoPeriodo(startDateObj, endDateObj);
+      console.log('[POST /api/suspensions] 📅 Dias letivos encontrados:', diasLetivos.length);
+
+      if (diasLetivos.length > 0) {
+        // 3. Buscar bimesterDates para determinar o bimestre de cada data
+        const currentYear = new Date().getFullYear();
+        const { AcademicYearService } = await import('@/services/supabase/academicYearService');
+        const academicYearData = await AcademicYearService.getAcademicYearComplete(currentYear);
+
+        const bimesterDates = {
+          b1: { start: academicYearData?.['1º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['1º Bimestre']?.periodo?.fim || '' },
+          b2: { start: academicYearData?.['2º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['2º Bimestre']?.periodo?.fim || '' },
+          b3: { start: academicYearData?.['3º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['3º Bimestre']?.periodo?.fim || '' },
+          b4: { start: academicYearData?.['4º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['4º Bimestre']?.periodo?.fim || '' },
+        };
+
+        // 4. Para cada dia letivo, criar/atualizar falta
+        const convertToISODate = (dateStr: string): string => {
+          if (dateStr.includes('/')) {
+            const [day, month, year] = dateStr.split('/');
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          }
+          return dateStr;
+        };
+
+        let createdCount = 0;
+        let updatedCount = 0;
+
+        for (const diaLetivo of diasLetivos) {
+          const absenceDate = convertToISODate(diaLetivo);
+          const bimester = getBimesterByDate(diaLetivo, bimesterDates);
+          const bimesterStr = bimester === 1 ? '1º Bimestre' :
+                             bimester === 2 ? '2º Bimestre' :
+                             bimester === 3 ? '3º Bimestre' :
+                             bimester === 4 ? '4º Bimestre' : null;
+
+          // Verificar se falta já existe
+          const { data: existing } = await supabaseAdmin
+            .from('student_absences')
+            .select('id')
+            .eq('student_id', internalStudentId)
+            .eq('absence_date', absenceDate)
+            .maybeSingle();
+
+          if (existing) {
+            // ✅ Falta existe: ATUALIZAR
+            const { error: updateError } = await supabaseAdmin
+              .from('student_absences')
+              .update({
+                is_justified: true,
+                suspension_id: suspensionId,
+              })
+              .eq('id', existing.id);
+
+            if (!updateError) updatedCount++;
+          } else {
+            // ✅ Falta não existe: CRIAR
+            const { error: insertError } = await supabaseAdmin
+              .from('student_absences')
+              .insert({
+                student_id: internalStudentId,
+                absence_date: absenceDate,
+                bimester: bimesterStr,
+                is_justified: true,
+                suspension_id: suspensionId,
+              });
+
+            if (!insertError) createdCount++;
+          }
+        }
+
+        console.log('[POST /api/suspensions] ✅ Faltas processadas:', {
+          created: createdCount,
+          updated: updatedCount,
+          total: diasLetivos.length,
+        });
+      }
+    } catch (updateErr) {
+      console.error('[POST /api/suspensions] ❌ Erro ao criar/atualizar faltas:', updateErr);
+      // Não falhar a requisição se houver erro nas faltas
     }
 
     return successResponse({ id: suspensionData.id }, 'Suspensão criada com sucesso', 201);
