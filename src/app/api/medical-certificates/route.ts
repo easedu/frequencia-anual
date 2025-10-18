@@ -1,32 +1,59 @@
 /**
  * API Route: /api/medical-certificates
- * CRUD de Atestados M\u00e9dicos
+ * CRUD de Atestados Médicos
+ *
+ * CHANGELOG:
+ * - 2025-01-18: Adicionado suporte a Firebase UUID (resolve internamente via studentIdResolver backend)
+ * - Aceita ambos formatos: camelCase (studentId) e português (estudanteId)
  */
 
 import { NextRequest } from 'next/server';
 import { withAuth } from '@/app/api/_middleware/auth';
-import { validateQueryParams, sanitizeObject } from '@/app/api/_middleware/validation';
-import { createMedicalCertificateSchema, medicalCertificateQuerySchema } from '@/app/api/_schemas/medicalCertificateSchemas';
-import { successResponse, errorResponse, validationErrorResponse, paginatedResponse } from '@/app/api/_utils/response';
+import { successResponse, errorResponse, paginatedResponse } from '@/app/api/_utils/response';
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { v4 as uuidv4 } from 'uuid';
+import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
 
+/**
+ * GET /api/medical-certificates
+ * Lista atestados médicos com filtros
+ *
+ * Query params:
+ * - studentId (Firebase UUID) ou estudanteId (Internal ID)
+ * - startDate / dataInicio
+ * - endDate / dataFim
+ * - page (default: 1)
+ * - limit (default: 50)
+ */
 export const GET = withAuth(async (req: NextRequest, userId: string) => {
   try {
-    const validation = validateQueryParams(req, medicalCertificateQuerySchema);
-    if (!validation.success) return validation.response;
+    const { searchParams } = new URL(req.url);
 
-    const { estudanteId, dataInicio, dataFim, page, limit } = validation.data;
+    // Aceitar ambos formatos
+    const studentIdParam = searchParams.get('studentId') || searchParams.get('estudanteId');
+    const startDate = searchParams.get('startDate') || searchParams.get('dataInicio');
+    const endDate = searchParams.get('endDate') || searchParams.get('dataFim');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '50');
 
     let query: any = supabaseAdmin
       .from('medical_certificates')
-      .select('*, students( name, class)', { count: 'exact' })
+      .select('*, students!inner(student_id, name, class)', { count: 'exact' })
       .order('created_at', { ascending: false });
 
-    if (estudanteId) query = query.eq('student_id', estudanteId);
-    if (dataInicio) query = query.gte('start_date', dataInicio);
-    if (dataFim) query = query.lte('end_date', dataFim);
+    // Se studentId fornecido, resolver Firebase UUID → Internal ID
+    if (studentIdParam) {
+      const internalId = await resolveFirebaseUUIDToInternal(studentIdParam);
+      if (internalId) {
+        query = query.eq('student_id', internalId);
+      } else {
+        // Se não encontrou, retornar vazio
+        return paginatedResponse([], page, limit, 0);
+      }
+    }
+
+    if (startDate) query = query.gte('start_date', startDate);
+    if (endDate) query = query.lte('end_date', endDate);
 
     const from = (page - 1) * limit;
     query = query.range(from, from + limit - 1);
@@ -44,47 +71,86 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
   }
 });
 
+/**
+ * POST /api/medical-certificates
+ * Cria novo atestado médico
+ *
+ * Body:
+ * {
+ *   "studentId": "firebase-uuid",  // ou "estudanteId": "internal-id"
+ *   "startDate": "2025-01-01",     // ou "dataInicio"
+ *   "endDate": "2025-01-05",       // ou "dataFim"
+ *   "diagnosis": "Gripe",          // opcional
+ *   "cidCode": "J00",              // opcional
+ *   "doctorName": "Dr. João",      // opcional
+ *   "doctorCrm": "123456",         // opcional
+ *   "documentUrl": "https://...",  // opcional
+ *   "submittedDate": "2025-01-01", // opcional (default: hoje)
+ *   "createdBy": "Nome do usuário" // opcional
+ * }
+ */
 export const POST = withAuth(async (req: NextRequest, userId: string) => {
   try {
     const body = await req.json();
-    const validation = createMedicalCertificateSchema.safeParse(body);
-    if (!validation.success) return validationErrorResponse(validation.error.errors);
 
-    const sanitizedData = sanitizeObject(validation.data);
+    // Aceitar ambos os formatos: camelCase (novo) e português (legado)
+    const studentIdKey = body.studentId ? 'studentId' : 'estudanteId';
+    const firebaseUUID = body[studentIdKey];
 
-    // Verificar se estudante pertence ao usu\u00e1rio
-    const { data: student, error: studentError } = await supabaseAdmin
-      .from('students')
-      .select('id')
-      .eq('id', sanitizedData.estudanteId)
-      .single();
+    if (!firebaseUUID) {
+      return errorResponse('VALIDATION_ERROR', 'studentId ou estudanteId é obrigatório', 400);
+    }
 
-    if (studentError || !student) {
-      return errorResponse('NOT_FOUND', 'Estudante n\u00e3o encontrado', 404);
+    const startDate = body.startDate || body.dataInicio;
+    const endDate = body.endDate || body.dataFim;
+
+    if (!startDate || !endDate) {
+      return errorResponse('VALIDATION_ERROR', 'startDate e endDate são obrigatórios', 400);
+    }
+
+    // Resolver Firebase UUID → Internal ID (server-side)
+    const internalId = await resolveFirebaseUUIDToInternal(firebaseUUID);
+
+    if (!internalId) {
+      return errorResponse('NOT_FOUND', `Estudante não encontrado com ID: ${firebaseUUID}`, 404);
+    }
+
+    // Calcular submitted_date (usar startDate se submittedDate > startDate)
+    const today = new Date().toISOString().split('T')[0];
+    let submittedDate = body.submittedDate || body.dataEntrega || today;
+
+    if (submittedDate > startDate) {
+      submittedDate = startDate;
     }
 
     const insertData = {
-      student_id: sanitizedData.estudanteId,
-      start_date: sanitizedData.dataInicio,
-      end_date: sanitizedData.dataFim,
-      reason: sanitizedData.motivo || null,
-      notes: sanitizedData.observacoes || null,
-      file_url: sanitizedData.arquivoUrl || null,
-      version: '3.0',
+      student_id: internalId,
+      start_date: startDate,
+      end_date: endDate,
+      cid_code: body.cidCode || body.codigoCid || null,
+      diagnosis: body.diagnosis || body.diagnostico || null,
+      doctor_name: body.doctorName || body.nomeMedico || null,
+      doctor_crm: body.doctorCrm || body.crmMedico || null,
+      document_url: body.documentUrl || body.arquivoUrl || null,
+      document_type: body.documentType || body.tipoArquivo || null,
+      submitted_date: submittedDate,
+      submitted_by: body.submittedBy || body.criadoPor || userId,
+      status: 'PENDING',
+      created_by: body.createdBy || body.criadoPor || userId,
     };
 
-    const { data, error } = (await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('medical_certificates')
-      .insert(insertData as any)
-      .select('id')
-      .single()) as { data: any; error: any };
+      .insert(insertData)
+      .select('*')
+      .single();
 
     if (error) {
       console.error('[POST /api/medical-certificates] Error:', error);
       return errorResponse('DATABASE_ERROR', 'Erro ao criar atestado', 500);
     }
 
-    return successResponse({ id: data.id }, 'Atestado criado com sucesso', 201);
+    return successResponse({ data }, 'Atestado criado com sucesso', 201);
   } catch (error) {
     return handleError(error, 'POST /api/medical-certificates');
   }

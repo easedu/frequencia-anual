@@ -15,7 +15,7 @@
  */
 
 import { logger } from '@/utils/logger';
-import { resolveToInternalId } from '@/utils/studentIdResolver';
+// ✅ studentIdResolver removido - a API agora resolve internamente
 
 /**
  * Interface do atestado (API) - Sincronizada com schema real
@@ -120,16 +120,13 @@ export class MedicalCertificatesService {
 
   /**
    * Buscar atestados de um estudante via API
+   *
+   * @param studentId - Firebase UUID (a API resolve internamente para Internal ID)
    */
   static async getByStudentId(studentId: string): Promise<MedicalCertificate[]> {
     try {
-      const internalId = await resolveToInternalId(studentId);
-      if (!internalId) {
-        logger.warn('Estudante não encontrado', { studentId });
-        return [];
-      }
-
-      const response = await fetch(`/api/medical-certificates?studentId=${internalId}`);
+      // ✅ Envia Firebase UUID direto - a API resolve no backend
+      const response = await fetch(`/api/medical-certificates?studentId=${studentId}`);
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
       const result = await response.json();
@@ -159,25 +156,17 @@ export class MedicalCertificatesService {
 
   /**
    * Criar novo atestado via API
+   *
+   * @param data - Dados do atestado (com Firebase UUID)
    */
   static async create(data: CreateMedicalCertificateData): Promise<MedicalCertificate | null> {
     try {
-      const internalStudentId = await resolveToInternalId(data.studentId);
-      if (!internalStudentId) {
-        throw new Error(`Estudante não encontrado com ID: ${data.studentId}`);
-      }
-
-      const today = new Date().toISOString().split('T')[0];
-      let submittedDate = data.submittedDate || today;
-      if (submittedDate > data.startDate) {
-        submittedDate = data.startDate;
-      }
-
+      // ✅ Envia Firebase UUID direto - a API resolve no backend
       const response = await fetch('/api/medical-certificates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          studentId: internalStudentId,
+          studentId: data.studentId, // Firebase UUID (não resolve mais aqui!)
           startDate: data.startDate,
           endDate: data.endDate,
           cidCode: data.cidCode || null,
@@ -186,8 +175,8 @@ export class MedicalCertificatesService {
           doctorCrm: data.doctorCrm || null,
           documentUrl: data.documentUrl || null,
           documentType: data.documentType || null,
-          submittedDate,
-          submittedBy: data.createdBy,
+          submittedDate: data.submittedDate,
+          createdBy: data.createdBy,
         }),
       });
 
