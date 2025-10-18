@@ -6,6 +6,7 @@
  */
 
 import { logger } from '@/utils/logger';
+import { getAuthHeaders } from '@/utils/authToken';
 
 interface WhatsAppVerificationData {
   exists: boolean;
@@ -115,10 +116,16 @@ async function saveToVerifiedNumbers(
   telefone: string,
   verificationData: WhatsAppVerificationData
 ): Promise<void> {
+  // ✅ Adicionar headers de autenticação
+  const headers = await getAuthHeaders();
+
   // API POST faz upsert automaticamente (verifica duplicata e atualiza/insere)
   const response = await fetch('/api/whatsapp/verified', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      ...headers,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({
       phone_number: telefone,
       is_verified: verificationData.exists,
@@ -354,7 +361,12 @@ export async function getVerifiedNumber(telefone: string): Promise<{
   verifiedAt?: string | null;
 } | null> {
   try {
-    const response = await fetch(`/api/whatsapp/verified?phone_number=${telefone}`);
+    // ✅ Adicionar headers de autenticação
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`/api/whatsapp/verified?phone_number=${telefone}`, {
+      headers,
+    });
 
     if (!response.ok) {
       if (response.status === 404) {

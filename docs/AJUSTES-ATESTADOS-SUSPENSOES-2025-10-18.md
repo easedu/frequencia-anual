@@ -32,7 +32,11 @@
 ### Correções Adicionais (2025-10-18 - 19:58)
 1. ✅ Removido campo `school_year` inexistente em `suspensions/route.ts` (POST)
 2. ✅ Adicionados campos obrigatórios: `severity`, `decision_by`, `decision_date`, `created_by`
-3. ✅ Adicionados headers de autenticação em `getById()` e `delete()` no service
+3. ✅ Adicionados headers de autenticação em `getById()` e `delete()` no `studentSuspensionsService.ts`
+
+### Correções de Autenticação WhatsApp (2025-10-18 - 20:05)
+4. ✅ Adicionados headers de autenticação em `getVerifiedNumber()` no `whatsappDataService.ts`
+5. ✅ Adicionados headers de autenticação em `saveToVerifiedNumbers()` no `whatsappDataService.ts`
 
 ---
 
