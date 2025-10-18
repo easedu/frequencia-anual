@@ -193,8 +193,8 @@ export function useStudentProfile() {
       startDate: cert.start_date || cert.startDate,
       days: cert.days_covered || cert.days || 1,
       description: cert.diagnosis || cert.doctor_name || 'Sem descrição',
-      // Buscar nome do usuário via JOIN (user_profiles.name)
-      createdBy: cert.user_profiles?.name || cert.submitted_by || cert.createdBy || 'Desconhecido'
+      // Buscar nome do usuário via JOIN (submitter.name)
+      createdBy: cert.submitter?.name || cert.submitted_by || cert.createdBy || 'Desconhecido'
     }));
   }, [atestadosData]);
 

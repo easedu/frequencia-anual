@@ -40,8 +40,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       .from('medical_certificates')
       .select(`
         *,
-        students!inner(student_id, name, class),
-        user_profiles!submitted_by(name)
+        students!inner(student_id, name, class)
       `, { count: 'exact' })
       .order('created_at', { ascending: false });
 
@@ -67,6 +66,25 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     if (error) {
       console.error('[GET /api/medical-certificates] Error:', error);
       return errorResponse('DATABASE_ERROR', 'Erro ao buscar atestados', 500);
+    }
+
+    // Buscar nomes dos usuários (submitted_by) para enriquecer os dados
+    if (data && data.length > 0) {
+      const userIds = [...new Set(data.map((cert: any) => cert.submitted_by).filter(Boolean))];
+
+      if (userIds.length > 0) {
+        const { data: users } = await supabaseAdmin
+          .from('user_profiles')
+          .select('id, name')
+          .in('id', userIds);
+
+        const userMap = new Map((users || []).map((u: any) => [u.id, u.name]));
+
+        // Adicionar nome do usuário aos dados
+        data.forEach((cert: any) => {
+          cert.submitter = { name: userMap.get(cert.submitted_by) || cert.submitted_by };
+        });
+      }
     }
 
     return paginatedResponse(data || [], page, limit, count || 0);
