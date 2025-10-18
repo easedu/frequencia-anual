@@ -176,16 +176,20 @@ export class UserProfilesService {
       };
 
       // Mapear tabela 'users' (schema simplificado) para UserProfile
+      // ✅ Usar metadata.fullRole se disponível (perfil completo), senão mapear do role simplificado
+      const fullRole = user.metadata?.fullRole as UserRole | undefined;
+      const mappedRole = fullRole || this.mapSimpleRoleToUserRole(user.role);
+
       return {
         id: user.id,
         firebaseUid: user.firebase_uid || '',
         fullName: user.name || 'Usuário',
         email: user.email,
         phone: undefined, // Campo não existe na tabela 'users'
-        role: this.mapSimpleRoleToUserRole(user.role),
+        role: mappedRole,
         department: undefined, // Campo não existe
         turmasAssigned: undefined, // Campo não existe
-        isActive: true, // Assume ativo (campo não existe)
+        isActive: user.metadata?.isActive !== undefined ? user.metadata.isActive : true,
         lastLogin: user.last_login_at || undefined,
         notificationPreferences: {
           email: true,
@@ -252,16 +256,20 @@ export class UserProfilesService {
       };
 
       // Usar mesmo mapeamento simplificado
+      // ✅ Usar metadata.fullRole se disponível (perfil completo)
+      const fullRole = user.metadata?.fullRole as UserRole | undefined;
+      const mappedRole = fullRole || this.mapSimpleRoleToUserRole(user.role);
+
       return {
         id: user.id,
         firebaseUid: user.firebase_uid || '',
         fullName: user.name || 'Usuário',
         email: user.email,
         phone: undefined,
-        role: this.mapSimpleRoleToUserRole(user.role),
+        role: mappedRole,
         department: undefined,
         turmasAssigned: undefined,
-        isActive: true,
+        isActive: user.metadata?.isActive !== undefined ? user.metadata.isActive : true,
         lastLogin: user.last_login_at || undefined,
         notificationPreferences: {
           email: true,
@@ -288,11 +296,16 @@ export class UserProfilesService {
   static async create(data: CreateUserProfileData): Promise<UserProfile | null> {
     try {
       // Mapear para schema simplificado da tabela 'users'
+      // ✅ Salvar perfil completo no metadata para não perder informação
       const simpleUserData = {
         firebase_uid: data.firebaseUid,
         email: data.email,
         name: data.fullName,
         role: this.mapUserRoleToSimpleRole(data.role),
+        metadata: {
+          fullRole: data.role, // Salvar perfil completo (ADMIN, SUPER-USER, USER, USER-PCD)
+          isActive: data.isActive !== undefined ? data.isActive : true,
+        },
       };
 
       const response = await fetch('/api/users/create', {
@@ -311,22 +324,21 @@ export class UserProfilesService {
 
       if (error) throw error;
 
-      logger.info('Perfil de usuário criado no Supabase', {
-        firebaseUid: data.firebaseUid,
-        email: data.email,
-      });
-
       // Retornar usando mapeamento simplificado
+      // ✅ Usar metadata.fullRole se disponível (perfil completo)
+      const fullRole = result.metadata?.fullRole as UserRole | undefined;
+      const mappedRole = fullRole || this.mapSimpleRoleToUserRole(result.role);
+
       return {
         id: result.id,
         firebaseUid: result.firebase_uid,
         fullName: result.name || 'Usuário',
         email: result.email,
         phone: undefined,
-        role: this.mapSimpleRoleToUserRole(result.role),
+        role: mappedRole,
         department: undefined,
         turmasAssigned: undefined,
-        isActive: true,
+        isActive: result.metadata?.isActive !== undefined ? result.metadata.isActive : true,
         lastLogin: result.last_login_at || undefined,
         notificationPreferences: {
           email: true,
@@ -347,17 +359,18 @@ export class UserProfilesService {
 
   /**
    * Mapear UserRole do sistema para roles do Supabase ('admin', 'user', 'teacher')
+   * ✅ Agora salva o perfil completo no metadata para não perder informação
    */
   private static mapUserRoleToSimpleRole(userRole: UserRole): 'admin' | 'user' | 'teacher' {
     switch (userRole) {
       case 'ADMIN':
         return 'admin';
       case 'SUPER-USER':
-        return 'admin'; // Super-user tem privilégios de admin
+        return 'admin'; // Super-user tem privilégios de admin (perfil completo em metadata)
       case 'USER':
-        return 'teacher'; // Usuários comuns mapeiam para teacher
+        return 'teacher'; // Usuários comuns mapeiam para teacher (perfil completo em metadata)
       case 'USER-PCD':
-        return 'teacher'; // Usuários PCD também são usuários comuns
+        return 'teacher'; // Usuários PCD também são usuários comuns (perfil completo em metadata)
       default:
         return 'user'; // Fallback
     }
@@ -378,9 +391,22 @@ export class UserProfilesService {
       // Mapear apenas campos que existem na tabela 'users'
       if (updates.fullName) supabaseUpdates.name = updates.fullName;
       if (updates.email) supabaseUpdates.email = updates.email;
-      if (updates.role) supabaseUpdates.role = this.mapUserRoleToSimpleRole(updates.role);
+      if (updates.role) {
+        supabaseUpdates.role = this.mapUserRoleToSimpleRole(updates.role);
 
-      // Ignorar campos não suportados: phone, department, turmas_assigned, is_active, updated_by
+        // ✅ Salvar perfil completo no metadata para não perder informação
+        // Buscar metadata atual e atualizar apenas o fullRole
+        const currentUser = await this.getByFirebaseUid(firebaseUid);
+        const currentMetadata = currentUser?.metadata || {};
+
+        supabaseUpdates.metadata = {
+          ...currentMetadata,
+          fullRole: updates.role, // Salvar perfil completo (ADMIN, SUPER-USER, USER, USER-PCD)
+          isActive: updates.isActive !== undefined ? updates.isActive : (currentMetadata as any).isActive,
+        };
+      }
+
+      // Ignorar campos não suportados: phone, department, turmas_assigned, updated_by
 
       const response = await fetch('/api/users/update', {
         method: 'PUT',
@@ -400,8 +426,6 @@ export class UserProfilesService {
       const { success } = await response.json();
 
       if (!success) throw new Error('Falha ao atualizar usuário');
-
-      logger.info('Perfil de usuário atualizado no Supabase', { firebaseUid });
 
       return true;
     } catch (error) {
@@ -513,15 +537,42 @@ export class UserProfilesService {
   /**
    * Ativar/Desativar usuário
    *
-   * ⚠️ NÃO SUPORTADO: Tabela 'users' não possui campo is_active
-   * Retorna false silenciosamente para não quebrar código existente
+   * ✅ IMPLEMENTADO: Salva no metadata.isActive
    */
   static async setActive(firebaseUid: string, isActive: boolean): Promise<boolean> {
-    logger.warn('setActive não suportado pela tabela users simplificada', {
-      firebaseUid,
-      isActive,
-    });
-    return false;
+    try {
+      // Buscar metadata atual
+      const currentUser = await this.getByFirebaseUid(firebaseUid);
+      const currentMetadata = currentUser?.metadata || {};
+
+      // Atualizar metadata com isActive
+      const updatedMetadata = {
+        ...currentMetadata,
+        isActive,
+      };
+
+      const response = await fetch('/api/users/update-metadata', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firebase_uid: firebaseUid,
+          metadata: updatedMetadata,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const { success } = await response.json();
+
+      return success || false;
+    } catch (error) {
+      logger.error('Erro ao alterar status do usuário', { firebaseUid, isActive }, error as Error);
+      return false;
+    }
   }
 
   /**
@@ -553,28 +604,34 @@ export class UserProfilesService {
         last_login_at: string | null;
       };
 
-      return (data as UserRow[] || []).map((user) => ({
-        id: user.id,
-        firebaseUid: user.firebase_uid || '',
-        fullName: user.name || 'Usuário',
-        email: user.email,
-        phone: undefined,
-        role: this.mapSimpleRoleToUserRole(user.role),
-        department: undefined,
-        turmasAssigned: undefined,
-        isActive: true,
-        lastLogin: user.last_login_at || undefined,
-        notificationPreferences: {
-          email: true,
-          whatsapp: false,
-        },
-        themePreference: user.metadata?.theme || 'light',
-        metadata: user.metadata as UserMetadata | undefined,
-        createdBy: undefined,
-        updatedBy: undefined,
-        createdAt: user.created_at,
-        updatedAt: user.updated_at,
-      }));
+      return (data as UserRow[] || []).map((user) => {
+        // ✅ Usar metadata.fullRole se disponível (perfil completo)
+        const fullRole = user.metadata?.fullRole as UserRole | undefined;
+        const mappedRole = fullRole || this.mapSimpleRoleToUserRole(user.role);
+
+        return {
+          id: user.id,
+          firebaseUid: user.firebase_uid || '',
+          fullName: user.name || 'Usuário',
+          email: user.email,
+          phone: undefined,
+          role: mappedRole,
+          department: undefined,
+          turmasAssigned: undefined,
+          isActive: user.metadata?.isActive !== undefined ? user.metadata.isActive : true,
+          lastLogin: user.last_login_at || undefined,
+          notificationPreferences: {
+            email: true,
+            whatsapp: false,
+          },
+          themePreference: user.metadata?.theme || 'light',
+          metadata: user.metadata as UserMetadata | undefined,
+          createdBy: undefined,
+          updatedBy: undefined,
+          createdAt: user.created_at,
+          updatedAt: user.updated_at,
+        };
+      });
     } catch (error) {
       logger.error('Erro ao listar usuários ativos', {}, error as Error);
       return [];
@@ -610,28 +667,34 @@ export class UserProfilesService {
         last_login_at: string | null;
       };
 
-      return (data as UserRow[] || []).map((user) => ({
-        id: user.id,
-        firebaseUid: user.firebase_uid || '',
-        fullName: user.name || 'Usuário',
-        email: user.email,
-        phone: undefined,
-        role: this.mapSimpleRoleToUserRole(user.role),
-        department: undefined,
-        turmasAssigned: undefined,
-        isActive: true,
-        lastLogin: user.last_login_at || undefined,
-        notificationPreferences: {
-          email: true,
-          whatsapp: false,
-        },
-        themePreference: user.metadata?.theme || 'light',
-        metadata: user.metadata as UserMetadata | undefined,
-        createdBy: undefined,
-        updatedBy: undefined,
-        createdAt: user.created_at,
-        updatedAt: user.updated_at,
-      }));
+      return (data as UserRow[] || []).map((user) => {
+        // ✅ Usar metadata.fullRole se disponível (perfil completo)
+        const fullRole = user.metadata?.fullRole as UserRole | undefined;
+        const mappedRole = fullRole || this.mapSimpleRoleToUserRole(user.role);
+
+        return {
+          id: user.id,
+          firebaseUid: user.firebase_uid || '',
+          fullName: user.name || 'Usuário',
+          email: user.email,
+          phone: undefined,
+          role: mappedRole,
+          department: undefined,
+          turmasAssigned: undefined,
+          isActive: user.metadata?.isActive !== undefined ? user.metadata.isActive : true,
+          lastLogin: user.last_login_at || undefined,
+          notificationPreferences: {
+            email: true,
+            whatsapp: false,
+          },
+          themePreference: user.metadata?.theme || 'light',
+          metadata: user.metadata as UserMetadata | undefined,
+          createdBy: undefined,
+          updatedBy: undefined,
+          createdAt: user.created_at,
+          updatedAt: user.updated_at,
+        };
+      });
     } catch (error) {
       logger.error('Erro ao buscar usuários por função', { role }, error as Error);
       return [];
