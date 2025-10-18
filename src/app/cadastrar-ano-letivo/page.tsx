@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AcademicYearService } from '@/services/supabase/academicYearService';
+import { useAcademicYearComplete, useSaveAcademicYearComplete } from '@/hooks/api';
 import { logger } from '@/utils/logger';
 import {
   padTo2Digits,
@@ -59,64 +59,45 @@ export default function CadastrarAnoLetivoPage() {
     const [cardData, setCardData] = useState<{ [key: number]: BimesterData }>({});
     const [initialData, setInitialData] = useState<{ [key: number]: BimesterData }>({});
 
+    // ✅ Usar hooks da API REST (sem Supabase direto)
+    const { academicYearComplete, loading: loadingData } = useAcademicYearComplete(2025);
+    const { saveComplete, loading: savingData } = useSaveAcademicYearComplete();
+
     // Recebe os dados de cada card
     function handleDataChange(index: number, data: BimesterData) {
         setCardData(prev => ({ ...prev, [index]: data }));
     }
 
-    // Função auxiliar para converter data ISO para DD/MM/YYYY
-    function convertISOtoDDMMYYYY(dateStr: string): string {
-        if (!dateStr) return "";
-
-        // Se já está em DD/MM/YYYY, retorna
-        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-            return dateStr;
-        }
-
-        // Se está em YYYY-MM-DD (ISO), converte
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-            const [year, month, day] = dateStr.split('-');
-            return `${day}/${month}/${year}`;
-        }
-
-        return dateStr;
-    }
-
-    // Consulta os dados salvos no Supabase ao carregar a página
+    // Carregar dados quando o hook retornar
     useEffect(() => {
-        async function fetchData() {
-            try {
-                const data = await AcademicYearService.getAcademicYearComplete(2025);
-
-                if (Object.keys(data).length > 0) {
-                    const newInitialData: { [key: number]: BimesterData } = {};
-                    bimestres.forEach((bim, index) => {
-                        if (data[bim]) {
-                            newInitialData[index] = data[bim];
-                        }
-                    });
-                    setInitialData(newInitialData);
-                    setCardData(newInitialData);
+        if (academicYearComplete && Object.keys(academicYearComplete).length > 0) {
+            const newInitialData: { [key: number]: BimesterData } = {};
+            bimestres.forEach((bim, index) => {
+                if (academicYearComplete[bim as keyof typeof academicYearComplete]) {
+                    newInitialData[index] = academicYearComplete[bim as keyof typeof academicYearComplete];
                 }
-            } catch (error) {
-                logger.error("Erro ao buscar dados do Supabase", error as Error);
-            }
+            });
+            setInitialData(newInitialData);
+            setCardData(newInitialData);
         }
-        fetchData();
-    }, [bimestres]);
+    }, [academicYearComplete, bimestres]);
 
-    // Salva os dados no Supabase
+    // Salva os dados usando hook
     async function handleSave() {
         try {
-            const dataToSave: { [key: string]: BimesterData } = {};
+            const dataToSave: any = {};
             bimestres.forEach((bim, index) => {
                 dataToSave[bim] = cardData[index] || { startDate: "", endDate: "", dates: [] };
             });
 
-            await AcademicYearService.saveAcademicYearComplete(2025, dataToSave);
+            await saveComplete({
+                year: 2025,
+                bimesters: dataToSave
+            });
+
             toast.success("Dados salvos com sucesso!");
         } catch (error) {
-            logger.error("Erro ao salvar dados no Supabase", error as Error);
+            logger.error("Erro ao salvar dados", error as Error);
             toast.error("Erro ao salvar dados. Tente novamente.");
         }
     }
@@ -159,12 +140,14 @@ export default function CadastrarAnoLetivoPage() {
 
                         <button
                             onClick={handleSave}
-                            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 
-                                     text-white rounded-lg hover:from-blue-700 hover:to-blue-800 
-                                     transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                            disabled={savingData}
+                            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700
+                                     text-white rounded-lg hover:from-blue-700 hover:to-blue-800
+                                     transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105
+                                     disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                         >
                             <Save className="w-4 h-4" />
-                            Salvar
+                            {savingData ? 'Salvando...' : 'Salvar'}
                         </button>
                     </div>
                 </div>

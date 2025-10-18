@@ -1,12 +1,10 @@
-import { supabase } from '@/lib/supabaseClient';
 import type { WhatsAppMessageHistory } from '@/types';
 import { logger } from '@/utils/logger';
 
-const TABLE_NAME = 'whatsapp_message_history';
-
 /**
- * Serviço para gerenciar histórico de mensagens WhatsApp enviadas (SUPABASE)
+ * Serviço para gerenciar histórico de mensagens WhatsApp enviadas (API VERSION)
  * Previne duplicatas e rastreia status de envios
+ * Refatorado para usar /api/messages/history
  */
 export class MessageHistoryService {
   /**
@@ -22,31 +20,34 @@ export class MessageHistoryService {
     try {
       const { estudanteId, contatoTelefone, anoReferencia, mesReferencia, quantidadeFaltas } = params;
 
-      const { data, error } = await supabase
-        .from(TABLE_NAME)
-        .select('id')
-        .eq('estudante_id', estudanteId)
-        .eq('contato_telefone', contatoTelefone)
-        .eq('ano_referencia', anoReferencia)
-        .eq('mes_referencia', mesReferencia)
-        .eq('quantidade_faltas', quantidadeFaltas)
-        .limit(1);
+      const queryParams = new URLSearchParams({
+        estudante_id: estudanteId,
+        contato_telefone: contatoTelefone,
+        ano_referencia: anoReferencia.toString(),
+        mes_referencia: mesReferencia.toString(),
+        quantidade_faltas: quantidadeFaltas.toString(),
+        limit: '1'
+      });
 
-      if (error) throw error;
+      const response = await fetch(`/api/messages/history?${queryParams}`);
 
-      if (data && data.length > 0) {
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+
+      const result = await response.json();
+      const wasAlreadySent = result.data && result.data.length > 0;
+
+      if (wasAlreadySent) {
         logger.info('[MessageHistory] Mensagem já enviada anteriormente', {
           estudanteId,
           contatoTelefone,
           anoReferencia,
           mesReferencia,
           quantidadeFaltas,
-          existingRecords: data.length
+          existingRecords: result.data.length
         });
-        return true;
       }
 
-      return false;
+      return wasAlreadySent;
     } catch (error) {
       logger.error('[MessageHistory] Erro ao verificar histórico', error as Error);
       // Em caso de erro, assumir que NÃO foi enviado (fail-safe para enviar)
@@ -55,68 +56,61 @@ export class MessageHistoryService {
   }
 
   /**
-   * Registra envio de mensagem no histórico
+   * Registra envio de mensagem no histórico via API
    */
   static async recordSent(data: Omit<WhatsAppMessageHistory, 'dataPrimeiroEnvio'>): Promise<string | null> {
     try {
-      // Determinar status inicial baseado no sucesso do envio
-      const initialStatus = data.status === 'SUCCESS' ? 'SENT' : 'FAILED';
-      const timestamp = data.sentAt || Date.now();
+      const response = await fetch('/api/messages/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          estudante_id: data.estudanteId,
+          contato_telefone: data.contatoTelefone,
+          ano_referencia: data.anoReferencia,
+          mes_referencia: data.mesReferencia,
+          quantidade_faltas: data.quantidadeFaltas,
+          estudante_nome: data.estudanteNome,
+          contato_nome: data.contatoNome,
+          task_id: data.taskId || null,
+          status: data.status,
+          message_id: data.messageId || null,
+          sent_at: data.sentAt || null,
+          retry_count: data.retryCount || 0,
+          is_dry_run: data.isDryRun || false,
+        }),
+      });
 
-      // Map Firebase field names to Supabase snake_case
-      const historyRecord = {
-        estudante_id: data.estudanteId,
-        contato_telefone: data.contatoTelefone,
-        ano_referencia: data.anoReferencia,
-        mes_referencia: data.mesReferencia,
-        quantidade_faltas: data.quantidadeFaltas,
-        estudante_nome: data.estudanteNome,
-        contato_nome: data.contatoNome,
-        task_id: data.taskId || null,
-        status: data.status,  // LEGACY: SUCCESS/FAILED/NO_CONTACT
-        message_id: data.messageId || null,
-        sent_at: data.sentAt || null,
-        retry_count: data.retryCount || 0,
-        is_dry_run: data.isDryRun || false,
-        // 🆕 Novos campos de rastreamento de status
-        current_status: initialStatus,
-        status_history: [
-          {
-            status: initialStatus,
-            timestamp,
-            source: 'api'
-          }
-        ],
-        updated_at: new Date(timestamp).toISOString(),
-        // data_primeiro_envio será preenchido automaticamente pelo Supabase (default now())
-      };
+      if (response.status === 409) {
+        logger.warn('[MessageHistory] Duplicata detectada pela API (409)', {
+          estudanteId: data.estudanteId,
+          contatoTelefone: data.contatoTelefone
+        });
+        return null;
+      }
 
-      const { data: inserted, error} = await (supabase
-        .from(TABLE_NAME)
-        .insert(historyRecord as any)
-        .select('id')
-        .single() as any);
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      if (error) throw error;
+      const result = await response.json();
 
-      logger.info('[MessageHistory] Registro criado com sucesso', {
-        docId: inserted?.id,
+      logger.info('[MessageHistory] Registro criado com sucesso via API', {
+        docId: result.data?.id,
         estudanteId: data.estudanteId,
         contatoTelefone: data.contatoTelefone,
         status: data.status,
-        currentStatus: initialStatus,
         messageId: data.messageId
       });
 
-      return inserted?.id || null;
+      return result.data?.id || null;
     } catch (error) {
-      logger.error('[MessageHistory] Erro ao criar registro', error as Error);
+      logger.error('[MessageHistory] Erro ao criar registro via API', error as Error);
       return null;
     }
   }
 
   /**
-   * Busca todos os registros de um estudante no mês/ano
+   * Busca todos os registros de um estudante no mês/ano via API
    */
   static async getStudentHistory(params: {
     estudanteId: string;
@@ -126,17 +120,20 @@ export class MessageHistoryService {
     try {
       const { estudanteId, anoReferencia, mesReferencia } = params;
 
-      const { data, error } = await (supabase
-        .from(TABLE_NAME)
-        .select('*')
-        .eq('estudante_id', estudanteId)
-        .eq('ano_referencia', anoReferencia)
-        .eq('mes_referencia', mesReferencia) as any);
+      const queryParams = new URLSearchParams({
+        estudante_id: estudanteId,
+        ano_referencia: anoReferencia.toString(),
+        mes_referencia: mesReferencia.toString()
+      });
 
-      if (error) throw error;
+      const response = await fetch(`/api/messages/history?${queryParams}`);
 
-      // Map Supabase snake_case back to camelCase
-      return (data || []).map((record: any) => ({
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+
+      const result = await response.json();
+
+      // Map API response to interface
+      return (result.data || []).map((record: any) => ({
         estudanteId: record.estudante_id,
         contatoTelefone: record.contato_telefone,
         anoReferencia: record.ano_referencia,
@@ -173,22 +170,27 @@ export class MessageHistoryService {
     try {
       const { anoReferencia, mesReferencia } = params;
 
-      const { data, error } = await (supabase
-        .from(TABLE_NAME)
-        .select('status')
-        .eq('ano_referencia', anoReferencia)
-        .eq('mes_referencia', mesReferencia) as any);
+      const queryParams = new URLSearchParams({
+        ano_referencia: anoReferencia.toString(),
+        mes_referencia: mesReferencia.toString(),
+        limit: '9999' // Precisamos de todos para calcular stats
+      });
 
-      if (error) throw error;
+      const response = await fetch(`/api/messages/history?${queryParams}`);
+
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+
+      const result = await response.json();
+      const records = result.data || [];
 
       const stats = {
-        total: data?.length || 0,
+        total: records.length,
         success: 0,
         failed: 0,
         noContact: 0
       };
 
-      (data || []).forEach((record: any) => {
+      records.forEach((record: WhatsAppMessageHistory) => {
         if (record.status === 'SUCCESS') stats.success++;
         else if (record.status === 'FAILED') stats.failed++;
         else if (record.status === 'NO_CONTACT') stats.noContact++;

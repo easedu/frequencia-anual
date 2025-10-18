@@ -1,26 +1,31 @@
 /**
- * Supabase Service: Medical Certificates
+ * API Service: Medical Certificates
+ *
+ * @deprecated Use hooks from @/hooks/api/useMedicalCertificates instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useMedicalCertificates() - Listar atestados
+ * - useCreateMedicalCertificate() - Criar atestado
+ * - useUpdateMedicalCertificate() - Atualizar atestado
+ * - useDeleteMedicalCertificate() - Deletar atestado
  *
  * Gerencia atestados médicos dos estudantes.
- * Substitui: collection(db, 'students', studentId, 'medicalCertificates')
- *
- * IMPORTANTE: Sincronizado com schema SQL-CRIAR-TABELAS-FALTANTES.sql
+ * Refatorado para usar /api/medical-certificates (Sprint 2)
  */
 
-import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 import { resolveToInternalId } from '@/utils/studentIdResolver';
 
 /**
- * Interface do atestado (Supabase) - Sincronizada com schema real
- * Ver: docs/archives/sql/SQL-CRIAR-TABELAS-FALTANTES.sql
+ * Interface do atestado (API) - Sincronizada com schema real
  */
-interface SupabaseMedicalCertificate {
+interface ApiMedicalCertificate {
   id: string;
   student_id: string;
   start_date: string;
   end_date: string;
-  days_covered: number; // GENERATED ALWAYS AS (end_date - start_date + 1) STORED
+  days_covered: number;
   cid_code: string | null;
   diagnosis: string | null;
   doctor_name: string | null;
@@ -40,7 +45,7 @@ interface SupabaseMedicalCertificate {
 }
 
 /**
- * Interface do atestado (Aplicação) - mantém compatibilidade com código existente
+ * Interface do atestado (Aplicação)
  */
 export interface MedicalCertificate {
   id: string;
@@ -70,26 +75,24 @@ export interface MedicalCertificate {
  * Dados para criar atestado
  */
 export interface CreateMedicalCertificateData {
-  studentId: string; // Pode ser UUID externo ou interno (resolvido automaticamente)
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
+  studentId: string;
+  startDate: string;
+  endDate: string;
   cidCode?: string;
   diagnosis?: string;
   doctorName?: string;
   doctorCrm?: string;
   documentUrl?: string;
   documentType?: string;
-  submittedDate?: string; // YYYY-MM-DD (default: hoje)
+  submittedDate?: string;
   createdBy: string;
 }
 
 export class MedicalCertificatesService {
   /**
-   * Converter registro do Supabase para formato da aplicação
+   * Converter registro da API para formato da aplicação
    */
-  private static mapSupabaseToCertificate(
-    record: SupabaseMedicalCertificate
-  ): MedicalCertificate {
+  private static mapApiToCertificate(record: ApiMedicalCertificate): MedicalCertificate {
     return {
       id: record.id,
       studentId: record.student_id,
@@ -116,31 +119,21 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Buscar atestados de um estudante
-   *
-   * @param studentId - Firebase UUID (student.student_id)
-   * @returns Array de atestados médicos
+   * Buscar atestados de um estudante via API
    */
   static async getByStudentId(studentId: string): Promise<MedicalCertificate[]> {
     try {
-      // Resolver Firebase UUID → Internal ID (com cache)
       const internalId = await resolveToInternalId(studentId);
-
       if (!internalId) {
         logger.warn('Estudante não encontrado', { studentId });
         return [];
       }
 
-      // Buscar atestados com Internal ID
-      const { data, error } = await supabase
-        .from('medical_certificates')
-        .select('*')
-        .eq('student_id', internalId)
-        .order('start_date', { ascending: false });
+      const response = await fetch(`/api/medical-certificates?studentId=${internalId}`);
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      if (error) throw error;
-
-      return (data || []).map(this.mapSupabaseToCertificate);
+      const result = await response.json();
+      return (result.data || []).map(this.mapApiToCertificate);
     } catch (error) {
       logger.error('Erro ao buscar atestados do estudante', { studentId }, error as Error);
       return [];
@@ -148,22 +141,16 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Buscar atestado por ID
+   * Buscar atestado por ID via API
    */
   static async getById(certificateId: string): Promise<MedicalCertificate | null> {
     try {
-      const { data, error } = await supabase
-        .from('medical_certificates')
-        .select('*')
-        .eq('id', certificateId)
-        .maybeSingle();
+      const response = await fetch(`/api/medical-certificates/${certificateId}`);
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      if (error) {
-        if (error.code === 'PGRST116') return null;
-        throw error;
-      }
-
-      return data ? this.mapSupabaseToCertificate(data) : null;
+      const result = await response.json();
+      return this.mapApiToCertificate(result.data);
     } catch (error) {
       logger.error('Erro ao buscar atestado', { certificateId }, error as Error);
       return null;
@@ -171,60 +158,46 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Criar novo atestado
-   *
-   * @param data - Dados do atestado (studentId é Firebase UUID)
-   * @returns Atestado criado ou null se houver erro
+   * Criar novo atestado via API
    */
   static async create(data: CreateMedicalCertificateData): Promise<MedicalCertificate | null> {
     try {
-      // 1. Resolver Firebase UUID → Internal ID (com cache)
       const internalStudentId = await resolveToInternalId(data.studentId);
-
       if (!internalStudentId) {
         throw new Error(`Estudante não encontrado com ID: ${data.studentId}`);
       }
 
-      // 2. Preparar dados para inserção (apenas campos que existem no schema)
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-
-      // ⚠️ IMPORTANTE: CHECK constraint exige submitted_date <= start_date
-      // Se o atestado é retroativo (start_date no passado), usar start_date como submitted_date
+      const today = new Date().toISOString().split('T')[0];
       let submittedDate = data.submittedDate || today;
       if (submittedDate > data.startDate) {
         submittedDate = data.startDate;
       }
 
-      const supabaseData = {
-        student_id: internalStudentId,
-        start_date: data.startDate,
-        end_date: data.endDate,
-        // days_covered é GENERATED ALWAYS - não podemos passar
-        cid_code: data.cidCode || null,
-        diagnosis: data.diagnosis || null,
-        doctor_name: data.doctorName || null,
-        doctor_crm: data.doctorCrm || null,
-        document_url: data.documentUrl || null,
-        document_type: data.documentType || null,
-        submitted_date: submittedDate, // ✅ Sempre <= start_date
-        submitted_by: data.createdBy,
-        status: 'PENDING' as const,
-        created_by: data.createdBy,
-      };
+      const response = await fetch('/api/medical-certificates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: internalStudentId,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          cidCode: data.cidCode || null,
+          diagnosis: data.diagnosis || null,
+          doctorName: data.doctorName || null,
+          doctorCrm: data.doctorCrm || null,
+          documentUrl: data.documentUrl || null,
+          documentType: data.documentType || null,
+          submittedDate,
+          submittedBy: data.createdBy,
+        }),
+      });
 
-      // 3. Inserir no Supabase
-      const { data: result, error } = await (supabase
-        .from('medical_certificates') as any)
-        .insert(supabaseData)
-        .select()
-        .single();
-
-      if (error) {
-        logger.error('Erro do Supabase ao inserir atestado', { error, supabaseData });
-        throw error;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(`API returned ${response.status}: ${errorData.error || 'Failed'}`);
       }
 
-      return this.mapSupabaseToCertificate(result);
+      const result = await response.json();
+      return this.mapApiToCertificate(result.data);
     } catch (error) {
       logger.error('Erro ao criar atestado', data, error as Error);
       throw error;
@@ -232,27 +205,22 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Aprovar atestado (muda status de PENDING para APPROVED)
+   * Aprovar atestado via API
    */
-  static async approve(
-    certificateId: string,
-    reviewedBy: string,
-    reviewNotes?: string
-  ): Promise<boolean> {
+  static async approve(certificateId: string, reviewedBy: string, reviewNotes?: string): Promise<boolean> {
     try {
-      const { error } = await (supabase.from('medical_certificates') as any)
-        .update({
+      const response = await fetch(`/api/medical-certificates/${certificateId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           status: 'APPROVED',
-          reviewed_by: reviewedBy,
-          reviewed_at: new Date().toISOString(),
-          review_notes: reviewNotes || null,
-        })
-        .eq('id', certificateId);
+          reviewedBy,
+          reviewNotes: reviewNotes || null,
+        }),
+      });
 
-      if (error) throw error;
-
-      logger.info('Atestado aprovado no Supabase', { certificateId, reviewedBy });
-
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+      logger.info('Atestado aprovado via API', { certificateId, reviewedBy });
       return true;
     } catch (error) {
       logger.error('Erro ao aprovar atestado', { certificateId }, error as Error);
@@ -261,27 +229,22 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Rejeitar atestado (muda status de PENDING para REJECTED)
+   * Rejeitar atestado via API
    */
-  static async reject(
-    certificateId: string,
-    reviewedBy: string,
-    reviewNotes: string
-  ): Promise<boolean> {
+  static async reject(certificateId: string, reviewedBy: string, reviewNotes: string): Promise<boolean> {
     try {
-      const { error } = await (supabase.from('medical_certificates') as any)
-        .update({
+      const response = await fetch(`/api/medical-certificates/${certificateId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           status: 'REJECTED',
-          reviewed_by: reviewedBy,
-          reviewed_at: new Date().toISOString(),
-          review_notes: reviewNotes,
-        })
-        .eq('id', certificateId);
+          reviewedBy,
+          reviewNotes,
+        }),
+      });
 
-      if (error) throw error;
-
-      logger.info('Atestado rejeitado no Supabase', { certificateId, reviewedBy });
-
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+      logger.info('Atestado rejeitado via API', { certificateId, reviewedBy });
       return true;
     } catch (error) {
       logger.error('Erro ao rejeitar atestado', { certificateId }, error as Error);
@@ -290,33 +253,28 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Atualizar atestado
+   * Atualizar atestado via API
    */
-  static async update(
-    certificateId: string,
-    updates: Partial<CreateMedicalCertificateData>
-  ): Promise<boolean> {
+  static async update(certificateId: string, updates: Partial<CreateMedicalCertificateData>): Promise<boolean> {
     try {
-      const supabaseUpdates: any = {};
+      const apiUpdates: any = {};
+      if (updates.startDate) apiUpdates.startDate = updates.startDate;
+      if (updates.endDate) apiUpdates.endDate = updates.endDate;
+      if (updates.cidCode !== undefined) apiUpdates.cidCode = updates.cidCode || null;
+      if (updates.diagnosis !== undefined) apiUpdates.diagnosis = updates.diagnosis || null;
+      if (updates.doctorName !== undefined) apiUpdates.doctorName = updates.doctorName || null;
+      if (updates.doctorCrm !== undefined) apiUpdates.doctorCrm = updates.doctorCrm || null;
+      if (updates.documentUrl !== undefined) apiUpdates.documentUrl = updates.documentUrl || null;
+      if (updates.documentType !== undefined) apiUpdates.documentType = updates.documentType || null;
 
-      if (updates.startDate) supabaseUpdates.start_date = updates.startDate;
-      if (updates.endDate) supabaseUpdates.end_date = updates.endDate;
-      // days_covered é recalculado automaticamente
-      if (updates.cidCode !== undefined) supabaseUpdates.cid_code = updates.cidCode || null;
-      if (updates.diagnosis !== undefined) supabaseUpdates.diagnosis = updates.diagnosis || null;
-      if (updates.doctorName !== undefined) supabaseUpdates.doctor_name = updates.doctorName || null;
-      if (updates.doctorCrm !== undefined) supabaseUpdates.doctor_crm = updates.doctorCrm || null;
-      if (updates.documentUrl !== undefined) supabaseUpdates.document_url = updates.documentUrl || null;
-      if (updates.documentType !== undefined) supabaseUpdates.document_type = updates.documentType || null;
+      const response = await fetch(`/api/medical-certificates/${certificateId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(apiUpdates),
+      });
 
-      const { error } = await (supabase.from('medical_certificates') as any)
-        .update(supabaseUpdates)
-        .eq('id', certificateId);
-
-      if (error) throw error;
-
-      logger.info('Atestado atualizado no Supabase', { certificateId });
-
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+      logger.info('Atestado atualizado via API', { certificateId });
       return true;
     } catch (error) {
       logger.error('Erro ao atualizar atestado', { certificateId }, error as Error);
@@ -325,19 +283,16 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Deletar atestado
+   * Deletar atestado via API
    */
   static async delete(certificateId: string): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('medical_certificates')
-        .delete()
-        .eq('id', certificateId);
+      const response = await fetch(`/api/medical-certificates/${certificateId}`, {
+        method: 'DELETE',
+      });
 
-      if (error) throw error;
-
-      logger.info('Atestado deletado do Supabase', { certificateId });
-
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+      logger.info('Atestado deletado via API', { certificateId });
       return true;
     } catch (error) {
       logger.error('Erro ao deletar atestado', { certificateId }, error as Error);
@@ -346,20 +301,15 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Buscar atestados que cobrem uma data específica
+   * Buscar atestados que cobrem uma data específica via API
    */
   static async getByDate(studentId: string, date: string): Promise<MedicalCertificate[]> {
     try {
-      const { data, error } = await supabase
-        .from('medical_certificates')
-        .select('*')
-        .eq('student_id', studentId)
-        .lte('start_date', date)
-        .gte('end_date', date);
+      const response = await fetch(`/api/medical-certificates?studentId=${studentId}&date=${date}`);
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      if (error) throw error;
-
-      return (data || []).map(this.mapSupabaseToCertificate);
+      const result = await response.json();
+      return (result.data || []).map(this.mapApiToCertificate);
     } catch (error) {
       logger.error('Erro ao buscar atestados por data', { studentId, date }, error as Error);
       return [];
@@ -367,19 +317,15 @@ export class MedicalCertificatesService {
   }
 
   /**
-   * Buscar atestados pendentes de revisão
+   * Buscar atestados pendentes de revisão via API
    */
   static async getPending(): Promise<MedicalCertificate[]> {
     try {
-      const { data, error } = await supabase
-        .from('medical_certificates')
-        .select('*')
-        .eq('status', 'PENDING')
-        .order('submitted_date', { ascending: false });
+      const response = await fetch('/api/medical-certificates?status=PENDING');
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      if (error) throw error;
-
-      return (data || []).map(this.mapSupabaseToCertificate);
+      const result = await response.json();
+      return (result.data || []).map(this.mapApiToCertificate);
     } catch (error) {
       logger.error('Erro ao buscar atestados pendentes', error as Error);
       return [];

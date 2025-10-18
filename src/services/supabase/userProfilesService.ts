@@ -1,9 +1,18 @@
 /**
- * Supabase Service: User Profiles
+ * API Service: User Profiles
+ *
+ * @deprecated Use hooks from @/hooks/api/useUsers instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useUsers() - Listar usuários
+ * - useCreateUser() - Criar usuário
+ * - useUpdateUser() - Atualizar usuário
+ * - useDeleteUser() - Deletar usuário
  *
  * Gerencia perfis de usuários do sistema.
- * ATUALIZADO: Agora usa API Routes para evitar CORS
- * Todas as requisições passam pelo servidor Next.js
+ * Refatorado para usar /api/users (Sprint 2)
+ * Todas as requisições passam pelo servidor Next.js via API Routes
  */
 
 import { logger } from '@/utils/logger';
@@ -402,19 +411,26 @@ export class UserProfilesService {
   }
 
   /**
-   * Atualizar último login
+   * Atualizar último login via API
    */
   static async updateLastLogin(firebaseUid: string): Promise<boolean> {
     try {
-      const { error } = await (supabase.from('users') as any)
-        .update({
-          last_login_at: new Date().toISOString(),
-        })
-        .eq('firebase_uid', firebaseUid);
+      const response = await fetch('/api/users/update-last-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firebase_uid: firebaseUid,
+        }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-      return true;
+      const { success } = await response.json();
+      return success || false;
     } catch (error) {
       logger.error('Erro ao atualizar último login', { firebaseUid }, error as Error);
       return false;
@@ -422,7 +438,7 @@ export class UserProfilesService {
   }
 
   /**
-   * Atualizar metadados do usuário (favoritos, tema, etc)
+   * Atualizar metadados do usuário (favoritos, tema, etc) via API
    *
    * NOVO: Usa campo metadata (JSONB) para armazenar preferências
    */
@@ -431,7 +447,7 @@ export class UserProfilesService {
     metadata: Partial<UserMetadata>
   ): Promise<boolean> {
     try {
-      // Buscar metadados atuais
+      // Buscar metadados atuais via API
       const currentUser = await this.getByFirebaseUid(firebaseUid);
       const currentMetadata = currentUser?.metadata || {};
 
@@ -441,15 +457,23 @@ export class UserProfilesService {
         ...metadata,
       };
 
-      const { error } = await (supabase.from('users') as any)
-        .update({
+      const response = await fetch('/api/users/update-metadata', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firebase_uid: firebaseUid,
           metadata: updatedMetadata,
-        })
-        .eq('firebase_uid', firebaseUid);
+        }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-      return true;
+      const { success } = await response.json();
+      return success || false;
     } catch (error) {
       logger.error('Erro ao atualizar metadados', { firebaseUid }, error as Error);
       return false;
@@ -558,17 +582,19 @@ export class UserProfilesService {
   }
 
   /**
-   * Listar usuários por função
+   * Listar usuários por função via API
    */
   static async getByRole(role: UserRole): Promise<UserProfile[]> {
     try {
       const simpleRole = this.mapUserRoleToSimpleRole(role);
 
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('role', simpleRole)
-        .order('name', { ascending: true });
+      const response = await fetch(`/api/users/by-role?role=${simpleRole}`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const { data, error } = await response.json();
 
       if (error) throw error;
 

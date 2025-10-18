@@ -1,15 +1,15 @@
 /**
- * Hook para buscar faltas de um estudante específico (VERSÃO SUPABASE)
+ * Hook para buscar faltas de um estudante específico
  * Por bimestre, com opção de excluir justificadas
  *
- * 🔧 MIGRADO DO FIREBASE PARA SUPABASE
- * - Usa AbsenceService com paginação
+ * ✅ SPRINT 4 - FASE 6: Migrado para API REST
+ * - Usa useAbsences da API REST
  * - Campos Supabase nativos (absence_date, is_justified)
  * - Performance otimizada
  */
 
-import { useState, useCallback, useEffect } from 'react';
-import { AbsenceService } from '@/services/supabase/absenceService';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useAbsences } from '@/hooks/api';
 import { logger } from '@/utils/logger';
 import { useBimesterPeriods } from './useBimesterPeriods';
 
@@ -85,123 +85,100 @@ export function useStudentAbsences(
 ): UseStudentAbsencesReturn {
   const { excludeJustified = false } = options;
 
-  const [absences, setAbsences] = useState<StudentAbsencesByBimester>({
-    b1: [],
-    b2: [],
-    b3: [],
-    b4: [],
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-
   const { bimesterDates } = useBimesterPeriods();
 
-  const fetchAbsences = useCallback(async () => {
-    if (!estudanteId) {
-      setAbsences({ b1: [], b2: [], b3: [], b4: [] });
-      return;
+  // ✅ MIGRADO: Usar hook da API REST
+  const {
+    absences: absenceRecords,
+    loading,
+    error: apiError,
+    refetch
+  } = useAbsences(estudanteId ? { estudanteId } : undefined);
+
+  // Processar faltas: agrupar por bimestre usando useMemo
+  const absences = useMemo(() => {
+    if (!estudanteId || !absenceRecords.length) {
+      return { b1: [], b2: [], b3: [], b4: [] };
     }
 
-    try {
-      setLoading(true);
-      setError(null);
+    // Filtrar justificadas se necessário
+    const filteredAbsences = excludeJustified
+      ? absenceRecords.filter(record => !record.is_justified)
+      : absenceRecords;
 
-      // 🔧 SUPABASE: Buscar faltas do estudante via AbsenceService
-      // AbsenceService já retorna campos Supabase (absence_date, is_justified)
-      const absenceRecords = await AbsenceService.getStudentAbsences(estudanteId);
+    // Agrupar por bimestre
+    const absencesByBimester: StudentAbsencesByBimester = {
+      b1: [],
+      b2: [],
+      b3: [],
+      b4: [],
+    };
 
-      // Filtrar justificadas se necessário (suporta ambos os campos)
-      const filteredAbsences = excludeJustified
-        ? absenceRecords.filter(record => !(record.is_justified ?? record.justified ?? false))
-        : absenceRecords;
+    filteredAbsences.forEach(record => {
+      const dateStr = record.absence_date;
+      if (!dateStr) return;
 
-      // Agrupar por bimestre
-      const absencesByBimester: StudentAbsencesByBimester = {
-        b1: [],
-        b2: [],
-        b3: [],
-        b4: [],
-      };
+      const date = parseFlexibleDate(dateStr);
+      if (!date) return;
 
-      filteredAbsences.forEach(record => {
-        // Suporta ambos os campos (Supabase e Firebase legacy)
-        const dateStr = record.absence_date ?? record.data;
-        if (!dateStr) return;
+      // Verificar qual bimestre
+      for (let bimNum = 1; bimNum <= 4; bimNum++) {
+        const bimester = bimesterDates[bimNum];
+        if (!bimester) continue;
 
-        const date = parseFlexibleDate(dateStr);
-        if (!date) return;
+        const startDate = parseFlexibleDate(bimester.start);
+        const endDate = parseFlexibleDate(bimester.end);
 
-        // Verificar qual bimestre
-        for (let bimNum = 1; bimNum <= 4; bimNum++) {
-          const bimester = bimesterDates[bimNum];
-          if (!bimester) continue;
+        if (startDate && endDate && date >= startDate && date <= endDate) {
+          const formattedDate = formatDateBR(date);
 
-          const startDate = parseFlexibleDate(bimester.start);
-          const endDate = parseFlexibleDate(bimester.end);
+          if (bimNum === 1) absencesByBimester.b1.push(formattedDate);
+          else if (bimNum === 2) absencesByBimester.b2.push(formattedDate);
+          else if (bimNum === 3) absencesByBimester.b3.push(formattedDate);
+          else if (bimNum === 4) absencesByBimester.b4.push(formattedDate);
 
-          if (startDate && endDate && date >= startDate && date <= endDate) {
-            const formattedDate = formatDateBR(date);
-
-            if (bimNum === 1) absencesByBimester.b1.push(formattedDate);
-            else if (bimNum === 2) absencesByBimester.b2.push(formattedDate);
-            else if (bimNum === 3) absencesByBimester.b3.push(formattedDate);
-            else if (bimNum === 4) absencesByBimester.b4.push(formattedDate);
-
-            break; // Falta pertence apenas a um bimestre
-          }
+          break; // Falta pertence apenas a um bimestre
         }
+      }
+    });
+
+    // Ordenar datas dentro de cada bimestre
+    const sortDates = (dates: string[]) =>
+      dates.sort((a, b) => {
+        const dateA = parseFlexibleDate(a);
+        const dateB = parseFlexibleDate(b);
+        if (!dateA || !dateB) return 0;
+        return dateA.getTime() - dateB.getTime();
       });
 
-      // Ordenar datas dentro de cada bimestre
-      const sortDates = (dates: string[]) =>
-        dates.sort((a, b) => {
-          const dateA = parseFlexibleDate(a);
-          const dateB = parseFlexibleDate(b);
-          if (!dateA || !dateB) return 0;
-          return dateA.getTime() - dateB.getTime();
-        });
+    absencesByBimester.b1 = sortDates(absencesByBimester.b1);
+    absencesByBimester.b2 = sortDates(absencesByBimester.b2);
+    absencesByBimester.b3 = sortDates(absencesByBimester.b3);
+    absencesByBimester.b4 = sortDates(absencesByBimester.b4);
 
-      absencesByBimester.b1 = sortDates(absencesByBimester.b1);
-      absencesByBimester.b2 = sortDates(absencesByBimester.b2);
-      absencesByBimester.b3 = sortDates(absencesByBimester.b3);
-      absencesByBimester.b4 = sortDates(absencesByBimester.b4);
+    const totalAbsences =
+      absencesByBimester.b1.length +
+      absencesByBimester.b2.length +
+      absencesByBimester.b3.length +
+      absencesByBimester.b4.length;
 
-      setAbsences(absencesByBimester);
+    logger.info(`Faltas do estudante processadas (API REST)`, {
+      estudanteId,
+      totalAbsences,
+      b1: absencesByBimester.b1.length,
+      b2: absencesByBimester.b2.length,
+      b3: absencesByBimester.b3.length,
+      b4: absencesByBimester.b4.length,
+      excludeJustified,
+    });
 
-      const totalAbsences =
-        absencesByBimester.b1.length +
-        absencesByBimester.b2.length +
-        absencesByBimester.b3.length +
-        absencesByBimester.b4.length;
-
-      logger.info(`Faltas do estudante carregadas (Supabase)`, {
-        estudanteId,
-        totalAbsences,
-        b1: absencesByBimester.b1.length,
-        b2: absencesByBimester.b2.length,
-        b3: absencesByBimester.b3.length,
-        b4: absencesByBimester.b4.length,
-        excludeJustified,
-      });
-    } catch (err) {
-      const error = err as Error;
-      logger.error('Erro ao buscar faltas do estudante (Supabase)', { estudanteId }, error);
-      setError(error);
-      setAbsences({ b1: [], b2: [], b3: [], b4: [] });
-    } finally {
-      setLoading(false);
-    }
-  }, [estudanteId, excludeJustified, bimesterDates]);
-
-  // Buscar faltas quando estudanteId mudar
-  useEffect(() => {
-    fetchAbsences();
-  }, [fetchAbsences]);
+    return absencesByBimester;
+  }, [estudanteId, absenceRecords, excludeJustified, bimesterDates]);
 
   return {
     absences,
     loading,
-    error,
-    refresh: fetchAbsences,
+    error: apiError ? new Error(apiError) : null,
+    refresh: refetch,
   };
 }

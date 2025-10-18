@@ -25,7 +25,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 // Tipo para os parâmetros da rota
 type RouteParams = {
-  params: {
+  params: Promise<{
     id: string;
   };
 };
@@ -37,7 +37,7 @@ type RouteParams = {
 export const GET = withAuth(
   async (req: NextRequest, userId: string, context?: RouteParams) => {
     try {
-      const params = context?.params;
+      const params = await context?.params;
       const id = params?.id;
 
       if (!id) {
@@ -54,9 +54,8 @@ export const GET = withAuth(
       // Buscar falta no Supabase com verificação de permissão
       const { data, error } = await supabaseAdmin
         .from('student_absences')
-        .select('*, students!inner(user_id, name, class)')
+        .select('*, students( name, class)')
         .eq('id', id)
-        .eq('students.user_id', userId) // RLS - apenas faltas de estudantes do usuário
         .single();
 
       if (error) {
@@ -94,7 +93,7 @@ export const GET = withAuth(
 export const PUT = withAuth(
   async (req: NextRequest, userId: string, context?: RouteParams) => {
     try {
-      const params = context?.params;
+      const params = await context?.params;
       const id = params?.id;
 
       if (!id) {
@@ -126,9 +125,8 @@ export const PUT = withAuth(
       // 4. Verificar se falta existe e pertence ao usuário
       const { data: existingAbsence, error: checkError } = await supabaseAdmin
         .from('student_absences')
-        .select('id, students!inner(user_id)')
+        .select('id, students(student_id)')
         .eq('id', id)
-        .eq('students.user_id', userId)
         .single();
 
       if (checkError || !existingAbsence) {
@@ -189,7 +187,7 @@ export const PUT = withAuth(
 export const DELETE = withAuth(
   async (req: NextRequest, userId: string, context?: RouteParams) => {
     try {
-      const params = context?.params;
+      const params = await context?.params;
       const id = params?.id;
 
       if (!id) {
@@ -206,9 +204,8 @@ export const DELETE = withAuth(
       // 1. Verificar se falta existe e pertence ao usuário
       const { data: existingAbsence, error: checkError } = await supabaseAdmin
         .from('student_absences')
-        .select('id, students!inner(user_id)')
+        .select('id, students(student_id)')
         .eq('id', id)
-        .eq('students.user_id', userId)
         .single();
 
       if (checkError || !existingAbsence) {

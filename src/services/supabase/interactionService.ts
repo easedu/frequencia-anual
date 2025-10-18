@@ -1,6 +1,15 @@
 /**
  * Supabase Service: Family Interactions (Interações Familiares)
  *
+ * @deprecated Use hooks from @/hooks/api/useInteractions instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useInteractions() - Listar interações
+ * - useCreateInteraction() - Criar interação
+ * - useUpdateInteraction() - Atualizar interação
+ * - useDeleteInteraction() - Deletar interação
+ *
  * Este serviço gerencia as interações com as famílias dos estudantes
  * (contatos telefônicos, visitas, reuniões, etc.)
  */

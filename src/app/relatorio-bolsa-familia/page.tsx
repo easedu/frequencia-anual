@@ -11,8 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FullPageSkeleton } from "@/components/shared/LoadingSkeletons";
 import { EmptySearchState } from "@/components/shared";
-import { AbsenceControlService } from "@/services/supabase/absenceControlService";
-import { AbsenceService } from "@/services/supabase/absenceService";
+import { useAbsenceControls, useAbsences } from "@/hooks/api";
 import { logger } from "@/utils/logger";
 import { useStudents } from "@/hooks/useStudents";
 import {
@@ -72,9 +71,7 @@ const months = [
 
 export default function RelatorioFaltasPage() {
     const [students, setStudents] = useState<Estudante[]>([]);
-    const [absenceRecords, setAbsenceRecords] = useState<AbsenceRecord[]>([]);
     const [loadingStudents, setLoadingStudents] = useState<boolean>(true);
-    const [loadingAbsences, setLoadingAbsences] = useState<boolean>(true);
     const [searchFilter, setSearchFilter] = useState<string>("");
     const debouncedSearchFilter = useDebounce(searchFilter, 500);
     const [currentPage, setCurrentPage] = useState<number>(1);
@@ -87,6 +84,10 @@ export default function RelatorioFaltasPage() {
     const [excludeJustified, setExcludeJustified] = useState<boolean>(true);
     const [showOnlyLowFrequency, setShowOnlyLowFrequency] = useState<boolean>(false);
     const [diasLetivos, setDiasLetivos] = useState<{ [key: number]: number }>({});
+
+    // ✅ Usar hooks da API REST (sem Supabase direto)
+    const { controls: absenceControls, loading: loadingAbsenceControls } = useAbsenceControls({ academic_year: 2025 });
+    const { absences, loading: loadingAbsences } = useAbsences({});
 
     const parseDate = (dateStr: string): Date | null => {
         if (!dateStr) return null;
@@ -108,11 +109,13 @@ export default function RelatorioFaltasPage() {
         return null;
     };
 
-    const calculateDiasLetivos = useCallback(async () => {
-        try {
-            // Buscar dados do ano letivo via Supabase
-            const absenceControlData = await AbsenceControlService.getByYear(2025);
+    // Calcular dias letivos quando absenceControls mudar
+    useEffect(() => {
+        if (!absenceControls || absenceControls.length === 0) {
+            return;
+        }
 
+        try {
             const diasPorMes: { [key: number]: number } = {};
 
             months.forEach((_, index) => {
@@ -120,10 +123,10 @@ export default function RelatorioFaltasPage() {
             });
 
             // Calcular dias letivos por mês baseado nos bimestres
-            absenceControlData.forEach((bimester) => {
-                if (bimester.startDate && bimester.endDate) {
-                    const startDate = new Date(bimester.startDate);
-                    const endDate = new Date(bimester.endDate);
+            absenceControls.forEach((control: any) => {
+                if (control.start_date && control.end_date) {
+                    const startDate = new Date(control.start_date);
+                    const endDate = new Date(control.end_date);
 
                     // Contar dias entre start e end (simplificado - pode precisar ajuste)
                     const currentDate = new Date(startDate);
@@ -138,9 +141,8 @@ export default function RelatorioFaltasPage() {
             setDiasLetivos(diasPorMes);
         } catch (error) {
             logger.error("Erro ao calcular dias letivos", error as Error);
-            return {};
         }
-    }, []);
+    }, [absenceControls]);
 
     // Usar hook useStudents ao invés de buscar manualmente
     const { students: allStudents, loading: loadingAllStudents } = useStudents();
@@ -154,44 +156,28 @@ export default function RelatorioFaltasPage() {
         setLoadingStudents(loadingAllStudents);
     }, [allStudents, loadingAllStudents]);
 
-    useEffect(() => {
-        const fetchAbsences = async () => {
-            try {
-                // Buscar todas as faltas via Supabase
-                const absences = await AbsenceService.getAllAbsences();
-                // getAllAbsences já retorna AbsenceRecord[] no formato correto
-                setAbsenceRecords(absences as any);
-            } catch (error) {
-                logger.error("Erro ao carregar faltas", error as Error);
-            } finally {
-                setLoadingAbsences(false);
-            }
-        };
-
-        fetchAbsences();
-        calculateDiasLetivos();
-    }, [calculateDiasLetivos]);
-
     // Memoizar cálculos de faltas por estudante/mês para evitar recalcular sempre
     const absencesByStudentMonth = useMemo(() => {
         const cache: Record<string, Record<number, number>> = {};
 
+        if (!absences) return cache;
+
         students.forEach(student => {
             cache[student.estudanteId] = {};
             months.forEach((_, monthIndex) => {
-                cache[student.estudanteId][monthIndex] = absenceRecords.filter(record => {
-                    const recordDate = new Date(record.data);
+                cache[student.estudanteId][monthIndex] = absences.filter(absence => {
+                    const recordDate = new Date(absence.absence_date);
                     return (
-                        record.estudanteId === student.estudanteId &&
+                        absence.student_id === student.estudanteId &&
                         recordDate.getMonth() === monthIndex &&
-                        (!excludeJustified || !record.justified)
+                        (!excludeJustified || !absence.is_justified)
                     );
                 }).length;
             });
         });
 
         return cache;
-    }, [students, absenceRecords, excludeJustified]);
+    }, [students, absences, excludeJustified]);
 
     const getAbsencesByMonth = useCallback((estudanteId: string, monthIndex: number): number => {
         return absencesByStudentMonth[estudanteId]?.[monthIndex] || 0;

@@ -1,5 +1,6 @@
 /**
  * Hook: Polling de Status WhatsApp com Intervalo Adaptativo
+ * ✅ SPRINT 4 - FASE 6: Migrado para API REST
  *
  * Atualiza automaticamente o status das mensagens WhatsApp
  * sem precisar recarregar a página.
@@ -24,7 +25,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { InteractionService } from '@/services/supabase/interactionService';
+import { useInteractions } from '@/hooks/api';
 import type { FamilyInteraction } from '@/types';
 
 interface PollingOptions {
@@ -47,15 +48,39 @@ export function useWhatsAppStatusPolling(
     maxPollingTime = 600000 // 10 minutos (tempo razoável para ler mensagens)
   } = options;
 
+  // ✅ MIGRADO: Usar hook da API REST
+  const { interactions: apiInteractions, refetch } = useInteractions(
+    studentId ? { estudanteId: studentId } : undefined
+  );
+
   const [interactions, setInteractions] = useState<FamilyInteraction[]>(initialInteractions);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollingStartTimeRef = useRef<number | null>(null);
   const currentIntervalRef = useRef<number>(fastInterval);
 
-  // Atualizar quando prop mudar
+  // Atualizar quando prop mudar ou API retornar novos dados
   useEffect(() => {
-    setInteractions(initialInteractions);
-  }, [initialInteractions]);
+    if (apiInteractions.length > 0) {
+      // Mapear campos snake_case → camelCase
+      const mapped = apiInteractions.map((int: any) => ({
+        ...int,
+        studentId: int.student_id || int.studentId,
+        createdBy: int.created_by || int.createdBy || 'Desconhecido',
+        date: int.interaction_date || int.date || int.created_at?.split('T')[0] || new Date().toLocaleDateString('pt-BR'),
+        type: int.interaction_type || int.type || 'Não especificado',
+        sensitive: int.is_sensitive ?? int.sensitive ?? false,
+        // Campos WhatsApp
+        whatsappMessageId: int.whatsapp_message_id || int.whatsappMessageId,
+        whatsappStatus: int.whatsapp_status || int.whatsappStatus,
+        whatsappSentAt: int.whatsapp_sent_at || int.whatsappSentAt,
+        whatsappDeliveredAt: int.whatsapp_delivered_at || int.whatsappDeliveredAt,
+        whatsappReadAt: int.whatsapp_read_at || int.whatsappReadAt,
+      }));
+      setInteractions(mapped as FamilyInteraction[]);
+    } else {
+      setInteractions(initialInteractions);
+    }
+  }, [initialInteractions, apiInteractions]);
 
   useEffect(() => {
     // Só fazer polling se estiver habilitado e tiver studentId
@@ -109,22 +134,10 @@ export function useWhatsAppStatusPolling(
       return;
     }
 
-    // Função de atualização
+    // ✅ MIGRADO: Usar refetch do hook ao invés de service direto
     const refreshStatuses = async () => {
       try {
-        const updatedInteractions = await InteractionService.getStudentInteractions(studentId);
-
-        // Verificar se houve mudança no status
-        const hasChanges = updatedInteractions.some((updated, index) => {
-          const current = interactions[index];
-          return current &&
-                 updated.whatsappMessageId === current.whatsappMessageId &&
-                 updated.whatsappStatus !== current.whatsappStatus;
-        });
-
-        if (hasChanges) {
-          setInteractions(updatedInteractions);
-        }
+        await refetch();
       } catch (error) {
         console.error('[WhatsAppPolling] Erro ao atualizar status:', error);
       }
@@ -142,7 +155,7 @@ export function useWhatsAppStatusPolling(
         intervalRef.current = null;
       }
     };
-  }, [enabled, studentId, fastInterval, slowInterval, maxPollingTime, interactions]);
+  }, [enabled, studentId, fastInterval, slowInterval, maxPollingTime, interactions, refetch]);
 
   return interactions;
 }

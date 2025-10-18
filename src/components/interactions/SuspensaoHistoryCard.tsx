@@ -23,11 +23,12 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Suspensao } from "@/types";
+import { Suspensao, Student } from "@/types";
 
 interface SuspensaoHistoryCardProps {
     suspensoes: Suspensao[];
-    userRole: string | null;
+    userRole: string | null | undefined; // Aceitar undefined também
+    student?: Student | null | undefined; // Aceitar student (não usado mas passado)
     showDeleteSuspensaoDialog: string | null;
     setShowDeleteSuspensaoDialog: (value: string | null) => void;
     setEditingSuspensao: (value: Suspensao | null) => void;

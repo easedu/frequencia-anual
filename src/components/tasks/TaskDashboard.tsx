@@ -24,12 +24,18 @@ import {
   Phone
 } from 'lucide-react';
 import { auth } from '@/firebase.config';
-import { TaskService } from '@/services/taskService';
-import { StudentDataService } from '@/services/studentDataService';
-import { InteractionService } from '@/services/supabase/interactionService';
+// ✅ SPRINT 4 - FASE 7: 100% migrado para API REST
+import {
+  useTasks,
+  useStudents,
+  useInteractions,
+  useUpdateTask,
+  useDeleteTask,
+  useCreateInteraction
+} from '@/hooks/api';
 import type { DashboardTask, TaskSection, TaskPriorityLevel } from '@/types/dashboardTasks';
 import type { UserTask } from '@/types/tasks';
-import type { FamilyInteraction, Student, Contato } from '@/types';
+import type { Contato } from '@/types';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import { toast } from 'sonner';
 import { logger } from '@/utils/logger';
@@ -58,6 +64,14 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     attention: false,
     critical: false
   });
+
+  // Hooks da API REST
+  const { tasks: apiTasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ created_by: 'BOT' });
+  const { students } = useStudents();
+  const { interactions } = useInteractions();
+  const { updateTask } = useUpdateTask();
+  const { deleteTask } = useDeleteTask();
+  const { createInteraction } = useCreateInteraction();
 
   // Função para capitalizar primeira letra
   const capitalizeFirstLetter = (str: string) => {
@@ -88,26 +102,35 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     return phone;
   };
 
-  // Função para buscar dados completos do estudante
-  const getStudentData = async (estudanteId: string): Promise<Student | null> => {
+  // Função para buscar dados completos do estudante (usando hook API REST)
+  const getStudentData = (estudanteId: string) => {
     try {
-      return await StudentDataService.getStudentById(estudanteId);
+      const student = students.find(s => s.student_id === estudanteId);
+      if (!student) return null;
+
+      // Mapear de snake_case (API) para camelCase (frontend) se necessário
+      return {
+        ...student,
+        contatos: (student as any).contacts || []
+      };
     } catch (error) {
       logger.error('Erro ao buscar dados do estudante:', error as Error);
       return null;
     }
   };
 
-  // Função para buscar dados atuais da interação (Supabase)
-  const getInteractionData = async (estudanteId: string, interactionId: string): Promise<{type: string, description: string, createdBy: string, exists: boolean} | null> => {
+  // Função para buscar dados atuais da interação (usando hook API REST)
+  const getInteractionData = (estudanteId: string, interactionId: string) => {
     try {
-      const interaction = await InteractionService.getInteractionById(estudanteId, interactionId);
+      const interaction = interactions.find(
+        i => (i as any).interaction_id === interactionId && (i as any).student_id === estudanteId
+      );
 
       if (interaction) {
         return {
-          type: interaction.type || 'Resolvida via API',
+          type: (interaction as any).interaction_type || 'Resolvida via API',
           description: interaction.description || 'Tarefa marcada como resolvida automaticamente pela API',
-          createdBy: interaction.createdBy || 'Usuário desconhecido',
+          createdBy: (interaction as any).created_by || 'Usuário desconhecido',
           exists: true
         };
       }
@@ -127,7 +150,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   };
 
   // Função para converter UserTask para DashboardTask com dados de interação atualizados
-  const convertUserTaskToDashboardTask = async (userTask: UserTask): Promise<DashboardTask> => {
+  const convertUserTaskToDashboardTask = (userTask: UserTask): DashboardTask => {
     const monthName = new Date(userTask.createdAt).toLocaleDateString('pt-BR', { month: 'long' });
 
     let resolvedAction = userTask.interactionType || 'Resolvida via API';
@@ -136,7 +159,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
 
     // Se a tarefa está completada e tem interactionId, buscar dados atuais da interação
     if (userTask.status === 'COMPLETED' && userTask.interactionId) {
-      const interactionData = await getInteractionData(userTask.estudanteId, userTask.interactionId);
+      const interactionData = getInteractionData(userTask.estudanteId, userTask.interactionId);
       if (interactionData) {
         resolvedAction = interactionData.type;
         resolvedDescription = interactionData.description;
@@ -198,7 +221,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     if (tasksToUpdate.length > 0) {
       try {
         for (const { id, updates } of tasksToUpdate) {
-          await TaskService.updateTask(id, updates);
+          await updateTask(id, updates as any);
         }
         logger.info(`Atualizadas ${tasksToUpdate.length} tarefa(s) com interações removidas`);
       } catch (error) {
@@ -207,19 +230,16 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
-  // Carregar tarefas do Supabase
+  // Carregar tarefas (usando hook API REST)
   const loadTasks = async () => {
     try {
       setLoading(true);
 
-      // Buscar todas as tarefas criadas pela API (userId = "BOT")
-      const userTasks = await TaskService.getUserTasksForUserId('BOT');
-
       // Limpar referências de interações deletadas
-      await cleanupDeletedInteractions(userTasks);
+      await cleanupDeletedInteractions(apiTasks as any);
 
-      // Converter para DashboardTask e organizar por prioridade (agora assíncrono)
-      const dashboardTasks = await Promise.all(userTasks.map(convertUserTaskToDashboardTask));
+      // Converter para DashboardTask e organizar por prioridade
+      const dashboardTasks = (apiTasks as any).map(convertUserTaskToDashboardTask);
 
       // Criar seções baseadas nas tarefas reais
       const sections: TaskSection[] = [
@@ -258,7 +278,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
-  // Função para limpar todos os dados criados pela API
+  // Função para limpar todos os dados criados pela API (usando hook API REST)
   const clearApiData = async () => {
     if (!confirm('Tem certeza que deseja limpar todos os dados criados pela API? Esta ação não pode ser desfeita.')) {
       return;
@@ -267,18 +287,15 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     try {
       setClearingData(true);
 
-      // Buscar todas as tarefas criadas pela API
-      const userTasks = await TaskService.getUserTasksForUserId('BOT');
-
       // Deletar todas as tarefas
-      if (userTasks.length > 0) {
-        for (const task of userTasks) {
-          await TaskService.deleteTask(task.id);
+      if (apiTasks.length > 0) {
+        for (const task of apiTasks) {
+          await deleteTask(task.id);
         }
-        toast.success(`${userTasks.length} tarefa(s) excluída(s) com sucesso!`);
+        toast.success(`${apiTasks.length} tarefa(s) excluída(s) com sucesso!`);
 
         // Recarregar dados
-        await loadTasks();
+        await refetchTasks();
       } else {
         toast.info('Nenhuma tarefa encontrada para exclusão');
       }
@@ -300,10 +317,12 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
-  // Carregar dados na inicialização
+  // Carregar dados quando apiTasks mudar
   useEffect(() => {
-    loadTasks();
-  }, []);
+    if (!tasksLoading) {
+      loadTasks();
+    }
+  }, [apiTasks, tasksLoading]);
 
   // Filtrar seções baseado no role do usuário
   const getFilteredSections = (): TaskSection[] => {
@@ -378,36 +397,30 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
       // Obter nome do usuário atual
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-      const interactionData: Omit<FamilyInteraction, 'id'> = {
-        type: interactionType,
-        date: formattedDate,
+      // 2. Salvar interação usando hook (API REST - snake_case)
+      const createdInteraction = await createInteraction({
+        student_id: selectedTask.estudanteId,
+        interaction_type: interactionType,
+        interaction_date: formattedDate,
         description: interactionDescription,
-        sensitive: interactionSensitive,
-        createdBy: currentUser,
-        studentId: selectedTask.estudanteId // Usar o ID correto do estudante
-      };
-
-      // 2. Salvar interação no Supabase
-      const createdInteraction = await InteractionService.createInteraction(
-        selectedTask.estudanteId,
-        interactionData
-      );
-
-      logger.info('[TASK-DASHBOARD] Interação salva no Supabase', {
-        interactionId: createdInteraction.id,
-        estudanteId: selectedTask.estudanteId,
-        supabasePath: `family_interactions/${createdInteraction.id}`
+        is_sensitive: interactionSensitive,
+        created_by: currentUser
       });
 
-      // 3. Atualizar tarefa como completada (Supabase)
-      await TaskService.updateTask(selectedTask.id, {
+      logger.info('[TASK-DASHBOARD] Interação salva via API', {
+        interactionId: createdInteraction.interaction_id,
+        estudanteId: selectedTask.estudanteId
+      });
+
+      // 3. Atualizar tarefa como completada
+      await updateTask(selectedTask.id, {
         status: 'COMPLETED',
         completedAt: new Date().toISOString(),
-        interactionId: createdInteraction.id,
+        interactionId: createdInteraction.interaction_id,
         interactionType: interactionType,
         interactionDescription: interactionDescription,
         resolvedBy: currentUser
-      });
+      } as any);
 
       toast.success('Tarefa resolvida com sucesso!');
       setShowInteractionModal(false);
@@ -415,7 +428,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
       setStudentContacts([]); // Limpar contatos após resolução
 
       // Recarregar tarefas
-      await loadTasks();
+      await refetchTasks();
 
     } catch (error) {
       logger.error('Erro ao resolver tarefa:', error as Error);
@@ -461,7 +474,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
-  if (loading) {
+  if (loading || tasksLoading) {
     return (
       <div className="space-y-8">
         <div className="text-center mb-8">
@@ -489,7 +502,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
 
           {/* Botão para recarregar dados */}
           <Button
-            onClick={loadTasks}
+            onClick={() => refetchTasks()}
             variant="outline"
             size="sm"
             className="flex items-center gap-2"

@@ -40,10 +40,14 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import type { FamilyInteraction } from '@/types';
-import { AcademicYearService } from '@/services/supabase/academicYearService';
-import { AbsenceService } from '@/services/supabase/absenceService';
-import { InteractionService } from '@/services/supabase/interactionService';
-import { ResolvedCasesService } from '@/services/supabase/resolvedCasesService';
+import {
+  useAcademicYearComplete,
+  useAbsences,
+  useCreateInteraction,
+  useResolvedCases,
+  useCreateResolvedCase,
+  useDeleteResolvedCase
+} from '@/hooks/api';
 
 interface ConsecutiveAbsence {
   estudanteId: string;
@@ -68,7 +72,15 @@ interface SchoolDay {
 export default function MonitorarFaltasConsecutivasPage() {
   const { students, loading: studentsLoading } = useStudents();
   const router = useRouter();
-  
+
+  // Hooks da API
+  const { academicYearComplete, loading: loadingAcademicYear } = useAcademicYearComplete(2025);
+  const { absences, loading: loadingAbsences } = useAbsences({});
+  const { createInteraction, loading: creatingInteraction } = useCreateInteraction();
+  const { resolvedCases: apiResolvedCases, loading: loadingResolvedCases, refetch: refetchResolvedCases } = useResolvedCases({});
+  const { createResolvedCase, loading: creatingResolvedCase } = useCreateResolvedCase();
+  const { deleteResolvedCase, loading: deletingResolvedCase } = useDeleteResolvedCase();
+
   const [consecutiveAbsences, setConsecutiveAbsences] = useState<ConsecutiveAbsence[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -85,10 +97,6 @@ export default function MonitorarFaltasConsecutivasPage() {
   const [hasInitialAnalysis, setHasInitialAnalysis] = useState(false);
   const [schoolDaysCache, setSchoolDaysCache] = useState<Record<string, SchoolDay[]>>({});
   const [currentSchoolDays, setCurrentSchoolDays] = useState<SchoolDay[]>([]);
-  
-  // Cache global do documento ano_letivo (persiste durante a sessão)
-  const [academicYearCache, setAcademicYearCache] = useState<any>(null);
-  const [academicYearCacheTime, setAcademicYearCacheTime] = useState<number>(0);
 
   // Estados para o modal de interação
   const [selectedAbsence, setSelectedAbsence] = useState<ConsecutiveAbsence | null>(null);
@@ -115,36 +123,18 @@ export default function MonitorarFaltasConsecutivasPage() {
     return [...new Set(students.map(student => student.turma))].sort();
   }, [students]);
 
-  // Função para carregar dados do ano letivo com cache inteligente (Supabase)
-  const loadAcademicYearData = async (): Promise<any> => {
-    const now = Date.now();
-    const CACHE_TTL = 10 * 60 * 1000; // 10 minutos
-
-    // Verificar se o cache ainda é válido
-    if (academicYearCache && (now - academicYearCacheTime) < CACHE_TTL) {
-      return academicYearCache;
+  // Função para carregar dados do ano letivo (agora via hook)
+  const loadAcademicYearData = (): any => {
+    if (academicYearComplete && Object.keys(academicYearComplete).length > 0) {
+      return academicYearComplete;
     }
-
-    try {
-      const data = await AcademicYearService.getAcademicYearComplete(2025);
-
-      if (data && Object.keys(data).length > 0) {
-        setAcademicYearCache(data);
-        setAcademicYearCacheTime(now);
-        return data;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Erro ao carregar ano letivo:', error);
-      return null;
-    }
+    return null;
   };
 
   // Função para detectar o bimestre atual baseado na data
-  const getCurrentBimester = async (): Promise<string> => {
+  const getCurrentBimester = (): string => {
     try {
-      const data = await loadAcademicYearData();
+      const data = loadAcademicYearData();
       
       if (data) {
         const hoje = new Date();
@@ -191,15 +181,11 @@ export default function MonitorarFaltasConsecutivasPage() {
     // Definir data atual no cliente
     setInteractionDate(new Date().toLocaleDateString("pt-BR"));
 
-    const initializeBimester = async () => {
-      if (selectedBimesters.length === 0) {
-        const currentBimester = await getCurrentBimester();
-        setSelectedBimesters([currentBimester]);
-      }
-    };
-
-    initializeBimester();
-  }, []);
+    if (selectedBimesters.length === 0 && academicYearComplete) {
+      const currentBimester = getCurrentBimester();
+      setSelectedBimesters([currentBimester]);
+    }
+  }, [academicYearComplete]);
 
   // Carregar dias letivos com cache inteligente
   const loadSchoolDays = async (): Promise<SchoolDay[]> => {
@@ -262,14 +248,14 @@ export default function MonitorarFaltasConsecutivasPage() {
     }
   };
 
-  // Carregar faltas de TODOS os estudantes otimizado (Supabase)
-  const loadAllStudentAbsences = async (studentIds: string[], schoolDays: SchoolDay[]): Promise<Record<string, string[]>> => {
+  // Carregar faltas de TODOS os estudantes otimizado (agora via hook)
+  const loadAllStudentAbsences = (studentIds: string[], schoolDays: SchoolDay[]): Record<string, string[]> => {
     try {
       // Criar set de datas de dias letivos para filtro rápido
       const schoolDayDates = new Set(schoolDays.map(day => day.date));
 
-      // Buscar todas as faltas não justificadas de todos os estudantes
-      const allAbsences = await AbsenceService.getAbsencesByStudentIds(studentIds, false); // false = não justificadas
+      // Filtrar faltas não justificadas do hook
+      const unjustifiedAbsences = absences.filter((absence: any) => !absence.is_justified);
 
       // Organizar faltas por estudante
       const absencesByStudent: Record<string, string[]> = {};
@@ -280,18 +266,18 @@ export default function MonitorarFaltasConsecutivasPage() {
       });
 
       // Processar faltas
-      allAbsences.forEach(absence => {
-        if (absence.estudante_id && absence.data) {
+      unjustifiedAbsences.forEach((absence: any) => {
+        if (absence.student_id && absence.absence_date) {
           // Converter formato ISO para dd/mm/yyyy se necessário
-          let dateStr = absence.data;
+          let dateStr = absence.absence_date;
           if (dateStr.includes('-')) {
             const [year, month, day] = dateStr.split('-');
             dateStr = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
           }
 
           // Filtrar apenas faltas em dias letivos
-          if (schoolDayDates.has(dateStr) && absencesByStudent[absence.estudante_id]) {
-            absencesByStudent[absence.estudante_id].push(dateStr);
+          if (schoolDayDates.has(dateStr) && absencesByStudent[absence.student_id]) {
+            absencesByStudent[absence.student_id].push(dateStr);
           }
         }
       });
@@ -399,8 +385,8 @@ export default function MonitorarFaltasConsecutivasPage() {
       const activeStudents = students.filter(student => student.status === 'ATIVO');
       const studentIds = activeStudents.map(s => s.estudanteId);
 
-      // Carregar todas as faltas em batch (MUITO mais eficiente)
-      const allStudentAbsences = await loadAllStudentAbsences(studentIds, schoolDays);
+      // Carregar todas as faltas em batch (agora via hook)
+      const allStudentAbsences = loadAllStudentAbsences(studentIds, schoolDays);
 
       const results: ConsecutiveAbsence[] = [];
 
@@ -677,24 +663,24 @@ export default function MonitorarFaltasConsecutivasPage() {
     router.push(`/perfil-estudante?id=${estudanteId}`);
   };
 
-  // Funções para gerenciar casos resolvidos no Supabase
-  const loadResolvedCases = async () => {
-    try {
-      const studentIds = await ResolvedCasesService.getResolvedStudentIds();
+  // Sincronizar casos resolvidos do hook com estado local
+  useEffect(() => {
+    if (apiResolvedCases.length > 0) {
+      const studentIds = apiResolvedCases.map((rc: any) => rc.student_id);
       setResolvedCases(new Set(studentIds));
-    } catch (error) {
-      console.error('Erro ao carregar casos resolvidos:', error);
     }
-  };
+  }, [apiResolvedCases]);
 
   const saveResolvedCase = async (estudanteId: string, interactionId: string) => {
     try {
-      await ResolvedCasesService.createResolvedCase({
-        studentId: estudanteId,
-        interactionId,
-        resolvedAt: new Date().toISOString(),
-        resolvedBy: auth.currentUser?.displayName || auth.currentUser?.email || 'Usuário desconhecido'
+      await createResolvedCase({
+        student_id: estudanteId,
+        interaction_id: interactionId,
+        resolved_at: new Date().toISOString(),
+        resolved_by: auth.currentUser?.displayName || auth.currentUser?.email || 'Usuário desconhecido'
       });
+      // Refetch para atualizar lista
+      refetchResolvedCases();
     } catch (error) {
       console.error('Erro ao salvar caso resolvido:', error);
       throw error;
@@ -703,12 +689,13 @@ export default function MonitorarFaltasConsecutivasPage() {
 
   const removeResolvedCase = async (estudanteId: string) => {
     try {
-      await ResolvedCasesService.deleteResolvedCaseByStudentId(estudanteId);
-
-      // Remover do estado local também
-      const newResolvedCases = new Set(resolvedCases);
-      newResolvedCases.delete(estudanteId);
-      setResolvedCases(newResolvedCases);
+      // Encontrar o caso resolvido para este estudante
+      const caseToDelete = apiResolvedCases.find((rc: any) => rc.student_id === estudanteId);
+      if (caseToDelete) {
+        await deleteResolvedCase((caseToDelete as any).id);
+        // Refetch para atualizar lista
+        refetchResolvedCases();
+      }
     } catch (error) {
       console.error('Erro ao remover caso resolvido:', error);
       throw error;
@@ -764,20 +751,17 @@ export default function MonitorarFaltasConsecutivasPage() {
       // Obter nome do usuário atual
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-      const interactionData: Omit<FamilyInteraction, 'id'> = {
-        studentId: selectedAbsence.estudanteId,
-        type: interactionType,
-        date: formattedDate, // Data no formato Supabase (YYYY-MM-DD)
+      const interactionData = {
+        student_id: selectedAbsence.estudanteId,
+        interaction_type: interactionType,
+        interaction_date: formattedDate, // Data no formato Supabase (YYYY-MM-DD)
         description: interactionDescription,
-        sensitive: interactionSensitive,
-        createdBy: currentUser
+        is_sensitive: interactionSensitive,
+        created_by: currentUser
       };
 
-      // Salvar interação no Supabase
-      const createdInteraction = await InteractionService.createInteraction(
-        selectedAbsence.estudanteId,
-        interactionData
-      );
+      // Salvar interação via hook
+      const createdInteraction = await createInteraction(interactionData);
 
       // Salvar caso como resolvido no Supabase
       await saveResolvedCase(selectedAbsence.estudanteId, createdInteraction.id);
@@ -803,16 +787,9 @@ export default function MonitorarFaltasConsecutivasPage() {
     setCurrentResolvedPage(1);
   }, [debouncedSearchTerm, showPCD, selectedClass, selectedShift, selectedSeverity]);
 
-  // Inicializar hidratação e carregar dados persistidos
+  // Inicializar hidratação
   useEffect(() => {
-    const initializePage = async () => {
-      setIsHydrated(true);
-
-      // Carregar casos resolvidos do Supabase
-      await loadResolvedCases();
-    };
-
-    initializePage();
+    setIsHydrated(true);
   }, []);
 
   useEffect(() => {

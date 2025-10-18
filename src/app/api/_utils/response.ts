@@ -1,5 +1,5 @@
 /**
- * Utilitários de Resposta Padronizada
+ * Util Utilitários de Resposta Padronizada
  *
  * Fornece funções para criar respostas consistentes em todas as API Routes
  */
@@ -29,19 +29,24 @@ export interface ErrorResponse {
  * Resposta de sucesso padronizada
  *
  * @param data - Dados a retornar
- * @param message - Mensagem de sucesso (opcional)
+ * @param statusOrMessage - Mensagem de sucesso (opcional) ou status code (number)
  * @param status - Status HTTP (padrão: 200)
  *
  * @example
  * ```typescript
  * return successResponse({ student: newStudent }, 'Estudante criado', 201);
+ * return successResponse({ student: newStudent }, 201); // Aceita number como segundo parâmetro
  * ```
  */
 export function successResponse<T>(
   data: T,
-  message?: string,
-  status: number = 200
+  statusOrMessage?: string | number,
+  status?: number
 ): NextResponse {
+  const isStatusNumber = typeof statusOrMessage === 'number';
+  const finalStatus = isStatusNumber ? statusOrMessage : (status ?? 200);
+  const message = isStatusNumber ? undefined : statusOrMessage;
+
   const response: SuccessResponse<T> = {
     success: true,
     data,
@@ -51,28 +56,34 @@ export function successResponse<T>(
     response.message = message;
   }
 
-  return NextResponse.json(response, { status });
+  return NextResponse.json(response, { status: finalStatus });
 }
 
 /**
  * Resposta de erro padronizada
  *
  * @param error - Tipo do erro
- * @param message - Mensagem de erro descritiva
- * @param status - Status HTTP (padrão: 400)
+ * @param statusOrMessage - Mensagem de erro descritiva (ou status code number)
+ * @param statusParam - Status HTTP (padrão: 400)
  * @param details - Detalhes adicionais (opcional)
  *
  * @example
  * ```typescript
  * return errorResponse('NOT_FOUND', 'Estudante não encontrado', 404);
+ * return errorResponse('Erro ao processar', 500); // Aceita number como segundo parâmetro
  * ```
  */
 export function errorResponse(
   error: string,
-  message?: string,
-  status: number = 400,
+  statusOrMessage?: string | number,
+  statusParam?: number,
   details?: any
 ): NextResponse {
+  // Se statusOrMessage é number, é o status code
+  const isStatusNumber = typeof statusOrMessage === 'number';
+  const status = isStatusNumber ? statusOrMessage : (statusParam ?? 400);
+  const message = isStatusNumber ? undefined : statusOrMessage;
+
   const response: ErrorResponse = {
     success: false,
     error,
@@ -168,7 +179,7 @@ export function internalErrorResponse(
  * Resposta com paginação
  */
 export interface PaginatedResponse<T> {
-  items: T[];
+  data: T[];
   pagination: {
     page: number;
     limit: number;
@@ -184,8 +195,8 @@ export function paginatedResponse<T>(
   total: number,
   message?: string
 ): NextResponse {
-  const data: PaginatedResponse<T> = {
-    items,
+  const responseData = {
+    data: items,
     pagination: {
       page,
       limit,
@@ -194,5 +205,5 @@ export function paginatedResponse<T>(
     },
   };
 
-  return successResponse(data, message);
+  return NextResponse.json(responseData);
 }

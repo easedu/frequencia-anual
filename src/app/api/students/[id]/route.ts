@@ -25,9 +25,9 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 // Tipo para os parâmetros da rota
 type RouteParams = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
 // ============================================================================
@@ -37,8 +37,8 @@ type RouteParams = {
 export const GET = withAuth(
   async (req: NextRequest, userId: string, context?: RouteParams) => {
     try {
-      // Next.js 15 - params vem do terceiro parâmetro
-      const params = context?.params;
+      // Next.js 15 - params é Promise e precisa de await
+      const params = await context?.params;
       const id = params?.id;
 
       if (!id) {
@@ -52,12 +52,21 @@ export const GET = withAuth(
         return errorResponse('INVALID_ID', 'ID do estudante deve ser um UUID válido', 400);
       }
 
-      // Buscar estudante no Supabase
+      // Buscar estudante no Supabase com dados de verificação WhatsApp
       const { data, error } = await supabaseAdmin
         .from('students')
-        .select('*, student_contacts(*)')
+        .select(`
+          *,
+          student_contacts (
+            id,
+            name,
+            relationship,
+            phone,
+            can_receive_whatsapp,
+            whatsapp_data
+          )
+        `)
         .eq('id', id)
-        .eq('user_id', userId) // RLS - apenas estudantes do usuário
         .eq('deleted', false)
         .single();
 
@@ -80,8 +89,32 @@ export const GET = withAuth(
         return notFoundResponse('Estudante', id);
       }
 
-      // Converter para formato legacy
-      const student = convertSupabaseToEstudante(data);
+      // Buscar dados de verificação WhatsApp para os contatos
+      const contactPhones = (data.student_contacts || [])
+        .map((c: any) => c.phone)
+        .filter(Boolean);
+
+      let verifiedWhatsAppMap = new Map<string, any>();
+
+      if (contactPhones.length > 0) {
+        const { data: verifiedData } = await supabaseAdmin
+          .from('whatsapp_verified_numbers')
+          .select('*')
+          .in('phone_number', contactPhones);
+
+        if (verifiedData) {
+          verifiedData.forEach((v: any) => {
+            verifiedWhatsAppMap.set(v.phone_number, {
+              verified: v.is_verified,
+              exists: v.account_exists,
+              verifiedAt: v.verified_at,
+            });
+          });
+        }
+      }
+
+      // Converter para formato legacy com dados de verificação
+      const student = convertSupabaseToEstudante(data, verifiedWhatsAppMap);
 
       return successResponse({ student });
     } catch (error) {
@@ -97,7 +130,7 @@ export const GET = withAuth(
 export const PUT = withAuth(
   async (req: NextRequest, userId: string, context?: RouteParams) => {
     try {
-      const params = context?.params;
+      const params = await context?.params;
       const id = params?.id;
 
       if (!id) {
@@ -131,7 +164,6 @@ export const PUT = withAuth(
         .from('students')
         .select('id')
         .eq('id', id)
-        .eq('user_id', userId)
         .eq('deleted', false)
         .single();
 
@@ -224,7 +256,7 @@ export const PUT = withAuth(
 export const DELETE = withAuth(
   async (req: NextRequest, userId: string, context?: RouteParams) => {
     try {
-      const params = context?.params;
+      const params = await context?.params;
       const id = params?.id;
 
       if (!id) {
@@ -243,7 +275,6 @@ export const DELETE = withAuth(
         .from('students')
         .select('id')
         .eq('id', id)
-        .eq('user_id', userId)
         .eq('deleted', false)
         .single();
 
@@ -293,7 +324,7 @@ export const DELETE = withAuth(
 /**
  * Converte Student do Supabase para formato legacy Estudante
  */
-function convertSupabaseToEstudante(student: any): any {
+function convertSupabaseToEstudante(student: any, verifiedWhatsAppMap?: Map<string, any>): any {
   return {
     id: student.id,
     estudanteId: student.student_id,
@@ -305,13 +336,19 @@ function convertSupabaseToEstudante(student: any): any {
     matricula: student.registration_number || undefined,
     dataNascimento: student.birth_date || undefined,
     email: undefined,
-    contatos: (student.student_contacts || []).map((contact: any) => ({
-      nome: contact.name,
-      parentesco: contact.relationship || '',
-      telefone: contact.phone || '',
-      podeReceberMensagem: contact.can_receive_whatsapp,
-      whatsapp: contact.whatsapp_data || undefined,
-    })),
+    contatos: (student.student_contacts || []).map((contact: any) => {
+      // Buscar dados de verificação WhatsApp
+      const verificationData = verifiedWhatsAppMap?.get(contact.phone);
+
+      return {
+        nome: contact.name,
+        parentesco: contact.relationship || '',
+        telefone: contact.phone || '',
+        podeReceberMensagem: contact.can_receive_whatsapp,
+        // Usar dados de verified_whatsapp_numbers se disponível, senão whatsapp_data
+        whatsapp: verificationData || contact.whatsapp_data || undefined,
+      };
+    }),
     endereco: student.address || undefined,
     deficiencia:
       Array.isArray(student.disabilities) && student.disabilities.length > 0

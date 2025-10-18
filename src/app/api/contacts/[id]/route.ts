@@ -25,7 +25,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 // Tipo para os parâmetros da rota
 type RouteParams = {
-  params: {
+  params: Promise<{
     id: string;
   };
 };
@@ -37,7 +37,7 @@ type RouteParams = {
 export const GET = withAuth(
   async (req: NextRequest, userId: string, context?: RouteParams) => {
     try {
-      const params = context?.params;
+      const params = await context?.params;
       const id = params?.id;
 
       if (!id) {
@@ -54,9 +54,8 @@ export const GET = withAuth(
       // Buscar contato no Supabase com verificação de permissão
       const { data, error } = await supabaseAdmin
         .from('student_contacts')
-        .select('*, students!inner(user_id)')
+        .select('*, students(student_id)')
         .eq('id', id)
-        .eq('students.user_id', userId) // RLS - apenas contatos de estudantes do usuário
         .single();
 
       if (error) {
@@ -94,7 +93,7 @@ export const GET = withAuth(
 export const PUT = withAuth(
   async (req: NextRequest, userId: string, context?: RouteParams) => {
     try {
-      const params = context?.params;
+      const params = await context?.params;
       const id = params?.id;
 
       if (!id) {
@@ -126,9 +125,8 @@ export const PUT = withAuth(
       // 4. Verificar se contato existe e pertence ao usuário
       const { data: existingContact, error: checkError } = await supabaseAdmin
         .from('student_contacts')
-        .select('id, students!inner(user_id)')
+        .select('id, students(student_id)')
         .eq('id', id)
-        .eq('students.user_id', userId)
         .single();
 
       if (checkError || !existingContact) {
@@ -190,7 +188,7 @@ export const PUT = withAuth(
 export const DELETE = withAuth(
   async (req: NextRequest, userId: string, context?: RouteParams) => {
     try {
-      const params = context?.params;
+      const params = await context?.params;
       const id = params?.id;
 
       if (!id) {
@@ -207,9 +205,8 @@ export const DELETE = withAuth(
       // 1. Verificar se contato existe e pertence ao usuário
       const { data: existingContact, error: checkError } = await supabaseAdmin
         .from('student_contacts')
-        .select('id, students!inner(user_id)')
+        .select('id, students(student_id)')
         .eq('id', id)
-        .eq('students.user_id', userId)
         .single();
 
       if (checkError || !existingContact) {

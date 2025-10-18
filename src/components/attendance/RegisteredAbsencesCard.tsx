@@ -23,9 +23,9 @@ interface RegisteredAbsencesCardProps {
     atestados: Atestado[];
     suspensoes: Suspensao[];
     bimesterDates: BimesterDates;
-    userRole?: string | null;
+    userRole?: string | null | undefined; // Aceitar undefined também
     onAbsenceDeleted?: () => void;
-    selectedStudentId?: string;
+    selectedStudentId?: string | null | undefined; // Aceitar null/undefined
 }
 
 interface BimestreAbsencesProps {
@@ -35,9 +35,9 @@ interface BimestreAbsencesProps {
     atestados: Atestado[];
     suspensoes: Suspensao[];
     bimesterDates: BimesterDates;
-    userRole?: string | null;
+    userRole?: string | null | undefined;
     onAbsenceDeleted?: () => void;
-    selectedStudentId?: string;
+    selectedStudentId?: string | null | undefined;
 }
 
 const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({

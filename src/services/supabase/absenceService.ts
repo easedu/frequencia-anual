@@ -1,6 +1,15 @@
 /**
  * Absence Service - Supabase Version
  *
+ * @deprecated Use hooks from @/hooks/api/useAbsences instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useAbsences() - Listar faltas
+ * - useCreateAbsence() - Criar falta
+ * - useUpdateAbsence() - Atualizar falta
+ * - useDeleteAbsence() - Deletar falta
+ *
  * Gerencia faltas (absences) dos estudantes no Supabase.
  * Substitui attendanceService.ts do Firebase.
  *

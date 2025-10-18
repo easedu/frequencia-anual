@@ -210,37 +210,42 @@ export class WhatsAppTrackingService {
 
     /**
      * Get all verified numbers (with WhatsApp) for cache preloading
-     * MIGRADO: Usa Supabase com paginação completa
-     *
-     * ⚠️ FIX: Supabase tem limite padrão de 1000 registros.
-     * Esta implementação usa paginação para buscar TODOS os registros.
+     * MIGRADO: Usa API REST /api/whatsapp/verified
      */
     static async getAllVerifiedNumbers(): Promise<Set<string>> {
         try {
-            const { supabase } = await import('@/lib/supabaseClient');
             const verifiedNumbers = new Set<string>();
 
-            const PAGE_SIZE = 1000;
-            let from = 0;
+            // Obter token do Firebase Auth
+            const { auth } = await import('@/firebase.config');
+            const user = auth.currentUser;
+
+            if (!user) {
+                logger.warn("No authenticated user, skipping verified numbers loading");
+                return verifiedNumbers;
+            }
+
+            const token = await user.getIdToken();
+
+            // Buscar TODOS os registros usando paginação automática
+            let offset = 0;
+            const limit = 1000; // Buscar 1000 por vez
             let hasMore = true;
-            let totalPages = 0;
 
             while (hasMore) {
-                const { data, error } = await supabase
-                    .from('whatsapp_verified_numbers')
-                    .select('phone_number, is_verified')
-                    .eq('is_verified', true)
-                    .range(from, from + PAGE_SIZE - 1)
-                    .order('created_at', { ascending: false });
+                const response = await fetch(`/api/whatsapp/verified?is_verified=true&limit=${limit}&offset=${offset}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
 
-                if (error) throw error;
-
-                if (!data || data.length === 0) {
-                    hasMore = false;
-                    break;
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status}`);
                 }
 
-                totalPages++;
+                const result = await response.json();
+                const data = result.data || [];
 
                 // Adicionar registros ao Set e cache
                 data.forEach((record: any) => {
@@ -259,14 +264,17 @@ export class WhatsAppTrackingService {
                     }
                 });
 
-                // Se retornou menos que PAGE_SIZE, não há mais registros
-                if (data.length < PAGE_SIZE) {
-                    hasMore = false;
-                } else {
-                    from += PAGE_SIZE;
+                // Verificar se há mais páginas
+                hasMore = data.length === limit;
+                offset += limit;
+
+                // Log de progresso a cada 1000 registros
+                if (hasMore) {
+                    logger.info(`Loaded ${offset} verified WhatsApp numbers, fetching more...`);
                 }
             }
 
+            logger.info(`Loaded ${verifiedNumbers.size} verified WhatsApp numbers from API (total)`);
             return verifiedNumbers;
 
         } catch (error) {

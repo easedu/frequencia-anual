@@ -1,11 +1,10 @@
 /**
- * WHATSAPP DATA SERVICE (SUPABASE VERSION)
+ * WHATSAPP DATA SERVICE (API VERSION)
  *
  * Serviço centralizado para salvar verificações de WhatsApp.
- * Migrado de Firebase para Supabase - remove dual-write.
+ * Refatorado para usar /api/whatsapp/verified (Sprint 2)
  */
 
-import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 
 interface WhatsAppVerificationData {
@@ -22,7 +21,7 @@ interface SaveResult {
 }
 
 /**
- * Salvar verificação de WhatsApp no Supabase
+ * Salvar verificação de WhatsApp via API
  * Atualiza tanto whatsapp_verified_numbers quanto student_contacts.whatsapp_data
  */
 export async function saveWhatsAppVerification(
@@ -31,7 +30,7 @@ export async function saveWhatsAppVerification(
   telefone: string,
   verificationData: WhatsAppVerificationData
 ): Promise<SaveResult> {
-  logger.info('Salvando verificação WhatsApp (Supabase)', {
+  logger.info('Salvando verificação WhatsApp (API)', {
     estudanteId,
     contactId,
     telefone,
@@ -110,68 +109,34 @@ export async function saveWhatsAppVerification(
 }
 
 /**
- * Salvar/atualizar na tabela whatsapp_verified_numbers
+ * Salvar/atualizar na tabela whatsapp_verified_numbers via API
  */
 async function saveToVerifiedNumbers(
   telefone: string,
   verificationData: WhatsAppVerificationData
 ): Promise<void> {
-  // Primeiro, tentar buscar registro existente
-  const { data: existing, error: selectError } = await (supabase as any)
-    .from('whatsapp_verified_numbers')
-    .select('phone_number')
-    .eq('phone_number', telefone)
-    .maybeSingle(); // maybeSingle() não gera erro quando não encontra
+  // API POST faz upsert automaticamente (verifica duplicata e atualiza/insere)
+  const response = await fetch('/api/whatsapp/verified', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phone_number: telefone,
+      is_verified: verificationData.exists,
+      whatsapp_jid: verificationData.jid || null,
+      contact_name: verificationData.name || null,
+      account_exists: verificationData.exists,
+      verification_status: verificationData.exists ? 'VERIFIED' : 'NOT_FOUND'
+    }),
+  });
 
-  // Se registro existe, fazer UPDATE
-  if (existing) {
-    const { error } = await (supabase as any)
-      .from('whatsapp_verified_numbers')
-      .update({
-        is_verified: verificationData.exists,
-        whatsapp_jid: verificationData.jid || null,
-        contact_name: verificationData.name || null,
-        verified_at: new Date().toISOString()
-      })
-      .eq('phone_number', telefone);
-
-    if (error) throw error;
-  } else {
-    // Registro não existe, fazer INSERT
-    // Usar try-catch para lidar com race condition (caso outro processo insira ao mesmo tempo)
-    const { error } = await (supabase as any)
-      .from('whatsapp_verified_numbers')
-      .insert({
-        phone_number: telefone,
-        is_verified: verificationData.exists,
-        whatsapp_jid: verificationData.jid || null,
-        contact_name: verificationData.name || null,
-        verified_at: new Date().toISOString()
-      });
-
-    // Se erro de duplicação (23505), tentar UPDATE ao invés de falhar
-    if (error && error.code === '23505') {
-      logger.warn('Race condition detectada em whatsapp_verified_numbers, tentando UPDATE', { telefone });
-
-      const { error: updateError } = await (supabase as any)
-        .from('whatsapp_verified_numbers')
-        .update({
-          is_verified: verificationData.exists,
-          whatsapp_jid: verificationData.jid || null,
-          contact_name: verificationData.name || null,
-          verified_at: new Date().toISOString()
-        })
-        .eq('phone_number', telefone);
-
-      if (updateError) throw updateError;
-    } else if (error) {
-      throw error;
-    }
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(`API returned ${response.status}: ${errorData.error || 'Failed to save'}`);
   }
 }
 
 /**
- * Atualizar whatsapp_data no contact do estudante
+ * Atualizar whatsapp_data no contact do estudante via API
  */
 async function updateContactWhatsAppData(
   estudanteId: string,
@@ -190,20 +155,22 @@ async function updateContactWhatsAppData(
     verificationStatus: verificationData.exists ? 'verified' : 'unavailable'
   };
 
-  // Find contact by student_id and id (UUID from migration)
-  const { error } = await (supabase as any)
-    .from('student_contacts')
-    .update({
-      whatsapp_data: whatsappData
-    })
-    .eq('student_id', estudanteId)
-    .eq('id', contactId);
+  const response = await fetch(`/api/contacts/${contactId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      whatsappData: whatsappData
+    }),
+  });
 
-  if (error) throw error;
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(`API returned ${response.status}: ${errorData.error || 'Failed to update contact'}`);
+  }
 }
 
 /**
- * Salvar múltiplas verificações em lote
+ * Salvar múltiplas verificações em lote via API
  * Útil para processos de verificação em massa
  */
 export async function saveWhatsAppVerificationBatch(
@@ -219,7 +186,7 @@ export async function saveWhatsAppVerificationBatch(
   failed: number;
   errors: string[];
 }> {
-  logger.info('Salvando verificações WhatsApp em lote (Supabase)', {
+  logger.info('Salvando verificações WhatsApp em lote (API)', {
     totalVerifications: verifications.length
   });
 
@@ -272,8 +239,8 @@ export async function saveWhatsAppVerificationBatch(
 }
 
 /**
- * QUERY FUNCTIONS - Supabase
- * Funções para consultar dados WhatsApp
+ * QUERY FUNCTIONS - API VERSION
+ * Funções para consultar dados WhatsApp via API
  */
 
 export interface ContactWithWhatsAppStatus {
@@ -295,30 +262,29 @@ export interface ContactWithWhatsAppStatus {
 }
 
 /**
- * Buscar contatos de um estudante com status WhatsApp
+ * Buscar contatos de um estudante com status WhatsApp via API
  */
 export async function getStudentContactsWithWhatsApp(
   studentId: string
 ): Promise<ContactWithWhatsAppStatus[]> {
   try {
-    logger.debug('Buscando contatos do estudante (Supabase)', { studentId });
+    logger.debug('Buscando contatos do estudante (API)', { studentId });
 
-    const { data, error } = await (supabase
-      .from('student_contacts')
-      .select('*')
-      .eq('student_id', studentId)
-      .eq('deleted', false) as any);
+    const response = await fetch(`/api/contacts?estudanteId=${studentId}`);
 
-    if (error) throw error;
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
 
-    const contacts: ContactWithWhatsAppStatus[] = (data || []).map((contact: any) => ({
+    const result = await response.json();
+    const contacts: ContactWithWhatsAppStatus[] = (result.data?.contacts || []).map((contact: any) => ({
       contactId: contact.id,
-      nome: contact.name || '',
-      parentesco: contact.relationship || '',
-      telefone: contact.phone || '',
-      telefoneNumerico: contact.phone_numeric || '',
-      podeReceberWhatsapp: contact.can_receive_whatsapp !== false,
-      whatsapp: contact.whatsapp_data || undefined,
+      nome: contact.nome || '',
+      parentesco: contact.parentesco || '',
+      telefone: contact.telefone || '',
+      telefoneNumerico: contact.telefone?.replace(/\D/g, '') || '',
+      podeReceberWhatsapp: contact.podeReceberMensagem !== false,
+      whatsapp: contact.whatsapp || undefined,
     }));
 
     logger.info('Contatos do estudante carregados', {
@@ -351,29 +317,24 @@ export async function getEligibleContactsForWhatsApp(
 }
 
 /**
- * Verificar se um telefone específico tem WhatsApp
+ * Verificar se um telefone específico tem WhatsApp via API
  */
 export async function checkWhatsAppStatus(
   studentId: string,
   contactId: string
 ): Promise<boolean | null> {
   try {
-    const { data, error } = await (supabase
-      .from('student_contacts')
-      .select('whatsapp_data')
-      .eq('student_id', studentId)
-      .eq('id', contactId)
-      .single() as any);
+    const response = await fetch(`/api/contacts/${contactId}`);
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // Not found
-        return null;
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null; // Not found
       }
-      throw error;
+      throw new Error(`API returned ${response.status}`);
     }
 
-    const whatsappData = data?.whatsapp_data as any;
+    const result = await response.json();
+    const whatsappData = result.data?.contact?.whatsapp;
     return whatsappData?.exists === true && whatsappData?.verified === true;
 
   } catch (error) {
@@ -383,7 +344,7 @@ export async function checkWhatsAppStatus(
 }
 
 /**
- * Buscar número verificado na lookup table
+ * Buscar número verificado na lookup table via API
  */
 export async function getVerifiedNumber(telefone: string): Promise<{
   isVerified: boolean;
@@ -393,18 +354,20 @@ export async function getVerifiedNumber(telefone: string): Promise<{
   verifiedAt?: string | null;
 } | null> {
   try {
-    const { data, error } = await (supabase
-      .from('whatsapp_verified_numbers')
-      .select('*')
-      .eq('phone_number', telefone)
-      .single() as any);
+    const response = await fetch(`/api/whatsapp/verified?phone_number=${telefone}`);
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // Not found
-        return null;
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null; // Not found
       }
-      throw error;
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const result = await response.json();
+    const data = result.data?.data?.[0]; // GET returns array in data.data
+
+    if (!data) {
+      return null; // No results
     }
 
     return {

@@ -1,20 +1,28 @@
 /**
- * Supabase Service: Student Suspensions
+ * API Service: Student Suspensions
+ *
+ * @deprecated Use hooks from @/hooks/api/useSuspensions instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useSuspensions() - Listar suspensões
+ * - useCreateSuspension() - Criar suspensão
+ * - useUpdateSuspension() - Atualizar suspensão
+ * - useDeleteSuspension() - Deletar suspensão
  *
  * Gerencia suspensões disciplinares dos estudantes.
- * Substitui: collection(db, 'students', studentId, 'suspensions')
+ * Refatorado para usar /api/suspensions (Sprint 2)
  */
 
-import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 import { resolveToInternalId } from '@/utils/studentIdResolver';
 
 export type SuspensionSeverity = 'LEVE' | 'MODERADA' | 'GRAVE';
 
 /**
- * Interface da suspensão (Supabase)
+ * Interface da suspensão (API - snake_case)
  */
-interface SupabaseSuspension {
+interface ApiSuspension {
   id: string;
   student_id: string;
   start_date: string;
@@ -40,7 +48,7 @@ interface SupabaseSuspension {
 }
 
 /**
- * Interface da suspensão (Aplicação)
+ * Interface da suspensão (Aplicação - camelCase)
  */
 export interface StudentSuspension {
   id: string;
@@ -88,9 +96,9 @@ export interface CreateSuspensionData {
 
 export class StudentSuspensionsService {
   /**
-   * Converter registro do Supabase
+   * Converter registro da API (snake_case) para aplicação (camelCase)
    */
-  private static mapSupabaseToSuspension(record: SupabaseSuspension): StudentSuspension {
+  private static mapApiToSuspension(record: ApiSuspension): StudentSuspension {
     return {
       id: record.id,
       studentId: record.student_id,
@@ -118,30 +126,7 @@ export class StudentSuspensionsService {
   }
 
   /**
-   * Converter para formato Supabase
-   */
-  private static mapSuspensionToSupabase(
-    data: CreateSuspensionData
-  ): Partial<SupabaseSuspension> {
-    return {
-      student_id: data.studentId,
-      start_date: data.startDate,
-      end_date: data.endDate,
-      reason: data.reason,
-      description: data.description || null,
-      severity: data.severity || null,
-      decision_by: data.decisionBy,
-      decision_date: data.decisionDate,
-      document_number: data.documentNumber || null,
-      family_notified: data.familyNotified || false,
-      notification_date: data.notificationDate || null,
-      notification_method: data.notificationMethod || null,
-      created_by: data.createdBy,
-    };
-  }
-
-  /**
-   * Buscar suspensões de um estudante
+   * Buscar suspensões de um estudante via API
    *
    * @param studentId - Firebase UUID (student.student_id)
    * @returns Array de suspensões
@@ -156,16 +141,15 @@ export class StudentSuspensionsService {
         return [];
       }
 
-      // Buscar suspensões com Internal ID
-      const { data, error } = await supabase
-        .from('student_suspensions')
-        .select('*')
-        .eq('student_id', internalId)
-        .order('start_date', { ascending: false });
+      // Buscar suspensões via API com Internal ID
+      const response = await fetch(`/api/suspensions?studentId=${internalId}`);
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      return (data || []).map(this.mapSupabaseToSuspension);
+      const result = await response.json();
+      return (result.data || []).map(this.mapApiToSuspension);
     } catch (error) {
       logger.error('Erro ao buscar suspensões do estudante', { studentId }, error as Error);
       return [];
@@ -173,22 +157,22 @@ export class StudentSuspensionsService {
   }
 
   /**
-   * Buscar suspensão por ID
+   * Buscar suspensão por ID via API
    */
   static async getById(suspensionId: string): Promise<StudentSuspension | null> {
     try {
-      const { data, error } = await supabase
-        .from('student_suspensions')
-        .select('*')
-        .eq('id', suspensionId)
-        .maybeSingle();
+      const response = await fetch(`/api/suspensions/${suspensionId}`);
 
-      if (error) {
-        if (error.code === 'PGRST116') return null;
-        throw error;
+      if (response.status === 404) {
+        return null;
       }
 
-      return data ? this.mapSupabaseToSuspension(data) : null;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
+
+      const result = await response.json();
+      return this.mapApiToSuspension(result.data);
     } catch (error) {
       logger.error('Erro ao buscar suspensão', { suspensionId }, error as Error);
       return null;
@@ -196,7 +180,7 @@ export class StudentSuspensionsService {
   }
 
   /**
-   * Criar nova suspensão
+   * Criar nova suspensão via API
    *
    * @param data - Dados da suspensão (studentId é Firebase UUID)
    * @returns Suspensão criada ou null se houver erro
@@ -207,24 +191,37 @@ export class StudentSuspensionsService {
       const internalStudentId = await resolveToInternalId(data.studentId);
 
       if (!internalStudentId) {
-        throw new Error(`Estudante não encontrado no Supabase: ${data.studentId}`);
+        throw new Error(`Estudante não encontrado com ID: ${data.studentId}`);
       }
 
-      // Substituir o Firebase UUID pelo ID interno do Supabase
-      const supabaseData = {
-        ...this.mapSuspensionToSupabase(data),
-        student_id: internalStudentId, // ✅ Usar ID interno do Supabase
-      };
+      const response = await fetch('/api/suspensions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: internalStudentId,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          reason: data.reason,
+          description: data.description || null,
+          severity: data.severity || null,
+          decisionBy: data.decisionBy,
+          decisionDate: data.decisionDate,
+          documentNumber: data.documentNumber || null,
+          familyNotified: data.familyNotified || false,
+          notificationDate: data.notificationDate || null,
+          notificationMethod: data.notificationMethod || null,
+          createdBy: data.createdBy,
+        }),
+      });
 
-      const { data: result, error } = await (supabase
-        .from('student_suspensions') as any)
-        .insert(supabaseData)
-        .select()
-        .single();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(`API returned ${response.status}: ${errorData.error || 'Failed to create'}`);
+      }
 
-      if (error) throw error;
-
-      return this.mapSupabaseToSuspension(result);
+      const result = await response.json();
+      logger.info('Suspensão criada via API', { studentId: data.studentId });
+      return this.mapApiToSuspension(result.data);
     } catch (error) {
       logger.error('Erro ao criar suspensão', data, error as Error);
       throw error;
@@ -232,40 +229,43 @@ export class StudentSuspensionsService {
   }
 
   /**
-   * Atualizar suspensão
+   * Atualizar suspensão via API
    */
   static async update(
     suspensionId: string,
     updates: Partial<CreateSuspensionData>
   ): Promise<boolean> {
     try {
-      const supabaseUpdates: any = {};
+      const apiUpdates: any = {};
 
-      if (updates.startDate) supabaseUpdates.start_date = updates.startDate;
-      if (updates.endDate) supabaseUpdates.end_date = updates.endDate;
-      if (updates.reason) supabaseUpdates.reason = updates.reason;
+      if (updates.startDate) apiUpdates.startDate = updates.startDate;
+      if (updates.endDate) apiUpdates.endDate = updates.endDate;
+      if (updates.reason) apiUpdates.reason = updates.reason;
       if (updates.description !== undefined)
-        supabaseUpdates.description = updates.description || null;
-      if (updates.severity) supabaseUpdates.severity = updates.severity;
-      if (updates.decisionBy) supabaseUpdates.decision_by = updates.decisionBy;
-      if (updates.decisionDate) supabaseUpdates.decision_date = updates.decisionDate;
+        apiUpdates.description = updates.description || null;
+      if (updates.severity) apiUpdates.severity = updates.severity;
+      if (updates.decisionBy) apiUpdates.decisionBy = updates.decisionBy;
+      if (updates.decisionDate) apiUpdates.decisionDate = updates.decisionDate;
       if (updates.documentNumber !== undefined)
-        supabaseUpdates.document_number = updates.documentNumber || null;
+        apiUpdates.documentNumber = updates.documentNumber || null;
       if (updates.familyNotified !== undefined)
-        supabaseUpdates.family_notified = updates.familyNotified;
+        apiUpdates.familyNotified = updates.familyNotified;
       if (updates.notificationDate !== undefined)
-        supabaseUpdates.notification_date = updates.notificationDate || null;
+        apiUpdates.notificationDate = updates.notificationDate || null;
       if (updates.notificationMethod !== undefined)
-        supabaseUpdates.notification_method = updates.notificationMethod || null;
+        apiUpdates.notificationMethod = updates.notificationMethod || null;
 
-      const { error } = await (supabase.from('student_suspensions') as any)
-        .update(supabaseUpdates)
-        .eq('id', suspensionId);
+      const response = await fetch(`/api/suspensions/${suspensionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(apiUpdates),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      logger.info('Suspensão atualizada no Supabase', { suspensionId });
-
+      logger.info('Suspensão atualizada via API', { suspensionId });
       return true;
     } catch (error) {
       logger.error('Erro ao atualizar suspensão', { suspensionId }, error as Error);
@@ -274,7 +274,7 @@ export class StudentSuspensionsService {
   }
 
   /**
-   * Registrar reintegração do estudante
+   * Registrar reintegração do estudante via API
    */
   static async recordReintegration(
     suspensionId: string,
@@ -283,18 +283,21 @@ export class StudentSuspensionsService {
     notes?: string
   ): Promise<boolean> {
     try {
-      const { error } = await (supabase.from('student_suspensions') as any)
-        .update({
-          reintegration_date: reintegrationDate,
-          reintegration_status: status,
-          follow_up_notes: notes || null,
-        })
-        .eq('id', suspensionId);
+      const response = await fetch(`/api/suspensions/${suspensionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reintegrationDate,
+          reintegrationStatus: status,
+          followUpNotes: notes || null,
+        }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      logger.info('Reintegração registrada no Supabase', { suspensionId });
-
+      logger.info('Reintegração registrada via API', { suspensionId });
       return true;
     } catch (error) {
       logger.error('Erro ao registrar reintegração', { suspensionId }, error as Error);
@@ -303,19 +306,19 @@ export class StudentSuspensionsService {
   }
 
   /**
-   * Deletar suspensão
+   * Deletar suspensão via API
    */
   static async delete(suspensionId: string): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('student_suspensions')
-        .delete()
-        .eq('id', suspensionId);
+      const response = await fetch(`/api/suspensions/${suspensionId}`, {
+        method: 'DELETE',
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      logger.info('Suspensão deletada do Supabase', { suspensionId });
-
+      logger.info('Suspensão deletada via API', { suspensionId });
       return true;
     } catch (error) {
       logger.error('Erro ao deletar suspensão', { suspensionId }, error as Error);
@@ -324,22 +327,20 @@ export class StudentSuspensionsService {
   }
 
   /**
-   * Buscar suspensões ativas
+   * Buscar suspensões ativas via API
    */
   static async getActiveSuspensions(): Promise<StudentSuspension[]> {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      const { data, error } = await supabase
-        .from('student_suspensions')
-        .select('*')
-        .lte('start_date', today)
-        .gte('end_date', today)
-        .order('start_date', { ascending: false });
+      const response = await fetch(`/api/suspensions?active=true&date=${today}`);
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      return (data || []).map(this.mapSupabaseToSuspension);
+      const result = await response.json();
+      return (result.data || []).map(this.mapApiToSuspension);
     } catch (error) {
       logger.error('Erro ao buscar suspensões ativas', {}, error as Error);
       return [];

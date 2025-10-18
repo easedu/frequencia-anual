@@ -21,8 +21,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
     let query: any = supabaseAdmin
       .from('medical_certificates')
-      .select('*, students!inner(user_id, name, class)', { count: 'exact' })
-      .eq('students.user_id', userId)
+      .select('*, students( name, class)', { count: 'exact' })
       .order('created_at', { ascending: false });
 
     if (estudanteId) query = query.eq('student_id', estudanteId);
@@ -58,7 +57,6 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       .from('students')
       .select('id')
       .eq('id', sanitizedData.estudanteId)
-      .eq('user_id', userId)
       .single();
 
     if (studentError || !student) {

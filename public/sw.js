@@ -88,8 +88,6 @@ self.addEventListener('activate', (event) => {
         // Assumir controle imediato de todas as abas
         await clients.claim();
         
-        console.log('✅ Service Worker: Ativado e controlando todas as abas');
-        
       } catch (error) {
         console.error('❌ Service Worker: Erro na ativação:', error);
       }

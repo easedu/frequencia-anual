@@ -32,6 +32,7 @@ import {
 
 interface StudentInfoCardProps {
     student: Student;
+    loading?: boolean; // Aceitar loading prop
     studentRecord?: StudentRecord | null;
     studentRecordWithoutJustified?: StudentRecord | null;
     onWhatsAppClick?: (contact: Contato) => void;

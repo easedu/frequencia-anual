@@ -1,6 +1,15 @@
 /**
  * Supabase Service: Absence Control
  *
+ * @deprecated Use hooks from @/hooks/api/useAbsenceControls instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useAbsenceControls() - Listar controles
+ * - useCreateAbsenceControl() - Criar controle
+ * - useUpdateAbsenceControl() - Atualizar controle
+ * - useDeleteAbsenceControl() - Deletar controle
+ *
  * Gerencia controle de dias letivos por bimestre.
  * Substitui: collection(db, '2025', 'faltas', 'controle')
  */

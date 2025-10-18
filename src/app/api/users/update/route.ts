@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -34,10 +35,10 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const { error } = await supabase
+    const { error } = (await supabaseAdmin
       .from('users')
-      .update(updates)
-      .eq('firebase_uid', firebase_uid);
+      .update(updates as any)
+      .eq('firebase_uid', firebase_uid)) as any;
 
     if (error) throw error;
 

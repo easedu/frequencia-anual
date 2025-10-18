@@ -47,8 +47,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // 2. Construir query no Supabase
     let query: any = supabaseAdmin
       .from('student_contacts')
-      .select('*, students!inner(user_id)', { count: 'exact' })
-      .eq('students.user_id', userId) // RLS - apenas contatos de estudantes do usuário
+      .select('*, students(student_id)', { count: 'exact' })
       .order('name', { ascending: true });
 
     // Aplicar filtros
@@ -119,7 +118,6 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       .from('students')
       .select('id')
       .eq('id', sanitizedData.estudanteId)
-      .eq('user_id', userId)
       .eq('deleted', false)
       .single();
 

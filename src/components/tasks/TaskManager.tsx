@@ -23,14 +23,13 @@ import {
   Printer,
   Download
 } from 'lucide-react';
-import { TaskService } from '@/services/taskService';
-import { InteractionService } from '@/services/supabase/interactionService';
+// ✅ SPRINT 4 - FASE 7: 100% migrado para API REST
+import { useTasks, useUpdateTask, useInteractions, useCreateInteraction } from '@/hooks/api';
 import { toast } from 'sonner';
 import { logger } from '@/utils/logger';
 import type { UserTask } from '@/types/tasks';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import { auth } from '@/firebase.config';
-import type { FamilyInteraction } from '@/types';
 
 interface TaskManagerProps {
   userId: string;
@@ -64,35 +63,34 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
   const [selectedBimestersForReport, setSelectedBimestersForReport] = useState<string[]>([]);
   const [generatingReport, setGeneratingReport] = useState(false);
 
-  // Carregar tarefas pendentes
-  const loadPendingTasks = async () => {
-    setLoading(true);
-    try {
-      const pendingTasks = await TaskService.getPendingTasks(userId);
-      setTasks(pendingTasks);
-    } catch (error) {
-      logger.error('Erro ao carregar tarefas:', error as Error);
-      toast.error('Erro ao carregar tarefas');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Hooks da API REST
+  const { tasks: apiTasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({
+    assigned_to: userId,
+    status: 'PENDING'
+  });
+  const { interactions } = useInteractions();
+  const { updateTask } = useUpdateTask();
+  const { createInteraction } = useCreateInteraction();
 
-  // Gerar novas tarefas
+  // Carregar tarefas pendentes (hook já busca automaticamente)
+  useEffect(() => {
+    if (!tasksLoading) {
+      setTasks(apiTasks as any);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+  }, [apiTasks, tasksLoading]);
+
+  // Verificar novas tarefas (refetch)
   const generateTasks = async () => {
     setLoadingGenerate(true);
     try {
-      const result = await TaskService.generateTasksForUser(userId);
-
-      if (result.newTasks.length > 0) {
-        toast.success(result.message);
-        await loadPendingTasks(); // Recarregar lista
-      } else {
-        toast.info(result.message);
-      }
+      await refetchTasks();
+      toast.info('Tarefas atualizadas');
     } catch (error) {
-      logger.error('Erro ao gerar tarefas:', error as Error);
-      toast.error('Erro ao gerar tarefas');
+      logger.error('Erro ao atualizar tarefas:', error as Error);
+      toast.error('Erro ao atualizar tarefas');
     } finally {
       setLoadingGenerate(false);
     }
@@ -137,17 +135,16 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
     setSelectedPCDTask(null);
   };
 
-  // Completar tarefa sem registrar interação
+  // Completar tarefa sem registrar interação (usando hook API REST)
   const handleCompleteTaskWithoutInteraction = async (task: UserTask) => {
     try {
-      const success = await TaskService.completeTask(task.id, ''); // Sem interactionId
+      await updateTask(task.id, {
+        status: 'COMPLETED',
+        completedAt: new Date().toISOString()
+      } as any);
 
-      if (success) {
-        toast.success('Tarefa marcada como resolvida!');
-        await loadPendingTasks(); // Recarregar lista
-      } else {
-        toast.error('Erro ao completar tarefa');
-      }
+      toast.success('Tarefa marcada como resolvida!');
+      await refetchTasks(); // Recarregar lista
     } catch (error) {
       logger.error('Erro ao completar tarefa sem interação:', error as Error);
       toast.error('Erro ao completar tarefa');
@@ -179,37 +176,32 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
       // Obter nome do usuário atual
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-      const interactionData: Omit<FamilyInteraction, 'id'> = {
-        type: interactionType, // Usar o tipo selecionado dinamicamente
-        date: formattedDate, // Data no formato Supabase (YYYY-MM-DD)
+      // Salvar interação usando hook (API REST - snake_case)
+      const createdInteraction = await createInteraction({
+        student_id: selectedTask.estudanteId,
+        interaction_type: interactionType,
+        interaction_date: formattedDate,
         description: interactionDescription,
-        sensitive: interactionSensitive,
-        createdBy: currentUser, // Nome do usuário ao invés do role
-        studentId: selectedTask.estudanteId // ID do estudante
-      };
+        is_sensitive: interactionSensitive,
+        created_by: currentUser
+      });
 
-      // Salvar interação no Supabase
-      const createdInteraction = await InteractionService.createInteraction(
-        selectedTask.estudanteId,
-        interactionData
-      );
-
-      logger.info('[TASK-MANAGER] Interação salva no Supabase', {
-        interactionId: createdInteraction.id,
+      logger.info('[TASK-MANAGER] Interação salva via API', {
+        interactionId: createdInteraction.interaction_id,
         estudanteId: selectedTask.estudanteId
       });
 
       // 2. Marcar tarefa como completada
-      const success = await TaskService.completeTask(selectedTask.id, createdInteraction.id);
+      await updateTask(selectedTask.id, {
+        status: 'COMPLETED',
+        completedAt: new Date().toISOString(),
+        interactionId: createdInteraction.interaction_id
+      } as any);
 
-      if (success) {
-        toast.success('Tarefa concluída e interação registrada com sucesso!');
-        setShowInteractionCard(false);
-        setSelectedTask(null);
-        await loadPendingTasks(); // Recarregar lista
-      } else {
-        toast.error('Erro ao completar tarefa');
-      }
+      toast.success('Tarefa concluída e interação registrada com sucesso!');
+      setShowInteractionCard(false);
+      setSelectedTask(null);
+      await refetchTasks(); // Recarregar lista
     } catch (error) {
       logger.error('Erro ao registrar interação:', error as Error);
       toast.error('Erro ao registrar interação');
@@ -272,28 +264,30 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
     tipoInteracao: string;
   }
 
-  // Função para gerar dados do relatório
+  // Função para gerar dados do relatório (usando hooks API REST)
   const generateReportData = async (bimestres: string[]): Promise<ReportData[]> => {
     const reportData: ReportData[] = [];
 
-    // Buscar todas as tarefas concluídas do usuário para os bimestres selecionados
-    const completedTasks = await TaskService.getCompletedTasks(userId, bimestres);
+    // Buscar tarefas concluídas do usuário filtradas por bimestre
+    // Nota: Como não temos endpoint específico, usamos apiTasks filtrado
+    const completedTasks = (apiTasks as any).filter(
+      (task: any) => task.status === 'COMPLETED' && task.bimestre && bimestres.includes(task.bimestre)
+    );
 
     // Para cada tarefa concluída, buscar a interação associada
     for (const task of completedTasks) {
-      if (task.interactionId) {
+      if ((task as any).interactionId) {
         try {
-          // Buscar interação específica no Supabase
-          const interaction = await InteractionService.getInteractionById(
-            task.estudanteId,
-            task.interactionId
+          // Buscar interação específica usando hook
+          const interaction = interactions.find(
+            (i: any) => i.interaction_id === (task as any).interactionId && i.student_id === (task as any).estudanteId
           );
 
           if (interaction) {
             // Converter data do formato YYYY-MM-DD para DD/MM/YYYY
-            let dataFormatada = interaction.date;
-            if (interaction.date.includes('-')) {
-              const [year, month, day] = interaction.date.split('-');
+            let dataFormatada = interaction.interaction_date;
+            if (interaction.interaction_date.includes('-')) {
+              const [year, month, day] = interaction.interaction_date.split('-');
               dataFormatada = `${day}/${month}/${year}`;
             }
 
@@ -301,7 +295,7 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
               data: dataFormatada,
               nome: task.studentName,
               turma: task.studentClass || 'N/A',
-              tipoInteracao: interaction.type
+              tipoInteracao: interaction.interaction_type
             });
           } else {
             // Se não encontrar a interação, adicionar com dados básicos
@@ -539,12 +533,7 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
     setCurrentPage(1);
   }, [selectedClasses]);
 
-  // Carregar tarefas na inicialização
-  useEffect(() => {
-    if (userId) {
-      loadPendingTasks();
-    }
-  }, [userId]);
+  // Tasks já são carregados automaticamente pelo hook no início do componente
 
   return (
     <div className="space-y-6">
@@ -576,7 +565,7 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
               Verificar Tarefas
             </Button>
             <Button
-              onClick={loadPendingTasks}
+              onClick={() => refetchTasks()}
               disabled={loading}
               variant="outline"
               className="flex items-center gap-2"

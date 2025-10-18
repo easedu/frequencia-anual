@@ -146,16 +146,16 @@ const InteractionHistoryCard = memo(function InteractionHistoryCard({
     // Ordenar interações: mais recentes primeiro (por data, depois por timestamp de criação)
     const sortedInteractions = [...interactions].sort((a, b) => {
         // Primeiro, comparar por data da interação
-        const dateA = new Date(a.date.split('/').reverse().join('-'));
-        const dateB = new Date(b.date.split('/').reverse().join('-'));
+        const dateA = a.date ? new Date(a.date.split('/').reverse().join('-')) : new Date(0);
+        const dateB = b.date ? new Date(b.date.split('/').reverse().join('-')) : new Date(0);
 
         if (dateB.getTime() !== dateA.getTime()) {
             return dateB.getTime() - dateA.getTime();
         }
 
         // Se mesma data, ordenar por timestamp de criação (mais recente primeiro)
-        const timestampA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const timestampB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        const timestampA = a.whatsappSentAt ? new Date(a.whatsappSentAt).getTime() : 0;
+        const timestampB = b.whatsappSentAt ? new Date(b.whatsappSentAt).getTime() : 0;
         return timestampB - timestampA;
     });
 

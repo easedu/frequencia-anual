@@ -19,14 +19,34 @@ import { getAuth } from "firebase/auth";
 import { toast } from "sonner";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useWhatsAppStatusPolling } from "@/hooks/useWhatsAppStatusPolling";
-import { StudentDataService } from "@/services/studentDataService";
-import { UserProfilesService } from "@/services/supabase/userProfilesService";
-import { AbsenceControlService } from "@/services/supabase/absenceControlService";
+import WhatsAppTrackingService from "@/services/whatsappTrackingService";
+
+// ✅ SPRINT 4 - FASE 8: Migração COMPLETA para API REST
+// TODOS os dados agora vêm via hooks API (sem fetch direto)
+import {
+  useStudents,
+  useStudent,
+  useInteractions,
+  useCreateInteraction,
+  useUpdateInteraction,
+  useDeleteInteraction,
+  useAbsences,
+  useMedicalCertificates,
+  useCreateMedicalCertificate,
+  useUpdateMedicalCertificate,
+  useDeleteMedicalCertificate,
+  useSuspensions,
+  useCreateSuspension,
+  useUpdateSuspension,
+  useDeleteSuspension,
+  useAbsenceControls,
+  useCurrentUserProfile,
+} from "@/hooks/api";
+
+// Services mantidos APENAS para lógica complexa (absences com atestados/suspensões)
 import { AbsenceService } from "@/services/supabase/absenceService";
 import { MedicalCertificatesService } from "@/services/supabase/medicalCertificatesService";
 import { StudentSuspensionsService } from "@/services/supabase/studentSuspensionsService";
-import { InteractionService } from "@/services/supabase/interactionService";
-import WhatsAppTrackingService from "@/services/whatsappTrackingService";
 import { logger } from "@/utils/logger";
 import type {
   Student,
@@ -52,11 +72,32 @@ export function useStudentProfile() {
   const searchParams = useSearchParams();
   const auth = getAuth();
 
+  // ✅ SPRINT 4 - FASE 8: Usar hooks API
+  // IMPORTANTE: Buscar TODOS os estudantes ativos (limit alto) para dropdown de turmas
+  const { students: allStudentsData, loading: loadingStudents, refetch: refetchStudents } = useStudents({
+    status: 'ATIVO',
+    limit: 10000 // Buscar todos os estudantes para dropdown de turmas
+  });
+  const { userProfile: currentUser, loading: loadingUser } = useCurrentUserProfile();
+  const { controls: absenceControls, loading: loadingAbsenceControls } = useAbsenceControls({
+    academic_year: parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || "2025"),
+  });
+
+  // Mutation hooks
+  const { createInteraction } = useCreateInteraction();
+  const { updateInteraction } = useUpdateInteraction();
+  const { deleteInteraction } = useDeleteInteraction();
+  const { createCertificate: createMedicalCertificate } = useCreateMedicalCertificate();
+  const { updateCertificate: updateMedicalCertificate } = useUpdateMedicalCertificate();
+  const { deleteCertificate: deleteMedicalCertificate } = useDeleteMedicalCertificate();
+  const { createSuspension } = useCreateSuspension();
+  const { updateSuspension } = useUpdateSuspension();
+  const { deleteSuspension } = useDeleteSuspension();
+
   // ═══════════════════════════════════════════════════════════
   // 1. STUDENT SELECTION (busca, turma, estudante selecionado)
   // ═══════════════════════════════════════════════════════════
 
-  const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [selectedTurma, setSelectedTurma] = useState<string>("");
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [searchName, setSearchName] = useState<string>("");
@@ -64,18 +105,129 @@ export function useStudentProfile() {
   const [suggestions, setSuggestions] = useState<Student[]>([]);
   const isSelectingStudent = useRef(false);
 
+  // Map API students para formato esperado
+  const allStudents = useMemo(() => {
+    return (allStudentsData as any[]).map((student: any) => ({
+      ...student,
+      // IMPORTANTE: id (UUID do banco) é usado para buscar estudante individual
+      id: student.id, // UUID do banco Supabase
+      estudanteId: student.student_id || student.estudanteId, // Campo legado
+      nome: student.name || student.nome,
+      turma: student.class || student.turma,
+      contatos: (student as any).student_contacts || (student as any).contacts || (student as any).contatos || [],
+      provaSaoPaulo: student.provaSaoPaulo || [],
+    })).sort((a: any, b: any) => a.nome.localeCompare(b.nome));
+  }, [allStudentsData]);
+
+  // Validar selectedStudentId antes de usar (deve existir em allStudents)
+  const validatedStudentId = useMemo(() => {
+    if (!selectedStudentId) return '';
+    const exists = allStudents.some((s: any) => s.id === selectedStudentId);
+    if (!exists) {
+      console.warn('[useStudentProfile] Selected student ID not found in loaded students:', selectedStudentId);
+      return '';
+    }
+    return selectedStudentId;
+  }, [selectedStudentId, allStudents]);
+
+  // Hooks condicionais para dados do estudante selecionado (usar validatedStudentId)
+  const { student: studentData, loading: loadingStudent, refetch: refetchStudent } = useStudent(validatedStudentId);
+  const { interactions: interactionsData, loading: loadingInteractions, refetch: refetchInteractions } = useInteractions({
+    estudanteId: validatedStudentId || undefined,
+  });
+  const { absences: absencesData, loading: loadingAbsences, refetch: refetchAbsences } = useAbsences({
+    estudanteId: validatedStudentId || undefined,
+  });
+  const { certificates: atestadosData, loading: loadingAtestados, refetch: refetchAtestados } = useMedicalCertificates({
+    estudanteId: validatedStudentId || undefined,
+  });
+  const { suspensions: suspensoesData, loading: loadingSuspensoes, refetch: refetchSuspensoes } = useSuspensions({
+    estudanteId: validatedStudentId || undefined,
+  });
+
   // ═══════════════════════════════════════════════════════════
   // 2. STUDENT DATA (student, absences, atestados, suspensões, interactions)
   // ═══════════════════════════════════════════════════════════
 
-  const [student, setStudent] = useState<Student | null>(null);
+  // Map hook data para formato esperado pelos componentes
+  const student = useMemo(() => {
+    if (!studentData) return null;
+    const data = studentData as any;
+
+    return {
+      ...studentData,
+      estudanteId: data.student_id || data.estudanteId,
+      nome: data.name || data.nome,
+      turma: data.class || data.turma,
+      // API já retorna 'contatos' correto via convertSupabaseToEstudante
+      contatos: data.contatos || [],
+    } as any;
+  }, [studentData]);
+
+  const interactions = useMemo(() => {
+    return (interactionsData || []).map((int: any) => ({
+      ...int,
+      studentId: int.student_id || int.studentId,
+      createdBy: int.created_by || int.createdBy || 'Desconhecido',
+      date: int.interaction_date || int.date || int.created_at?.split('T')[0] || new Date().toLocaleDateString('pt-BR'),
+      type: int.interaction_type || int.type || 'Não especificado',
+      sensitive: int.is_sensitive ?? int.sensitive ?? false,
+    }));
+  }, [interactionsData]);
+
+  const absences = useMemo(() => {
+    return (absencesData || []).map((abs: any) => ({
+      ...abs,
+      data: abs.absence_date || abs.data,
+      estudanteId: abs.student_id || abs.estudanteId,
+      justified: abs.is_justified || abs.justified,
+    }));
+  }, [absencesData]);
+
+  const atestados = useMemo(() => {
+    return (atestadosData || []).map((cert: any) => ({
+      id: cert.id,
+      startDate: cert.start_date || cert.startDate,
+      days: cert.days_covered || cert.days || 1,
+      description: cert.diagnosis || cert.doctor_name || 'Sem descrição',
+      createdBy: cert.submitted_by || cert.createdBy || 'Desconhecido'
+    }));
+  }, [atestadosData]);
+
+  const suspensoes = useMemo(() => {
+    return (suspensoesData || []).map((susp: any) => ({
+      id: susp.id,
+      startDate: susp.start_date || susp.startDate,
+      days: susp.days_suspended || susp.days || 1,
+      description: susp.reason || susp.description || 'Sem descrição',
+      createdBy: susp.decision_by || susp.createdBy || 'Desconhecido'
+    }));
+  }, [suspensoesData]);
+
+  const bimesterDates = useMemo(() => {
+    const dates: BimesterDates = {};
+    (absenceControls || []).forEach((bimester: any) => {
+      if (bimester.start_date && bimester.end_date) {
+        dates[bimester.bimester] = {
+          start: bimester.start_date,
+          end: bimester.end_date,
+        };
+      }
+    });
+
+    // Fallback
+    if (Object.keys(dates).length === 0) {
+      dates[1] = { start: "01/01/2025", end: "31/12/2025" };
+      dates[2] = { start: "01/01/2025", end: "31/12/2025" };
+      dates[3] = { start: "01/01/2025", end: "31/12/2025" };
+      dates[4] = { start: "01/01/2025", end: "31/12/2025" };
+    }
+
+    return dates;
+  }, [absenceControls]);
+
   const [studentRecord, setStudentRecord] = useState<StudentRecord | null>(null);
   const [studentRecordWithoutJustified, setStudentRecordWithoutJustified] = useState<StudentRecord | null>(null);
-  const [absences, setAbsences] = useState<AbsenceRecord[]>([]);
-  const [atestados, setAtestados] = useState<Atestado[]>([]);
-  const [suspensoes, setSuspensoes] = useState<Suspensao[]>([]);
-  const [interactions, setInteractions] = useState<FamilyInteraction[]>([]);
-  const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});
 
   // 🔄 Auto-refresh de status WhatsApp (polling adaptativo)
   const interactionsWithLiveStatus = useWhatsAppStatusPolling(interactions, {
@@ -131,56 +283,33 @@ export function useStudentProfile() {
   // 5. LOADING/ERROR/USER
   // ═══════════════════════════════════════════════════════════
 
-  const [loadingStudents, setLoadingStudents] = useState<boolean>(true);
-  const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const loadingProfile = loadingStudent || loadingInteractions || loadingAbsences || loadingAtestados || loadingSuspensoes;
+  const userRole = currentUser?.role?.toLowerCase() || "user";
 
   // ═══════════════════════════════════════════════════════════
   // EFFECTS: Initialization & URL Params
   // ═══════════════════════════════════════════════════════════
 
-  // Inicializar dados
-  useEffect(() => {
-    fetchAllStudents();
-    fetchBimesterDates();
-  }, []);
-
-  // URL param: studentId
+  // URL param: studentId (validar se existe na lista antes de usar)
   useEffect(() => {
     const studentId = searchParams.get("studentId");
     if (studentId && studentId !== selectedStudentId) {
-      handleSelectStudent(studentId);
-    }
-  }, [searchParams]);
-
-  // Buscar user role
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user || !user.uid) {
-          console.log('🔍 UserRole: Usuário não autenticado, setando como "user"');
-          setUserRole("user");
-          return;
+      // Verificar se o estudante existe na lista carregada
+      const studentExists = allStudents.some((s: any) => s.id === studentId);
+      if (studentExists) {
+        setSelectedStudentId(studentId);
+      } else {
+        console.warn('[useStudentProfile] Student ID from URL not found in loaded students:', studentId);
+        // Limpar estado e URL inválida
+        setSelectedStudentId('');
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('studentId');
+          window.history.replaceState({}, '', url.toString());
         }
-
-        const userProfile = await UserProfilesService.getByFirebaseUid(user.uid);
-        const role = userProfile?.role?.toLowerCase() || "user";
-        console.log('🔍 UserRole carregado:', {
-          firebaseUid: user.uid,
-          userProfile,
-          roleOriginal: userProfile?.role,
-          roleLowerCase: role
-        });
-        setUserRole(role);
-      } catch (error) {
-        logger.error("Erro ao carregar perfil do usuário", error as Error);
-        console.log('🔍 UserRole: Erro ao carregar, setando como "user"');
-        setUserRole("user");
       }
-    };
-    fetchUserRole();
-  }, [auth]);
+    }
+  }, [searchParams, selectedStudentId, allStudents]);
 
   // Load verified WhatsApp numbers
   useEffect(() => {
@@ -292,118 +421,30 @@ export function useStudentProfile() {
   }, [selectedStudentId]);
 
   // ═══════════════════════════════════════════════════════════
-  // FETCH FUNCTIONS
+  // REFETCH FUNCTION (para refrescar dados após mutations)
   // ═══════════════════════════════════════════════════════════
 
-  const fetchAllStudents = useCallback(async (): Promise<void> => {
-    try {
-      setLoadingStudents(true);
+  // ❌ REMOVIDO - fetchAllStudents() (FASE 8)
+  // Dados agora vêm via hook: useStudents({ status: 'ATIVO' })
 
-      // PERFORMANCE: Não carregar contatos na listagem inicial
-      const allStudentsData = await StudentDataService.getStudents(false, false);
+  // ❌ REMOVIDO - fetchBimesterDates() (FASE 8)
+  // Dados agora vêm via hook: useAbsenceControls({ academic_year })
 
-      const activeStudents = allStudentsData
-        .filter((s) => s.status === "ATIVO")
-        .map((student) => ({
-          ...student,
-          contatos: student.contatos || [],
-          provaSaoPaulo: student.provaSaoPaulo || [],
-        }));
-
-      setAllStudents(activeStudents.sort((a, b) => a.nome.localeCompare(b.nome)));
-    } catch (error) {
-      logger.error("Erro ao buscar lista de estudantes", error as Error);
-      toast.error("Erro ao carregar lista de estudantes");
-    } finally {
-      setLoadingStudents(false);
-    }
-  }, []);
-
-  const fetchBimesterDates = useCallback(async () => {
-    try {
-      const year = parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || "2025");
-      const absenceControlData = await AbsenceControlService.getByYear(year);
-
-      const dates: BimesterDates = {};
-      absenceControlData.forEach((bimester) => {
-        if (bimester.startDate && bimester.endDate) {
-          dates[bimester.bimester] = {
-            start: bimester.startDate,
-            end: bimester.endDate,
-          };
-        }
-      });
-
-      // Fallback
-      if (Object.keys(dates).length === 0) {
-        dates[1] = { start: "01/01/2025", end: "31/12/2025" };
-        dates[2] = { start: "01/01/2025", end: "31/12/2025" };
-        dates[3] = { start: "01/01/2025", end: "31/12/2025" };
-        dates[4] = { start: "01/01/2025", end: "31/12/2025" };
-      }
-
-      setBimesterDates(dates);
-    } catch (error) {
-      logger.error("Erro ao buscar períodos dos bimestres", error as Error);
-    }
-  }, []);
-
+  // ✅ NOVA - fetchStudentData simplificada (FASE 8)
+  // Apenas refetch dos hooks, autenticação automática
   const fetchStudentData = useCallback(
     async (studentId: string): Promise<void> => {
       if (!studentId) return;
 
-      try {
-        setLoadingProfile(true);
-
-        // Buscar estudante completo COM contatos
-        const studentData = await StudentDataService.getStudentById(studentId);
-
-        if (studentData) {
-          setStudent(studentData);
-
-          // Buscar faltas
-          const absencesData = await AbsenceService.getStudentAbsences(studentId);
-          setAbsences(absencesData);
-
-          // Buscar atestados e mapear para interface Atestado
-          const atestadosData = await MedicalCertificatesService.getByStudentId(studentId);
-          const mappedAtestados = atestadosData.map(cert => ({
-            id: cert.id,
-            startDate: cert.startDate,
-            days: cert.daysCovered,              // ✅ MAP: daysCovered → days
-            description: cert.diagnosis || cert.doctorName || 'Sem descrição',  // ✅ MAP: diagnosis → description
-            createdBy: cert.submittedBy          // ✅ MAP: submittedBy → createdBy
-          }));
-          setAtestados(mappedAtestados);
-
-          // Buscar suspensões e mapear para interface Suspensao
-          const suspensoesData = await StudentSuspensionsService.getByStudentId(studentId);
-          const mappedSuspensoes = suspensoesData.map(susp => ({
-            id: susp.id,
-            startDate: susp.startDate,
-            days: susp.daysSuspended,            // ✅ MAP: daysSuspended → days
-            description: susp.reason || susp.description || 'Sem descrição',  // ✅ MAP: reason → description
-            createdBy: susp.decisionBy           // ✅ MAP: decisionBy → createdBy
-          }));
-          setSuspensoes(mappedSuspensoes);
-
-          // Buscar interações
-          const interactionsData = await InteractionService.getStudentInteractions(studentId);
-          setInteractions(interactionsData);
-
-          // TODO: Calcular studentRecord e studentRecordWithoutJustified
-          // (Lógica complexa que vem do arquivo original)
-        } else {
-          toast.error("Estudante não encontrado");
-        }
-      } catch (error) {
-        logger.error("Erro ao buscar dados do estudante", error as Error);
-        toast.error("Erro ao carregar dados do estudante");
-      } finally {
-        setLoadingProfile(false);
-      }
+      await Promise.all([
+        refetchStudent(),
+        refetchInteractions(),
+        refetchAbsences(),
+        refetchAtestados(),
+        refetchSuspensoes(),
+      ]);
     },
-    []
+    [refetchStudent, refetchInteractions, refetchAbsences, refetchAtestados, refetchSuspensoes]
   );
 
   // ═══════════════════════════════════════════════════════════
@@ -496,7 +537,7 @@ export function useStudentProfile() {
 
       if (interactionType === "Contato digital" && selectedWhatsAppPhones.size === 1 && student?.contatos) {
         const phoneNumber = Array.from(selectedWhatsAppPhones)[0];
-        const contact = student.contatos.find(c => c.telefone.replace(/\D/g, '') === phoneNumber);
+        const contact = student.contatos.find((c: Contato) => c.telefone.replace(/\D/g, '') === phoneNumber);
         const contactName = contact ? `${contact.nome}${contact.parentesco ? ` (${contact.parentesco})` : ''}` : phoneNumber;
         finalDescription = `Mensagem enviada via WhatsApp para: ${contactName} - ${phoneNumber}\n\n${interactionDescription}`;
 
@@ -511,15 +552,22 @@ export function useStudentProfile() {
 
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-      await InteractionService.createInteraction(selectedStudentId, {
-        studentId: selectedStudentId,
-        type: interactionType,
-        date: formattedDate,
+      // ✅ SPRINT 4 - FASE 8: Usar hook de criação
+      await createInteraction({
+        student_id: selectedStudentId,
+        interaction_type: interactionType,
+        interaction_date: formattedDate,
         description: finalDescription,
-        createdBy: currentUser,
-        sensitive: interactionSensitive,
-        ...whatsappData,
-      } as Omit<FamilyInteraction, 'id'>);
+        created_by: currentUser,
+        is_sensitive: interactionSensitive,
+        ...(whatsappData && {
+          whatsapp_message: whatsappData.whatsappMessage,
+          whatsapp_phones: whatsappData.whatsappPhones,
+          whatsapp_message_id: whatsappData.whatsappMessageId,
+          whatsapp_status: whatsappData.whatsappStatus,
+          whatsapp_sent_at: whatsappData.whatsappSentAt,
+        }),
+      });
 
       logger.interactionOperation('create', selectedStudentId, interactionType, { supabase: true });
 
@@ -565,11 +613,12 @@ export function useStudentProfile() {
     }
 
     try {
-      await InteractionService.updateInteraction(editingInteraction.id, {
-        type: interactionType,
-        date: formattedDate,
+      // ✅ SPRINT 4 - FASE 8: Usar hook de update
+      await updateInteraction(editingInteraction.id, {
+        interaction_type: interactionType,
+        interaction_date: formattedDate,
         description: interactionDescription,
-        sensitive: interactionSensitive,
+        is_sensitive: interactionSensitive,
       });
 
       logger.interactionOperation('update', selectedStudentId, editingInteraction.type, { supabase: true });
@@ -590,7 +639,8 @@ export function useStudentProfile() {
   const handleDeleteInteraction = useCallback(async (interactionId: string): Promise<void> => {
     if (!selectedStudentId) return;
     try {
-      await InteractionService.deleteInteraction(interactionId);
+      // ✅ SPRINT 4 - FASE 8: Usar hook de delete
+      await deleteInteraction(interactionId);
       logger.interactionOperation('delete', selectedStudentId, 'unknown', { supabase: true });
       await fetchStudentData(selectedStudentId);
       toast.success("Interação excluída com sucesso!");
@@ -600,7 +650,7 @@ export function useStudentProfile() {
     } finally {
       setShowDeleteDialog(null);
     }
-  }, [selectedStudentId, fetchStudentData]);
+  }, [selectedStudentId, fetchStudentData, deleteInteraction]);
 
   // ═══════════════════════════════════════════════════════════
   // HANDLERS - ATESTADOS
@@ -1313,25 +1363,26 @@ export function useStudentProfile() {
 
       // Salvar interação
       const phoneNumber = whatsappPhones[0];
-      const contact = student.contatos?.find(c => c.telefone.replace(/\D/g, '') === phoneNumber);
+      const contact = student.contatos?.find((c: Contato) => c.telefone.replace(/\D/g, '') === phoneNumber);
       const contactName = contact ? `${contact.nome}${contact.parentesco ? ` (${contact.parentesco})` : ''}` : phoneNumber;
       const finalDescription = `Mensagem enviada via WhatsApp para: ${contactName} - ${phoneNumber}\n\n${interactionDescription}`;
 
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-      await InteractionService.createInteraction(selectedStudentId, {
-        studentId: selectedStudentId,
-        type: 'Contato digital',
-        date: new Date().toISOString().split('T')[0],
+      // ✅ SPRINT 4 - FASE 8: Usar hook de criação
+      await createInteraction({
+        student_id: selectedStudentId,
+        interaction_type: 'Contato digital',
+        interaction_date: new Date().toISOString().split('T')[0],
         description: finalDescription,
-        createdBy: currentUser,
-        sensitive: interactionSensitive,
-        whatsappMessage: whatsappMessageText,
-        whatsappPhones: whatsappPhones,
-        whatsappMessageId: whatsappMessageId,
-        whatsappStatus: 'SENT' as const,
-        whatsappSentAt: new Date().toISOString(),
-      } as Omit<FamilyInteraction, 'id'>);
+        created_by: currentUser,
+        is_sensitive: interactionSensitive,
+        whatsapp_message: whatsappMessageText,
+        whatsapp_phones: whatsappPhones,
+        whatsapp_message_id: whatsappMessageId,
+        whatsapp_status: 'SENT',
+        whatsapp_sent_at: new Date().toISOString(),
+      });
 
       logger.interactionOperation('create', selectedStudentId, 'Contato digital', { supabase: true });
 
@@ -1399,13 +1450,23 @@ export function useStudentProfile() {
   // ═══════════════════════════════════════════════════════════
 
   const uniqueTurmas: string[] = useMemo(() =>
-    Array.from(new Set(allStudents.map((s: Student) => s.turma))).sort((a, b) => {
-      const [numA, letterA] = a.match(/(\d+)([A-Z]+)/)!.slice(1);
-      const [numB, letterB] = b.match(/(\d+)([A-Z]+)/)!.slice(1);
-      const numCompare = Number(numA) - Number(numB);
-      if (numCompare !== 0) return numCompare;
-      return letterA.localeCompare(letterB);
-    }),
+    Array.from(new Set(allStudents.map((s: Student) => s.turma)))
+      .filter(turma => turma && turma.trim().length > 0) // Filtrar turmas vazias
+      .sort((a, b) => {
+        const matchA = a.match(/(\d+)([A-Z]+)/);
+        const matchB = b.match(/(\d+)([A-Z]+)/);
+
+        // Se algum regex falhar, usar comparação alfabética simples
+        if (!matchA || !matchB) {
+          return a.localeCompare(b);
+        }
+
+        const [, numA, letterA] = matchA;
+        const [, numB, letterB] = matchB;
+        const numCompare = Number(numA) - Number(numB);
+        if (numCompare !== 0) return numCompare;
+        return letterA.localeCompare(letterB);
+      }),
   [allStudents]);
 
   const studentsInTurma: Student[] = useMemo(() =>

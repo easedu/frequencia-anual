@@ -53,7 +53,6 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       .from('students')
       .select('*, student_contacts(*)', { count: 'exact' })
       .eq('deleted', false)
-      .eq('user_id', userId) // RLS - apenas estudantes do usuário
       .order('name', { ascending: true });
 
     // Aplicar filtros

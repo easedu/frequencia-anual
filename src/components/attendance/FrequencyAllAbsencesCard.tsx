@@ -8,15 +8,16 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { StudentRecord } from "@/types";
+import { StudentRecord, Student } from "@/types";
 import { getFrequencyColor } from "@/app/utils";
 import { Calendar, CheckCircle, TrendingUp, Users } from "lucide-react";
 
 interface FrequencyAllAbsencesCardProps {
     studentRecord: StudentRecord | null;
+    student?: Student; // Opcional para compatibilidade
 }
 
-const FrequencyAllAbsencesCard = memo(function FrequencyAllAbsencesCard({ studentRecord }: FrequencyAllAbsencesCardProps) {
+const FrequencyAllAbsencesCard = memo(function FrequencyAllAbsencesCard({ studentRecord, student }: FrequencyAllAbsencesCardProps) {
     return (
         <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50">
             <CardHeader className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-t-lg py-3">

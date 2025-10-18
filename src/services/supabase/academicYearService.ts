@@ -1,6 +1,16 @@
 /**
  * Academic Year Service - Supabase
  *
+ * @deprecated Use hooks from @/hooks/api/useAcademicYears instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useAcademicYears() - Listar anos letivos
+ * - useCurrentAcademicYear() - Ano atual
+ * - useAcademicYearComplete() - Dados completos (ano + bimestres + dias)
+ * - useCreateAcademicYear() - Criar ano
+ * - useUpdateAcademicYear() - Atualizar ano
+ *
  * Service layer para gerenciar dados de ano letivo, bimestres e dias letivos
  * Migrado do Firebase para Supabase (estrutura relacional)
  *

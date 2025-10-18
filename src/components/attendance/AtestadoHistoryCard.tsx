@@ -23,11 +23,12 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Atestado } from "@/types";
+import { Atestado, Student } from "@/types";
 
 interface AtestadoHistoryCardProps {
     atestados: Atestado[];
-    userRole: string | null;
+    userRole: string | null | undefined; // Aceitar undefined também
+    student?: Student | null | undefined; // Aceitar student (não usado mas passado)
     showDeleteAtestadoDialog: string | null;
     setShowDeleteAtestadoDialog: (value: string | null) => void;
     setEditingAtestado: (value: Atestado | null) => void;

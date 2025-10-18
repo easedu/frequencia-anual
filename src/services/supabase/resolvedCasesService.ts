@@ -1,6 +1,14 @@
 /**
  * Supabase Service: Resolved Consecutive Absence Cases
  *
+ * @deprecated Use hooks from @/hooks/api/useResolvedCases instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useResolvedCases() - Listar casos resolvidos
+ * - useCreateResolvedCase() - Criar caso resolvido
+ * - useDeleteResolvedCase() - Deletar caso resolvido
+ *
  * Gerencia casos resolvidos de faltas consecutivas.
  * Substitui: Firebase collection '2025/casos_resolvidos/{studentId}'
  */

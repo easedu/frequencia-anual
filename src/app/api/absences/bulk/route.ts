@@ -46,7 +46,6 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       .from('students')
       .select('id')
       .eq('id', sanitizedData.estudanteId)
-      .eq('user_id', userId)
       .eq('deleted', false)
       .single();
 

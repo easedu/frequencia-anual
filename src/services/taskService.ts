@@ -1,9 +1,8 @@
 /**
- * Serviço para gerenciamento de tarefas de usuário (SUPABASE VERSION)
- * Migrado de Firebase para Supabase
+ * Serviço para gerenciamento de tarefas de usuário (API VERSION)
+ * Refatorado para usar API Routes ao invés de Supabase direto
  */
 
-import { supabase } from '@/lib/supabaseClient';
 import { AcademicYearService } from './supabase/academicYearService';
 import { AbsenceService } from './supabase/absenceService';
 import { StudentDataService } from './studentDataService';
@@ -219,37 +218,37 @@ export class TaskService {
             deleted: false
           };
 
-          // Insert no Supabase
-          const { data: inserted, error } = await (supabase as any)
-            .from('user_tasks')
-            .insert({
-              user_id: taskData.userId,
-              student_id: taskData.estudanteId,
-              student_name: taskData.studentName,
-              student_class: taskData.studentClass,
-              task_type: taskData.taskType,
-              bimestre: taskData.bimestre,
-              status: taskData.status,
-              frequency_percentage: taskData.frequencyPercentage,
-              absences_count: taskData.absencesCount,
-              is_pcd: taskData.isPCD,
-              priority: taskData.priority,
-              recommended_action: taskData.recommendedAction,
-              created_by: taskData.createdBy,
-              deleted: taskData.deleted
-            })
-            .select()
-            .single();
-
-          if (error) {
-            logger.error('Erro ao inserir task', { estudanteId: estudante.estudanteId }, error);
-          } else {
-            newTasks.push({
-              id: inserted.id,
-              ...taskData,
-              createdAt: inserted.created_at,
-              updatedAt: inserted.updated_at
+          // Insert via API
+          try {
+            const response = await fetch('/api/tasks', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                student_id: taskData.estudanteId,
+                title: `Frequência baixa: ${taskData.frequencyPercentage.toFixed(1)}%`,
+                description: `Estudante com ${taskData.absencesCount} faltas no ${currentBimester}`,
+                recommended_action: taskData.recommendedAction,
+                is_resolved: false,
+                created_by: taskData.createdBy,
+              }),
             });
+
+            if (response.ok) {
+              const result = await response.json();
+              newTasks.push({
+                id: result.data.id,
+                ...taskData,
+                createdAt: result.data.created_at,
+                updatedAt: result.data.updated_at
+              });
+            } else {
+              logger.error('Erro ao inserir task via API', {
+                estudanteId: estudante.estudanteId,
+                status: response.status
+              });
+            }
+          } catch (error) {
+            logger.error('Erro ao inserir task via API', { estudanteId: estudante.estudanteId }, error as Error);
           }
         }
       }
@@ -274,21 +273,17 @@ export class TaskService {
 
   /**
    * Busca tarefas pendentes de um usuário
-   *
-   * NOTA: Schema correto - created_by, is_resolved (não status/deleted)
    */
   static async getPendingTasks(userId: string): Promise<UserTask[]> {
     try {
-      const { data, error } = await supabase
-        .from('user_tasks')
-        .select('*')
-        .eq('created_by', userId)
-        .eq('is_resolved', false)
-        .order('created_at', { ascending: false });
+      const response = await fetch(`/api/tasks?created_by=${encodeURIComponent(userId)}&is_resolved=false`);
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      return (data || []).map(task => this.mapSupabaseToUserTask(task));
+      const result = await response.json();
+      return (result.data || []).map((task: any) => this.mapApiToUserTask(task));
     } catch (error) {
       logger.error('getPendingTasks falhou', {}, error as Error);
       return [];
@@ -303,36 +298,21 @@ export class TaskService {
     interactionId: string
   ): Promise<boolean> {
     try {
-      // Buscar task
-      const { data: task, error: fetchError } = await (supabase
-        .from('user_tasks')
-        .select('*')
-        .eq('id', taskId)
-        .single() as any);
-
-      if (fetchError || !task) {
-        logger.error('Tarefa não encontrada', { taskId });
-        return false;
-      }
-
-      const completedAt = new Date().toISOString();
-
-      // Atualizar task (schema correto: is_resolved, resolved_at)
-      const { error: updateError } = await (supabase
-        .from('user_tasks') as any)
-        .update({
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           is_resolved: true,
-          resolved_at: completedAt,
+          resolved_at: new Date().toISOString(),
           action_taken: `Interação registrada: ${interactionId}`
-        })
-        .eq('id', taskId);
+        }),
+      });
 
-      if (updateError) {
-        logger.error('Erro ao atualizar tarefa', { taskId }, updateError as Error);
+      if (!response.ok) {
+        logger.error('Erro ao atualizar tarefa via API', { taskId, status: response.status });
         return false;
       }
 
-      // NOTA: task_control não existe mais no schema - removido
       return true;
     } catch (error) {
       logger.error('completeTask falhou', { taskId }, error as Error);
@@ -345,18 +325,13 @@ export class TaskService {
    */
   static async getTaskById(taskId: string): Promise<UserTask | null> {
     try {
-      const { data, error } = await supabase
-        .from('user_tasks')
-        .select('*')
-        .eq('id', taskId)
-        .single();
+      const response = await fetch(`/api/tasks/${taskId}`);
 
-      if (error) {
-        if (error.code === 'PGRST116') return null; // Not found
-        throw error;
-      }
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      return this.mapSupabaseToUserTask(data);
+      const result = await response.json();
+      return this.mapApiToUserTask(result.data);
     } catch (error) {
       logger.error('getTaskById falhou', { taskId }, error as Error);
       return null;
@@ -365,22 +340,15 @@ export class TaskService {
 
   /**
    * Busca tarefas completadas de um usuário
-   *
-   * NOTA: Schema correto - created_by, is_resolved (não status/deleted/bimestre/completed_at)
    */
   static async getCompletedTasks(userId: string, bimestres?: string[]): Promise<UserTask[]> {
     try {
-      // NOTA: Parâmetro bimestres ignorado - user_tasks não possui coluna 'bimestre'
-      const { data, error } = await supabase
-        .from('user_tasks')
-        .select('*')
-        .eq('created_by', userId)
-        .eq('is_resolved', true)
-        .order('resolved_at', { ascending: false });
+      const response = await fetch(`/api/tasks?created_by=${encodeURIComponent(userId)}&is_resolved=true`);
 
-      if (error) throw error;
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      return (data || []).map(task => this.mapSupabaseToUserTask(task));
+      const result = await response.json();
+      return (result.data || []).map((task: any) => this.mapApiToUserTask(task));
     } catch (error) {
       logger.error('getCompletedTasks falhou', {}, error as Error);
       return [];
@@ -388,45 +356,30 @@ export class TaskService {
   }
 
   /**
-   * Cria uma nova tarefa no Supabase
+   * Cria uma nova tarefa via API
    */
   static async createTask(taskData: Omit<UserTask, 'id'>): Promise<string> {
     try {
-      const insertData: any = {
-        user_id: taskData.userId,
-        student_id: taskData.estudanteId,
-        student_name: taskData.studentName,
-        student_class: taskData.studentClass,
-        task_type: taskData.taskType,
-        bimestre: taskData.bimestre,
-        status: taskData.status,
-        frequency_percentage: taskData.frequencyPercentage,
-        absences_count: taskData.absencesCount,
-        is_pcd: taskData.isPCD,
-        created_at: taskData.createdAt,
-        created_by: taskData.createdBy,
-        priority: taskData.priority,
-        recommended_action: taskData.recommendedAction,
-        deleted: false,
-      };
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: taskData.estudanteId,
+          title: taskData.recommendedAction || 'Tarefa criada',
+          description: `${taskData.studentName} - ${taskData.studentClass}`,
+          recommended_action: taskData.recommendedAction,
+          is_resolved: taskData.status === 'COMPLETED',
+          action_taken: taskData.interactionDescription,
+          created_by: taskData.createdBy,
+          due_date: taskData.completedAt || null,
+        }),
+      });
 
-      // Campos opcionais
-      if (taskData.completedAt !== undefined) insertData.completed_at = taskData.completedAt;
-      if (taskData.resolvedBy !== undefined) insertData.resolved_by = taskData.resolvedBy;
-      if (taskData.interactionId !== undefined) insertData.interaction_id = taskData.interactionId;
-      if (taskData.interactionType !== undefined) insertData.interaction_type = taskData.interactionType;
-      if (taskData.interactionDescription !== undefined) insertData.interaction_description = taskData.interactionDescription;
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      const { data, error } = await ((supabase
-        .from('user_tasks') as any)
-        .insert(insertData)
-        .select()
-        .single());
-
-      if (error) throw error;
-
-      logger.info('Tarefa criada no Supabase', { taskId: data.id });
-      return data.id;
+      const result = await response.json();
+      logger.info('Tarefa criada via API', { taskId: result.data.id });
+      return result.data.id;
     } catch (error) {
       logger.error('createTask falhou', {}, error as Error);
       throw error;
@@ -435,20 +388,15 @@ export class TaskService {
 
   /**
    * Busca todas as tarefas de um usuário (por userId, incluindo BOT)
-   *
-   * NOTA: Busca por 'created_by' (quem criou a tarefa)
    */
   static async getUserTasksForUserId(userId: string): Promise<UserTask[]> {
     try {
-      const { data, error } = await supabase
-        .from('user_tasks')
-        .select('*')
-        .eq('created_by', userId)
-        .order('created_at', { ascending: false });
+      const response = await fetch(`/api/tasks?created_by=${encodeURIComponent(userId)}`);
 
-      if (error) throw error;
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      return (data || []).map(task => this.mapSupabaseToUserTask(task));
+      const result = await response.json();
+      return (result.data || []).map((task: any) => this.mapApiToUserTask(task));
     } catch (error) {
       logger.error('getUserTasksForUserId falhou', { userId }, error as Error);
       return [];
@@ -456,27 +404,27 @@ export class TaskService {
   }
 
   /**
-   * Atualiza uma tarefa
+   * Atualiza uma tarefa via API
    */
   static async updateTask(taskId: string, updates: Partial<UserTask>): Promise<boolean> {
     try {
       const updateData: any = {};
 
-      if (updates.status !== undefined) updateData.status = updates.status;
-      if (updates.completedAt !== undefined) updateData.completed_at = updates.completedAt;
-      if (updates.interactionId !== undefined) updateData.interaction_id = updates.interactionId;
-      if (updates.interactionType !== undefined) updateData.interaction_type = updates.interactionType;
-      if (updates.interactionDescription !== undefined) updateData.interaction_description = updates.interactionDescription;
-      if (updates.resolvedBy !== undefined) updateData.resolved_by = updates.resolvedBy;
+      if (updates.status !== undefined) {
+        updateData.is_resolved = updates.status === 'COMPLETED';
+      }
+      if (updates.completedAt !== undefined) updateData.resolved_at = updates.completedAt;
+      if (updates.interactionDescription !== undefined) updateData.action_taken = updates.interactionDescription;
 
-      const { error } = await ((supabase
-        .from('user_tasks') as any)
-        .update(updateData)
-        .eq('id', taskId));
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      });
 
-      if (error) throw error;
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      logger.info('Tarefa atualizada', { taskId });
+      logger.info('Tarefa atualizada via API', { taskId });
       return true;
     } catch (error) {
       logger.error('updateTask falhou', { taskId }, error as Error);
@@ -485,18 +433,17 @@ export class TaskService {
   }
 
   /**
-   * Deleta uma tarefa
+   * Deleta uma tarefa via API
    */
   static async deleteTask(taskId: string): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('user_tasks')
-        .delete()
-        .eq('id', taskId);
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+      });
 
-      if (error) throw error;
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      logger.info('Tarefa deletada', { taskId });
+      logger.info('Tarefa deletada via API', { taskId });
       return true;
     } catch (error) {
       logger.error('deleteTask falhou', { taskId }, error as Error);
@@ -506,16 +453,25 @@ export class TaskService {
 
   /**
    * Remove todas as tarefas do sistema (para limpeza durante desenvolvimento)
+   * NOTA: Requer implementação bulk delete na API ou múltiplas chamadas
    */
   static async clearAllTasks(): Promise<void> {
     try {
-      // Delete em paralelo
-      await Promise.all([
-        supabase.from('user_tasks').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('task_control').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-      ]);
+      // Buscar todas as tasks
+      const response = await fetch('/api/tasks?limit=1000');
+      if (!response.ok) throw new Error('Erro ao buscar tasks');
 
-      logger.info('Todas as tarefas foram removidas');
+      const result = await response.json();
+      const tasks = result.data || [];
+
+      // Deletar todas em paralelo (máximo 10 simultâneas para não sobrecarregar)
+      const deletePromises = tasks.map((task: any) =>
+        fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
+      );
+
+      await Promise.all(deletePromises);
+
+      logger.info('Todas as tarefas foram removidas via API');
     } catch (error) {
       logger.error('clearAllTasks falhou', {}, error as Error);
       throw error;
@@ -523,29 +479,29 @@ export class TaskService {
   }
 
   /**
-   * Map Supabase record to UserTask type
+   * Map API response to UserTask type
    */
-  private static mapSupabaseToUserTask(record: any): UserTask {
+  private static mapApiToUserTask(record: any): UserTask {
     return {
       id: record.id,
-      userId: record.user_id,
+      userId: record.user_id || 'sistema',
       estudanteId: record.student_id,
-      studentName: record.student_name,
-      studentClass: record.student_class,
-      taskType: record.task_type,
-      bimestre: record.bimestre,
-      status: record.status,
-      frequencyPercentage: parseFloat(record.frequency_percentage),
-      absencesCount: record.absences_count,
-      isPCD: record.is_pcd,
-      priority: record.priority,
-      recommendedAction: record.recommended_action,
+      studentName: record.student_name || record.title || 'Estudante',
+      studentClass: record.student_class || 'N/A',
+      taskType: record.task_type || 'CONSELHO_TUTELAR',
+      bimestre: record.bimestre || '1º Bimestre',
+      status: record.is_resolved ? 'COMPLETED' : 'PENDING',
+      frequencyPercentage: parseFloat(record.frequency_percentage || 0),
+      absencesCount: record.absences_count || 0,
+      isPCD: record.is_pcd || false,
+      priority: record.priority || 'routine',
+      recommendedAction: record.recommended_action || record.title,
       createdBy: record.created_by,
       createdAt: record.created_at,
       updatedAt: record.updated_at,
-      completedAt: record.completed_at,
+      completedAt: record.resolved_at,
       interactionId: record.interaction_id,
-      deleted: record.deleted,
+      deleted: record.deleted || false,
       deletedAt: record.deleted_at,
       deletedBy: record.deleted_by
     };

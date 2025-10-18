@@ -1,5 +1,6 @@
 /**
  * useContactsManagement Hook
+ * ✅ SPRINT 4 - FASE 6: Migrado para API REST
  *
  * Centraliza toda a lógica de gerenciamento de contatos telefônicos e WhatsApp.
  * Extrai ~400-500 linhas do componente telefones/page.tsx
@@ -7,9 +8,9 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDebounce } from "@/hooks/useDebounce";
+import { useCreateInteraction } from '@/hooks/api';
 import { toast } from 'sonner';
 import { WhatsAppTrackingService } from '@/services/whatsappTrackingService';
-import { InteractionService } from '@/services/supabase/interactionService';
 import { logger } from '@/utils/logger';
 import { getAuth } from 'firebase/auth';
 import type { Estudante } from '@/hooks/useStudents';
@@ -43,6 +44,9 @@ interface UseContactsManagementProps {
 
 export function useContactsManagement({ students, studentsLoading }: UseContactsManagementProps) {
   const auth = getAuth();
+
+  // ✅ MIGRADO: Hook da API REST
+  const { createInteraction } = useCreateInteraction();
 
   // ──────────────────────────────────────────────────────────────
   // Estados
@@ -430,21 +434,22 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
 
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-      await InteractionService.createInteraction(selectedContact.estudanteId, {
-        studentId: selectedContact.estudanteId,
-        type: 'Contato digital',
-        date: new Date().toISOString().split('T')[0],
+      // ✅ MIGRADO: Usar hook da API REST
+      await createInteraction({
+        student_id: selectedContact.estudanteId,
+        interaction_type: 'Contato digital',
+        interaction_date: new Date().toISOString().split('T')[0],
         description: finalDescription,
-        createdBy: currentUser,
-        sensitive: interactionSensitive,
-        whatsappMessage: whatsappMessageText,
-        whatsappPhones: whatsappPhones,
-        whatsappMessageId: whatsappMessageId,
-        whatsappStatus: 'SENT' as const,
-        whatsappSentAt: new Date().toISOString(),
-      } as any);
+        created_by: currentUser,
+        is_sensitive: interactionSensitive,
+        whatsapp_message: whatsappMessageText,
+        whatsapp_phones: whatsappPhones,
+        whatsapp_message_id: whatsappMessageId,
+        whatsapp_status: 'SENT' as const,
+        whatsapp_sent_at: new Date().toISOString(),
+      });
 
-      logger.interactionOperation('create', selectedContact.estudanteId, 'Contato digital', { supabase: true });
+      logger.interactionOperation('create', selectedContact.estudanteId, 'Contato digital', { apiRest: true });
 
       setWhatsAppSendSuccess(true);
       setIsSendingWhatsApp(false);
@@ -466,7 +471,7 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
       setIsSendingWhatsApp(false);
       setWhatsAppSendSuccess(false);
     }
-  }, [selectedContact, auth.currentUser, selectedWhatsAppPhones, whatsAppMessage, interactionDescription, interactionSensitive]);
+  }, [selectedContact, auth.currentUser, selectedWhatsAppPhones, whatsAppMessage, interactionDescription, interactionSensitive, createInteraction]);
 
   // ──────────────────────────────────────────────────────────────
   // Retorno do Hook

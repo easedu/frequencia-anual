@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Toaster, toast } from "sonner";
-import { StudentDataService } from "@/services/studentDataService";
-import { InteractionService } from "@/services/supabase/interactionService";
+import { useStudents, useInteractions } from "@/hooks/api";
 import { logger } from "@/utils/logger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +32,8 @@ import {
   AlertTriangle,
   User
 } from "lucide-react";
-import { FamilyInteraction, Student } from "@/types";
+import { FamilyInteraction } from "@/types";
+import { Student as ApiStudent } from "@/hooks/api";
 import { formatFirebaseDate } from "../utils";
 import { CURRENT_SCHOOL_YEAR } from "@/config/constants";
 import InteractionChartsCard from "@/components/interactions/InteractionChartsCard";
@@ -47,16 +47,14 @@ interface InteractionStats {
   recent: number;
 }
 
-interface StudentWithInteractions extends Student {
+interface StudentWithInteractions extends ApiStudent {
   interactionCount: number;
   lastInteraction?: string;
 }
 
 export default function InteractionReportsPage() {
-  const [loading, setLoading] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState("");
-  const [interactions, setInteractions] = useState<FamilyInteraction[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [localStudents, setLocalStudents] = useState<ApiStudent[]>([]);
+  const [localInteractions, setLocalInteractions] = useState<FamilyInteraction[]>([]);
   const [filteredInteractions, setFilteredInteractions] = useState<FamilyInteraction[]>([]);
   const [stats, setStats] = useState<InteractionStats>({
     total: 0,
@@ -76,142 +74,84 @@ export default function InteractionReportsPage() {
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [showSensitive, setShowSensitive] = useState<boolean>(false);
 
+  // ✅ Usar hooks da API REST (sem Supabase direto)
+  const { students, loading: loadingStudents } = useStudents({ status: "ATIVO" });
+  const { interactions, loading: loadingInteractions } = useInteractions({});
 
-  // Carregar dados iniciais
+  const loading = loadingStudents || loadingInteractions;
+
+  // Processar dados dos hooks quando carregarem
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!loadingStudents && students) {
+      setLocalStudents(students);
+    }
+  }, [students, loadingStudents]);
+
+  useEffect(() => {
+    if (!loadingInteractions && interactions) {
+      // Ordenar por data (mais recentes primeiro)
+      const sorted = [...interactions].sort((a, b) => {
+        const dateA = new Date(a.interaction_date);
+        const dateB = new Date(b.interaction_date);
+        return dateB.getTime() - dateA.getTime();
+      });
+
+      setLocalInteractions(sorted as any);
+
+      // Mostrar mensagem informativa se não há dados
+      if (sorted.length === 0) {
+        toast.info("Nenhuma interação encontrada. Cadastre interações no perfil dos estudantes para visualizar os relatórios.");
+      }
+    }
+  }, [interactions, loadingInteractions]);
 
   // Aplicar filtros quando mudarem
   useEffect(() => {
     applyFilters();
-  }, [interactions, selectedTurma, selectedStudent, selectedType, startDate, endDate, debouncedSearchTerm, showSensitive]);
-
-  const loadData = async () => {
-    setLoading(true);
-    setLoadingProgress("Carregando estudantes...");
-
-    try {
-      // Carregar estudantes via Supabase
-      logger.debug('Buscando estudantes via StudentDataService');
-      const allStudents = await StudentDataService.getStudents();
-      const studentsData = allStudents
-        .filter(s => s.status === "ATIVO")
-        .map(student => ({
-          ...student,
-          contatos: student.contatos || [],
-        }));
-
-      setStudents(studentsData);
-      setLoadingProgress(`Carregando interações de ${studentsData.length} estudantes...`);
-
-      // Carregar interações de todos os estudantes com processamento em lotes
-      const allInteractions: FamilyInteraction[] = [];
-      const validStudents = studentsData.filter(s => s.estudanteId);
-
-      // Processar em lotes de 20 estudantes para evitar timeout
-      const batchSize = 20;
-      const totalBatches = Math.ceil(validStudents.length / batchSize);
-
-      for (let i = 0; i < validStudents.length; i += batchSize) {
-        const batch = validStudents.slice(i, i + batchSize);
-        const currentBatch = Math.floor(i / batchSize) + 1;
-        const progress = Math.round((currentBatch / totalBatches) * 80); // 80% para interações, 20% para finalização
-        setLoadingProgress(`Processando lote ${currentBatch}/${totalBatches} (${progress}%)`);
-
-        const batchPromises = batch.map(async (student) => {
-          const studentId = student.estudanteId;
-
-          try {
-            // Buscar interações via Supabase (single source)
-            const studentInteractions = await InteractionService.getStudentInteractions(studentId);
-            return studentInteractions;
-          } catch (studentError) {
-            logger.error('Erro ao buscar interações do estudante', { studentId }, studentError as Error);
-            return [];
-          }
-        });
-
-        // Aguardar o lote atual completar antes de processar o próximo
-        const batchResults = await Promise.all(batchPromises);
-        batchResults.forEach(interactions => {
-          allInteractions.push(...interactions);
-        });
-
-        // Pequena pausa entre lotes para não sobrecarregar
-        if (i + batchSize < validStudents.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
-
-      setLoadingProgress("Organizando dados... (90%)");
-
-      // Ordenar por data (mais recentes primeiro)
-      allInteractions.sort((a, b) => {
-        const dateA = new Date(a.date.split('/').reverse().join('-'));
-        const dateB = new Date(b.date.split('/').reverse().join('-'));
-        return dateB.getTime() - dateA.getTime();
-      });
-
-      setLoadingProgress("Finalizando... (95%)");
-      setInteractions(allInteractions);
-
-      // Mostrar mensagem informativa se não há dados
-      if (allInteractions.length === 0) {
-        toast.info("Nenhuma interação encontrada. Cadastre interações no perfil dos estudantes para visualizar os relatórios.");
-      }
-
-    } catch (error) {
-      logger.error("Erro ao carregar dados", error as Error);
-      toast.error("Erro ao carregar dados dos relatórios");
-    } finally {
-      setLoading(false);
-      setLoadingProgress("");
-    }
-  };
+  }, [localInteractions, selectedTurma, selectedStudent, selectedType, startDate, endDate, debouncedSearchTerm, showSensitive]);
 
   const applyFilters = () => {
-    let filtered = [...interactions];
+    let filtered = [...localInteractions];
 
     // Filtro por turma
     if (selectedTurma && selectedTurma !== "all") {
-      const studentIds = students
-        .filter(s => s.turma === selectedTurma)
-        .map(s => s.estudanteId);
-      filtered = filtered.filter(i => studentIds.includes(i.studentId));
+      const studentIds = localStudents
+        .filter(s => s.class === selectedTurma)
+        .map(s => s.student_id);
+      filtered = filtered.filter(i => studentIds.includes((i as any).student_id));
     }
 
     // Filtro por estudante
     if (selectedStudent && selectedStudent !== "all") {
-      filtered = filtered.filter(i => i.studentId === selectedStudent);
+      filtered = filtered.filter(i => (i as any).student_id === selectedStudent);
     }
 
     // Filtro por tipo
     if (selectedType && selectedType !== "all") {
-      filtered = filtered.filter(i => i.type === selectedType);
+      filtered = filtered.filter(i => (i as any).interaction_type === selectedType);
     }
 
     // Filtro por data
     if (startDate) {
-      filtered = filtered.filter(i => i.date >= startDate);
+      filtered = filtered.filter(i => (i as any).interaction_date >= startDate);
     }
     if (endDate) {
-      filtered = filtered.filter(i => i.date <= endDate);
+      filtered = filtered.filter(i => (i as any).interaction_date <= endDate);
     }
 
     // Filtro por termo de busca
     if (debouncedSearchTerm) {
       const term = debouncedSearchTerm.toLowerCase();
       filtered = filtered.filter(i =>
-        i.description.toLowerCase().includes(term) ||
-        i.type.toLowerCase().includes(term) ||
-        i.createdBy.toLowerCase().includes(term)
+        ((i as any).description || '').toLowerCase().includes(term) ||
+        ((i as any).interaction_type || '').toLowerCase().includes(term) ||
+        ((i as any).created_by || '').toLowerCase().includes(term)
       );
     }
 
     // Filtro por sensibilidade
     if (showSensitive) {
-      filtered = filtered.filter(i => i.sensitive);
+      filtered = filtered.filter(i => (i as any).is_sensitive);
     }
 
     setFilteredInteractions(filtered);
@@ -259,26 +199,27 @@ export default function InteractionReportsPage() {
   };
 
   const getUniqueValues = (key: keyof FamilyInteraction) => {
-    return [...new Set(interactions.map(i => i[key] as string))].filter(Boolean);
+    return [...new Set(localInteractions.map(i => (i as any)[key] as string))].filter(Boolean);
   };
 
   const getTurmas = () => {
-    return [...new Set(students.map(s => s.turma))].filter(Boolean).sort();
+    return [...new Set(localStudents.map(s => s.class))].filter(Boolean).sort();
   };
 
 
   const exportToCSV = () => {
     const headers = ["Data", "Tipo", "Estudante", "Turma", "Descrição", "Criado por", "Sensível"];
     const csvData = filteredInteractions.map(interaction => {
-      const student = students.find(s => s.estudanteId === interaction.studentId);
+      const intData = interaction as any;
+      const student = localStudents.find(s => s.student_id === intData.student_id);
       return [
-        interaction.date,
-        interaction.type,
-        student?.nome || "N/A",
-        student?.turma || "N/A",
-        interaction.description.replace(/"/g, '""'),
-        interaction.createdBy,
-        interaction.sensitive ? "Sim" : "Não"
+        intData.interaction_date,
+        intData.interaction_type,
+        student?.name || "N/A",
+        student?.class || "N/A",
+        (intData.description || '').replace(/"/g, '""'),
+        intData.created_by,
+        intData.is_sensitive ? "Sim" : "Não"
       ];
     });
 
@@ -324,7 +265,7 @@ export default function InteractionReportsPage() {
 
         <div className="text-center py-6">
           <p className="text-slate-600 dark:text-slate-400">
-            {loadingProgress || "Carregando relatórios..."}
+            Carregando relatórios...
           </p>
         </div>
       </div>
@@ -439,7 +380,7 @@ export default function InteractionReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-              {new Set(interactions.map(i => i.studentId)).size.toLocaleString()}
+              {new Set(localInteractions.map((i: any) => i.student_id)).size.toLocaleString()}
             </div>
             <p className="text-xs text-slate-500 mt-1">
               Com interações registradas
@@ -450,15 +391,15 @@ export default function InteractionReportsPage() {
       )}
 
       {/* Componentes de Análise Avançada - Só mostra se há dados */}
-      {!loading && interactions.length > 0 && (
+      {!loading && localInteractions.length > 0 && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <InteractionChartsCard
-            interactions={filteredInteractions}
-            students={students}
+            interactions={filteredInteractions as any}
+            students={localStudents as any}
           />
           <StudentInteractionAnalysisCard
-            interactions={interactions}
-            students={students}
+            interactions={localInteractions as any}
+            students={localStudents as any}
           />
         </div>
       )}
@@ -497,11 +438,11 @@ export default function InteractionReportsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os estudantes</SelectItem>
-                  {students
-                    .filter(s => !selectedTurma || selectedTurma === "all" || s.turma === selectedTurma)
+                  {localStudents
+                    .filter(s => !selectedTurma || selectedTurma === "all" || s.class === selectedTurma)
                     .map(student => (
-                      <SelectItem key={student.estudanteId} value={student.estudanteId}>
-                        {student.nome}
+                      <SelectItem key={student.student_id} value={student.student_id}>
+                        {student.name}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -608,12 +549,13 @@ export default function InteractionReportsPage() {
               </div>
             ) : (
               filteredInteractions.slice(0, 50).map(interaction => {
-                const student = students.find(s => s.estudanteId === interaction.studentId);
+                const intData = interaction as any;
+                const student = localStudents.find(s => s.student_id === intData.student_id);
                 return (
                   <div
-                    key={interaction.id}
+                    key={intData.id}
                     className={`p-4 border rounded-lg ${
-                      interaction.sensitive
+                      intData.is_sensitive
                         ? "border-red-200 bg-red-50 dark:bg-red-900/20"
                         : "border-gray-200 bg-gray-50 dark:bg-gray-900/20"
                     }`}
@@ -621,26 +563,26 @@ export default function InteractionReportsPage() {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-xs">
-                          {interaction.type}
+                          {intData.interaction_type}
                         </Badge>
-                        {interaction.sensitive && (
+                        {intData.is_sensitive && (
                           <Badge variant="destructive" className="text-xs">
                             <AlertTriangle className="w-3 h-3 mr-1" />
                             Sensível
                           </Badge>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500">{interaction.date}</span>
+                      <span className="text-xs text-gray-500">{intData.interaction_date}</span>
                     </div>
 
                     <div className="mb-2">
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <User className="w-3 h-3" />
-                        <span className="font-medium">{student?.nome || "Estudante não encontrado"}</span>
-                        {student?.turma && (
+                        <span className="font-medium">{student?.name || "Estudante não encontrado"}</span>
+                        {student?.class && (
                           <>
                             <span className="text-gray-400">•</span>
-                            <span>{student.turma}</span>
+                            <span>{student.class}</span>
                           </>
                         )}
                       </div>

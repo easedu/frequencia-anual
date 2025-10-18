@@ -1,11 +1,11 @@
 /**
  * Hook for academic bimester periods
- * MIGRATED: Firebase → Supabase
- * Agora usa academicYearService.ts para buscar dados relacionais
+ * ✅ SPRINT 4 - FASE 6: Migrado para API REST
+ * Agora usa useAcademicYearComplete da API REST
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { AcademicYearService } from '@/services/supabase/academicYearService';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useAcademicYearComplete } from '@/hooks/api';
 import { logger } from '@/utils/logger';
 import type { BimesterDates } from '@/types';
 
@@ -21,32 +21,36 @@ export interface UseBimesterPeriodsReturn {
 }
 
 export function useBimesterPeriods(): UseBimesterPeriodsReturn {
-  const [bimesterDates, setBimesterDates] = useState<BimesterDates>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const year = parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || '2025');
 
+  // ✅ SPRINT 4 - FASE 6: Usar hook da API REST
+  const { academicYearComplete, loading: apiLoading, error: apiError, refetch } = useAcademicYearComplete(year);
+
+  // Transformar dados da API para formato BimesterDates
+  const bimesterDates = useMemo((): BimesterDates => {
+    if (!academicYearComplete) return {};
+
+    const dates: BimesterDates = {};
+    const bimesterKeys = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
+
+    bimesterKeys.forEach((key, index) => {
+      const bimester = (academicYearComplete as any)[key];
+      if (bimester?.startDate && bimester?.endDate) {
+        dates[index + 1] = {
+          start: bimester.startDate,
+          end: bimester.endDate,
+        };
+      }
+    });
+
+    return dates;
+  }, [academicYearComplete]);
+
+  const loading = apiLoading;
+  const error = apiError ? new Error(apiError) : null;
   const fetchBimesterDates = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Buscar bimestres do ano atual (2025)
-      const year = 2025; // TODO: Tornar dinâmico se necessário
-      const dates = await AcademicYearService.getBimesterDates(year);
-
-      setBimesterDates(dates);
-    } catch (err) {
-      const error = err as Error;
-      logger.error('Erro ao buscar períodos dos bimestres', error);
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchBimesterDates();
-  }, [fetchBimesterDates]);
+    refetch();
+  }, [refetch]);
 
   // useCallback previne recriação dessas funções quando bimesterDates não muda
   const getBimesterByDate = useCallback((dateString: string): number => {

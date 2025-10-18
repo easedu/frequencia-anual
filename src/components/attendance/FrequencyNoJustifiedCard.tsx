@@ -8,15 +8,19 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { StudentRecord } from "@/types";
+import { StudentRecord, Student } from "@/types";
 import { getFrequencyColor } from "@/app/utils";
 import { CheckCircle, TrendingUp, Users, UserCheck } from "lucide-react";
 
 interface FrequencyNoJustifiedCardProps {
-    studentRecordWithoutJustified: StudentRecord | null;
+    studentRecordWithoutJustified?: StudentRecord | null;
+    studentRecord?: StudentRecord | null; // Alias aceito
+    student?: Student; // Opcional para compatibilidade
 }
 
-const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studentRecordWithoutJustified }: FrequencyNoJustifiedCardProps) {
+const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studentRecordWithoutJustified, studentRecord, student }: FrequencyNoJustifiedCardProps) {
+    // Aceita tanto studentRecordWithoutJustified quanto studentRecord
+    const record = studentRecordWithoutJustified || studentRecord;
     return (
         <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50">
             <CardHeader className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-t-lg py-3">
@@ -27,28 +31,28 @@ const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studen
             </CardHeader>
 
             <CardContent className="p-4">
-                {studentRecordWithoutJustified && (
+                {record && (
                     <div className="space-y-4">
                         {/* Resumo Compacto */}
                         <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-4 border border-emerald-100">
                             <div className="grid grid-cols-4 gap-3">
                                 <div className="text-center">
                                     <p className="text-xs text-gray-600 mb-1">Faltas</p>
-                                    <p className="text-lg font-bold text-red-600">{studentRecordWithoutJustified.totalFaltasAteHoje}</p>
+                                    <p className="text-lg font-bold text-red-600">{record.totalFaltasAteHoje}</p>
                                 </div>
                                 <div className="text-center">
                                     <p className="text-xs text-gray-600 mb-1">% Faltas</p>
-                                    <p className="text-lg font-bold text-orange-600">{studentRecordWithoutJustified.percentualFaltasAteHoje}%</p>
+                                    <p className="text-lg font-bold text-orange-600">{record.percentualFaltasAteHoje}%</p>
                                 </div>
                                 <div className="text-center">
                                     <p className="text-xs text-gray-600 mb-1">% Frequência</p>
-                                    <p className={`text-lg font-bold ${getFrequencyColor(studentRecordWithoutJustified.percentualFrequenciaAteHoje)}`}>
-                                        {studentRecordWithoutJustified.percentualFrequenciaAteHoje}%
+                                    <p className={`text-lg font-bold ${getFrequencyColor(record.percentualFrequenciaAteHoje)}`}>
+                                        {record.percentualFrequenciaAteHoje}%
                                     </p>
                                 </div>
                                 <div className="text-center">
                                     <p className="text-xs text-gray-600 mb-1">Dias Letivos</p>
-                                    <p className="text-lg font-bold text-blue-600">{studentRecordWithoutJustified.diasLetivosAteHoje}</p>
+                                    <p className="text-lg font-bold text-blue-600">{record.diasLetivosAteHoje}</p>
                                 </div>
                             </div>
                         </div>
@@ -81,14 +85,14 @@ const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studen
                                                     1º Bim
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-medium text-sm">{studentRecordWithoutJustified.faltasB1}</TableCell>
+                                            <TableCell className="text-center py-2 font-medium text-sm">{record.faltasB1}</TableCell>
                                             <TableCell className="text-center py-2 font-medium text-orange-600 text-sm">
-                                                {studentRecordWithoutJustified.diasLetivosB1 ? Number((studentRecordWithoutJustified.faltasB1 / studentRecordWithoutJustified.diasLetivosB1 * 100).toFixed(1)) : 0}%
+                                                {record.diasLetivosB1 ? Number((record.faltasB1 / record.diasLetivosB1 * 100).toFixed(1)) : 0}%
                                             </TableCell>
-                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(studentRecordWithoutJustified.diasLetivosB1 ? Number((100 - (studentRecordWithoutJustified.faltasB1 / studentRecordWithoutJustified.diasLetivosB1 * 100)).toFixed(1)) : 100)}`}>
-                                                {studentRecordWithoutJustified.diasLetivosB1 ? Number((100 - (studentRecordWithoutJustified.faltasB1 / studentRecordWithoutJustified.diasLetivosB1 * 100)).toFixed(1)) : 100}%
+                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(record.diasLetivosB1 ? Number((100 - (record.faltasB1 / record.diasLetivosB1 * 100)).toFixed(1)) : 100)}`}>
+                                                {record.diasLetivosB1 ? Number((100 - (record.faltasB1 / record.diasLetivosB1 * 100)).toFixed(1)) : 100}%
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-medium text-sm">{studentRecordWithoutJustified.diasLetivosB1}</TableCell>
+                                            <TableCell className="text-center py-2 font-medium text-sm">{record.diasLetivosB1}</TableCell>
                                         </TableRow>
 
                                         <TableRow className="hover:bg-emerald-50/50 transition-colors">
@@ -98,14 +102,14 @@ const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studen
                                                     2º Bim
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-medium text-sm">{studentRecordWithoutJustified.faltasB2}</TableCell>
+                                            <TableCell className="text-center py-2 font-medium text-sm">{record.faltasB2}</TableCell>
                                             <TableCell className="text-center py-2 font-medium text-orange-600 text-sm">
-                                                {studentRecordWithoutJustified.diasLetivosB2 ? Number((studentRecordWithoutJustified.faltasB2 / studentRecordWithoutJustified.diasLetivosB2 * 100).toFixed(1)) : 0}%
+                                                {record.diasLetivosB2 ? Number((record.faltasB2 / record.diasLetivosB2 * 100).toFixed(1)) : 0}%
                                             </TableCell>
-                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(studentRecordWithoutJustified.diasLetivosB2 ? Number((100 - (studentRecordWithoutJustified.faltasB2 / studentRecordWithoutJustified.diasLetivosB2 * 100)).toFixed(1)) : 100)}`}>
-                                                {studentRecordWithoutJustified.diasLetivosB2 ? Number((100 - (studentRecordWithoutJustified.faltasB2 / studentRecordWithoutJustified.diasLetivosB2 * 100)).toFixed(1)) : 100}%
+                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(record.diasLetivosB2 ? Number((100 - (record.faltasB2 / record.diasLetivosB2 * 100)).toFixed(1)) : 100)}`}>
+                                                {record.diasLetivosB2 ? Number((100 - (record.faltasB2 / record.diasLetivosB2 * 100)).toFixed(1)) : 100}%
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-medium text-sm">{studentRecordWithoutJustified.diasLetivosB2}</TableCell>
+                                            <TableCell className="text-center py-2 font-medium text-sm">{record.diasLetivosB2}</TableCell>
                                         </TableRow>
 
                                         <TableRow className="hover:bg-emerald-50/50 transition-colors">
@@ -115,14 +119,14 @@ const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studen
                                                     3º Bim
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-medium text-sm">{studentRecordWithoutJustified.faltasB3}</TableCell>
+                                            <TableCell className="text-center py-2 font-medium text-sm">{record.faltasB3}</TableCell>
                                             <TableCell className="text-center py-2 font-medium text-orange-600 text-sm">
-                                                {studentRecordWithoutJustified.diasLetivosB3 ? Number((studentRecordWithoutJustified.faltasB3 / studentRecordWithoutJustified.diasLetivosB3 * 100).toFixed(1)) : 0}%
+                                                {record.diasLetivosB3 ? Number((record.faltasB3 / record.diasLetivosB3 * 100).toFixed(1)) : 0}%
                                             </TableCell>
-                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(studentRecordWithoutJustified.diasLetivosB3 ? Number((100 - (studentRecordWithoutJustified.faltasB3 / studentRecordWithoutJustified.diasLetivosB3 * 100)).toFixed(1)) : 100)}`}>
-                                                {studentRecordWithoutJustified.diasLetivosB3 ? Number((100 - (studentRecordWithoutJustified.faltasB3 / studentRecordWithoutJustified.diasLetivosB3 * 100)).toFixed(1)) : 100}%
+                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(record.diasLetivosB3 ? Number((100 - (record.faltasB3 / record.diasLetivosB3 * 100)).toFixed(1)) : 100)}`}>
+                                                {record.diasLetivosB3 ? Number((100 - (record.faltasB3 / record.diasLetivosB3 * 100)).toFixed(1)) : 100}%
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-medium text-sm">{studentRecordWithoutJustified.diasLetivosB3}</TableCell>
+                                            <TableCell className="text-center py-2 font-medium text-sm">{record.diasLetivosB3}</TableCell>
                                         </TableRow>
 
                                         <TableRow className="hover:bg-emerald-50/50 transition-colors">
@@ -132,14 +136,14 @@ const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studen
                                                     4º Bim
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-medium text-sm">{studentRecordWithoutJustified.faltasB4}</TableCell>
+                                            <TableCell className="text-center py-2 font-medium text-sm">{record.faltasB4}</TableCell>
                                             <TableCell className="text-center py-2 font-medium text-orange-600 text-sm">
-                                                {studentRecordWithoutJustified.diasLetivosB4 ? Number((studentRecordWithoutJustified.faltasB4 / studentRecordWithoutJustified.diasLetivosB4 * 100).toFixed(1)) : 0}%
+                                                {record.diasLetivosB4 ? Number((record.faltasB4 / record.diasLetivosB4 * 100).toFixed(1)) : 0}%
                                             </TableCell>
-                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(studentRecordWithoutJustified.diasLetivosB4 ? Number((100 - (studentRecordWithoutJustified.faltasB4 / studentRecordWithoutJustified.diasLetivosB4 * 100)).toFixed(1)) : 100)}`}>
-                                                {studentRecordWithoutJustified.diasLetivosB4 ? Number((100 - (studentRecordWithoutJustified.faltasB4 / studentRecordWithoutJustified.diasLetivosB4 * 100)).toFixed(1)) : 100}%
+                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(record.diasLetivosB4 ? Number((100 - (record.faltasB4 / record.diasLetivosB4 * 100)).toFixed(1)) : 100)}`}>
+                                                {record.diasLetivosB4 ? Number((100 - (record.faltasB4 / record.diasLetivosB4 * 100)).toFixed(1)) : 100}%
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-medium text-sm">{studentRecordWithoutJustified.diasLetivosB4}</TableCell>
+                                            <TableCell className="text-center py-2 font-medium text-sm">{record.diasLetivosB4}</TableCell>
                                         </TableRow>
 
                                         {/* Total Anual */}
@@ -150,12 +154,12 @@ const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studen
                                                     TOTAL
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-bold text-red-700 text-sm">{studentRecordWithoutJustified.totalFaltas}</TableCell>
-                                            <TableCell className="text-center py-2 font-bold text-orange-700 text-sm">{studentRecordWithoutJustified.percentualFaltas}%</TableCell>
-                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(studentRecordWithoutJustified.percentualFrequencia)}`}>
-                                                {studentRecordWithoutJustified.percentualFrequencia}%
+                                            <TableCell className="text-center py-2 font-bold text-red-700 text-sm">{record.totalFaltas}</TableCell>
+                                            <TableCell className="text-center py-2 font-bold text-orange-700 text-sm">{record.percentualFaltas}%</TableCell>
+                                            <TableCell className={`text-center py-2 font-bold text-sm ${getFrequencyColor(record.percentualFrequencia)}`}>
+                                                {record.percentualFrequencia}%
                                             </TableCell>
-                                            <TableCell className="text-center py-2 font-bold text-blue-700 text-sm">{studentRecordWithoutJustified.diasLetivosAnual}</TableCell>
+                                            <TableCell className="text-center py-2 font-bold text-blue-700 text-sm">{record.diasLetivosAnual}</TableCell>
                                         </TableRow>
                                     </TableBody>
                                 </Table>

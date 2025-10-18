@@ -1,11 +1,19 @@
 /**
- * Supabase Service: Student Occurrences
+ * API Service: Student Occurrences
+ *
+ * @deprecated Use hooks from @/hooks/api/useOccurrences instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useOccurrences() - Listar ocorrências
+ * - useCreateOccurrence() - Criar ocorrência
+ * - useUpdateOccurrence() - Atualizar ocorrência
+ * - useDeleteOccurrence() - Deletar ocorrência
  *
  * Gerencia ocorrências disciplinares dos estudantes.
- * Substitui: collection(db, '2025', 'occurrences', studentId)
+ * Refatorado para usar /api/occurrences (Sprint 2)
  */
 
-import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 
 export type OccurrenceSeverity = 'LEVE' | 'MODERADA' | 'GRAVE';
@@ -71,9 +79,9 @@ export interface CreateOccurrenceData {
 
 export class StudentOccurrencesService {
   /**
-   * Converter registro do Supabase
+   * Converter registro da API (snake_case) para aplicação (camelCase)
    */
-  private static mapSupabaseToOccurrence(record: SupabaseOccurrence): StudentOccurrence {
+  private static mapApiToOccurrence(record: any): StudentOccurrence {
     return {
       id: record.id,
       studentId: record.student_id,
@@ -94,40 +102,18 @@ export class StudentOccurrencesService {
   }
 
   /**
-   * Converter para formato Supabase
-   */
-  private static mapOccurrenceToSupabase(
-    data: CreateOccurrenceData
-  ): Partial<SupabaseOccurrence> {
-    return {
-      student_id: data.studentId,
-      occurrence_date: data.occurrenceDate,
-      occurrence_type: data.occurrenceType,
-      description: data.description,
-      severity: data.severity || null,
-      action_taken: data.actionTaken || null,
-      responsible_staff: data.responsibleStaff || null,
-      family_notified: data.familyNotified || false,
-      notification_date: data.notificationDate || null,
-      notification_method: data.notificationMethod || null,
-      created_by: data.createdBy,
-    };
-  }
-
-  /**
-   * Buscar ocorrências de um estudante
+   * Buscar ocorrências de um estudante via API
    */
   static async getByStudentId(studentId: string): Promise<StudentOccurrence[]> {
     try {
-      const { data, error } = await supabase
-        .from('student_occurrences')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('occurrence_date', { ascending: false });
+      const response = await fetch(`/api/occurrences?student_id=${studentId}`);
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      return (data || []).map(this.mapSupabaseToOccurrence);
+      const result = await response.json();
+      return (result.data?.data || []).map(this.mapApiToOccurrence);
     } catch (error) {
       logger.error('Erro ao buscar ocorrências do estudante', { studentId }, error as Error);
       return [];
@@ -135,26 +121,41 @@ export class StudentOccurrencesService {
   }
 
   /**
-   * Criar nova ocorrência
+   * Criar nova ocorrência via API
    */
   static async create(data: CreateOccurrenceData): Promise<StudentOccurrence | null> {
     try {
-      const supabaseData = this.mapOccurrenceToSupabase(data);
+      const response = await fetch('/api/occurrences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: data.studentId,
+          occurrence_date: data.occurrenceDate,
+          occurrence_type: data.occurrenceType,
+          description: data.description,
+          severity: data.severity || null,
+          action_taken: data.actionTaken || null,
+          responsible_staff: data.responsibleStaff || null,
+          family_notified: data.familyNotified || false,
+          notification_date: data.notificationDate || null,
+          notification_method: data.notificationMethod || null,
+          created_by: data.createdBy,
+        }),
+      });
 
-      const { data: result, error } = await (supabase
-        .from('student_occurrences') as any)
-        .insert(supabaseData)
-        .select()
-        .single();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(`API returned ${response.status}: ${errorData.error || 'Failed to create'}`);
+      }
 
-      if (error) throw error;
+      const result = await response.json();
 
-      logger.info('Ocorrência criada no Supabase', {
+      logger.info('Ocorrência criada via API', {
         studentId: data.studentId,
         type: data.occurrenceType,
       });
 
-      return this.mapSupabaseToOccurrence(result);
+      return this.mapApiToOccurrence(result.data);
     } catch (error) {
       logger.error('Erro ao criar ocorrência', data, error as Error);
       throw error;
@@ -162,37 +163,41 @@ export class StudentOccurrencesService {
   }
 
   /**
-   * Atualizar ocorrência
+   * Atualizar ocorrência via API
    */
   static async update(
     occurrenceId: string,
     updates: Partial<CreateOccurrenceData>
   ): Promise<boolean> {
     try {
-      const supabaseUpdates: any = {};
+      const apiUpdates: any = {};
 
-      if (updates.occurrenceDate) supabaseUpdates.occurrence_date = updates.occurrenceDate;
-      if (updates.occurrenceType) supabaseUpdates.occurrence_type = updates.occurrenceType;
-      if (updates.description) supabaseUpdates.description = updates.description;
-      if (updates.severity) supabaseUpdates.severity = updates.severity;
+      if (updates.occurrenceDate) apiUpdates.occurrence_date = updates.occurrenceDate;
+      if (updates.occurrenceType) apiUpdates.occurrence_type = updates.occurrenceType;
+      if (updates.description) apiUpdates.description = updates.description;
+      if (updates.severity) apiUpdates.severity = updates.severity;
       if (updates.actionTaken !== undefined)
-        supabaseUpdates.action_taken = updates.actionTaken || null;
+        apiUpdates.action_taken = updates.actionTaken || null;
       if (updates.responsibleStaff !== undefined)
-        supabaseUpdates.responsible_staff = updates.responsibleStaff || null;
+        apiUpdates.responsible_staff = updates.responsibleStaff || null;
       if (updates.familyNotified !== undefined)
-        supabaseUpdates.family_notified = updates.familyNotified;
+        apiUpdates.family_notified = updates.familyNotified;
       if (updates.notificationDate !== undefined)
-        supabaseUpdates.notification_date = updates.notificationDate || null;
+        apiUpdates.notification_date = updates.notificationDate || null;
       if (updates.notificationMethod !== undefined)
-        supabaseUpdates.notification_method = updates.notificationMethod || null;
+        apiUpdates.notification_method = updates.notificationMethod || null;
 
-      const { error } = await (supabase.from('student_occurrences') as any)
-        .update(supabaseUpdates)
-        .eq('id', occurrenceId);
+      const response = await fetch(`/api/occurrences/${occurrenceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(apiUpdates),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      logger.info('Ocorrência atualizada no Supabase', { occurrenceId });
+      logger.info('Ocorrência atualizada via API', { occurrenceId });
 
       return true;
     } catch (error) {
@@ -202,18 +207,19 @@ export class StudentOccurrencesService {
   }
 
   /**
-   * Deletar ocorrência
+   * Deletar ocorrência via API
    */
   static async delete(occurrenceId: string): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('student_occurrences')
-        .delete()
-        .eq('id', occurrenceId);
+      const response = await fetch(`/api/occurrences/${occurrenceId}`, {
+        method: 'DELETE',
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      logger.info('Ocorrência deletada do Supabase', { occurrenceId });
+      logger.info('Ocorrência deletada via API', { occurrenceId });
 
       return true;
     } catch (error) {
@@ -223,19 +229,18 @@ export class StudentOccurrencesService {
   }
 
   /**
-   * Buscar ocorrências por gravidade
+   * Buscar ocorrências por gravidade via API
    */
   static async getBySeverity(severity: OccurrenceSeverity): Promise<StudentOccurrence[]> {
     try {
-      const { data, error } = await supabase
-        .from('student_occurrences')
-        .select('*')
-        .eq('severity', severity)
-        .order('occurrence_date', { ascending: false });
+      const response = await fetch(`/api/occurrences?severity=${severity}`);
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
 
-      return (data || []).map(this.mapSupabaseToOccurrence);
+      const result = await response.json();
+      return (result.data?.data || []).map(this.mapApiToOccurrence);
     } catch (error) {
       logger.error('Erro ao buscar ocorrências por gravidade', { severity }, error as Error);
       return [];

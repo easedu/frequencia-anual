@@ -50,9 +50,8 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // 2. Construir query no Supabase
     let query: any = supabaseAdmin
       .from('student_absences')
-      .select('*, students!inner(user_id, name, class)', { count: 'exact' })
-      .eq('students.user_id', userId) // RLS - apenas faltas de estudantes do usuário
-      .order('date', { ascending: false });
+      .select('*, students(name, class)', { count: 'exact' })
+      .order('absence_date', { ascending: false });
 
     // Aplicar filtros
     if (estudanteId) {
@@ -64,16 +63,16 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     if (justificada !== undefined) {
-      query = query.eq('justified', justificada);
+      query = query.eq('is_justified', justificada);
     }
 
     if (dataInicio) {
       // Formato DDMMYYYY → converter para comparação
-      query = query.gte('date', dataInicio);
+      query = query.gte('absence_date', dataInicio);
     }
 
     if (dataFim) {
-      query = query.lte('date', dataFim);
+      query = query.lte('absence_date', dataFim);
     }
 
     if (turma) {
@@ -90,12 +89,23 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
     if (error) {
       console.error('[GET /api/absences] Supabase error:', error);
-      return errorResponse(
-        'DATABASE_ERROR',
-        'Erro ao buscar faltas',
-        500,
-        process.env.NODE_ENV === 'development' ? error : undefined
-      );
+      console.error('[GET /api/absences] Error message:', error.message);
+      console.error('[GET /api/absences] Error code:', error.code);
+      console.error('[GET /api/absences] Error details:', error.details);
+      console.error('[GET /api/absences] Error hint:', error.hint);
+
+      // Retornar erro detalhado no response para debug
+      return NextResponse.json({
+        success: false,
+        error: 'DATABASE_ERROR',
+        message: error.message || 'Erro ao buscar faltas',
+        debug: {
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          message: error.message,
+        }
+      }, { status: 500 });
     }
 
     // 4. Converter para formato legacy
@@ -134,7 +144,6 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       .from('students')
       .select('id')
       .eq('id', sanitizedData.estudanteId)
-      .eq('user_id', userId)
       .eq('deleted', false)
       .single();
 
@@ -151,7 +160,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       .from('student_absences')
       .select('id')
       .eq('student_id', sanitizedData.estudanteId)
-      .eq('date', sanitizedData.data)
+      .eq('absence_date', sanitizedData.data)
       .single();
 
     if (existingAbsence) {
@@ -165,14 +174,10 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     // 6. Preparar dados para Supabase
     const absenceInsert: any = {
       student_id: sanitizedData.estudanteId,
-      date: sanitizedData.data,
+      absence_date: sanitizedData.data,
       bimester: sanitizedData.bimestre,
-      justified: sanitizedData.justificada ?? false,
-      justification_reason: sanitizedData.motivoJustificativa || null,
+      is_justified: sanitizedData.justificada ?? false,
       medical_certificate_id: sanitizedData.atestadoId || null,
-      notes: sanitizedData.observacoes || null,
-      school_year: new Date().getFullYear().toString(),
-      created_by: 'api',
     };
 
     // 7. Inserir falta
@@ -216,16 +221,16 @@ function convertSupabaseToAbsence(absence: any): any {
   return {
     id: absence.id,
     estudanteId: absence.student_id,
-    estudanteNome: absence.students?.name || '',
-    turma: absence.students?.class || '',
-    data: absence.date,
+    estudanteNome: absence.students?.name || 'Nome não disponível',
+    turma: absence.students?.class || 'Turma não disponível',
+    data: absence.absence_date,
     bimestre: absence.bimester,
-    justificada: absence.justified,
-    motivoJustificativa: absence.justification_reason || undefined,
+    justificada: absence.is_justified,
+    motivoJustificativa: undefined, // Coluna não existe
     atestadoId: absence.medical_certificate_id || undefined,
-    observacoes: absence.notes || undefined,
-    anoLetivo: absence.school_year,
-    criadoPor: absence.created_by,
+    observacoes: undefined, // Coluna não existe
+    anoLetivo: new Date().getFullYear().toString(), // Calcular do absence_date
+    criadoPor: 'system', // Coluna não existe
     criadoEm: absence.created_at,
   };
 }
