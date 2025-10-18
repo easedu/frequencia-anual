@@ -43,6 +43,7 @@ export function StudentSearch(props: StudentSearchProps) {
           onSearchChange={props.handleSearchName}
           suggestions={props.suggestions}
           onSuggestionSelect={props.handleSuggestionSelect}
+          isLoading={props.loadingProfile}
         />
 
         {/* Busca por Turma */}
@@ -54,6 +55,7 @@ export function StudentSearch(props: StudentSearchProps) {
           searchName={props.searchName}
           onTurmaChange={props.setSelectedTurma}
           onStudentChange={props.handleSelectStudent}
+          isLoading={props.loadingProfile}
         />
       </div>
 

@@ -355,22 +355,12 @@ export function useInteractions(filters?: InteractionFilters) {
       if (filters?.page) params.append('page', filters.page.toString());
       if (filters?.limit) params.append('limit', filters.limit.toString());
 
-      console.log('📡 [useInteractions] Buscando interações:', {
-        estudanteId: filters?.estudanteId,
-        url: `/api/interactions?${params.toString()}`
-      });
-
       const token = await user.getIdToken();
       const response = await fetch(`/api/interactions?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
       if (!response.ok) throw new Error((await response.json()).error || 'Erro ao buscar interações');
       const data: PaginatedResponse<Interaction> = await response.json();
-
-      console.log('✅ [useInteractions] Interações recebidas:', {
-        count: data.data.length,
-        sample: data.data[0]
-      });
 
       setInteractions(data.data);
       setPagination(data.pagination);

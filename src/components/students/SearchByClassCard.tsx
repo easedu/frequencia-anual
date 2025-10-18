@@ -14,6 +14,7 @@ interface SearchByClassCardProps {
     searchName: string;
     onTurmaChange: (value: string) => void;
     onStudentChange: (value: string) => void;
+    isLoading?: boolean;
 }
 
 const SearchByClassCard = memo(function SearchByClassCard({
@@ -24,11 +25,31 @@ const SearchByClassCard = memo(function SearchByClassCard({
     searchName = '',
     onTurmaChange,
     onStudentChange,
+    isLoading = false,
 }: SearchByClassCardProps) {
     const isDisabled = searchName.length > 0;
 
     return (
         <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50 relative overflow-hidden">
+            {/* 🔄 Loading Overlay */}
+            {isLoading && (
+                <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 z-50 flex items-center justify-center rounded-lg backdrop-blur-sm">
+                    <div className="flex flex-col items-center space-y-4">
+                        <div className="relative">
+                            <div className="w-16 h-16 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
+                        </div>
+                        <div className="text-center">
+                            <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                Carregando estudantes...
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                Aguarde um momento
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Background decoration */}
             <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-green-100/20 to-blue-100/20 rounded-full -translate-y-16 -translate-x-16"></div>
 

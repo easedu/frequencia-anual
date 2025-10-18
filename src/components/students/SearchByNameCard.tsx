@@ -12,6 +12,7 @@ interface SearchByNameCardProps {
     onSearchChange: (value: string) => void;
     onSuggestionSelect: (studentId: string) => void;
     selectedStudentId?: string;
+    isLoading?: boolean;
 }
 
 const SearchByNameCard = memo(function SearchByNameCard({
@@ -20,10 +21,30 @@ const SearchByNameCard = memo(function SearchByNameCard({
     onSearchChange,
     onSuggestionSelect,
     selectedStudentId,
+    isLoading = false,
 }: SearchByNameCardProps) {
 
     return (
         <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50 relative">
+            {/* 🔄 Loading Overlay */}
+            {isLoading && (
+                <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 z-50 flex items-center justify-center rounded-lg backdrop-blur-sm">
+                    <div className="flex flex-col items-center space-y-4">
+                        <div className="relative">
+                            <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+                        </div>
+                        <div className="text-center">
+                            <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                Carregando estudantes...
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                Aguarde um momento
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Background decoration */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-100/20 to-purple-100/20 rounded-full -translate-y-16 translate-x-16"></div>
 

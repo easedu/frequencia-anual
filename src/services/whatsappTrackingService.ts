@@ -267,14 +267,8 @@ export class WhatsAppTrackingService {
                 // Verificar se há mais páginas
                 hasMore = data.length === limit;
                 offset += limit;
-
-                // Log de progresso a cada 1000 registros
-                if (hasMore) {
-                    logger.info(`Loaded ${offset} verified WhatsApp numbers, fetching more...`);
-                }
             }
 
-            logger.info(`Loaded ${verifiedNumbers.size} verified WhatsApp numbers from API (total)`);
             return verifiedNumbers;
 
         } catch (error) {

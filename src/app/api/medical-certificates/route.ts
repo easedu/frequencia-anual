@@ -38,7 +38,11 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
     let query: any = supabaseAdmin
       .from('medical_certificates')
-      .select('*, students!inner(student_id, name, class)', { count: 'exact' })
+      .select(`
+        *,
+        students!inner(student_id, name, class),
+        user_profiles!submitted_by(name)
+      `, { count: 'exact' })
       .order('created_at', { ascending: false });
 
     // Se studentId fornecido, resolver Firebase UUID → Internal ID

@@ -175,10 +175,6 @@ export function useStudentProfile() {
 
   // ✅ SIMPLIFICADO: API agora retorna tudo no formato correto (camelCase com todos os campos)
   const interactions = useMemo(() => {
-    console.log('🔄 [useStudentProfile] Interactions atualizadas:', {
-      count: interactionsData?.length || 0,
-      sample: interactionsData?.[0],
-    });
     return interactionsData || [];
   }, [interactionsData]);
 
@@ -197,7 +193,8 @@ export function useStudentProfile() {
       startDate: cert.start_date || cert.startDate,
       days: cert.days_covered || cert.days || 1,
       description: cert.diagnosis || cert.doctor_name || 'Sem descrição',
-      createdBy: cert.submitted_by || cert.createdBy || 'Desconhecido'
+      // Buscar nome do usuário via JOIN (user_profiles.name)
+      createdBy: cert.user_profiles?.name || cert.submitted_by || cert.createdBy || 'Desconhecido'
     }));
   }, [atestadosData]);
 
@@ -237,17 +234,14 @@ export function useStudentProfile() {
   const [studentRecordWithoutJustified, setStudentRecordWithoutJustified] = useState<StudentRecord | null>(null);
 
   // 🔄 Auto-refresh de status WhatsApp (polling adaptativo)
-  // ⚠️ TEMPORARIAMENTE DESABILITADO: Estava causando delay de 30+ segundos na atualização do histórico
-  // Problema: useWhatsAppStatusPolling faz outro useInteractions() sem memoização, causando fetches duplicados
-  // TODO: Refatorar useWhatsAppStatusPolling para receber refetch ao invés de fazer fetch próprio
-  const interactionsWithLiveStatus = interactions; // Usar diretamente sem polling
-
-  // const interactionsWithLiveStatus = useWhatsAppStatusPolling(interactions, {
-  //   enabled: !!selectedStudentId,
-  //   fastInterval: 5000, // 5s para SENT
-  //   slowInterval: 60000, // 60s para DELIVERED
-  //   studentId: selectedStudentId,
-  // });
+  // ✅ REFATORADO: Agora usa refetch externo ao invés de criar useInteractions duplicado
+  const interactionsWithLiveStatus = useWhatsAppStatusPolling(interactions, {
+    enabled: !!selectedStudentId,
+    fastInterval: 5000, // 5s para SENT
+    slowInterval: 60000, // 60s para DELIVERED
+    studentId: selectedStudentId,
+    refetch: refetchInteractions, // ✅ Passa refetch do useInteractions existente
+  });
 
   // ═══════════════════════════════════════════════════════════
   // 3. FORMS STATE (interaction, atestado, suspensão)
@@ -449,8 +443,6 @@ export function useStudentProfile() {
     async (studentId: string): Promise<void> => {
       if (!studentId) return;
 
-      console.log('🔄 [fetchStudentData] Recarregando dados do estudante:', studentId);
-
       await Promise.all([
         refetchStudent(),
         refetchInteractions(),
@@ -458,8 +450,6 @@ export function useStudentProfile() {
         refetchAtestados(),
         refetchSuspensoes(),
       ]);
-
-      console.log('✅ [fetchStudentData] Dados recarregados com sucesso');
     },
     [refetchStudent, refetchInteractions, refetchAbsences, refetchAtestados, refetchSuspensoes]
   );

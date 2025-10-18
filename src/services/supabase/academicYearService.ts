@@ -20,7 +20,7 @@
  * - school_days: Dias letivos individuais (com isChecked)
  */
 
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient'; // ⚠️ Usado apenas em métodos legados (não refatorados)
 import { logger } from '@/utils/logger';
 
 // =====================================================
@@ -308,7 +308,7 @@ export class AcademicYearService {
 
   /**
    * Contar dias letivos em um período específico
-   * Usa a function SQL otimizada do Supabase
+   * ✅ REFATORADO: Usa API REST ao invés de Supabase direto
    *
    * 🔧 FIX: Converte datas brasileiras (dd/mm/yyyy) para ISO (yyyy-mm-dd)
    */
@@ -318,19 +318,26 @@ export class AcademicYearService {
     year: number = new Date().getFullYear()
   ): Promise<number> {
     try {
-      // Converter datas para formato ISO (Supabase/PostgreSQL)
+      // Converter datas para formato ISO (API espera ISO)
       const isoStartDate = this.convertToISO(startDate);
       const isoEndDate = this.convertToISO(endDate);
 
-      const { data, error } = await (supabase.rpc('get_school_days_in_period', {
-        p_start_date: isoStartDate,
-        p_end_date: isoEndDate,
-        p_year: year,
-      } as any) as any);
+      // ✅ Usar API REST ao invés de Supabase direto
+      const response = await fetch(
+        `/api/academic-years/count-school-days?start_date=${isoStartDate}&end_date=${isoEndDate}&year=${year}`
+      );
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
 
-      return data || 0;
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao contar dias letivos');
+      }
+
+      return result.data?.count || 0;
     } catch (error) {
       logger.error(`Erro ao contar dias letivos no período ${startDate} - ${endDate}`, error as Error);
       throw error;
@@ -339,17 +346,24 @@ export class AcademicYearService {
 
   /**
    * Contar dias letivos até hoje
-   * Usa a function SQL otimizada do Supabase
+   * ✅ REFATORADO: Usa API REST ao invés de Supabase direto
    */
   static async countSchoolDaysUpToToday(year: number = new Date().getFullYear()): Promise<number> {
     try {
-      const { data, error } = await (supabase.rpc('get_school_days_up_to_today', {
-        p_year: year,
-      } as any) as any);
+      // ✅ Usar API REST ao invés de Supabase direto
+      const response = await fetch(`/api/academic-years/school-days-up-to-today?year=${year}`);
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
 
-      return data || 0;
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao contar dias letivos até hoje');
+      }
+
+      return result.data?.count || 0;
     } catch (error) {
       logger.error(`Erro ao contar dias letivos até hoje (ano ${year})`, error as Error);
       throw error;

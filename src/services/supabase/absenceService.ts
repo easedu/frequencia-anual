@@ -19,7 +19,7 @@
  * - medical_certificates: Atestados médicos
  */
 
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient'; // ⚠️ Usado apenas em métodos legados (não refatorados)
 import type {
   StudentAbsence,
   StudentAbsenceInsert,
@@ -472,15 +472,24 @@ export class AbsenceService {
 
   /**
    * Find duplicate absences (same student + same date)
+   * ✅ REFATORADO: Usa API REST ao invés de Supabase direto
    */
   static async findDuplicates(): Promise<Array<{ student_id: string; absence_date: string; count: number }>> {
     try {
-      // Query SQL para encontrar duplicatas
-      const { data, error } = await supabase.rpc('find_duplicate_absences');
+      // ✅ Usar API REST
+      const response = await fetch('/api/absences/duplicates');
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
 
-      return data || [];
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao buscar duplicatas');
+      }
+
+      return result.data?.duplicates || [];
     } catch (error) {
       logger.error('Erro ao buscar duplicatas de faltas', {}, error as Error);
       throw error;
@@ -489,15 +498,26 @@ export class AbsenceService {
 
   /**
    * Remove duplicate absences (keeps only the first one)
+   * ✅ REFATORADO: Usa API REST ao invés de Supabase direto
    */
   static async removeDuplicates(): Promise<number> {
     try {
-      // Query SQL para remover duplicatas
-      const { data, error } = await supabase.rpc('remove_duplicate_absences');
+      // ✅ Usar API REST
+      const response = await fetch('/api/absences/duplicates', {
+        method: 'DELETE',
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
 
-      return data || 0;
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao remover duplicatas');
+      }
+
+      return result.data?.deleted_count || 0;
     } catch (error) {
       logger.error('Erro ao remover duplicatas de faltas', {}, error as Error);
       throw error;

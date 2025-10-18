@@ -107,27 +107,20 @@ export function InteractionSection(props: InteractionSectionProps) {
       />
 
       {/* Card: Histórico de Interações */}
-      {(() => {
-        console.log('🔍 [InteractionSection] Renderizando histórico?', {
-          interactionsLength: props.interactions.length,
-          willRender: props.interactions.length > 0,
-          interactions: props.interactions
-        });
-        return props.interactions.length > 0 && (
-          <InteractionHistoryCard
-            interactions={props.interactions}
-            student={props.student}
-            studentRecord={null}
-            userRole={props.userRole}
-            showDeleteDialog={props.showDeleteDialog}
-            setShowDeleteDialog={props.setShowDeleteDialog}
-            setEditingInteraction={props.setEditingInteraction}
-            onDeleteInteraction={props.handleDeleteInteraction}
-            onPrintReport={() => {}}
-            isDeleting={props.isDeletingInteraction}
-          />
-        );
-      })()}
+      {props.interactions.length > 0 && (
+        <InteractionHistoryCard
+          interactions={props.interactions}
+          student={props.student}
+          studentRecord={null}
+          userRole={props.userRole}
+          showDeleteDialog={props.showDeleteDialog}
+          setShowDeleteDialog={props.setShowDeleteDialog}
+          setEditingInteraction={props.setEditingInteraction}
+          onDeleteInteraction={props.handleDeleteInteraction}
+          onPrintReport={() => {}}
+          isDeleting={props.isDeletingInteraction}
+        />
+      )}
     </div>
   );
 }

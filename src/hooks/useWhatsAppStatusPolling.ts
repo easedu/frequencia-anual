@@ -36,51 +36,35 @@ interface PollingOptions {
   maxPollingTime?: number; // Tempo máximo de polling (padrão: 10min)
 }
 
+/**
+ * ✅ NOVO: Recebe refetch externo ao invés de criar useInteractions duplicado
+ */
+interface PollingOptionsV2 extends PollingOptions {
+  refetch?: () => Promise<void>; // Função de refetch externa
+}
+
 export function useWhatsAppStatusPolling(
   initialInteractions: FamilyInteraction[],
-  options: PollingOptions = {}
+  options: PollingOptionsV2 = {}
 ) {
   const {
     enabled = true,
     fastInterval = 5000, // 5 segundos para SENT
     slowInterval = 60000, // 60 segundos (1 minuto) para DELIVERED
     studentId,
-    maxPollingTime = 600000 // 10 minutos (tempo razoável para ler mensagens)
+    maxPollingTime = 600000, // 10 minutos (tempo razoável para ler mensagens)
+    refetch // ✅ NOVO: Receber refetch de fora
   } = options;
-
-  // ✅ MIGRADO: Usar hook da API REST
-  const { interactions: apiInteractions, refetch } = useInteractions(
-    studentId ? { estudanteId: studentId } : undefined
-  );
 
   const [interactions, setInteractions] = useState<FamilyInteraction[]>(initialInteractions);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollingStartTimeRef = useRef<number | null>(null);
   const currentIntervalRef = useRef<number>(fastInterval);
 
-  // Atualizar quando prop mudar ou API retornar novos dados
+  // ✅ Atualizar quando initialInteractions mudar (vem do useInteractions do pai)
   useEffect(() => {
-    if (apiInteractions.length > 0) {
-      // Mapear campos snake_case → camelCase
-      const mapped = apiInteractions.map((int: any) => ({
-        ...int,
-        studentId: int.student_id || int.studentId,
-        createdBy: int.created_by || int.createdBy || 'Desconhecido',
-        date: int.interaction_date || int.date || int.created_at?.split('T')[0] || new Date().toLocaleDateString('pt-BR'),
-        type: int.interaction_type || int.type || 'Não especificado',
-        sensitive: int.is_sensitive ?? int.sensitive ?? false,
-        // Campos WhatsApp
-        whatsappMessageId: int.whatsapp_message_id || int.whatsappMessageId,
-        whatsappStatus: int.whatsapp_status || int.whatsappStatus,
-        whatsappSentAt: int.whatsapp_sent_at || int.whatsappSentAt,
-        whatsappDeliveredAt: int.whatsapp_delivered_at || int.whatsappDeliveredAt,
-        whatsappReadAt: int.whatsapp_read_at || int.whatsappReadAt,
-      }));
-      setInteractions(mapped as FamilyInteraction[]);
-    } else {
-      setInteractions(initialInteractions);
-    }
-  }, [initialInteractions, apiInteractions]);
+    setInteractions(initialInteractions);
+  }, [initialInteractions]);
 
   useEffect(() => {
     // Só fazer polling se estiver habilitado e tiver studentId
@@ -134,8 +118,10 @@ export function useWhatsAppStatusPolling(
       return;
     }
 
-    // ✅ MIGRADO: Usar refetch do hook ao invés de service direto
+    // ✅ OTIMIZADO: Usar refetch externo se fornecido
     const refreshStatuses = async () => {
+      if (!refetch) return;
+
       try {
         await refetch();
       } catch (error) {

@@ -298,8 +298,11 @@ export class MedicalCertificatesService {
    */
   static async delete(certificateId: string): Promise<boolean> {
     try {
+      const headers = await getAuthHeaders();
+
       const response = await fetch(`/api/medical-certificates/${certificateId}`, {
         method: 'DELETE',
+        headers,
       });
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);

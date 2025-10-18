@@ -146,12 +146,6 @@ function InteractionHistoryCard({
     onPrintReport,
     isDeleting = false,
 }: InteractionHistoryCardProps) {
-    console.log('📊 [InteractionHistoryCard] Render:', {
-        interactionsCount: interactions.length,
-        isDeleting,
-        sample: interactions[0]
-    });
-
     // Ordenar interações: mais recentes primeiro (por data, depois por timestamp de criação)
     const sortedInteractions = [...interactions].sort((a, b) => {
         // Primeiro, comparar por data da interação
