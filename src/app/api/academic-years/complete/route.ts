@@ -182,8 +182,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    logger.info('Ano letivo completo buscado com sucesso', { year, bimesters: Object.keys(result).length })
-
     return successResponse(result)
   } catch (error) {
     return handleError(error)

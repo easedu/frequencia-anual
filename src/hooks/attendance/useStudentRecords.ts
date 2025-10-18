@@ -6,11 +6,14 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useStudents, useAbsences } from '@/hooks/api';
+import { useAuth } from '@/hooks/useAuth';
 import { useBimesterPeriods } from './useBimesterPeriods';
 import { useSchoolDays } from './useSchoolDays';
 import { logger } from '@/utils/logger';
 import { parseDate } from '@/utils/dateUtils';
+import { fetchAllPages } from '@/utils/paginationHelper';
 import type { StudentRecord, BimesterDates } from '@/types';
+import type { Absence } from '@/hooks/api/useAbsences';
 
 /**
  * Parse de data com fallback para múltiplos formatos
@@ -55,18 +58,62 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
 
   // ✅ MIGRADO: Usar hooks da API REST
   const effectiveStatusFilter = statusFilter !== undefined ? statusFilter : 'ATIVO';
+  const { user } = useAuth();
 
   const { students: allStudents, loading: studentsLoading } = useStudents({
     status: effectiveStatusFilter as 'ATIVO' | 'INATIVO' | 'TRANSFERIDO' | undefined,
   });
 
-  const { absences: allAbsences, loading: absencesLoading } = useAbsences();
+  // 🔄 PAGINAÇÃO: Carregar TODAS as faltas recursivamente
+  const [allAbsences, setAllAbsences] = useState<any[]>([]);
+  const [absencesLoading, setAbsencesLoading] = useState(true);
 
   const { bimesterDates, loading: periodsLoading } = useBimesterPeriods();
 
   const { schoolDays, loading: schoolDaysLoading } = useSchoolDays();
 
   const loading = studentsLoading || absencesLoading || periodsLoading || schoolDaysLoading;
+
+  // 🔄 EFEITO: Carregar TODAS as páginas de faltas recursivamente usando helper
+  // 🚀 COM RENDERING PROGRESSIVO para mostrar dados conforme carregam
+  useEffect(() => {
+    async function loadAllAbsences() {
+      if (!user) {
+        setAbsencesLoading(false);
+        return;
+      }
+
+      try {
+        setAbsencesLoading(true);
+
+        const token = await user.getIdToken();
+
+        const allLoadedAbsences = await fetchAllPages<Absence>({
+          baseUrl: '/api/absences',
+          token,
+          filters: {},
+          resourceName: 'faltas',
+          // 🚀 PROGRESSIVE RENDERING: Atualizar UI conforme carrega
+          onProgress: (data, progress) => {
+            setAllAbsences(data); // Atualiza imediatamente
+            logger.info('📊 Renderização progressiva', {
+              loaded: progress.loaded,
+              total: progress.total,
+              percent: Math.round((progress.loaded / progress.total) * 100)
+            });
+          }
+        });
+
+        setAllAbsences(allLoadedAbsences);
+      } catch (error) {
+        logger.error('❌ Erro ao carregar faltas paginadas', {}, error as Error);
+      } finally {
+        setAbsencesLoading(false);
+      }
+    }
+
+    loadAllAbsences();
+  }, [user]);
 
   // Filtrar estudantes por turma (se especificado)
   const filteredStudents = useMemo(() => {
@@ -82,7 +129,12 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
     // Criar mapa de faltas por estudante (otimização)
     const absencesByStudentMap = new Map<string, typeof allAbsences>();
     allAbsences.forEach(absence => {
-      const studentId = absence.student_id;
+      // ✅ API retorna 'estudanteId' (camelCase), não 'student_id'
+      const studentId = absence.estudanteId || absence.student_id;
+      if (!studentId) {
+        logger.warn('⚠️ Falta sem estudanteId', { absence });
+        return;
+      }
       if (!absencesByStudentMap.has(studentId)) {
         absencesByStudentMap.set(studentId, []);
       }
@@ -97,13 +149,15 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       const studentAbsences = absencesByStudentMap.get(student.student_id) || [];
 
       // 🎯 FILTRO: Aplicar excludeJustified
+      // ✅ API retorna 'justificada' ou 'justified', não 'is_justified'
       const absences = excludeJustified
-        ? studentAbsences.filter(abs => !abs.is_justified)
+        ? studentAbsences.filter(abs => !abs.justificada && !abs.justified && !abs.is_justified)
         : studentAbsences;
 
       // Calculate absences by bimester
+      // ✅ API retorna 'data', não 'absence_date'
       const faltasB1 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.absence_date);
+        const date = parseFlexibleDate(abs.data || abs.absence_date);
         const b1 = periods[1];
         if (!date || !b1) return false;
         const startDate = parseFlexibleDate(b1.start);
@@ -112,7 +166,7 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       }).length;
 
       const faltasB2 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.absence_date);
+        const date = parseFlexibleDate(abs.data || abs.absence_date);
         const b2 = periods[2];
         if (!date || !b2) return false;
         const startDate = parseFlexibleDate(b2.start);
@@ -121,7 +175,7 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       }).length;
 
       const faltasB3 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.absence_date);
+        const date = parseFlexibleDate(abs.data || abs.absence_date);
         const b3 = periods[3];
         if (!date || !b3) return false;
         const startDate = parseFlexibleDate(b3.start);
@@ -130,7 +184,7 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       }).length;
 
       const faltasB4 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.absence_date);
+        const date = parseFlexibleDate(abs.data || abs.absence_date);
         const b4 = periods[4];
         if (!date || !b4) return false;
         const startDate = parseFlexibleDate(b4.start);
@@ -141,10 +195,11 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       const totalFaltas = faltasB1 + faltasB2 + faltasB3 + faltasB4;
 
       // Calculate today's absences
+      // ✅ API retorna 'data', não 'absence_date'
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const faltasAteHoje = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.absence_date);
+        const date = parseFlexibleDate(abs.data || abs.absence_date);
         return date && date <= today;
       }).length;
 

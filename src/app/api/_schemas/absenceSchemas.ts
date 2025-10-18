@@ -79,7 +79,7 @@ export const absenceQuerySchema = z.object({
     .string()
     .optional()
     .transform((val) => (val ? parseInt(val, 10) : 50))
-    .pipe(z.number().min(1).max(250).default(50)),
+    .pipe(z.number().min(1).max(1000).default(50)), // ✅ Aumentado para 1000 (melhor performance)
 });
 
 /**

@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { fetchAllPages } from '@/utils/paginationHelper';
 
 // ============================================================================
 // TYPES
@@ -83,34 +84,60 @@ export function useStudents(filters?: StudentFilters) {
       setLoading(true);
       setError(null);
 
-      // Build query params
-      const params = new URLSearchParams();
-      if (filters?.turma) params.append('turma', filters.turma);
-      if (filters?.turno) params.append('turno', filters.turno);
-      if (filters?.status) params.append('status', filters.status);
-      if (filters?.search) params.append('search', filters.search);
-      if (filters?.page) params.append('page', filters.page.toString());
-      if (filters?.limit) params.append('limit', filters.limit.toString());
+      // 🔄 PAGINAÇÃO RECURSIVA: Se não há filtros específicos de página, carregar TODOS
+      const shouldLoadAll = !filters?.page && !filters?.limit;
 
-      // Get auth token
-      const token = await user.getIdToken();
+      if (shouldLoadAll) {
+        const token = await user.getIdToken();
 
-      const response = await fetch(`/api/students?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+        const allLoadedStudents = await fetchAllPages<Student>({
+          baseUrl: '/api/students',
+          token,
+          filters: {
+            turma: filters?.turma,
+            turno: filters?.turno,
+            status: filters?.status,
+            search: filters?.search,
+          },
+          resourceName: 'estudantes'
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao buscar estudantes');
+        setStudents(allLoadedStudents);
+        setPagination({
+          page: 1,
+          limit: allLoadedStudents.length,
+          total: allLoadedStudents.length,
+          totalPages: 1
+        });
+      } else {
+        // Carregamento normal (com página específica)
+        const params = new URLSearchParams();
+        if (filters?.turma) params.append('turma', filters.turma);
+        if (filters?.turno) params.append('turno', filters.turno);
+        if (filters?.status) params.append('status', filters.status);
+        if (filters?.search) params.append('search', filters.search);
+        if (filters?.page) params.append('page', filters.page.toString());
+        if (filters?.limit) params.append('limit', filters.limit.toString());
+
+        const token = await user.getIdToken();
+
+        const response = await fetch(`/api/students?${params.toString()}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao buscar estudantes');
+        }
+
+        const data: PaginatedResponse<Student> = await response.json();
+
+        setStudents(data.data);
+        setPagination(data.pagination);
       }
-
-      const data: PaginatedResponse<Student> = await response.json();
-
-      setStudents(data.data);
-      setPagination(data.pagination);
     } catch (err) {
       console.error('[useStudents] Error:', err);
       setError((err as Error).message);

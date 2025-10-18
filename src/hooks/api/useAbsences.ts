@@ -32,6 +32,7 @@ export interface AbsenceFilters {
   turma?: string;
   page?: number;
   limit?: number;
+  allowAll?: boolean; // ✅ Permitir buscar todas as faltas (para dashboard)
 }
 
 export interface BulkAbsenceResult {
@@ -69,8 +70,8 @@ export function useAbsences(filters?: AbsenceFilters) {
     }
 
     // ✅ GUARD: Não buscar todas as faltas quando não há estudante selecionado
-    // Se filters.estudanteId for undefined/empty, retorna vazio ao invés de buscar TUDO
-    if (!filters?.estudanteId) {
+    // EXCETO se allowAll=true (usado no dashboard para análises globais)
+    if (!filters?.estudanteId && !filters?.allowAll) {
       setAbsences([]);
       setLoading(false);
       setError(null);

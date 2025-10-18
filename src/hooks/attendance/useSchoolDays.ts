@@ -7,7 +7,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useBimesterPeriods } from './useBimesterPeriods';
 import { useAcademicYearComplete } from '@/hooks/api';
-import { getAuth } from 'firebase/auth';
 import { logger } from '@/utils/logger';
 
 export interface SchoolDaysData {
@@ -49,27 +48,40 @@ export function useSchoolDays(): UseSchoolDaysReturn {
       setError(null);
 
       const year = parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || '2025');
-      const auth = getAuth();
-      const user = auth.currentUser;
-
-      if (!user) {
-        throw new Error('Usuário não autenticado');
-      }
-
-      const token = await user.getIdToken();
 
       // ✅ MIGRADO: Buscar ano letivo completo via API REST
-      const response = await fetch(`/api/academic-years/complete?year=${year}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      // IMPORTANTE: API /complete NÃO requer autenticação (dados públicos)
+      const response = await fetch(`/api/academic-years/complete?year=${year}`);
 
       if (!response.ok) {
+        logger.error(`❌ Erro HTTP ao buscar ano letivo: ${response.status}`);
         throw new Error(`Erro ao buscar ano letivo: ${response.status}`);
       }
 
-      const data = await response.json();
+      const result = await response.json();
+      const data = result.data || result; // API pode retornar {success, data} ou direto o objeto
+
+      logger.info('📡 Resposta da API /complete', {
+        hasData: !!data,
+        keys: Object.keys(data || {}),
+        year
+      });
+
+      // Verificar se retornou dados válidos
+      if (!data || Object.keys(data).length === 0) {
+        logger.warn('❌ Ano letivo não configurado ou vazio', { year });
+        // Retornar zeros mas não dar erro
+        setSchoolDays({
+          bimester1: 0,
+          bimester2: 0,
+          bimester3: 0,
+          bimester4: 0,
+          total: 0,
+          upToToday: 0,
+        });
+        setLoading(false);
+        return;
+      }
 
       // Contar dias letivos por bimestre
       const bimesterCounts: Record<number, number> = {};
@@ -86,6 +98,14 @@ export function useSchoolDays(): UseSchoolDaysReturn {
         }
       });
 
+      logger.info('✅ Dias letivos carregados', {
+        bimester1: bimesterCounts[1],
+        bimester2: bimesterCounts[2],
+        bimester3: bimesterCounts[3],
+        bimester4: bimesterCounts[4],
+        total
+      });
+
       // ✅ MIGRADO: Contar dias letivos até hoje usando API
       const today = new Date().toISOString().split('T')[0];
       const firstBimester = data['1º Bimestre'];
@@ -93,21 +113,17 @@ export function useSchoolDays(): UseSchoolDaysReturn {
       let upToToday = 0;
       if (firstBimester?.startDate) {
         // Converter DD/MM/YYYY para YYYY-MM-DD
-        const [day, month, year] = firstBimester.startDate.split('/');
-        const startDate = `${year}-${month}-${day}`;
+        const [day, month, yearStr] = firstBimester.startDate.split('/');
+        const startDate = `${yearStr}-${month}-${day}`;
 
+        // API /count-school-days também NÃO requer autenticação
         const countResponse = await fetch(
-          `/api/academic-years/count-school-days?start_date=${startDate}&end_date=${today}&year=${year}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          }
+          `/api/academic-years/count-school-days?start_date=${startDate}&end_date=${today}&year=${year}`
         );
 
         if (countResponse.ok) {
-          const countData = await countResponse.json();
-          upToToday = countData.count || 0;
+          const countResult = await countResponse.json();
+          upToToday = countResult.count || countResult.data?.count || 0;
         }
       }
 
@@ -138,32 +154,18 @@ export function useSchoolDays(): UseSchoolDaysReturn {
   const getSchoolDaysForPeriod = useCallback(async (startDate: string, endDate: string): Promise<number> => {
     try {
       const year = parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || '2025');
-      const auth = getAuth();
-      const user = auth.currentUser;
 
-      if (!user) {
-        logger.error('Usuário não autenticado ao contar dias letivos no período');
-        return 0;
-      }
-
-      const token = await user.getIdToken();
-
-      // ✅ MIGRADO: Usar API REST
+      // ✅ MIGRADO: Usar API REST (sem autenticação)
       const response = await fetch(
-        `/api/academic-years/count-school-days?start_date=${startDate}&end_date=${endDate}&year=${year}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
+        `/api/academic-years/count-school-days?start_date=${startDate}&end_date=${endDate}&year=${year}`
       );
 
       if (!response.ok) {
         throw new Error(`Erro na API: ${response.status}`);
       }
 
-      const data = await response.json();
-      return data.count || 0;
+      const result = await response.json();
+      return result.count || result.data?.count || 0;
     } catch (err) {
       logger.error(`Erro ao contar dias letivos no período ${startDate} - ${endDate}`, err as Error);
       return 0;
@@ -172,33 +174,22 @@ export function useSchoolDays(): UseSchoolDaysReturn {
 
   /**
    * Obter dias letivos até uma data específica
-   * ✅ MIGRADO: Usa API REST
+   * ✅ MIGRADO: Usa API REST (sem autenticação - dados públicos)
    */
   const getSchoolDaysUpToDate = useCallback(async (targetDate: string): Promise<number> => {
     try {
       const year = parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || '2025');
-      const auth = getAuth();
-      const user = auth.currentUser;
 
-      if (!user) {
-        logger.error('Usuário não autenticado ao contar dias letivos até data');
-        return 0;
-      }
-
-      const token = await user.getIdToken();
-
-      // ✅ MIGRADO: Buscar primeiro bimestre via API
-      const response = await fetch(`/api/academic-years/complete?year=${year}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      // ✅ MIGRADO: Buscar primeiro bimestre via API (sem autenticação)
+      const response = await fetch(`/api/academic-years/complete?year=${year}`);
 
       if (!response.ok) {
+        logger.error(`❌ Erro HTTP ao buscar ano letivo: ${response.status}`);
         throw new Error(`Erro ao buscar ano letivo: ${response.status}`);
       }
 
-      const data = await response.json();
+      const result = await response.json();
+      const data = result.data || result; // API pode retornar {success, data} ou direto o objeto
       const firstBimester = data['1º Bimestre'];
 
       if (!firstBimester?.startDate) {
@@ -210,22 +201,18 @@ export function useSchoolDays(): UseSchoolDaysReturn {
       const [day, month, yearStr] = firstBimester.startDate.split('/');
       const startDate = `${yearStr}-${month}-${day}`;
 
-      // ✅ MIGRADO: Contar dias usando API REST
+      // ✅ MIGRADO: Contar dias usando API REST (sem autenticação)
       const countResponse = await fetch(
-        `/api/academic-years/count-school-days?start_date=${startDate}&end_date=${targetDate}&year=${year}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
+        `/api/academic-years/count-school-days?start_date=${startDate}&end_date=${targetDate}&year=${year}`
       );
 
       if (!countResponse.ok) {
+        logger.error(`❌ Erro na API count: ${countResponse.status}`);
         throw new Error(`Erro na API count: ${countResponse.status}`);
       }
 
-      const countData = await countResponse.json();
-      return countData.count || 0;
+      const countResult = await countResponse.json();
+      return countResult.count || countResult.data?.count || 0;
     } catch (err) {
       logger.error(`Erro ao contar dias letivos até ${targetDate}`, err as Error);
       return 0;
