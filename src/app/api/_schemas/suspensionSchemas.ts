@@ -22,7 +22,7 @@ export const createSuspensionSchema = z.object({
     .string()
     .regex(/^\d{8}$/, 'Data de fim deve estar no formato DDMMYYYY'),
   motivo: z.string().min(1, 'Motivo é obrigatório').max(1000),
-  observacoes: z.string().max(2000).optional(),
+  observacoes: z.string().max(2000).nullable().optional(),
 });
 
 /**

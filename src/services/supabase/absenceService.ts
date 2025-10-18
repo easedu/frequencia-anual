@@ -49,7 +49,9 @@ export class AbsenceService {
 
       const result = await response.json();
 
-      if (!result.success) {
+      // Verificar se houve erro (API retorna { success: false } em erro)
+      // Sucesso retorna { data: [...], pagination: {...} }
+      if (result.success === false) {
         throw new Error(result.message || 'Erro ao buscar faltas');
       }
 
@@ -306,12 +308,20 @@ export class AbsenceService {
       // ✅ Usar API REST ao invés de Supabase direto
       const headers = await getAuthHeaders();
 
+      // ✅ Converter data de YYYY-MM-DD para DDMMYYYY se necessário
+      let dataFormatada = record.data || '';
+      if (dataFormatada.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // Format: YYYY-MM-DD → DDMMYYYY
+        const [year, month, day] = dataFormatada.split('-');
+        dataFormatada = `${day}${month}${year}`;
+      }
+
       const response = await fetch('/api/absences', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           estudanteId: record.estudanteId, // Firebase UUID (a API resolve internamente)
-          data: record.data || '',
+          data: dataFormatada,
           justificada: record.justified ?? false,
           atestadoId: record.atestadoId || null,
           bimestre: null, // Será calculado pela API

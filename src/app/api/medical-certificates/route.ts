@@ -68,21 +68,36 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       return errorResponse('DATABASE_ERROR', 'Erro ao buscar atestados', 500);
     }
 
-    // Buscar nomes dos usuários (submitted_by) para enriquecer os dados
+    // Buscar nomes dos usuários (submitted_by e created_by) para enriquecer os dados
     if (data && data.length > 0) {
-      const userIds = [...new Set(data.map((cert: any) => cert.submitted_by).filter(Boolean))];
+      // Coletar IDs de ambos os campos
+      const userIds = [...new Set(
+        data.flatMap((cert: any) => [cert.submitted_by, cert.created_by].filter(Boolean))
+      )];
+
+      console.log('[GET /api/medical-certificates] User IDs coletados:', userIds);
 
       if (userIds.length > 0) {
-        const { data: users } = await supabaseAdmin
+        const { data: users, error: usersError } = await supabaseAdmin
           .from('user_profiles')
-          .select('id, name')
-          .in('id', userIds);
+          .select('firebase_uid, full_name')
+          .in('firebase_uid', userIds);
 
-        const userMap = new Map((users || []).map((u: any) => [u.id, u.name]));
+        console.log('[GET /api/medical-certificates] Usuários encontrados:', users);
+        console.log('[GET /api/medical-certificates] Erro ao buscar usuários:', usersError);
+
+        const userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
 
         // Adicionar nome do usuário aos dados
         data.forEach((cert: any) => {
-          cert.submitter = { name: userMap.get(cert.submitted_by) || cert.submitted_by };
+          const submitterName = userMap.get(cert.submitted_by) || userMap.get(cert.created_by);
+          console.log(`[GET /api/medical-certificates] Cert ${cert.id}: submitted_by=${cert.submitted_by}, created_by=${cert.created_by}, name=${submitterName}`);
+          cert.submitter = { name: submitterName || cert.submitted_by || cert.created_by || 'Desconhecido' };
+        });
+      } else {
+        // Se não há IDs, ainda precisamos criar o campo submitter
+        data.forEach((cert: any) => {
+          cert.submitter = { name: 'Desconhecido' };
         });
       }
     }
@@ -123,12 +138,27 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       return errorResponse('VALIDATION_ERROR', 'studentId ou estudanteId é obrigatório', 400);
     }
 
-    const startDate = body.startDate || body.dataInicio;
-    const endDate = body.endDate || body.dataFim;
+    let startDate = body.startDate || body.dataInicio;
+    let endDate = body.endDate || body.dataFim;
 
     if (!startDate || !endDate) {
       return errorResponse('VALIDATION_ERROR', 'startDate e endDate são obrigatórios', 400);
     }
+
+    // ✅ Converter DDMMYYYY → YYYY-MM-DD (formato do Supabase)
+    const convertToISODate = (date: string): string => {
+      if (date.match(/^\d{8}$/)) {
+        // Format: DDMMYYYY → YYYY-MM-DD
+        const day = date.substring(0, 2);
+        const month = date.substring(2, 4);
+        const year = date.substring(4, 8);
+        return `${year}-${month}-${day}`;
+      }
+      return date; // Já está em YYYY-MM-DD
+    };
+
+    startDate = convertToISODate(startDate);
+    endDate = convertToISODate(endDate);
 
     // Resolver Firebase UUID → Internal ID (server-side)
     const internalId = await resolveFirebaseUUIDToInternal(firebaseUUID);
@@ -140,6 +170,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     // Calcular submitted_date (usar startDate se submittedDate > startDate)
     const today = new Date().toISOString().split('T')[0];
     let submittedDate = body.submittedDate || body.dataEntrega || today;
+    submittedDate = convertToISODate(submittedDate);
 
     if (submittedDate > startDate) {
       submittedDate = startDate;

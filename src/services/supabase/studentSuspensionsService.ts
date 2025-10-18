@@ -191,13 +191,22 @@ export class StudentSuspensionsService {
       // ✅ Usar API REST com autenticação (UUID resolvido no backend)
       const headers = await getAuthHeaders();
 
+      // ✅ Converter datas de YYYY-MM-DD para DDMMYYYY se necessário
+      const convertDateFormat = (date: string): string => {
+        if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [year, month, day] = date.split('-');
+          return `${day}${month}${year}`;
+        }
+        return date;
+      };
+
       const response = await fetch('/api/suspensions', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           estudanteId: data.studentId, // Firebase UUID (a API resolve internamente)
-          dataInicio: data.startDate,
-          dataFim: data.endDate,
+          dataInicio: convertDateFormat(data.startDate),
+          dataFim: convertDateFormat(data.endDate),
           motivo: data.reason,
           observacoes: data.description || null,
         }),
@@ -232,22 +241,31 @@ export class StudentSuspensionsService {
     updates: Partial<CreateSuspensionData>
   ): Promise<boolean> {
     try {
+      // ✅ Converter datas de YYYY-MM-DD para DDMMYYYY se necessário
+      const convertDateFormat = (date: string): string => {
+        if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [year, month, day] = date.split('-');
+          return `${day}${month}${year}`;
+        }
+        return date;
+      };
+
       const apiUpdates: any = {};
 
-      if (updates.startDate) apiUpdates.startDate = updates.startDate;
-      if (updates.endDate) apiUpdates.endDate = updates.endDate;
+      if (updates.startDate) apiUpdates.startDate = convertDateFormat(updates.startDate);
+      if (updates.endDate) apiUpdates.endDate = convertDateFormat(updates.endDate);
       if (updates.reason) apiUpdates.reason = updates.reason;
       if (updates.description !== undefined)
         apiUpdates.description = updates.description || null;
       if (updates.severity) apiUpdates.severity = updates.severity;
       if (updates.decisionBy) apiUpdates.decisionBy = updates.decisionBy;
-      if (updates.decisionDate) apiUpdates.decisionDate = updates.decisionDate;
+      if (updates.decisionDate) apiUpdates.decisionDate = convertDateFormat(updates.decisionDate);
       if (updates.documentNumber !== undefined)
         apiUpdates.documentNumber = updates.documentNumber || null;
       if (updates.familyNotified !== undefined)
         apiUpdates.familyNotified = updates.familyNotified;
       if (updates.notificationDate !== undefined)
-        apiUpdates.notificationDate = updates.notificationDate || null;
+        apiUpdates.notificationDate = updates.notificationDate ? convertDateFormat(updates.notificationDate) : null;
       if (updates.notificationMethod !== undefined)
         apiUpdates.notificationMethod = updates.notificationMethod || null;
 

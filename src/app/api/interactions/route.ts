@@ -65,6 +65,29 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       return errorResponse('DATABASE_ERROR', 'Erro ao buscar interações', 500);
     }
 
+    // Buscar nomes dos usuários (created_by) para enriquecer os dados
+    if (data && data.length > 0) {
+      // Coletar IDs únicos de created_by
+      const userIds = [...new Set(
+        data.map((interaction: any) => interaction.created_by).filter(Boolean)
+      )];
+
+      if (userIds.length > 0) {
+        const { data: users } = await supabaseAdmin
+          .from('user_profiles')
+          .select('firebase_uid, full_name')
+          .in('firebase_uid', userIds);
+
+        const userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
+
+        // Adicionar nome do usuário aos dados
+        data.forEach((interaction: any) => {
+          const userName = userMap.get(interaction.created_by);
+          interaction.created_by_name = userName || interaction.created_by || 'Desconhecido';
+        });
+      }
+    }
+
     // Mapear dados do Supabase para o formato esperado pelo frontend
     const mappedData = (data || []).map((interaction: any) => ({
       id: interaction.id,
@@ -72,7 +95,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       type: interaction.interaction_type,
       date: interaction.interaction_date,
       description: interaction.description,
-      createdBy: interaction.created_by,
+      createdBy: interaction.created_by_name || interaction.created_by,
       sensitive: interaction.is_sensitive,
       // Campos WhatsApp
       whatsappMessage: interaction.whatsapp_message,

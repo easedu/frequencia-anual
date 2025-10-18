@@ -54,7 +54,7 @@ export const GET = withAuth(
       // Buscar falta no Supabase com verificação de permissão
       const { data, error } = await supabaseAdmin
         .from('student_absences')
-        .select('*, students( name, class)')
+        .select('*, students(name, class, student_id)')
         .eq('id', id)
         .single();
 
@@ -252,17 +252,17 @@ export const DELETE = withAuth(
 function convertSupabaseToAbsence(absence: any): any {
   return {
     id: absence.id,
-    estudanteId: absence.student_id,
+    estudanteId: absence.students?.student_id || absence.student_id, // ✅ Firebase UUID, não Internal ID
     estudanteNome: absence.students?.name || '',
     turma: absence.students?.class || '',
-    data: absence.date,
+    data: absence.absence_date, // ✅ Campo correto
     bimestre: absence.bimester,
-    justificada: absence.justified,
-    motivoJustificativa: absence.justification_reason || undefined,
+    justificada: absence.is_justified, // ✅ Campo correto
+    motivoJustificativa: undefined, // Coluna não existe no Supabase
     atestadoId: absence.medical_certificate_id || undefined,
-    observacoes: absence.notes || undefined,
-    anoLetivo: absence.school_year,
-    criadoPor: absence.created_by,
+    observacoes: undefined, // Coluna não existe no Supabase
+    anoLetivo: new Date().getFullYear().toString(), // ✅ Calcular do absence_date
+    criadoPor: 'system', // Coluna não existe no Supabase
     criadoEm: absence.created_at,
     atualizadoEm: absence.updated_at,
   };

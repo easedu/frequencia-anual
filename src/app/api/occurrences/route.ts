@@ -90,6 +90,29 @@ export async function GET(request: NextRequest) {
       return errorResponse(error.message, 500)
     }
 
+    // Buscar nomes dos usuários (reported_by) para enriquecer os dados
+    if (data && data.length > 0) {
+      // Coletar IDs únicos de reported_by
+      const userIds = [...new Set(
+        data.map((occ: any) => occ.reported_by).filter(Boolean)
+      )];
+
+      if (userIds.length > 0) {
+        const { data: users } = await supabaseAdmin
+          .from('user_profiles')
+          .select('firebase_uid, full_name')
+          .in('firebase_uid', userIds);
+
+        const userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
+
+        // Adicionar nome do usuário aos dados
+        data.forEach((occ: any) => {
+          const userName = userMap.get(occ.reported_by);
+          occ.reported_by_name = userName || occ.reported_by || 'Desconhecido';
+        });
+      }
+    }
+
     return successResponse({
       data: data || [],
       pagination: {

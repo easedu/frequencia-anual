@@ -20,11 +20,11 @@ export const createAbsenceSchema = z.object({
     .regex(/^\d{8}$/, 'Data deve estar no formato DDMMYYYY (apenas números)'),
   bimestre: z.enum(['B1', 'B2', 'B3', 'B4'], {
     errorMap: () => ({ message: 'Bimestre deve ser B1, B2, B3 ou B4' }),
-  }),
+  }).nullable().optional(),
   justificada: z.boolean().default(false),
-  motivoJustificativa: z.string().max(500).optional(),
-  atestadoId: z.string().uuid().optional(),
-  observacoes: z.string().max(1000).optional(),
+  motivoJustificativa: z.string().max(500).nullable().optional(),
+  atestadoId: z.string().uuid().nullable().optional(),
+  observacoes: z.string().max(1000).nullable().optional(),
 });
 
 /**
@@ -40,9 +40,9 @@ export const createBulkAbsencesSchema = z.object({
     .max(50, 'Máximo de 50 faltas por requisição'),
   bimestre: z.enum(['B1', 'B2', 'B3', 'B4']),
   justificada: z.boolean().default(false),
-  motivoJustificativa: z.string().max(500).optional(),
-  atestadoId: z.string().uuid().optional(),
-  observacoes: z.string().max(1000).optional(),
+  motivoJustificativa: z.string().max(500).nullable().optional(),
+  atestadoId: z.string().uuid().nullable().optional(),
+  observacoes: z.string().max(1000).nullable().optional(),
 });
 
 /**

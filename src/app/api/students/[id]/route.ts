@@ -53,6 +53,7 @@ export const GET = withAuth(
       }
 
       // Buscar estudante no Supabase com dados de verificação WhatsApp
+      // ✅ Query by student_id (Firebase UUID) not internal id
       const { data, error } = await supabaseAdmin
         .from('students')
         .select(`
@@ -66,7 +67,7 @@ export const GET = withAuth(
             whatsapp_data
           )
         `)
-        .eq('id', id)
+        .eq('student_id', id)
         .eq('deleted', false)
         .single();
 
@@ -160,16 +161,20 @@ export const PUT = withAuth(
       const sanitizedData = sanitizeObject(data);
 
       // 4. Verificar se estudante existe e pertence ao usuário
+      // ✅ Query by student_id (Firebase UUID)
       const { data: existingStudent, error: checkError } = await supabaseAdmin
         .from('students')
-        .select('id')
-        .eq('id', id)
+        .select('id, student_id')
+        .eq('student_id', id)
         .eq('deleted', false)
         .single();
 
       if (checkError || !existingStudent) {
         return notFoundResponse('Estudante', id);
       }
+
+      // Get Internal ID for update operations
+      const internalId = existingStudent.id;
 
       // 5. Preparar dados para atualização
       const updateData: Record<string, any> = {
@@ -189,12 +194,12 @@ export const PUT = withAuth(
       if (sanitizedData.deficiencia !== undefined)
         updateData.disabilities = sanitizedData.deficiencia ? [sanitizedData.deficiencia] : [];
 
-      // 6. Atualizar estudante
+      // 6. Atualizar estudante (using Internal ID for update)
       const { error: updateError } = await supabaseAdmin
         .from('students')
         // @ts-ignore - Supabase types are complex, updateData is validated
         .update(updateData)
-        .eq('id', id);
+        .eq('id', internalId);
 
       if (updateError) {
         console.error('[PUT /api/students/[id]] Error updating student:', updateError);
@@ -208,13 +213,13 @@ export const PUT = withAuth(
 
       // 7. Atualizar contatos (se fornecidos)
       if (sanitizedData.contatos !== undefined) {
-        // Deletar contatos existentes
-        await supabaseAdmin.from('student_contacts').delete().eq('student_id', id);
+        // Deletar contatos existentes (using Internal ID)
+        await supabaseAdmin.from('student_contacts').delete().eq('student_id', internalId);
 
-        // Inserir novos contatos
+        // Inserir novos contatos (using Internal ID)
         if (sanitizedData.contatos.length > 0) {
           const contactsInsert = sanitizedData.contatos.map((contato: any) => ({
-            student_id: id,
+            student_id: internalId,
             name: contato.nome,
             relationship: contato.parentesco || '',
             phone: contato.telefone,
@@ -271,10 +276,11 @@ export const DELETE = withAuth(
       }
 
       // 1. Verificar se estudante existe e pertence ao usuário
+      // ✅ Query by student_id (Firebase UUID)
       const { data: existingStudent, error: checkError } = await supabaseAdmin
         .from('students')
-        .select('id')
-        .eq('id', id)
+        .select('id, student_id')
+        .eq('student_id', id)
         .eq('deleted', false)
         .single();
 
@@ -282,7 +288,10 @@ export const DELETE = withAuth(
         return notFoundResponse('Estudante', id);
       }
 
-      // 2. Soft delete (marcar como deletado)
+      // Get Internal ID for update operations
+      const internalId = existingStudent.id;
+
+      // 2. Soft delete (marcar como deletado, using Internal ID)
       const { error: deleteError } = await supabaseAdmin
         .from('students')
         // @ts-ignore - Supabase types are complex
@@ -291,7 +300,7 @@ export const DELETE = withAuth(
           deleted_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', id);
+        .eq('id', internalId);
 
       if (deleteError) {
         console.error('[DELETE /api/students/[id]] Error deleting student:', deleteError);

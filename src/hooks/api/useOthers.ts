@@ -6,7 +6,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { PaginatedResponse, ApiResponse } from './useStudents';
+import { PaginatedResponse } from './useStudents';
+import type { WhatsAppMessageStatus, StatusHistoryEntry } from '@/types';
 
 // ============================================================================
 // SUSPENSIONS
@@ -42,6 +43,14 @@ export function useSuspensions(filters?: SuspensionFilters) {
 
   const fetchSuspensions = useCallback(async () => {
     if (!user) { setLoading(false); return; }
+
+    // ⚠️ IMPORTANTE: Não buscar se não houver estudanteId (evita buscar todas as suspensões)
+    if (!filters?.estudanteId) {
+      setSuspensions([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -186,6 +195,14 @@ export function useMedicalCertificates(filters?: MedicalCertificateFilters) {
 
   const fetchCertificates = useCallback(async () => {
     if (!user) { setLoading(false); return; }
+
+    // ⚠️ IMPORTANTE: Não buscar se não houver estudanteId (evita buscar todos os atestados)
+    if (!filters?.estudanteId) {
+      setCertificates([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -314,8 +331,8 @@ export interface Interaction {
   whatsappMessage?: string;
   whatsappPhones?: string[];
   whatsappMessageId?: string;
-  whatsappStatus?: string;
-  whatsappStatusHistory?: any[];
+  whatsappStatus?: WhatsAppMessageStatus;  // ✅ Tipo correto (não string genérico)
+  whatsappStatusHistory?: StatusHistoryEntry[];  // ✅ Tipo correto (não any[])
   whatsappSentAt?: string;
   whatsappDeliveredAt?: string;
   whatsappReadAt?: string;
@@ -343,6 +360,14 @@ export function useInteractions(filters?: InteractionFilters) {
 
   const fetchInteractions = useCallback(async () => {
     if (!user) { setLoading(false); return; }
+
+    // ⚠️ IMPORTANTE: Não buscar se não houver estudanteId (evita buscar todas as interações)
+    if (!filters?.estudanteId) {
+      setInteractions([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);

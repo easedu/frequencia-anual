@@ -110,8 +110,8 @@ export function useStudentProfile() {
     return (allStudentsData as any[]).map((student: any) => ({
       ...student,
       // IMPORTANTE: id (UUID do banco) é usado para buscar estudante individual
-      id: student.id, // UUID do banco Supabase
-      estudanteId: student.student_id || student.estudanteId, // Campo legado
+      id: student.id, // UUID do banco Supabase (Internal ID)
+      estudanteId: student.student_id || student.estudanteId, // Firebase UUID
       nome: student.name || student.nome,
       turma: student.class || student.turma,
       contatos: (student as any).student_contacts || (student as any).contacts || (student as any).contatos || [],
@@ -121,12 +121,23 @@ export function useStudentProfile() {
 
   // Validar selectedStudentId antes de usar (deve existir em allStudents)
   const validatedStudentId = useMemo(() => {
-    if (!selectedStudentId) return '';
-    const exists = allStudents.some((s: any) => s.id === selectedStudentId);
-    if (!exists) {
-      console.warn('[useStudentProfile] Selected student ID not found in loaded students:', selectedStudentId);
+    if (!selectedStudentId) {
       return '';
     }
+
+    // Se allStudents ainda não carregou, usar selectedStudentId mesmo assim
+    // (isso permite carregar dados do estudante enquanto a lista carrega)
+    if (allStudents.length === 0) {
+      return selectedStudentId;
+    }
+
+    // ✅ Verificar por estudanteId (Firebase UUID), não por id (Internal ID)
+    const exists = allStudents.some((s: any) => s.estudanteId === selectedStudentId);
+    if (!exists) {
+      console.warn('[useStudentProfile] ⚠️ Selected student ID not found in loaded students:', selectedStudentId);
+      return '';
+    }
+
     return selectedStudentId;
   }, [selectedStudentId, allStudents]);
 
@@ -139,9 +150,11 @@ export function useStudentProfile() {
     estudanteId: validatedStudentId || undefined,
   }), [validatedStudentId]);
 
-  const certificateFilters = useMemo(() => ({
-    estudanteId: validatedStudentId || undefined,
-  }), [validatedStudentId]);
+  const certificateFilters = useMemo(() => {
+    return {
+      estudanteId: validatedStudentId || undefined,
+    };
+  }, [validatedStudentId, selectedStudentId]);
 
   const suspensionFilters = useMemo(() => ({
     estudanteId: validatedStudentId || undefined,
@@ -204,7 +217,8 @@ export function useStudentProfile() {
       startDate: susp.start_date || susp.startDate,
       days: susp.days_suspended || susp.days || 1,
       description: susp.reason || susp.description || 'Sem descrição',
-      createdBy: susp.decision_by || susp.createdBy || 'Desconhecido'
+      // Buscar nome do usuário via JOIN (decision_by_name)
+      createdBy: susp.decision_by_name || susp.decision_by || susp.createdBy || 'Desconhecido'
     }));
   }, [suspensoesData]);
 
@@ -300,11 +314,22 @@ export function useStudentProfile() {
   // URL param: studentId (validar se existe na lista antes de usar)
   useEffect(() => {
     const studentId = searchParams.get("studentId");
+
     if (studentId && studentId !== selectedStudentId) {
+      // Aguardar allStudents carregar antes de validar
+      if (loadingStudents || allStudents.length === 0) {
+        return;
+      }
+
       // Verificar se o estudante existe na lista carregada
-      const studentExists = allStudents.some((s: any) => s.id === studentId);
-      if (studentExists) {
-        setSelectedStudentId(studentId);
+      // ✅ Suportar tanto Internal ID (id) quanto Firebase UUID (estudanteId)
+      const student = allStudents.find((s: any) =>
+        s.id === studentId || s.estudanteId === studentId
+      );
+
+      if (student) {
+        // SEMPRE usar estudanteId (Firebase UUID) internamente
+        setSelectedStudentId(student.estudanteId);
       } else {
         console.warn('[useStudentProfile] Student ID from URL not found in loaded students:', studentId);
         // Limpar estado e URL inválida
@@ -316,7 +341,7 @@ export function useStudentProfile() {
         }
       }
     }
-  }, [searchParams, selectedStudentId, allStudents]);
+  }, [searchParams, selectedStudentId, allStudents, loadingStudents]);
 
   // Load verified WhatsApp numbers
   useEffect(() => {
@@ -461,17 +486,25 @@ export function useStudentProfile() {
   const handleSelectStudent = useCallback(
     (studentId: string) => {
       isSelectingStudent.current = true;
-      setSelectedStudentId(studentId);
+
+      // ✅ NORMALIZAR: Se recebeu Internal ID, converter para Firebase UUID
+      const student = allStudents.find((s: any) =>
+        s.id === studentId || s.estudanteId === studentId
+      );
+
+      const normalizedId = student?.estudanteId || studentId;
+
+      setSelectedStudentId(normalizedId);
       setSearchName("");
       setSuggestions([]);
-      fetchStudentData(studentId);
+      fetchStudentData(normalizedId);
 
       // Reset selecting flag after a short delay
       setTimeout(() => {
         isSelectingStudent.current = false;
       }, 100);
     },
-    [fetchStudentData]
+    [fetchStudentData, allStudents]
   );
 
   // ═══════════════════════════════════════════════════════════
@@ -901,8 +934,6 @@ export function useStudentProfile() {
         faltasExistentes.set(dataFormatada, absence);
       });
 
-      console.log('🔍 Criando faltas para', diasLetivos.length, 'dias letivos');
-
       for (const dataLetiva of diasLetivos) {
         let dataFirebase: string;
 
@@ -926,7 +957,6 @@ export function useStudentProfile() {
             justified: true,
             atestadoId: editingAtestado.id,
           });
-          console.log('✅ Falta atualizada:', dataBrasileira);
         } else {
           // Criar nova falta justificada
           await AbsenceService.addAbsence({
@@ -935,7 +965,6 @@ export function useStudentProfile() {
             justified: true,
             atestadoId: editingAtestado.id,
           });
-          console.log('✅ Nova falta criada:', dataBrasileira);
         }
       }
 
@@ -944,9 +973,7 @@ export function useStudentProfile() {
       setAtestadoDays("");
       setAtestadoDescription("");
 
-      console.log('🔍 Recarregando dados após editar atestado...');
       await fetchStudentData(selectedStudentId);
-      console.log('✅ Dados recarregados!');
       toast.success("Atestado atualizado com sucesso!");
     } catch (error) {
       logger.error("Erro ao atualizar atestado", error as Error);
@@ -1485,10 +1512,18 @@ export function useStudentProfile() {
 
   const handleSuggestionSelect = useCallback((studentId: string) => {
     isSelectingStudent.current = true;
-    setSelectedStudentId(studentId);
+
+    // ✅ NORMALIZAR: Se recebeu Internal ID, converter para Firebase UUID
+    const student = allStudents.find((s: any) =>
+      s.id === studentId || s.estudanteId === studentId
+    );
+
+    const normalizedId = student?.estudanteId || studentId;
+
+    setSelectedStudentId(normalizedId);
     setSearchName("");
     setSuggestions([]);
-  }, []);
+  }, [allStudents]);
 
   // ═══════════════════════════════════════════════════════════
   // COMPUTED VALUES

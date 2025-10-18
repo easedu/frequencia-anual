@@ -54,6 +54,29 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       return errorResponse('DATABASE_ERROR', 'Erro ao buscar suspensões', 500);
     }
 
+    // Buscar nomes dos usuários (decision_by) para enriquecer os dados
+    if (data && data.length > 0) {
+      // Coletar IDs únicos de decision_by
+      const userIds = [...new Set(
+        data.map((susp: any) => susp.decision_by).filter(Boolean)
+      )];
+
+      if (userIds.length > 0) {
+        const { data: users } = await supabaseAdmin
+          .from('user_profiles')
+          .select('firebase_uid, full_name')
+          .in('firebase_uid', userIds);
+
+        const userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
+
+        // Adicionar nome do usuário aos dados
+        data.forEach((susp: any) => {
+          const userName = userMap.get(susp.decision_by);
+          susp.decision_by_name = userName || susp.decision_by || 'Desconhecido';
+        });
+      }
+    }
+
     return paginatedResponse(data || [], page, limit, count || 0);
   } catch (error) {
     return handleError(error, 'GET /api/suspensions');
@@ -67,6 +90,18 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     if (!validation.success) return validationErrorResponse(validation.error.errors);
 
     const sanitizedData = sanitizeObject(validation.data);
+
+    // ✅ Converter DDMMYYYY → YYYY-MM-DD (formato do Supabase)
+    const convertToISODate = (date: string): string => {
+      if (date.match(/^\d{8}$/)) {
+        // Format: DDMMYYYY → YYYY-MM-DD
+        const day = date.substring(0, 2);
+        const month = date.substring(2, 4);
+        const year = date.substring(4, 8);
+        return `${year}-${month}-${day}`;
+      }
+      return date; // Já está em YYYY-MM-DD
+    };
 
     // Resolver Firebase UUID para Internal ID
     const internalStudentId = await resolveFirebaseUUIDToInternal(sanitizedData.estudanteId);
@@ -93,10 +128,10 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 
     const suspensionInsert: any = {
       student_id: internalStudentId, // ✅ Usar Internal ID resolvido
-      start_date: sanitizedData.dataInicio,
-      end_date: sanitizedData.dataFim,
+      start_date: convertToISODate(sanitizedData.dataInicio),
+      end_date: convertToISODate(sanitizedData.dataFim),
       reason: sanitizedData.motivo,
-      notes: sanitizedData.observacoes || null,
+      description: sanitizedData.observacoes || null,
       school_year: new Date().getFullYear().toString(),
     };
 

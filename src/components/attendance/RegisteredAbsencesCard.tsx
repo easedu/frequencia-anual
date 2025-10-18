@@ -502,13 +502,6 @@ const RegisteredAbsencesCard = memo(function RegisteredAbsencesCard({
     onAbsenceDeleted,
     selectedStudentId
 }: RegisteredAbsencesCardProps) {
-    console.log('🔍 RegisteredAbsencesCard recebeu:', {
-        absencesCount: absences.length,
-        atestadosCount: atestados?.length || 0,
-        suspensoesCount: suspensoes?.length || 0,
-        atestados: atestados,
-        absencesSample: absences.slice(0, 3)
-    });
 
     const totalAbsences = absences.length;
     // Contar justificadas (atestado OU suspensão)

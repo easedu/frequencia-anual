@@ -68,7 +68,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // 3. Construir query no Supabase
     let query: any = supabaseAdmin
       .from('student_absences')
-      .select('*, students(name, class)', { count: 'exact' })
+      .select('*, students(name, class, student_id)', { count: 'exact' })
       .order('absence_date', { ascending: false });
 
     // Aplicar filtros
@@ -157,6 +157,20 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     // 3. Sanitizar dados
     const sanitizedData = sanitizeObject(data);
 
+    // ✅ Converter DDMMYYYY → YYYY-MM-DD (formato do Supabase)
+    const convertToISODate = (date: string): string => {
+      if (date.match(/^\d{8}$/)) {
+        // Format: DDMMYYYY → YYYY-MM-DD
+        const day = date.substring(0, 2);
+        const month = date.substring(2, 4);
+        const year = date.substring(4, 8);
+        return `${year}-${month}-${day}`;
+      }
+      return date; // Já está em YYYY-MM-DD
+    };
+
+    const absenceDate = convertToISODate(sanitizedData.data);
+
     // 4. Resolver Firebase UUID para Internal ID
     const internalStudentId = await resolveFirebaseUUIDToInternal(sanitizedData.estudanteId);
 
@@ -189,7 +203,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       .from('student_absences')
       .select('id')
       .eq('student_id', internalStudentId)
-      .eq('absence_date', sanitizedData.data)
+      .eq('absence_date', absenceDate)
       .single();
 
     if (existingAbsence) {
@@ -203,7 +217,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     // 7. Preparar dados para Supabase
     const absenceInsert: any = {
       student_id: internalStudentId,
-      absence_date: sanitizedData.data,
+      absence_date: absenceDate,
       bimester: sanitizedData.bimestre,
       is_justified: sanitizedData.justificada ?? false,
       medical_certificate_id: sanitizedData.atestadoId || null,
@@ -249,7 +263,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 function convertSupabaseToAbsence(absence: any): any {
   return {
     id: absence.id,
-    estudanteId: absence.student_id,
+    estudanteId: absence.students?.student_id || absence.student_id, // ✅ Firebase UUID, não Internal ID
     estudanteNome: absence.students?.name || 'Nome não disponível',
     turma: absence.students?.class || 'Turma não disponível',
     data: absence.absence_date,

@@ -51,7 +51,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // 2. Construir query no Supabase
     let query: any = supabaseAdmin
       .from('students')
-      .select('*, student_contacts(*)', { count: 'exact' })
+      .select('id, student_id, name, class, shift, status, birth_date, school_year, registration_number, bolsa_familia, address, disabilities, student_contacts(*)', { count: 'exact' })
       .eq('deleted', false)
       .order('name', { ascending: true });
 
@@ -135,6 +135,18 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     // 3. Sanitizar dados
     const sanitizedData = sanitizeObject(data);
 
+    // ✅ Converter DDMMYYYY → YYYY-MM-DD (formato do Supabase)
+    const convertToISODate = (date: string): string => {
+      if (date.match(/^\d{8}$/)) {
+        // Format: DDMMYYYY → YYYY-MM-DD
+        const day = date.substring(0, 2);
+        const month = date.substring(2, 4);
+        const year = date.substring(4, 8);
+        return `${year}-${month}-${day}`;
+      }
+      return date; // Já está em YYYY-MM-DD
+    };
+
     // 4. Gerar IDs
     const estudanteId = uuidv4(); // UUID para student_id (legacy)
 
@@ -148,7 +160,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       status: sanitizedData.status,
       bolsa_familia: sanitizedData.bolsaFamilia,
       registration_number: sanitizedData.matricula || null,
-      birth_date: sanitizedData.dataNascimento || null,
+      birth_date: sanitizedData.dataNascimento ? convertToISODate(sanitizedData.dataNascimento) : null,
       school_year: new Date().getFullYear().toString(),
       address: sanitizedData.endereco || {},
       disabilities: sanitizedData.deficiencia ? [sanitizedData.deficiencia] : [],
@@ -221,11 +233,15 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 function convertSupabaseToEstudante(student: any): any {
   return {
     id: student.id,
-    estudanteId: student.student_id,
+    student_id: student.student_id, // ✅ Retornar com nome correto (snake_case)
+    estudanteId: student.student_id, // ✅ Manter compatibilidade legada (camelCase)
     nome: student.name,
+    name: student.name, // ✅ Adicionar também snake_case
     turma: student.class,
+    class: student.class, // ✅ Adicionar também snake_case
     status: student.status,
     turno: student.shift,
+    shift: student.shift, // ✅ Adicionar também snake_case
     bolsaFamilia: student.bolsa_familia || 'NÃO',
     matricula: student.registration_number || undefined,
     dataNascimento: student.birth_date || undefined,
@@ -237,10 +253,13 @@ function convertSupabaseToEstudante(student: any): any {
       podeReceberMensagem: contact.can_receive_whatsapp,
       whatsapp: contact.whatsapp_data || undefined,
     })),
+    student_contacts: student.student_contacts, // ✅ Adicionar também snake_case
     endereco: student.address || undefined,
+    address: student.address, // ✅ Adicionar também snake_case
     deficiencia: Array.isArray(student.disabilities) && student.disabilities.length > 0
       ? student.disabilities[0]
       : undefined,
+    disabilities: student.disabilities, // ✅ Adicionar também snake_case
     provaSaoPaulo: [],
   };
 }

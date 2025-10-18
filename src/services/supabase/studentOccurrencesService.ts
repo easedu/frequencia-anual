@@ -94,7 +94,8 @@ export class StudentOccurrencesService {
       familyNotified: record.family_notified,
       notificationDate: record.notification_date || undefined,
       notificationMethod: record.notification_method || undefined,
-      createdBy: record.created_by,
+      // Buscar nome do usuário via JOIN (reported_by_name)
+      createdBy: record.reported_by_name || record.reported_by || record.created_by || 'Desconhecido',
       updatedBy: record.updated_by || undefined,
       createdAt: record.created_at,
       updatedAt: record.updated_at,

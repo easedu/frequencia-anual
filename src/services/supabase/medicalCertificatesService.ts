@@ -173,7 +173,15 @@ export class MedicalCertificatesService {
   static async create(data: CreateMedicalCertificateData): Promise<MedicalCertificate | null> {
     try {
       const headers = await getAuthHeaders();
-      console.log('[DEBUG] Headers:', headers);
+
+      // ✅ Converter datas de YYYY-MM-DD para DDMMYYYY se necessário
+      const convertDateFormat = (date: string): string => {
+        if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [year, month, day] = date.split('-');
+          return `${day}${month}${year}`;
+        }
+        return date;
+      };
 
       // ✅ Envia Firebase UUID direto - a API resolve no backend
       const response = await fetch('/api/medical-certificates', {
@@ -181,25 +189,21 @@ export class MedicalCertificatesService {
         headers,
         body: JSON.stringify({
           studentId: data.studentId, // Firebase UUID (não resolve mais aqui!)
-          startDate: data.startDate,
-          endDate: data.endDate,
+          startDate: convertDateFormat(data.startDate),
+          endDate: convertDateFormat(data.endDate),
           cidCode: data.cidCode || null,
           diagnosis: data.diagnosis || null,
           doctorName: data.doctorName || null,
           doctorCrm: data.doctorCrm || null,
           documentUrl: data.documentUrl || null,
           documentType: data.documentType || null,
-          submittedDate: data.submittedDate,
+          submittedDate: data.submittedDate ? convertDateFormat(data.submittedDate) : undefined,
           createdBy: data.createdBy,
         }),
       });
 
-      console.log('[DEBUG] Response status:', response.status);
-      console.log('[DEBUG] Response ok:', response.ok);
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.log('[DEBUG] Error data:', errorData);
         throw new Error(`API returned ${response.status}: ${errorData.error || 'Failed'}`);
       }
 
@@ -268,9 +272,18 @@ export class MedicalCertificatesService {
    */
   static async update(certificateId: string, updates: Partial<CreateMedicalCertificateData>): Promise<boolean> {
     try {
+      // ✅ Converter datas de YYYY-MM-DD para DDMMYYYY se necessário
+      const convertDateFormat = (date: string): string => {
+        if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [year, month, day] = date.split('-');
+          return `${day}${month}${year}`;
+        }
+        return date;
+      };
+
       const apiUpdates: any = {};
-      if (updates.startDate) apiUpdates.startDate = updates.startDate;
-      if (updates.endDate) apiUpdates.endDate = updates.endDate;
+      if (updates.startDate) apiUpdates.startDate = convertDateFormat(updates.startDate);
+      if (updates.endDate) apiUpdates.endDate = convertDateFormat(updates.endDate);
       if (updates.cidCode !== undefined) apiUpdates.cidCode = updates.cidCode || null;
       if (updates.diagnosis !== undefined) apiUpdates.diagnosis = updates.diagnosis || null;
       if (updates.doctorName !== undefined) apiUpdates.doctorName = updates.doctorName || null;
