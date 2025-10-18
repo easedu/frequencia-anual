@@ -50,7 +50,9 @@ const StudentInteractionAnalysisCard = memo(function StudentInteractionAnalysisC
 
   const studentsWithStats = useMemo((): StudentWithStats[] => {
     return students.map(student => {
-      const studentInteractions = interactions.filter(i => i.studentId === student.estudanteId);
+      // ✅ FIX: Compare com Internal ID (student.id), não Firebase UUID (student.estudanteId)
+      // Interaction.studentId usa Internal ID do Supabase
+      const studentInteractions = interactions.filter(i => i.studentId === student.id);
       const sensitiveCount = studentInteractions.filter(i => i.sensitive).length;
 
       // Calcular frequência média (interações por mês)

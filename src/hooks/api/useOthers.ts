@@ -361,12 +361,9 @@ export function useInteractions(filters?: InteractionFilters) {
   const fetchInteractions = useCallback(async () => {
     if (!user) { setLoading(false); return; }
 
-    // ⚠️ IMPORTANTE: Não buscar se não houver estudanteId (evita buscar todas as interações)
-    if (!filters?.estudanteId) {
-      setInteractions([]);
-      setLoading(false);
-      return;
-    }
+    // ✅ CORRIGIDO: Permitir buscar todas as interações (sem filtro de estudante)
+    // Se filters for undefined ou vazio {}, busca todas
+    // Se filters.estudanteId for fornecido, filtra por estudante
 
     try {
       setLoading(true);

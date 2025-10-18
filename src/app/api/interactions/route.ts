@@ -89,27 +89,36 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // Mapear dados do Supabase para o formato esperado pelo frontend
-    const mappedData = (data || []).map((interaction: any) => ({
-      id: interaction.id,
-      studentId: interaction.student_id,
-      type: interaction.interaction_type,
-      date: interaction.interaction_date,
-      description: interaction.description,
-      createdBy: interaction.created_by_name || interaction.created_by,
-      sensitive: interaction.is_sensitive,
-      // Campos WhatsApp
-      whatsappMessage: interaction.whatsapp_message,
-      whatsappPhones: interaction.whatsapp_phones,
-      whatsappMessageId: interaction.whatsapp_message_id,
-      whatsappStatus: interaction.whatsapp_status,
-      whatsappStatusHistory: interaction.whatsapp_status_history,
-      whatsappSentAt: interaction.whatsapp_sent_at,
-      whatsappDeliveredAt: interaction.whatsapp_delivered_at,
-      whatsappReadAt: interaction.whatsapp_read_at,
-      whatsappPlayedAt: interaction.whatsapp_played_at,
-      whatsappUpdatedAt: interaction.whatsapp_updated_at,
-      createdAt: interaction.created_at,
-    }));
+    const mappedData = (data || []).map((interaction: any) => {
+      // Converter data ISO (yyyy-mm-dd) para formato brasileiro (dd/mm/aaaa)
+      let formattedDate = interaction.interaction_date;
+      if (formattedDate && formattedDate.includes('-')) {
+        const [year, month, day] = formattedDate.split('-');
+        formattedDate = `${day}/${month}/${year}`;
+      }
+
+      return {
+        id: interaction.id,
+        studentId: interaction.student_id,
+        type: interaction.interaction_type,
+        date: formattedDate,
+        description: interaction.description,
+        createdBy: interaction.created_by_name || interaction.created_by,
+        sensitive: interaction.is_sensitive,
+        // Campos WhatsApp
+        whatsappMessage: interaction.whatsapp_message,
+        whatsappPhones: interaction.whatsapp_phones,
+        whatsappMessageId: interaction.whatsapp_message_id,
+        whatsappStatus: interaction.whatsapp_status,
+        whatsappStatusHistory: interaction.whatsapp_status_history,
+        whatsappSentAt: interaction.whatsapp_sent_at,
+        whatsappDeliveredAt: interaction.whatsapp_delivered_at,
+        whatsappReadAt: interaction.whatsapp_read_at,
+        whatsappPlayedAt: interaction.whatsapp_played_at,
+        whatsappUpdatedAt: interaction.whatsapp_updated_at,
+        createdAt: interaction.created_at,
+      };
+    });
 
     return paginatedResponse(mappedData, page, limit, count || 0);
   } catch (error) {

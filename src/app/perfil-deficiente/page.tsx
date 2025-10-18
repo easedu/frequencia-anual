@@ -96,13 +96,6 @@ export default function DashboardDeficiencia() {
   if (loading) return <div className="p-6">Carregando estudantes...</div>;
   if (error) return <div className="p-6">Erro: {error.message}</div>;
 
-  // Debug simplificado
-  console.log("📊 perfil-deficiente:", {
-    totalStudents: students.length,
-    comDeficiencia: filteredStudents.length,
-    problema: filteredStudents.length === 0 ? "❌ NENHUM estudante tem dados de deficiência cadastrados no Supabase" : "✅ OK"
-  });
-
   // ═══════════════════════════════════════════════════════════════
   // RENDERIZAÇÃO LIMPA (COMPOSIÇÃO)
   // ═══════════════════════════════════════════════════════════════

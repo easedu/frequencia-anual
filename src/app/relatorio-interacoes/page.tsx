@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Toaster, toast } from "sonner";
-import { useStudents, useInteractions } from "@/hooks/api";
+import { useStudents } from "@/hooks/api";
+import { useAuth } from "@/hooks/useAuth";
+import { fetchAllPages } from "@/utils/paginationHelper";
 import { logger } from "@/utils/logger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,6 +54,15 @@ interface StudentWithInteractions extends ApiStudent {
   lastInteraction?: string;
 }
 
+// Helper para parsear datas brasileiras (dd/mm/aaaa)
+function parseDateBR(dateStr: string): Date {
+  if (!dateStr || !dateStr.includes('/')) {
+    return new Date(dateStr); // Fallback para datas ISO
+  }
+  const [day, month, year] = dateStr.split('/');
+  return new Date(`${year}-${month}-${day}`);
+}
+
 export default function InteractionReportsPage() {
   const [localStudents, setLocalStudents] = useState<ApiStudent[]>([]);
   const [localInteractions, setLocalInteractions] = useState<FamilyInteraction[]>([]);
@@ -75,8 +86,13 @@ export default function InteractionReportsPage() {
   const [showSensitive, setShowSensitive] = useState<boolean>(false);
 
   // ✅ Usar hooks da API REST (sem Supabase direto)
+  const { user } = useAuth();
   const { students, loading: loadingStudents } = useStudents({ status: "ATIVO" });
-  const { interactions, loading: loadingInteractions } = useInteractions({});
+  const [loadingInteractions, setLoadingInteractions] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0 });
+
+  // 🔒 Proteção contra chamadas duplicadas
+  const hasLoadedRef = useRef(false);
 
   const loading = loadingStudents || loadingInteractions;
 
@@ -87,23 +103,73 @@ export default function InteractionReportsPage() {
     }
   }, [students, loadingStudents]);
 
+  // 🚀 Carregar TODAS as interações com paginação progressiva (apenas UMA vez)
   useEffect(() => {
-    if (!loadingInteractions && interactions) {
-      // Ordenar por data (mais recentes primeiro)
-      const sorted = [...interactions].sort((a, b) => {
-        const dateA = new Date(a.interaction_date);
-        const dateB = new Date(b.interaction_date);
-        return dateB.getTime() - dateA.getTime();
-      });
+    async function loadAllInteractions() {
+      // ✅ Verificar se user está presente E se não carregou ainda
+      if (!user) {
+        setLoadingInteractions(false); // Não está carregando se não há user
+        return;
+      }
 
-      setLocalInteractions(sorted as any);
+      if (hasLoadedRef.current) return; // Já carregou, não executar novamente
 
-      // Mostrar mensagem informativa se não há dados
-      if (sorted.length === 0) {
-        toast.info("Nenhuma interação encontrada. Cadastre interações no perfil dos estudantes para visualizar os relatórios.");
+      hasLoadedRef.current = true; // ✅ Marcar como carregado ANTES da requisição
+
+      try {
+        setLoadingInteractions(true);
+        setLoadingProgress({ loaded: 0, total: 0 });
+
+        const token = await user.getIdToken();
+
+        // 🚀 Carregar todas as páginas com rendering progressivo
+        const allInteractions = await fetchAllPages<FamilyInteraction>({
+          baseUrl: '/api/interactions',
+          token,
+          filters: {}, // Sem filtros = todas as interações
+          pageLimit: 1000, // 1000 interações por página
+          resourceName: 'interações',
+          onProgress: (data, progress) => {
+            // 📊 Atualizar UI progressivamente conforme carrega
+            setLoadingProgress(progress);
+
+            // Ordenar por data (mais recentes primeiro)
+            const sorted = [...data].sort((a, b) => {
+              const dateA = parseDateBR(a.date);
+              const dateB = parseDateBR(b.date);
+              return dateB.getTime() - dateA.getTime();
+            });
+
+            setLocalInteractions(sorted);
+          }
+        });
+
+        // Ordenar resultado final
+        const sorted = [...allInteractions].sort((a, b) => {
+          const dateA = parseDateBR(a.date);
+          const dateB = parseDateBR(b.date);
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        setLocalInteractions(sorted);
+
+        // Mostrar mensagem informativa se não há dados
+        if (sorted.length === 0) {
+          toast.info("Nenhuma interação encontrada. Cadastre interações no perfil dos estudantes para visualizar os relatórios.");
+        } else {
+          toast.success(`${sorted.length.toLocaleString()} interações carregadas com sucesso!`);
+        }
+      } catch (error) {
+        logger.error('Erro ao carregar interações', {}, error as Error);
+        toast.error('Erro ao carregar interações. Tente novamente.');
+        hasLoadedRef.current = false; // ✅ Permitir retry em caso de erro
+      } finally {
+        setLoadingInteractions(false);
       }
     }
-  }, [interactions, loadingInteractions]);
+
+    loadAllInteractions();
+  }, [user]);
 
   // Aplicar filtros quando mudarem
   useEffect(() => {
@@ -118,25 +184,51 @@ export default function InteractionReportsPage() {
       const studentIds = localStudents
         .filter(s => s.class === selectedTurma)
         .map(s => s.student_id);
-      filtered = filtered.filter(i => studentIds.includes((i as any).student_id));
+      filtered = filtered.filter(i => studentIds.includes((i as any).studentId));
     }
 
     // Filtro por estudante
     if (selectedStudent && selectedStudent !== "all") {
-      filtered = filtered.filter(i => (i as any).student_id === selectedStudent);
+      filtered = filtered.filter(i => (i as any).studentId === selectedStudent);
     }
 
     // Filtro por tipo
     if (selectedType && selectedType !== "all") {
-      filtered = filtered.filter(i => (i as any).interaction_type === selectedType);
+      filtered = filtered.filter(i => (i as any).type === selectedType);
     }
 
-    // Filtro por data
+    // Filtro por data (formato dd/mm/aaaa)
     if (startDate) {
-      filtered = filtered.filter(i => (i as any).interaction_date >= startDate);
+      filtered = filtered.filter(i => {
+        const interactionDate = (i as any).date; // formato: dd/mm/aaaa
+        if (!interactionDate) return false;
+
+        // Converter dd/mm/aaaa para aaaammdd para comparação
+        const parts = interactionDate.split('/');
+        if (parts.length !== 3) return false;
+        const interactionDateNum = `${parts[2]}${parts[1]}${parts[0]}`; // aaaammdd
+
+        const startParts = startDate.split('/');
+        const startDateNum = `${startParts[2]}${startParts[1]}${startParts[0]}`; // aaaammdd
+
+        return interactionDateNum >= startDateNum;
+      });
     }
     if (endDate) {
-      filtered = filtered.filter(i => (i as any).interaction_date <= endDate);
+      filtered = filtered.filter(i => {
+        const interactionDate = (i as any).date; // formato: dd/mm/aaaa
+        if (!interactionDate) return false;
+
+        // Converter dd/mm/aaaa para aaaammdd para comparação
+        const parts = interactionDate.split('/');
+        if (parts.length !== 3) return false;
+        const interactionDateNum = `${parts[2]}${parts[1]}${parts[0]}`; // aaaammdd
+
+        const endParts = endDate.split('/');
+        const endDateNum = `${endParts[2]}${endParts[1]}${endParts[0]}`; // aaaammdd
+
+        return interactionDateNum <= endDateNum;
+      });
     }
 
     // Filtro por termo de busca
@@ -144,14 +236,14 @@ export default function InteractionReportsPage() {
       const term = debouncedSearchTerm.toLowerCase();
       filtered = filtered.filter(i =>
         ((i as any).description || '').toLowerCase().includes(term) ||
-        ((i as any).interaction_type || '').toLowerCase().includes(term) ||
-        ((i as any).created_by || '').toLowerCase().includes(term)
+        ((i as any).type || '').toLowerCase().includes(term) ||
+        ((i as any).createdBy || '').toLowerCase().includes(term)
       );
     }
 
     // Filtro por sensibilidade
     if (showSensitive) {
-      filtered = filtered.filter(i => (i as any).is_sensitive);
+      filtered = filtered.filter(i => (i as any).sensitive);
     }
 
     setFilteredInteractions(filtered);
@@ -211,15 +303,15 @@ export default function InteractionReportsPage() {
     const headers = ["Data", "Tipo", "Estudante", "Turma", "Descrição", "Criado por", "Sensível"];
     const csvData = filteredInteractions.map(interaction => {
       const intData = interaction as any;
-      const student = localStudents.find(s => s.student_id === intData.student_id);
+      const student = localStudents.find(s => s.student_id === intData.studentId);
       return [
-        intData.interaction_date,
-        intData.interaction_type,
+        intData.date,
+        intData.type,
         student?.name || "N/A",
         student?.class || "N/A",
         (intData.description || '').replace(/"/g, '""'),
-        intData.created_by,
-        intData.is_sensitive ? "Sim" : "Não"
+        intData.createdBy,
+        intData.sensitive ? "Sim" : "Não"
       ];
     });
 
@@ -264,9 +356,23 @@ export default function InteractionReportsPage() {
         </div>
 
         <div className="text-center py-6">
-          <p className="text-slate-600 dark:text-slate-400">
-            Carregando relatórios...
-          </p>
+          <div className="text-slate-600 dark:text-slate-400">
+            {loadingProgress.total > 0 ? (
+              <>
+                <p className="mb-2">
+                  Carregando interações... {loadingProgress.loaded.toLocaleString()} de {loadingProgress.total.toLocaleString()}
+                </p>
+                <div className="mt-2 w-64 mx-auto bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(loadingProgress.loaded / loadingProgress.total) * 100}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <p>Carregando relatórios...</p>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -306,7 +412,7 @@ export default function InteractionReportsPage() {
       </div>
 
       {/* Estado Vazio - Quando não há interações */}
-      {!loading && interactions.length === 0 && (
+      {!loading && localInteractions.length === 0 && (
         <EmptyState
           icon={MessageSquare}
           title="Nenhuma Interação Encontrada"
@@ -316,7 +422,7 @@ export default function InteractionReportsPage() {
       )}
 
       {/* Cards de Estatísticas - Só mostra se há dados */}
-      {!loading && interactions.length > 0 && (
+      {!loading && localInteractions.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -380,7 +486,7 @@ export default function InteractionReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-              {new Set(localInteractions.map((i: any) => i.student_id)).size.toLocaleString()}
+              {new Set(localInteractions.map((i: any) => i.studentId)).size.toLocaleString()}
             </div>
             <p className="text-xs text-slate-500 mt-1">
               Com interações registradas
@@ -405,7 +511,7 @@ export default function InteractionReportsPage() {
       )}
 
       {/* Filtros - Só mostra se há dados */}
-      {!loading && interactions.length > 0 && (
+      {!loading && localInteractions.length > 0 && (
         <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -480,18 +586,32 @@ export default function InteractionReportsPage() {
             <div className="space-y-2">
               <Label>Data Inicial</Label>
               <Input
-                type="date"
+                type="text"
+                placeholder="dd/mm/aaaa"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => {
+                  let value = e.target.value.replace(/\D/g, ''); // Remove não-dígitos
+                  if (value.length >= 2) value = value.slice(0, 2) + '/' + value.slice(2);
+                  if (value.length >= 5) value = value.slice(0, 5) + '/' + value.slice(5, 9);
+                  setStartDate(value);
+                }}
+                maxLength={10}
               />
             </div>
 
             <div className="space-y-2">
               <Label>Data Final</Label>
               <Input
-                type="date"
+                type="text"
+                placeholder="dd/mm/aaaa"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => {
+                  let value = e.target.value.replace(/\D/g, ''); // Remove não-dígitos
+                  if (value.length >= 2) value = value.slice(0, 2) + '/' + value.slice(2);
+                  if (value.length >= 5) value = value.slice(0, 5) + '/' + value.slice(5, 9);
+                  setEndDate(value);
+                }}
+                maxLength={10}
               />
             </div>
 
@@ -531,7 +651,7 @@ export default function InteractionReportsPage() {
       )}
 
       {/* Lista de Interações Filtradas - Só mostra se há dados */}
-      {!loading && interactions.length > 0 && (
+      {!loading && localInteractions.length > 0 && (
         <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -550,12 +670,12 @@ export default function InteractionReportsPage() {
             ) : (
               filteredInteractions.slice(0, 50).map(interaction => {
                 const intData = interaction as any;
-                const student = localStudents.find(s => s.student_id === intData.student_id);
+                const student = localStudents.find(s => s.student_id === intData.studentId);
                 return (
                   <div
                     key={intData.id}
                     className={`p-4 border rounded-lg ${
-                      intData.is_sensitive
+                      intData.sensitive
                         ? "border-red-200 bg-red-50 dark:bg-red-900/20"
                         : "border-gray-200 bg-gray-50 dark:bg-gray-900/20"
                     }`}
@@ -563,16 +683,16 @@ export default function InteractionReportsPage() {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-xs">
-                          {intData.interaction_type}
+                          {intData.type}
                         </Badge>
-                        {intData.is_sensitive && (
+                        {intData.sensitive && (
                           <Badge variant="destructive" className="text-xs">
                             <AlertTriangle className="w-3 h-3 mr-1" />
                             Sensível
                           </Badge>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500">{intData.interaction_date}</span>
+                      <span className="text-xs text-gray-500">{intData.date}</span>
                     </div>
 
                     <div className="mb-2">

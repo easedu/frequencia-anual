@@ -135,7 +135,7 @@ export const interactionQuerySchema = z.object({
     .string()
     .optional()
     .transform((val) => (val ? parseInt(val, 10) : 50))
-    .pipe(z.number().min(1).max(100).default(50)),
+    .pipe(z.number().min(1).max(10000).default(50)),
 });
 
 /**

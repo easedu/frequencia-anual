@@ -55,8 +55,6 @@ export async function fetchAllPages<T>(options: FetchAllPagesOptions): Promise<T
     onProgress
   } = options;
 
-  logger.info(`🔄 Iniciando carregamento paginado de ${resourceName}...`, { pageLimit });
-
   // 🚀 FASE 1: Buscar primeira página para saber total de páginas
   const firstPageParams = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
@@ -83,13 +81,6 @@ export async function fetchAllPages<T>(options: FetchAllPagesOptions): Promise<T
   const allData: T[] = [...firstData.data];
   const totalPages = firstData.pagination.totalPages;
 
-  logger.info(`📄 Página 1/${totalPages} carregada`, {
-    resourceName,
-    loaded: firstData.data.length,
-    total: allData.length,
-    totalPages
-  });
-
   // 🚀 PROGRESSIVE RENDERING: Notificar callback com primeira página
   if (onProgress) {
     onProgress(allData, { loaded: allData.length, total: firstData.pagination.total });
@@ -97,7 +88,6 @@ export async function fetchAllPages<T>(options: FetchAllPagesOptions): Promise<T
 
   // Se só há 1 página, retornar
   if (totalPages === 1) {
-    logger.info(`✅ Carregamento completo de ${resourceName}`, { total: allData.length });
     return allData;
   }
 
@@ -133,10 +123,7 @@ export async function fetchAllPages<T>(options: FetchAllPagesOptions): Promise<T
         }
 
         const data: PaginatedResponse<T> = await response.json();
-        logger.info(`📄 Página ${pageNum}/${totalPages} carregada`, {
-          resourceName,
-          loaded: data.data.length,
-        });
+        
         return data.data;
       } catch (error) {
         logger.error(`❌ Erro ao buscar página ${pageNum} de ${resourceName}`, {}, error as Error);
@@ -154,19 +141,12 @@ export async function fetchAllPages<T>(options: FetchAllPagesOptions): Promise<T
       }
     });
 
-    logger.info(`🔄 Batch ${Math.floor(i / batchSize) + 1} completo`, {
-      resourceName,
-      total: allData.length,
-      progress: `${Math.min(i + batchSize + 1, totalPages)}/${totalPages}`
-    });
-
     // 🚀 PROGRESSIVE RENDERING: Notificar callback após cada batch
     if (onProgress) {
       onProgress([...allData], { loaded: allData.length, total: firstData.pagination.total });
     }
   }
 
-  logger.info(`✅ Carregamento completo de ${resourceName}`, { total: allData.length });
   return allData;
 }
 
