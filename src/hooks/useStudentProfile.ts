@@ -119,23 +119,27 @@ export function useStudentProfile() {
     })).sort((a: any, b: any) => a.nome.localeCompare(b.nome));
   }, [allStudentsData]);
 
-  // Validar selectedStudentId antes de usar (deve existir em allStudents)
+  // Validar selectedStudentId antes de usar
+  // ⚠️ IMPORTANTE: Se o estudante foi explicitamente selecionado (via URL ou busca),
+  // permitir carregar seus dados mesmo que não esteja na lista de ATIVOS
   const validatedStudentId = useMemo(() => {
+
     if (!selectedStudentId) {
       return '';
     }
 
     // Se allStudents ainda não carregou, usar selectedStudentId mesmo assim
-    // (isso permite carregar dados do estudante enquanto a lista carrega)
     if (allStudents.length === 0) {
       return selectedStudentId;
     }
 
-    // ✅ Verificar por estudanteId (Firebase UUID), não por id (Internal ID)
+    // ✅ Verificar se existe na lista
     const exists = allStudents.some((s: any) => s.estudanteId === selectedStudentId);
     if (!exists) {
-      console.warn('[useStudentProfile] ⚠️ Selected student ID not found in loaded students:', selectedStudentId);
-      return '';
+      console.warn('[useStudentProfile] ⚠️ ID não encontrado na lista de ATIVOS, mas usando mesmo assim (pode ser estudante INATIVO):', selectedStudentId);
+      // ✅ MUDANÇA: Não retornar '', usar o ID fornecido
+      // Isso permite visualizar estudantes inativos se forem explicitamente selecionados
+      return selectedStudentId;
     }
 
     return selectedStudentId;
@@ -146,9 +150,11 @@ export function useStudentProfile() {
     estudanteId: validatedStudentId || undefined,
   }), [validatedStudentId]);
 
-  const absenceFilters = useMemo(() => ({
-    estudanteId: validatedStudentId || undefined,
-  }), [validatedStudentId]);
+  const absenceFilters = useMemo(() => {
+    return {
+      estudanteId: validatedStudentId || undefined,
+    };
+  }, [validatedStudentId]);
 
   const certificateFilters = useMemo(() => {
     return {
@@ -192,23 +198,36 @@ export function useStudentProfile() {
   }, [interactionsData]);
 
   const absences = useMemo(() => {
-    return (absencesData || []).map((abs: any) => ({
+    const mapped = (absencesData || []).map((abs: any) => ({
       ...abs,
       data: abs.absence_date || abs.data,
       estudanteId: abs.student_id || abs.estudanteId,
       justified: abs.is_justified || abs.justified,
     }));
+    return mapped;
   }, [absencesData]);
 
   const atestados = useMemo(() => {
-    return (atestadosData || []).map((cert: any) => ({
-      id: cert.id,
-      startDate: cert.start_date || cert.startDate,
-      days: cert.days_covered || cert.days || 1,
-      description: cert.diagnosis || cert.doctor_name || 'Sem descrição',
-      // Buscar nome do usuário via JOIN (submitter.name)
-      createdBy: cert.submitter?.name || cert.submitted_by || cert.createdBy || 'Desconhecido'
-    }));
+    return (atestadosData || []).map((cert: any) => {
+      // ✅ CALCULAR quantidade de dias entre start_date e end_date
+      let days = 1;
+      if (cert.start_date && cert.end_date) {
+        const start = new Date(cert.start_date);
+        const end = new Date(cert.end_date);
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 porque inclui o dia inicial
+      }
+
+      return {
+        id: cert.id,
+        startDate: cert.start_date || cert.startDate,
+        endDate: cert.end_date || cert.endDate,
+        days,
+        description: cert.reason || cert.notes || cert.diagnosis || cert.doctor_name || 'Sem descrição',
+        // Buscar nome do usuário via JOIN (submitter.name)
+        createdBy: cert.submitter?.name || cert.submitted_by || cert.createdBy || 'Desconhecido'
+      };
+    });
   }, [atestadosData]);
 
   const suspensoes = useMemo(() => {
@@ -785,6 +804,7 @@ export function useStudentProfile() {
       }
 
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
+
       const newCertificate = await MedicalCertificatesService.create({
         studentId: selectedStudentId,
         startDate: formattedDate,
@@ -797,64 +817,19 @@ export function useStudentProfile() {
         throw new Error("Falha ao criar atestado");
       }
 
-      const atestadoId = newCertificate.id;
-
-      // Obter dias letivos e faltas existentes
-      const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
-      const supabaseAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
-      const faltasExistentes = new Map();
-
-      supabaseAbsences.forEach((absence: any) => {
-        const dataFormatada = formatFirebaseDate(absence.absenceDate);
-        faltasExistentes.set(dataFormatada, {
-          id: absence.id,
-          justified: absence.justificationType !== 'NAO_JUSTIFICADA',
-          atestadoId: absence.certificateId
-        });
-      });
-
-      // Criar/atualizar faltas justificadas
-      for (const dataLetiva of diasLetivos) {
-        let dataFirebase: string;
-
-        if (dataLetiva.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          dataFirebase = dataLetiva;
-        } else {
-          const converted = parseDateToFirebase(dataLetiva);
-          if (!converted) continue;
-          dataFirebase = converted;
-        }
-
-        const dataBrasileira = formatFirebaseDate(dataFirebase);
-        const faltaExistente = faltasExistentes.get(dataBrasileira);
-
-        try {
-          if (faltaExistente) {
-            await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
-            await AbsenceService.addAbsence({
-              estudanteId: selectedStudentId,
-              data: dataFirebase,
-              justified: true,
-              atestadoId: atestadoId,
-            });
-          } else {
-            await AbsenceService.addAbsence({
-              estudanteId: selectedStudentId,
-              data: dataFirebase,
-              justified: true,
-              atestadoId: atestadoId,
-            });
-          }
-        } catch (error: any) {
-          if (error?.code !== '23505') {
-            throw error;
-          }
-        }
-      }
+      // ✅ A API /api/medical-certificates já atualiza as faltas existentes
+      // automaticamente com is_justified=true e medical_certificate_id.
+      // Não precisamos criar faltas para dias sem ausência!
+      // Ver: src/app/api/medical-certificates/route.ts linhas 206-236
 
       setAtestadoStartDate("");
       setAtestadoDays("");
       setAtestadoDescription("");
+
+      // ✅ Aguardar um pouco para garantir que o banco processou
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // ✅ Forçar refresh dos dados (isso limpa o cache)
       await fetchStudentData(selectedStudentId);
 
       document.getElementById("atestado-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -897,83 +872,28 @@ export function useStudentProfile() {
 
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
+      // ✅ API agora recria faltas automaticamente ao editar atestado
       await MedicalCertificatesService.update(editingAtestado.id, {
         startDate: formattedDate,
         endDate: endDate.toISOString().split('T')[0],
         diagnosis: atestadoDescription,
       });
 
-      // Reset absences previously justified by this atestado
-      const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
+      // ✅ Aguardar um momento para o banco processar
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      for (const absence of allAbsences) {
-        if (absence.atestadoId === editingAtestado.id) {
-          const absenceDate = absence.absence_date || absence.data;
-          if (!absenceDate) continue;
+      // ✅ Forçar refetch dos hooks individuais (AGUARDAR)
+      await Promise.all([
+        refetchAtestados(),
+        refetchAbsences(),
+      ]);
 
-          await AbsenceService.deleteAbsence(selectedStudentId, absenceDate);
-          await AbsenceService.addAbsence({
-            estudanteId: selectedStudentId,
-            data: absenceDate,
-            justified: false,
-            atestadoId: undefined,
-          });
-        }
-      }
-
-      // Recreate absences for new period
-      const diasLetivos = await getDiasLetivosNoPeriodo(startDate, endDate);
-
-      // Buscar faltas atualizadas (após remoção das antigas)
-      const absencesAtualizadas = await AbsenceService.getStudentAbsences(selectedStudentId);
-      const faltasExistentes = new Map();
-      absencesAtualizadas.forEach((absence: any) => {
-        const absenceDate = absence.absence_date || absence.data;
-        if (!absenceDate) return;
-        const dataFormatada = formatFirebaseDate(absenceDate);
-        faltasExistentes.set(dataFormatada, absence);
-      });
-
-      for (const dataLetiva of diasLetivos) {
-        let dataFirebase: string;
-
-        if (dataLetiva.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          dataFirebase = dataLetiva;
-        } else {
-          const converted = parseDateToFirebase(dataLetiva);
-          if (!converted) continue;
-          dataFirebase = converted;
-        }
-
-        const dataBrasileira = formatFirebaseDate(dataFirebase);
-        const faltaExistente = faltasExistentes.get(dataBrasileira);
-
-        if (faltaExistente) {
-          // Se já existe uma falta nessa data, atualizar para justificada
-          await AbsenceService.deleteAbsence(selectedStudentId, dataFirebase);
-          await AbsenceService.addAbsence({
-            estudanteId: selectedStudentId,
-            data: dataFirebase,
-            justified: true,
-            atestadoId: editingAtestado.id,
-          });
-        } else {
-          // Criar nova falta justificada
-          await AbsenceService.addAbsence({
-            estudanteId: selectedStudentId,
-            data: dataFirebase,
-            justified: true,
-            atestadoId: editingAtestado.id,
-          });
-        }
-      }
-
+      // ✅ Limpar formulário após refetch
       setEditingAtestado(null);
       setAtestadoStartDate("");
       setAtestadoDays("");
       setAtestadoDescription("");
 
-      await fetchStudentData(selectedStudentId);
       toast.success("Atestado atualizado com sucesso!");
     } catch (error) {
       logger.error("Erro ao atualizar atestado", error as Error);

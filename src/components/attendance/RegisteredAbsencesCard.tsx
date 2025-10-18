@@ -59,9 +59,10 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
         return absence.data && getBimesterByDate(absence.data, bimesterDates) === bimester;
     });
 
-    // Contar justificadas (atestado OU suspensão)
+    // Contar justificadas (APENAS se tiver atestado OU suspensão associado)
+    // Ignorar faltas "órfãs" (justified=true mas sem documento)
     const justifiedCount = filteredAbsences.filter(absence =>
-        absence.justified || absence.suspensaoId
+        (absence.justified && absence.atestadoId) || absence.suspensaoId
     ).length;
     const unjustifiedCount = filteredAbsences.length - justifiedCount;
 
@@ -143,13 +144,14 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
 
         setIsDeleting(true);
         try {
-            // ✅ VALIDAÇÃO: Verificar se a falta é justificada (atestado ou suspensão)
+            // ✅ VALIDAÇÃO: Verificar se a falta tem atestado ou suspensão associado
             const absence = absences.find((a: AbsenceRecord) => {
                 const dateToCompare = a.absence_date || a.data;
                 return dateToCompare === absenceDate || (dateToCompare && formatDate(dateToCompare) === absenceDate);
             });
 
-            if (absence?.justified || absence?.is_justified || absence?.atestadoId) {
+            // Bloquear exclusão APENAS se tiver documento associado (atestado OU suspensão)
+            if (absence?.atestadoId) {
                 toast.error("Não é possível deletar faltas justificadas por atestado. Delete o atestado ao invés disso.");
                 setIsDeleting(false);
                 setShowDeleteDialog(null);
@@ -504,9 +506,10 @@ const RegisteredAbsencesCard = memo(function RegisteredAbsencesCard({
 }: RegisteredAbsencesCardProps) {
 
     const totalAbsences = absences.length;
-    // Contar justificadas (atestado OU suspensão)
+    // Contar justificadas (APENAS se tiver atestado OU suspensão associado)
+    // Ignorar faltas "órfãs" (justified=true mas sem documento)
     const justifiedAbsences = absences.filter(absence =>
-        absence.justified || absence.suspensaoId
+        (absence.justified && absence.atestadoId) || absence.suspensaoId
     ).length;
     const unjustifiedAbsences = totalAbsences - justifiedAbsences;
 

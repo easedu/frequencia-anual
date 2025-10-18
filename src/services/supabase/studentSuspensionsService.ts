@@ -141,18 +141,40 @@ export class StudentSuspensionsService {
       });
 
       if (!response.ok) {
-        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+        // Tentar ler o corpo da resposta para mais detalhes
+        const errorBody = await response.json().catch(() => ({}));
+
+        // Log do erro mas retorna array vazio (dados auxiliares)
+        logger.warn('Falha ao buscar suspensões do estudante', {
+          studentId,
+          status: response.status,
+          statusText: response.statusText,
+          error: errorBody.error || errorBody.message || 'Erro desconhecido'
+        });
+        return [];
       }
 
       const result = await response.json();
 
-      if (!result.success) {
-        throw new Error(result.message || 'Erro ao buscar suspensões');
+      // ✅ A API pode retornar tanto paginatedResponse quanto successResponse
+      // paginatedResponse: { data: [], pagination: {...} }
+      // successResponse: { success: true, data: [] }
+
+      // Se tem campo 'success' e é false, logar erro
+      if ('success' in result && !result.success) {
+        logger.warn('API retornou erro ao buscar suspensões', {
+          studentId,
+          message: result.message || result.error || 'Erro desconhecido',
+          fullResponse: result
+        });
+        return [];
       }
 
+      // Retornar dados (funciona para ambos os formatos)
       return (result.data || []).map(this.mapApiToSuspension);
     } catch (error) {
-      logger.error('Erro ao buscar suspensões do estudante', { studentId }, error as Error);
+      // Log como warn ao invés de error (falha em dados auxiliares não deve bloquear a tela)
+      logger.warn('Erro ao buscar suspensões do estudante', { studentId }, error as Error);
       return [];
     }
   }

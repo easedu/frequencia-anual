@@ -341,6 +341,159 @@ const q = query(
 
 ### APIs REST e Supabase
 
+---
+
+## ⚠️ **REGRA CRÍTICA: DUAL ID SYSTEM** ⚠️
+
+**LEIA ISTO PRIMEIRO ANTES DE MEXER EM QUALQUER API OU QUERY!**
+
+O sistema usa **DOIS tipos de IDs** para estudantes:
+
+### 🆔 Tipos de ID
+
+| Tipo | Campo Supabase | Descrição | Uso |
+|------|---------------|-----------|-----|
+| **Internal ID** | `id` (Primary Key) | UUID gerado pelo Supabase | Queries internas, JOINs, FKs |
+| **Firebase UUID** | `student_id` (Unique) | UUID do Firebase (legacy) | APIs públicas, Frontend, URLs |
+
+### 🎯 **REGRA DE OURO**: SEMPRE use Firebase UUID em APIs públicas
+
+```typescript
+// ✅ SEMPRE CORRETO - API Route Pattern
+export const GET = withAuth(async (req: NextRequest, userId: string, context?: RouteParams) => {
+  const params = await context?.params;
+  const firebaseUUID = params?.id; // Firebase UUID da URL
+
+  // 1️⃣ Query por student_id (Firebase UUID)
+  const { data, error } = await supabaseAdmin
+    .from('students')
+    .select('*')
+    .eq('student_id', firebaseUUID)  // ✅ CORRETO!
+    .single();
+});
+
+// ❌ NUNCA FAZER - Query errada
+export const GET = withAuth(async (req: NextRequest, userId: string, context?: RouteParams) => {
+  const params = await context?.params;
+  const firebaseUUID = params?.id;
+
+  // Query por 'id' com Firebase UUID - VAI DAR 404!
+  const { data, error } = await supabaseAdmin
+    .from('students')
+    .select('*')
+    .eq('id', firebaseUUID)  // ❌ ERRADO! 'id' é Internal ID!
+    .single();
+});
+```
+
+### 📋 Checklist de APIs
+
+**TODA vez que criar/modificar uma API Route, seguir este checklist:**
+
+- [ ] **GET `/api/resource/[id]`**: Query por `student_id`, não por `id`
+- [ ] **PUT/DELETE `/api/resource/[id]`**:
+  1. Buscar por `student_id` para validar
+  2. Pegar o `id` (Internal ID) do resultado
+  3. Usar Internal ID para UPDATE/DELETE
+- [ ] **POST/GET list**: Retornar AMBOS os IDs no response:
+  ```typescript
+  {
+    id: student.id,              // Internal ID
+    student_id: student.student_id,  // Firebase UUID (snake_case)
+    estudanteId: student.student_id  // Firebase UUID (camelCase legacy)
+  }
+  ```
+- [ ] **JOINs**: Sempre incluir `student_id` no SELECT explícito
+
+### 🔍 Exemplo Completo: GET por ID
+
+```typescript
+// /api/students/[id]/route.ts
+export const GET = withAuth(
+  async (req: NextRequest, userId: string, context?: RouteParams) => {
+    const params = await context?.params;
+    const firebaseUUID = params?.id; // ce5ac93c-bad9-4f82-af87-ffac12eb395f
+
+    // ✅ PASSO 1: Query por student_id
+    const { data, error } = await supabaseAdmin
+      .from('students')
+      .select('*, student_contacts(*)')
+      .eq('student_id', firebaseUUID)  // ✅ Firebase UUID
+      .eq('deleted', false)
+      .single();
+
+    // ✅ PASSO 2: Retornar com ambos os IDs
+    return successResponse({
+      id: data.id,                    // Internal ID
+      estudanteId: data.student_id,   // Firebase UUID
+      nome: data.name,
+      // ...
+    });
+  }
+);
+```
+
+### 🔧 Exemplo Completo: PUT/DELETE por ID
+
+```typescript
+// /api/students/[id]/route.ts
+export const PUT = withAuth(
+  async (req: NextRequest, userId: string, context?: RouteParams) => {
+    const params = await context?.params;
+    const firebaseUUID = params?.id;
+
+    // ✅ PASSO 1: Buscar por student_id para validar
+    const { data: existing, error } = await supabaseAdmin
+      .from('students')
+      .select('id, student_id')  // Buscar ambos os IDs
+      .eq('student_id', firebaseUUID)
+      .eq('deleted', false)
+      .single();
+
+    if (error || !existing) {
+      return notFoundResponse('Estudante', firebaseUUID);
+    }
+
+    // ✅ PASSO 2: Pegar Internal ID
+    const internalId = existing.id;
+
+    // ✅ PASSO 3: UPDATE usando Internal ID
+    const { error: updateError } = await supabaseAdmin
+      .from('students')
+      .update({ name: 'Novo Nome' })
+      .eq('id', internalId);  // ✅ Internal ID para UPDATE
+
+    // ✅ PASSO 4: Operações de FK também usam Internal ID
+    await supabaseAdmin
+      .from('student_contacts')
+      .delete()
+      .eq('student_id', internalId);  // ✅ FK usa Internal ID
+  }
+);
+```
+
+### 🚨 Erros Comuns
+
+| ❌ Erro | ✅ Correção |
+|---------|-------------|
+| `.eq('id', firebaseUUID)` | `.eq('student_id', firebaseUUID)` |
+| `.select('*')` sem `student_id` | `.select('*, student_contacts(*)')` explícito |
+| UPDATE com Firebase UUID | Buscar Internal ID primeiro |
+| Retornar só `id` | Retornar `id` + `student_id` + `estudanteId` |
+| Frontend resolver UUID | Backend sempre resolve |
+
+### 🧪 Como Testar
+
+```bash
+# ✅ Deve funcionar (Firebase UUID)
+curl http://localhost:3000/api/students/ce5ac93c-bad9-4f82-af87-ffac12eb395f
+
+# ❌ Vai dar 404 (Internal ID)
+curl http://localhost:3000/api/students/d2b76d89-660f-4179-961a-1ea294bd14ca
+```
+
+---
+
 #### 1. **Pattern: Backend API Routes (✅ NOVO - Jan 2025)**
 
 **IMPORTANTE**: Todas as APIs REST devem seguir este padrão estabelecido nas Fases 1-4 de refatoração.
@@ -3413,6 +3566,93 @@ const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
 
 ### 🚫 APIs REST e Supabase - NUNCA (✅ NOVO - Jan 2025)
 
+#### ⚠️ DUAL ID SYSTEM - ERROS MAIS COMUNS ⚠️
+
+**ATENÇÃO**: Este é o erro #1 que você comete repetidamente! Leia com ATENÇÃO!
+
+```typescript
+// ❌ ERRO CRÍTICO #1 - Query com campo errado
+export const GET = withAuth(async (req: NextRequest, userId: string, context?: RouteParams) => {
+  const params = await context?.params;
+  const firebaseUUID = params?.id; // Firebase UUID da URL
+
+  // ERRADO! 'id' é Internal ID, não Firebase UUID!
+  const { data, error } = await supabaseAdmin
+    .from('students')
+    .select('*')
+    .eq('id', firebaseUUID);  // ❌ VAI DAR 404 SEMPRE!
+});
+
+// ✅ CORRETO - Query por student_id
+export const GET = withAuth(async (req: NextRequest, userId: string, context?: RouteParams) => {
+  const params = await context?.params;
+  const firebaseUUID = params?.id;
+
+  // CORRETO! Usar student_id para Firebase UUID
+  const { data, error } = await supabaseAdmin
+    .from('students')
+    .select('*')
+    .eq('student_id', firebaseUUID);  // ✅ CORRETO!
+});
+
+// ❌ ERRO CRÍTICO #2 - UPDATE/DELETE com Firebase UUID direto
+export const PUT = withAuth(async (req: NextRequest, userId: string, context?: RouteParams) => {
+  const params = await context?.params;
+  const firebaseUUID = params?.id;
+
+  // ERRADO! UPDATE precisa de Internal ID
+  const { error } = await supabaseAdmin
+    .from('students')
+    .update({ name: 'Novo' })
+    .eq('id', firebaseUUID);  // ❌ VAI DAR 404!
+});
+
+// ✅ CORRETO - Buscar Internal ID primeiro
+export const PUT = withAuth(async (req: NextRequest, userId: string, context?: RouteParams) => {
+  const params = await context?.params;
+  const firebaseUUID = params?.id;
+
+  // PASSO 1: Buscar por student_id para pegar Internal ID
+  const { data: existing } = await supabaseAdmin
+    .from('students')
+    .select('id, student_id')
+    .eq('student_id', firebaseUUID)
+    .single();
+
+  const internalId = existing.id; // ✅ Pegar Internal ID
+
+  // PASSO 2: UPDATE com Internal ID
+  const { error } = await supabaseAdmin
+    .from('students')
+    .update({ name: 'Novo' })
+    .eq('id', internalId);  // ✅ CORRETO!
+});
+
+// ❌ ERRO CRÍTICO #3 - SELECT * sem incluir student_id
+const { data } = await supabaseAdmin
+  .from('students')
+  .select('*');  // ❌ Pode não incluir student_id!
+
+// ✅ CORRETO - SELECT explícito
+const { data } = await supabaseAdmin
+  .from('students')
+  .select('id, student_id, name, class, shift, status');  // ✅ Explícito!
+
+// ❌ ERRO CRÍTICO #4 - FK operations sem Internal ID
+await supabaseAdmin
+  .from('student_contacts')
+  .delete()
+  .eq('student_id', firebaseUUID);  // ❌ FK espera Internal ID!
+
+// ✅ CORRETO - FK com Internal ID
+await supabaseAdmin
+  .from('student_contacts')
+  .delete()
+  .eq('student_id', internalId);  // ✅ Internal ID!
+```
+
+#### 📝 Outros Erros Comuns
+
 ```typescript
 // ❌ NUNCA resolver UUID no frontend
 import { resolveToInternalId } from '@/utils/studentIdResolver'; // DEPRECIADO!
@@ -3450,6 +3690,8 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
   // userId já validado!
 });
 ```
+
+**🔗 LEMBRE-SE**: Antes de mexer em QUALQUER API, leia a seção "⚠️ REGRA CRÍTICA: DUAL ID SYSTEM ⚠️" no início deste documento!
 
 **Ver documentação completa**: `docs/REFATORACAO-SUPABASE-FRONTEND-FASES-1-4-COMPLETA.md`
 

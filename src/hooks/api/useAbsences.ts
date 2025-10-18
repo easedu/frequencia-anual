@@ -68,6 +68,15 @@ export function useAbsences(filters?: AbsenceFilters) {
       return;
     }
 
+    // ✅ GUARD: Não buscar todas as faltas quando não há estudante selecionado
+    // Se filters.estudanteId for undefined/empty, retorna vazio ao invés de buscar TUDO
+    if (!filters?.estudanteId) {
+      setAbsences([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -93,10 +102,12 @@ export function useAbsences(filters?: AbsenceFilters) {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('[useAbsences] ❌ Error response:', errorData);
         throw new Error(errorData.error || 'Erro ao buscar faltas');
       }
 
       const data: PaginatedResponse<Absence> = await response.json();
+
       setAbsences(data.data);
       setPagination(data.pagination);
     } catch (err) {

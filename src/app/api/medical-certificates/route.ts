@@ -5,6 +5,7 @@
  * CHANGELOG:
  * - 2025-01-18: Adicionado suporte a Firebase UUID (resolve internamente via studentIdResolver backend)
  * - Aceita ambos formatos: camelCase (studentId) e português (estudanteId)
+ * - 2025-01-18: Adicionado criação automática de faltas para dias letivos do período do atestado
  */
 
 import { NextRequest } from 'next/server';
@@ -13,6 +14,7 @@ import { successResponse, errorResponse, paginatedResponse } from '@/app/api/_ut
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
+import { getDiasLetivosNoPeriodo, parseDate, getBimesterByDate } from '@/app/utils';
 
 /**
  * GET /api/medical-certificates
@@ -203,7 +205,152 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       return errorResponse('DATABASE_ERROR', 'Erro ao criar atestado', 500);
     }
 
-    return successResponse({ data }, 'Atestado criado com sucesso', 201);
+    // ✅ Criar faltas automaticamente para todos os dias letivos do período
+    try {
+      console.log('[POST /api/medical-certificates] 🔍 Buscando dias letivos do período:', {
+        certificateId: data.id,
+        studentId: internalId,
+        startDate,
+        endDate,
+      });
+
+      // 1. Converter datas para Date objects
+      const startDateObj = parseDate(startDate);
+      const endDateObj = parseDate(endDate);
+
+      if (!startDateObj || !endDateObj) {
+        console.error('[POST /api/medical-certificates] ❌ Datas inválidas');
+        throw new Error('Datas inválidas');
+      }
+
+      // 2. Buscar dias letivos no período
+      const diasLetivos = await getDiasLetivosNoPeriodo(startDateObj, endDateObj);
+      console.log('[POST /api/medical-certificates] 📅 Dias letivos encontrados:', diasLetivos.length);
+
+      if (diasLetivos.length === 0) {
+        console.warn('[POST /api/medical-certificates] ⚠️ Nenhum dia letivo encontrado no período');
+      }
+
+      // 3. Buscar bimesterDates para determinar o bimestre de cada data
+      const currentYear = new Date().getFullYear();
+      const { AcademicYearService } = await import('@/services/supabase/academicYearService');
+      const academicYearData = await AcademicYearService.getAcademicYearComplete(currentYear);
+
+      const bimesterDates = {
+        b1: { start: academicYearData?.['1º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['1º Bimestre']?.periodo?.fim || '' },
+        b2: { start: academicYearData?.['2º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['2º Bimestre']?.periodo?.fim || '' },
+        b3: { start: academicYearData?.['3º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['3º Bimestre']?.periodo?.fim || '' },
+        b4: { start: academicYearData?.['4º Bimestre']?.periodo?.inicio || '', end: academicYearData?.['4º Bimestre']?.periodo?.fim || '' },
+      };
+
+      // 4. Para cada dia letivo, criar/atualizar falta
+      const absencesToUpsert = diasLetivos.map((diaLetivo) => {
+        // ✅ CONVERTER DD/MM/YYYY → YYYY-MM-DD (formato do Supabase)
+        const convertToISODate = (dateStr: string): string => {
+          if (dateStr.includes('/')) {
+            // Format: DD/MM/YYYY → YYYY-MM-DD
+            const [day, month, year] = dateStr.split('/');
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          }
+          return dateStr; // Já está em YYYY-MM-DD
+        };
+
+        const absenceDate = convertToISODate(diaLetivo);
+
+        // Determinar bimestre
+        const bimester = getBimesterByDate(diaLetivo, bimesterDates);
+        const bimesterStr = bimester === 1 ? '1º Bimestre' :
+                           bimester === 2 ? '2º Bimestre' :
+                           bimester === 3 ? '3º Bimestre' :
+                           bimester === 4 ? '4º Bimestre' : null;
+
+        return {
+          student_id: internalId,
+          absence_date: absenceDate,
+          bimester: bimesterStr,
+          is_justified: true,
+          medical_certificate_id: data.id,
+        };
+      });
+
+      console.log('[POST /api/medical-certificates] 📝 Criando/atualizando', absencesToUpsert.length, 'faltas');
+
+      // 5. Usar upsert para criar ou atualizar faltas
+      // IMPORTANTE: Supabase não tem UPSERT direto, então vamos fazer em 2 etapas:
+      // a) Buscar faltas existentes
+      // b) Inserir apenas as que não existem
+      // c) Atualizar as que já existem
+
+      let createdCount = 0;
+      let updatedCount = 0;
+
+      for (const absenceData of absencesToUpsert) {
+        // Verificar se já existe
+        const { data: existing, error: existingError } = await supabaseAdmin
+          .from('student_absences')
+          .select('id, is_justified, medical_certificate_id')
+          .eq('student_id', absenceData.student_id)
+          .eq('absence_date', absenceData.absence_date)
+          .maybeSingle();
+
+        if (existingError) {
+          console.error('[POST /api/medical-certificates] ❌ Erro ao verificar falta existente:', existingError);
+          continue;
+        }
+
+        if (existing) {
+          // Atualizar existente
+          console.log('[POST /api/medical-certificates] 🔄 Atualizando falta existente:', {
+            id: existing.id,
+            date: absenceData.absence_date,
+          });
+
+          const { error: updateError } = await supabaseAdmin
+            .from('student_absences')
+            .update({
+              is_justified: true,
+              medical_certificate_id: data.id,
+            })
+            .eq('id', existing.id);
+
+          if (updateError) {
+            console.error('[POST /api/medical-certificates] ❌ Erro ao atualizar falta:', updateError);
+          } else {
+            updatedCount++;
+            console.log('[POST /api/medical-certificates] ✅ Falta atualizada');
+          }
+        } else {
+          // Inserir novo
+          console.log('[POST /api/medical-certificates] ➕ Inserindo nova falta:', {
+            date: absenceData.absence_date,
+            bimester: absenceData.bimester,
+          });
+
+          const { error: insertError } = await supabaseAdmin
+            .from('student_absences')
+            .insert(absenceData);
+
+          if (insertError) {
+            console.error('[POST /api/medical-certificates] ❌ Erro ao inserir falta:', insertError);
+            console.error('[POST /api/medical-certificates] Dados tentados:', absenceData);
+          } else {
+            createdCount++;
+            console.log('[POST /api/medical-certificates] ✅ Falta criada');
+          }
+        }
+      }
+
+      console.log('[POST /api/medical-certificates] ✅ Faltas processadas:', {
+        created: createdCount,
+        updated: updatedCount,
+        total: diasLetivos.length,
+      });
+    } catch (updateErr) {
+      console.error('[POST /api/medical-certificates] ❌ Erro ao criar/atualizar faltas:', updateErr);
+      // Não falhar a requisição se houver erro nas faltas
+    }
+
+    return successResponse(data, 'Atestado criado com sucesso', 201);
   } catch (error) {
     return handleError(error, 'POST /api/medical-certificates');
   }

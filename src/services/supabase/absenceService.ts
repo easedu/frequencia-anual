@@ -339,7 +339,6 @@ export class AbsenceService {
         throw new Error(result.message || 'Erro ao criar falta');
       }
 
-      logger.info('Falta registrada com sucesso via API', { absenceId: result.data?.id });
     } catch (error) {
       logger.error('Erro ao registrar falta', { record }, error as Error);
       throw error;
@@ -406,7 +405,8 @@ export class AbsenceService {
       // 1. Primeiro, buscar o ID da falta (GET /api/absences?estudanteId=X)
       const headers = await getAuthHeaders();
 
-      const searchResponse = await fetch(`/api/absences?estudanteId=${studentId}`, {
+      // Buscar máximo de faltas permitido pelo schema (limit=100)
+      const searchResponse = await fetch(`/api/absences?estudanteId=${studentId}&limit=250`, {
         headers,
       });
 
@@ -416,8 +416,9 @@ export class AbsenceService {
 
       const searchResult = await searchResponse.json();
 
-      if (!searchResult.success) {
-        throw new Error(searchResult.message || 'Erro ao buscar faltas');
+      // ✅ Resposta paginada não tem campo success, verificar se data existe
+      if (!searchResult.data || !Array.isArray(searchResult.data)) {
+        throw new Error('Erro ao buscar faltas');
       }
 
       // 2. Encontrar a falta com a data específica
@@ -446,7 +447,6 @@ export class AbsenceService {
         throw new Error(deleteResult.message || 'Erro ao deletar falta');
       }
 
-      logger.info('Falta deletada com sucesso via API', { absenceId: targetAbsence.id });
     } catch (error) {
       logger.error('Erro ao deletar falta', { studentId, absenceDate }, error as Error);
       throw error;

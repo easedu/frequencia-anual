@@ -43,11 +43,6 @@ const AtestadoHistoryCard = memo(function AtestadoHistoryCard({
     setEditingAtestado,
     onDeleteAtestado,
 }: AtestadoHistoryCardProps) {
-    console.log('🔍 AtestadoHistoryCard - userRole recebido:', {
-        userRole,
-        isAdmin: userRole === "admin",
-        atestadosCount: atestados?.length || 0
-    });
 
     return (
         <>

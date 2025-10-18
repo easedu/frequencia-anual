@@ -133,12 +133,41 @@ export class MedicalCertificatesService {
         headers,
       });
 
-      if (!response.ok) throw new Error(`API returned ${response.status}`);
+      if (!response.ok) {
+        // Tentar ler o corpo da resposta para mais detalhes
+        const errorBody = await response.json().catch(() => ({}));
+
+        // Log do erro mas retorna array vazio (dados auxiliares)
+        logger.warn('Falha ao buscar atestados do estudante', {
+          studentId,
+          status: response.status,
+          statusText: response.statusText,
+          error: errorBody.error || errorBody.message || 'Erro desconhecido'
+        });
+        return [];
+      }
 
       const result = await response.json();
+
+      // ✅ A API pode retornar tanto paginatedResponse quanto successResponse
+      // paginatedResponse: { data: [], pagination: {...} }
+      // successResponse: { success: true, data: [] }
+
+      // Se tem campo 'success' e é false, logar erro
+      if ('success' in result && !result.success) {
+        logger.warn('API retornou erro ao buscar atestados', {
+          studentId,
+          message: result.message || result.error || 'Erro desconhecido',
+          fullResponse: result
+        });
+        return [];
+      }
+
+      // Retornar dados (funciona para ambos os formatos)
       return (result.data || []).map(this.mapApiToCertificate);
     } catch (error) {
-      logger.error('Erro ao buscar atestados do estudante', { studentId }, error as Error);
+      // Log como warn ao invés de error (falha em dados auxiliares não deve bloquear a tela)
+      logger.warn('Erro ao buscar atestados do estudante', { studentId }, error as Error);
       return [];
     }
   }
@@ -233,7 +262,6 @@ export class MedicalCertificatesService {
       });
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
-      logger.info('Atestado aprovado via API', { certificateId, reviewedBy });
       return true;
     } catch (error) {
       logger.error('Erro ao aprovar atestado', { certificateId }, error as Error);
@@ -259,7 +287,6 @@ export class MedicalCertificatesService {
       });
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
-      logger.info('Atestado rejeitado via API', { certificateId, reviewedBy });
       return true;
     } catch (error) {
       logger.error('Erro ao rejeitar atestado', { certificateId }, error as Error);
@@ -282,23 +309,23 @@ export class MedicalCertificatesService {
       };
 
       const apiUpdates: any = {};
-      if (updates.startDate) apiUpdates.startDate = convertDateFormat(updates.startDate);
-      if (updates.endDate) apiUpdates.endDate = convertDateFormat(updates.endDate);
-      if (updates.cidCode !== undefined) apiUpdates.cidCode = updates.cidCode || null;
-      if (updates.diagnosis !== undefined) apiUpdates.diagnosis = updates.diagnosis || null;
-      if (updates.doctorName !== undefined) apiUpdates.doctorName = updates.doctorName || null;
-      if (updates.doctorCrm !== undefined) apiUpdates.doctorCrm = updates.doctorCrm || null;
-      if (updates.documentUrl !== undefined) apiUpdates.documentUrl = updates.documentUrl || null;
-      if (updates.documentType !== undefined) apiUpdates.documentType = updates.documentType || null;
+      if (updates.startDate) apiUpdates.dataInicio = convertDateFormat(updates.startDate);
+      if (updates.endDate) apiUpdates.dataFim = convertDateFormat(updates.endDate);
+      if (updates.diagnosis !== undefined) apiUpdates.motivo = updates.diagnosis || null;
+
+      // ✅ Adicionar headers de autenticação
+      const headers = await getAuthHeaders();
 
       const response = await fetch(`/api/medical-certificates/${certificateId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(apiUpdates),
       });
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
-      logger.info('Atestado atualizado via API', { certificateId });
       return true;
     } catch (error) {
       logger.error('Erro ao atualizar atestado', { certificateId }, error as Error);
@@ -319,7 +346,6 @@ export class MedicalCertificatesService {
       });
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
-      logger.info('Atestado deletado via API', { certificateId });
       return true;
     } catch (error) {
       logger.error('Erro ao deletar atestado', { certificateId }, error as Error);

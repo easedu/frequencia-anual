@@ -258,8 +258,10 @@ function convertSupabaseToAbsence(absence: any): any {
     data: absence.absence_date, // ✅ Campo correto
     bimestre: absence.bimester,
     justificada: absence.is_justified, // ✅ Campo correto
+    justified: absence.is_justified, // ✅ Alias para compatibilidade
     motivoJustificativa: undefined, // Coluna não existe no Supabase
     atestadoId: absence.medical_certificate_id || undefined,
+    suspensaoId: absence.suspension_id || undefined, // ✅ ADICIONAR suspension_id
     observacoes: undefined, // Coluna não existe no Supabase
     anoLetivo: new Date().getFullYear().toString(), // ✅ Calcular do absence_date
     criadoPor: 'system', // Coluna não existe no Supabase
