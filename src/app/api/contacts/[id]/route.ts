@@ -27,7 +27,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 type RouteParams = {
   params: Promise<{
     id: string;
-  };
+  }>;
 };
 
 // ============================================================================
