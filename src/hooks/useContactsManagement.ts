@@ -269,6 +269,49 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
 
   const getContactId = async (studentId: string, phone: string): Promise<string | undefined> => {
     try {
+      const user = auth.currentUser;
+      if (!user) {
+        console.error('[TELEFONES] Usuário não autenticado');
+        return undefined;
+      }
+
+      const token = await user.getIdToken();
+      const cleanPhone = phone.replace(/\D/g, '');
+
+      // Buscar estudante com contatos via API
+      const response = await fetch(`/api/students/${studentId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.error('[TELEFONES] Erro ao buscar estudante:', response.status);
+        return undefined;
+      }
+
+      const result = await response.json();
+
+      if (!result.success || !result.data || !result.data.student) {
+        console.error('[TELEFONES] Resposta inválida da API');
+        return undefined;
+      }
+
+      // API retorna { success: true, data: { student: {...} } }
+      const student = result.data.student;
+
+      // Buscar contato pelo telefone
+      if (student.contatos && Array.isArray(student.contatos)) {
+        for (const contato of student.contatos) {
+          const contatoPhone = contato.telefone?.replace(/\D/g, '');
+
+          if (contatoPhone === cleanPhone) {
+            // Retornar o contactId do Supabase
+            return contato.id;
+          }
+        }
+      }
+
       return undefined;
     } catch (error) {
       console.error('[TELEFONES] Erro ao buscar contactId:', error);

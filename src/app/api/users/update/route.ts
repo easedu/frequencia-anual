@@ -35,10 +35,14 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const { error } = (await supabaseAdmin
+    // @ts-ignore - Supabase type inference issue with users table
+    const result = await supabaseAdmin
       .from('users')
-      .update(updates as any)
-      .eq('firebase_uid', firebase_uid)) as any;
+      // @ts-ignore - Type inference issue
+      .update(updates)
+      .eq('firebase_uid', firebase_uid);
+
+    const { error } = result as { error: any };
 
     if (error) throw error;
 

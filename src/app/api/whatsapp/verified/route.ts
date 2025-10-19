@@ -62,8 +62,8 @@ export const GET = withAuth(async (request: NextRequest, userId: string) => {
       offset: searchParams.get('offset') || '0',
     })
 
-    const limit = parseInt(filters.limit)
-    const offset = parseInt(filters.offset)
+    const limit = typeof filters.limit === 'string' ? parseInt(filters.limit) : filters.limit
+    const offset = typeof filters.offset === 'string' ? parseInt(filters.offset) : filters.offset
 
     // Construir query
     let query = supabaseAdmin

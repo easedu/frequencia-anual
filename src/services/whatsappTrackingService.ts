@@ -97,13 +97,6 @@ export class WhatsAppTrackingService {
                         name: null
                     }
                 );
-
-                logger.info("Number marked as verified (Supabase)", {
-                    phone: `${cleanPhone.substring(0, 4)}****`,
-                    hasWhatsApp,
-                    studentId,
-                    contactId
-                });
             } else {
                 // Fallback: salvar apenas em whatsapp_verified_numbers (sem associação)
                 // Isso é para casos onde não temos o studentId/contactId

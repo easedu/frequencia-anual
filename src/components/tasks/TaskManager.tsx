@@ -285,9 +285,9 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
 
           if (interaction) {
             // Converter data do formato YYYY-MM-DD para DD/MM/YYYY
-            let dataFormatada = interaction.interaction_date;
-            if (interaction.interaction_date.includes('-')) {
-              const [year, month, day] = interaction.interaction_date.split('-');
+            let dataFormatada = interaction.date;
+            if (interaction.date.includes('-')) {
+              const [year, month, day] = interaction.date.split('-');
               dataFormatada = `${day}/${month}/${year}`;
             }
 
@@ -295,7 +295,7 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
               data: dataFormatada,
               nome: task.studentName,
               turma: task.studentClass || 'N/A',
-              tipoInteracao: interaction.interaction_type
+              tipoInteracao: interaction.type
             });
           } else {
             // Se não encontrar a interação, adicionar com dados básicos

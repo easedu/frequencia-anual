@@ -82,54 +82,113 @@ async function loadAcademicYearData(): Promise<any> {
  * Carrega suspensões de todos os estudantes e retorna um Set de datas suspensas por estudante
  * OTIMIZAÇÃO: Query única no Supabase ao invés de N queries
  */
-async function loadStudentSuspensions(studentIds: string[]): Promise<Map<string, Set<string>>> {
+async function loadStudentSuspensions(firebaseStudentIds: string[]): Promise<Map<string, Set<string>>> {
   const suspensionsByStudent = new Map<string, Set<string>>();
 
   try {
     const startTime = Date.now();
 
-    // MIGRADO: Usar StudentSuspensionsService (Supabase)
-    const { StudentSuspensionsService } = await import('@/services/supabase/studentSuspensionsService');
+    // ✅ FIX: Usar supabaseAdmin direto (API interna não tem Firebase Auth)
+    const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
 
-    // Query única para todos os estudantes de uma vez (performance massivamente melhorada)
-    const allSuspensions = await Promise.all(
-      studentIds.map(async (studentId) => {
-        try {
-          const suspensions = await StudentSuspensionsService.getByStudentId(studentId);
-          const suspendedDates = new Set<string>();
+    // 🔧 PASSO 1: Resolver Firebase UUIDs → Internal IDs (com batch processing)
+    const allStudents: any[] = [];
+    const BATCH_SIZE = 100; // Supabase .in() limit
 
-          suspensions.forEach((suspension: any) => {
-            const startDate = new Date(suspension.start_date);
-            const days = suspension.days || 0;
+    for (let i = 0; i < firebaseStudentIds.length; i += BATCH_SIZE) {
+      const batch = firebaseStudentIds.slice(i, i + BATCH_SIZE);
 
-            // Gerar todas as datas do período de suspensão
-            for (let d = 0; d < days; d++) {
-              const suspensionDate = new Date(startDate);
-              suspensionDate.setDate(suspensionDate.getDate() + d);
+      const { data: students, error: studentsError } = await supabaseAdmin
+        .from('students')
+        .select('id, student_id')
+        .in('student_id', batch) as { data: any[] | null; error: any };
 
-              // Formatar como YYYY-MM-DD
-              const dateStr = suspensionDate.toISOString().split('T')[0];
-              suspendedDates.add(dateStr);
-            }
-          });
+      if (studentsError) {
+        console.error(`[SUPABASE] Erro no batch ${Math.floor(i / BATCH_SIZE) + 1} de suspensões:`, studentsError);
+        continue;
+      }
 
-          return { studentId, suspendedDates };
-        } catch (error) {
-          console.warn(`[SUPABASE] Erro ao carregar suspensões do estudante ${studentId}:`, error);
-          return { studentId, suspendedDates: new Set<string>() };
-        }
-      })
-    );
+      if (students && students.length > 0) {
+        allStudents.push(...students);
+      }
+    }
 
-    // Processar resultados
-    allSuspensions.forEach(({ studentId, suspendedDates }) => {
-      if (suspendedDates.size > 0) {
-        suspensionsByStudent.set(studentId, suspendedDates);
+    if (allStudents.length === 0) {
+      return new Map();
+    }
+
+    const students = allStudents;
+
+    // Map: Internal ID → Firebase UUID
+    const internalToFirebaseMap = new Map<string, string>();
+    const internalIds = students.map(s => {
+      internalToFirebaseMap.set(s.id, s.student_id);
+      return s.id;
+    });
+
+    // 🔧 PASSO 2: Buscar suspensões usando Internal IDs (com batch processing)
+    const allSuspensionsData: any[] = [];
+    const SUSPENSION_BATCH_SIZE = 100;
+
+    for (let i = 0; i < internalIds.length; i += SUSPENSION_BATCH_SIZE) {
+      const batch = internalIds.slice(i, i + SUSPENSION_BATCH_SIZE);
+
+      const { data: batchSuspensions, error } = await supabaseAdmin
+        .from('student_suspensions')
+        .select('student_id, start_date, end_date')
+        .in('student_id', batch) as { data: any[] | null; error: any };
+
+      if (error) {
+        console.error(`[SUPABASE] Erro no batch ${Math.floor(i / SUSPENSION_BATCH_SIZE) + 1} de suspensões:`, error);
+        continue;
+      }
+
+      if (batchSuspensions && batchSuspensions.length > 0) {
+        allSuspensionsData.push(...batchSuspensions);
+      }
+    }
+
+    if (allSuspensionsData.length === 0) {
+      return new Map();
+    }
+
+    const allSuspensions = allSuspensionsData;
+
+    // Processar suspensões e gerar datas
+    allSuspensions.forEach((suspension: any) => {
+      const internalId = suspension.student_id;
+      const firebaseStudentId = internalToFirebaseMap.get(internalId);
+
+      if (!firebaseStudentId) {
+        console.warn('[SUPABASE] Internal ID não encontrado no map:', internalId);
+        return;
+      }
+
+      const startDate = new Date(suspension.start_date);
+      const endDate = new Date(suspension.end_date);
+
+      // Calcular número de dias (inclusivo: start_date até end_date)
+      const diffTime = endDate.getTime() - startDate.getTime();
+      const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 para incluir o dia final
+
+      if (!suspensionsByStudent.has(firebaseStudentId)) {
+        suspensionsByStudent.set(firebaseStudentId, new Set<string>());
+      }
+
+      const suspendedDates = suspensionsByStudent.get(firebaseStudentId)!;
+
+      // Gerar todas as datas do período de suspensão
+      for (let d = 0; d < days; d++) {
+        const suspensionDate = new Date(startDate);
+        suspensionDate.setDate(suspensionDate.getDate() + d);
+
+        // Formatar como YYYY-MM-DD
+        const dateStr = suspensionDate.toISOString().split('T')[0];
+        suspendedDates.add(dateStr);
       }
     });
 
     const elapsed = Date.now() - startTime;
-    console.log(`[SUPABASE] ${suspensionsByStudent.size} estudantes com suspensões (${elapsed}ms - ${studentIds.length} queries paralelas)`);
     return suspensionsByStudent;
 
   } catch (error) {
@@ -142,10 +201,8 @@ async function loadStudentSuspensions(studentIds: string[]): Promise<Map<string,
 async function getSchoolDaysForMonth(month: string): Promise<string[]> {
   try {
     const data = await loadAcademicYearData();
-    console.log('[DEBUG] Academic year data loaded:', data ? 'YES' : 'NO');
 
     if (!data) {
-      console.log('[DEBUG] No academic year data found');
       return [];
     }
 
@@ -154,17 +211,24 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
 
     // Converter número do mês para formato MM
     const monthNumber = month.padStart(2, '0');
-    console.log('[DEBUG] Looking for month:', monthNumber);
 
     bimestres.forEach(bimestre => {
-      console.log(`[DEBUG] Checking ${bimestre}:`, data[bimestre] ? 'EXISTS' : 'NOT FOUND');
 
       if (data[bimestre]?.dates) {
-        console.log(`[DEBUG] ${bimestre} has ${data[bimestre].dates.length} dates`);
 
         const bimesterDays = data[bimestre].dates
           .filter((day: any) => day.isChecked) // Apenas dias letivos
-          .map((day: any) => day.date)
+          .map((day: any) => {
+            const dateStr = day.date;
+
+            // 🔧 FIX: Converter dd/mm/yyyy → yyyy-mm-dd (se necessário)
+            if (dateStr.includes('/')) {
+              const [dayPart, monthPart, yearPart] = dateStr.split('/');
+              return `${yearPart}-${monthPart.padStart(2, '0')}-${dayPart.padStart(2, '0')}`;
+            }
+
+            return dateStr; // Já está em yyyy-mm-dd
+          })
           .filter((date: string) => {
             // Filtrar apenas datas do mês especificado (formato: YYYY-MM-DD)
             const parts = date.split('-');
@@ -174,13 +238,9 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
             return monthPart === monthNumber;
           });
 
-        console.log(`[DEBUG] ${bimestre} has ${bimesterDays.length} days for month ${monthNumber}`);
         allSchoolDays.push(...bimesterDays);
       }
     });
-
-    console.log(`[DEBUG] Total school days found for month ${monthNumber}:`, allSchoolDays.length);
-    console.log('[DEBUG] School days:', allSchoolDays.slice(0, 5)); // Show first 5
 
     return allSchoolDays.sort((a, b) => {
       // Format: YYYY-MM-DD can be sorted directly as strings
@@ -198,56 +258,158 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
  * OTIMIZAÇÃO: Query única ao Supabase ao invés de batches múltiplos
  */
 async function loadStudentAbsencesForMonth(
-  studentIds: string[],
+  firebaseStudentIds: string[],
   schoolDaysInMonth: string[],
   referenceMonth: string,
   suspensionsByStudent: Map<string, Set<string>>
 ): Promise<Record<string, number>> {
-  const cacheKey = `absences-month-supabase-${referenceMonth}-${studentIds.length}`;
+
+  const cacheKey = `absences-month-supabase-${referenceMonth}-${firebaseStudentIds.length}`;
   const cached = apiCache.get(cacheKey) as Record<string, number> | undefined;
   if (cached) {
     return cached;
   }
 
   try {
-    // MIGRADO: Usar AbsenceControlService (Supabase)
-    const { AbsenceControlService } = await import('@/services/supabase/absenceControlService');
+    const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
     const absencesByStudent: Record<string, number> = {};
 
     // Inicializar todos os estudantes com 0 faltas
-    studentIds.forEach(id => {
+    firebaseStudentIds.forEach(id => {
       absencesByStudent[id] = 0;
     });
 
     // Criar set de datas do mês para filtro rápido
     const monthDatesSet = new Set(schoolDaysInMonth);
 
-    // Query única para todas as faltas do ano
-    const allAbsences = await withTimeout(
-      AbsenceControlService.getByYear(2025),
-      45000,
-      'Timeout loading absences from Supabase'
-    );
+    // 🔧 PASSO 1: Resolver Firebase UUIDs → Internal IDs
+    // ⚠️ Supabase .in() tem limite de ~100 elementos - processar em batches
+    const allStudents: any[] = [];
+    const BATCH_SIZE = 100;
+
+    for (let i = 0; i < firebaseStudentIds.length; i += BATCH_SIZE) {
+      const batch = firebaseStudentIds.slice(i, i + BATCH_SIZE);
+
+      const { data: students, error: studentsError } = await supabaseAdmin
+        .from('students')
+        .select('id, student_id')
+        .in('student_id', batch) as { data: any[] | null; error: any };
+
+      if (studentsError) {
+        console.error(`[SUPABASE] Erro no batch ${Math.floor(i / BATCH_SIZE) + 1}:`, studentsError);
+        continue;
+      }
+
+      if (students && students.length > 0) {
+        allStudents.push(...students);
+      }
+    }
+
+    if (allStudents.length === 0) {
+      return absencesByStudent;
+    }
+
+    const students = allStudents;
+
+    // Map: Internal ID → Firebase UUID
+    const internalToFirebaseMap = new Map<string, string>();
+    const internalIds = students.map(s => {
+      internalToFirebaseMap.set(s.id, s.student_id);
+      return s.id;
+    });
+
+    // 🔧 PASSO 2: Buscar faltas do mês de referência para esses estudantes
+    // ⚠️ Supabase .in() tem limite de ~100 elementos - processar em batches
+    const allAbsencesData: any[] = [];
+    const ABSENCE_BATCH_SIZE = 100;
+
+    // 🎯 FIX: Filtrar faltas apenas do mês de referência (não o ano inteiro!)
+    const monthNumber = referenceMonth.padStart(2, '0'); // "10" → "10", "3" → "03"
+    const startDate = `2025-${monthNumber}-01`;
+    const endDate = `2025-${monthNumber}-31`; // Vai filtrar até o último dia existente
+
+    for (let i = 0; i < internalIds.length; i += ABSENCE_BATCH_SIZE) {
+      const batch = internalIds.slice(i, i + ABSENCE_BATCH_SIZE);
+
+      const { data: batchAbsences, error} = await supabaseAdmin
+        .from('student_absences')
+        .select('student_id, absence_date, is_justified')
+        .in('student_id', batch)
+        .gte('absence_date', startDate)
+        .lte('absence_date', endDate) as { data: any[] | null; error: any };
+
+      if (error) {
+        console.error(`[SUPABASE] Erro no batch de faltas ${Math.floor(i / ABSENCE_BATCH_SIZE) + 1}:`, error);
+        continue;
+      }
+
+      if (batchAbsences && batchAbsences.length > 0) {
+        allAbsencesData.push(...batchAbsences);
+      }
+    }
+
+    if (allAbsencesData.length === 0) {
+      return absencesByStudent;
+    }
+
+    const allAbsences = allAbsencesData;
 
     // Processar faltas
+    let skippedNoFirebaseUUID = 0;
+    let skippedSuspended = 0;
+    let skippedNotSchoolDay = 0;
+    let counted = 0;
+    const skippedInternalIds = new Set<string>();
+
     allAbsences.forEach((absence: any) => {
       if (!absence.is_justified && absence.student_id && absence.absence_date) {
+        const internalId = absence.student_id;
+        const firebaseStudentId = internalToFirebaseMap.get(internalId);
+
+        if (!firebaseStudentId) {
+          skippedNoFirebaseUUID++;
+          skippedInternalIds.add(internalId);
+          return; // Skip se não encontrar o Firebase UUID
+        }
+
         const dateStr = absence.absence_date; // já está em YYYY-MM-DD
 
         // Verificar se a data está em suspensão
-        const studentSuspensions = suspensionsByStudent.get(absence.student_id);
+        const studentSuspensions = suspensionsByStudent.get(firebaseStudentId);
         const isSuspended = studentSuspensions?.has(dateStr) || false;
 
-        // Contar apenas faltas em dias letivos do mês especificado E que NÃO sejam suspensões
-        if (monthDatesSet.has(dateStr) && !isSuspended && studentIds.includes(absence.student_id)) {
-          absencesByStudent[absence.student_id] = (absencesByStudent[absence.student_id] || 0) + 1;
+        if (isSuspended) {
+          skippedSuspended++;
+          return;
         }
+
+        // Verificar se é dia letivo
+        if (!monthDatesSet.has(dateStr)) {
+          skippedNotSchoolDay++;
+          return;
+        }
+
+        // Contar falta
+        absencesByStudent[firebaseStudentId] = (absencesByStudent[firebaseStudentId] || 0) + 1;
+        counted++;
       }
     });
 
+    // Estatísticas de faltas por estudante
+    const absenceCounts = Object.values(absencesByStudent);
+    const distribution: Record<number, number> = {};
+    absenceCounts.forEach(count => {
+      distribution[count] = (distribution[count] || 0) + 1;
+    });
+
+    // DEBUG: Mostrar estudantes com 3 faltas
+    const studentsWith3 = Object.entries(absencesByStudent)
+      .filter(([_, count]) => count === 3)
+      .map(([firebaseId, count]) => ({ firebaseId, count }));
+
     // Cache por 30 minutos
     apiCache.set(cacheKey, absencesByStudent, 30);
-    console.log(`[SUPABASE] Faltas processadas: ${Object.keys(absencesByStudent).filter(k => absencesByStudent[k] > 0).length} estudantes com faltas`);
+    const studentsWithAbsences = Object.keys(absencesByStudent).filter(k => absencesByStudent[k] > 0).length;
     return absencesByStudent;
   } catch (error) {
     console.error('[SUPABASE ERROR] Erro ao carregar faltas dos estudantes:', error);
@@ -267,7 +429,6 @@ async function loadVerifiedWhatsAppContacts(activeStudents: Student[]): Promise<
   }
 
   try {
-    console.log('[SUPABASE] Processando contatos verificados do WhatsApp dos estudantes...');
     const startTime = Date.now();
 
     const contactsByStudent: Record<string, VerifiedContact[]> = {};
@@ -303,7 +464,6 @@ async function loadVerifiedWhatsAppContacts(activeStudents: Student[]): Promise<
     });
 
     const elapsed = Date.now() - startTime;
-    console.log(`[V3] ✅ ${Object.keys(contactsByStudent).length} estudantes com contatos verificados (${elapsed}ms - ${activeStudents.length} queries paralelas)`);
 
     apiCache.set(cacheKey, contactsByStudent, 30);
     return contactsByStudent;
@@ -404,27 +564,21 @@ export async function GET(request: NextRequest) {
 
     checkTimeout('dias letivos carregados');
 
-    // Carregar estudantes ativos da estrutura V3 usando Admin SDK
-    console.log('[V3] Carregando estudantes com Admin SDK...');
-
+    // ✅ Carregar estudantes do SUPABASE (não Firebase!)
     let allStudents: Student[];
     let activeStudents: Student[];
 
     try {
-      // Migrado para Supabase - usar StudentDataService
+      // ✅ SUPABASE: Usar StudentDataService (migrado)
       const { StudentDataService } = await import('@/services/studentDataService');
 
-      console.log('[SUPABASE] Carregando estudantes com contatos...');
       allStudents = await withTimeout(
         StudentDataService.getStudents(false, true), // includeDeleted=false, includeContacts=true
         15000,
         'Timeout loading students from Supabase'
       );
 
-      console.log(`[SUPABASE] ✅ ${allStudents.length} estudantes carregados`);
-
       activeStudents = allStudents.filter(student => student.status === 'ATIVO');
-      console.log(`[SUPABASE] ✅ ${activeStudents.length} estudantes ativos`);
     } catch (error: any) {
       // Fallback: Quota excedida - retornar dados mockados
       if (error?.code === 8 || error?.message?.includes('Quota exceeded')) {
@@ -490,10 +644,8 @@ export async function GET(request: NextRequest) {
     checkTimeout('suspensões carregadas');
 
     // 2. Carregar faltas (já com filtro de suspensões) e contatos WhatsApp verificados (V3 Structure)
-    const [studentAbsences, verifiedContacts] = await Promise.all([
-      loadStudentAbsencesForMonth(studentIds, schoolDaysInMonth, referenceMonth, suspensionsByStudent),
-      loadVerifiedWhatsAppContacts(activeStudents)
-    ]);
+    const studentAbsences = await loadStudentAbsencesForMonth(studentIds, schoolDaysInMonth, referenceMonth, suspensionsByStudent);
+    const verifiedContacts = await loadVerifiedWhatsAppContacts(activeStudents);
 
     checkTimeout('faltas e contatos carregados');
 

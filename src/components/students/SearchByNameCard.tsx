@@ -90,9 +90,9 @@ const SearchByNameCard = memo(function SearchByNameCard({
 
                                 {suggestions.map((student) => (
                                     <div
-                                        key={student.id}
+                                        key={student.id || student.estudanteId}
                                         className="p-3 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 cursor-pointer transition-all duration-200 border-b border-gray-100 last:border-b-0 group"
-                                        onClick={() => onSuggestionSelect(student.id)}
+                                        onClick={() => onSuggestionSelect(student.id || student.estudanteId)}
                                     >
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">

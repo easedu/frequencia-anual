@@ -31,12 +31,6 @@ export async function saveWhatsAppVerification(
   telefone: string,
   verificationData: WhatsAppVerificationData
 ): Promise<SaveResult> {
-  logger.info('Salvando verificação WhatsApp (API)', {
-    estudanteId,
-    contactId,
-    telefone,
-    exists: verificationData.exists
-  });
 
   const errors: string[] = [];
 
@@ -55,11 +49,6 @@ export async function saveWhatsAppVerification(
   // 2. Atualizar student_contacts.whatsapp_data - APENAS se temos IDs válidos
   if (hasValidIds) {
     promises.push(updateContactWhatsAppData(estudanteId, contactId, telefone, verificationData));
-  } else {
-    logger.debug('Pulando atualização de student_contacts (IDs inválidos ou temporários)', {
-      estudanteId,
-      contactId
-    });
   }
 
   // Salvar simultaneamente
@@ -71,8 +60,6 @@ export async function saveWhatsAppVerification(
     const errorMsg = `whatsapp_verified_numbers falhou: ${verifiedNumbersResult.reason}`;
     errors.push(errorMsg);
     logger.error('whatsapp_verified_numbers falhou', { telefone }, verifiedNumbersResult.reason as Error);
-  } else {
-    logger.debug('Salvo em whatsapp_verified_numbers', { telefone });
   }
 
   // Verificar contactsResult apenas se existe (quando hasValidIds = true)
@@ -81,8 +68,6 @@ export async function saveWhatsAppVerification(
       const errorMsg = `student_contacts falhou: ${contactsResult.reason}`;
       errors.push(errorMsg);
       logger.error('student_contacts falhou', { estudanteId, contactId }, contactsResult.reason as Error);
-    } else {
-      logger.debug('Salvo em student_contacts', { estudanteId, contactId });
     }
   }
 
@@ -91,10 +76,6 @@ export async function saveWhatsAppVerification(
                   (contactsResult && contactsResult.status === 'fulfilled');
 
   if (success) {
-    logger.info('Verificação WhatsApp salva com sucesso', {
-      telefone,
-      exists: verificationData.exists
-    });
   } else {
     logger.error('Falha ao salvar verificação WhatsApp', {
       telefone,
@@ -151,20 +132,24 @@ async function updateContactWhatsAppData(
   telefone: string,
   verificationData: WhatsAppVerificationData
 ): Promise<void> {
-  // Build whatsapp_data JSONB object
+  // ✅ Adicionar headers de autenticação
+  const headers = await getAuthHeaders();
+
+  // Build whatsapp_data JSONB object (match schema exactly)
   const whatsappData = {
     verified: true,
     exists: verificationData.exists,
-    jid: verificationData.jid || null,
+    verifiedAt: new Date().toISOString(), // ISO string as per schema
     name: verificationData.name || null,
-    number: telefone,
-    verifiedAt: new Date().toISOString(),
-    verificationStatus: verificationData.exists ? 'verified' : 'unavailable'
+    number: telefone || null
   };
 
   const response = await fetch(`/api/contacts/${contactId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      ...headers,
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify({
       whatsappData: whatsappData
     }),
@@ -193,10 +178,6 @@ export async function saveWhatsAppVerificationBatch(
   failed: number;
   errors: string[];
 }> {
-  logger.info('Salvando verificações WhatsApp em lote (API)', {
-    totalVerifications: verifications.length
-  });
-
   const errors: string[] = [];
   let successful = 0;
   let failed = 0;
@@ -230,12 +211,6 @@ export async function saveWhatsAppVerificationBatch(
       }
     });
   }
-
-  logger.info('Lote de verificações WhatsApp concluído', {
-    totalProcessed: verifications.length,
-    successful,
-    failed
-  });
 
   return {
     totalProcessed: verifications.length,
@@ -275,8 +250,6 @@ export async function getStudentContactsWithWhatsApp(
   studentId: string
 ): Promise<ContactWithWhatsAppStatus[]> {
   try {
-    logger.debug('Buscando contatos do estudante (API)', { studentId });
-
     const response = await fetch(`/api/contacts?estudanteId=${studentId}`);
 
     if (!response.ok) {
@@ -294,10 +267,6 @@ export async function getStudentContactsWithWhatsApp(
       whatsapp: contact.whatsapp || undefined,
     }));
 
-    logger.info('Contatos do estudante carregados', {
-      studentId,
-      count: contacts.length
-    });
     return contacts;
 
   } catch (error) {

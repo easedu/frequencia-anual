@@ -8,10 +8,13 @@
 // ============================================================================
 
 export interface Contato {
+  id?: string; // Supabase contact ID (UUID)
   nome: string;
   telefone: string;
+  telefoneNumerico?: string; // Telefone sem formatação (apenas dígitos)
   parentesco?: string;
   podeReceberMensagem?: boolean;
+  podeReceberWhatsapp?: boolean; // Alias para compatibilidade
   whatsapp?: {
     verified: boolean;
     exists: boolean;
@@ -19,6 +22,8 @@ export interface Contato {
     name: string | null;
     number: string | null;
   };
+  whatsappData?: any; // WhatsApp data JSONB (campo direto)
+  whatsapp_data?: any; // WhatsApp data JSONB (snake_case)
 }
 
 export interface Endereco {

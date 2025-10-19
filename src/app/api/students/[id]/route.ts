@@ -54,7 +54,7 @@ export const GET = withAuth(
 
       // Buscar estudante no Supabase com dados de verificação WhatsApp
       // ✅ Query by student_id (Firebase UUID) not internal id
-      const { data, error } = await supabaseAdmin
+      const { data, error } = (await supabaseAdmin
         .from('students')
         .select(`
           *,
@@ -69,7 +69,7 @@ export const GET = withAuth(
         `)
         .eq('student_id', id)
         .eq('deleted', false)
-        .single();
+        .single()) as { data: any; error: any };
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -91,17 +91,17 @@ export const GET = withAuth(
       }
 
       // Buscar dados de verificação WhatsApp para os contatos
-      const contactPhones = (data.student_contacts || [])
+      const contactPhones = ((data as any).student_contacts || [])
         .map((c: any) => c.phone)
         .filter(Boolean);
 
       let verifiedWhatsAppMap = new Map<string, any>();
 
       if (contactPhones.length > 0) {
-        const { data: verifiedData } = await supabaseAdmin
+        const { data: verifiedData } = (await supabaseAdmin
           .from('whatsapp_verified_numbers')
           .select('*')
-          .in('phone_number', contactPhones);
+          .in('phone_number', contactPhones)) as { data: any[] | null; error: any };
 
         if (verifiedData) {
           verifiedData.forEach((v: any) => {
@@ -162,12 +162,12 @@ export const PUT = withAuth(
 
       // 4. Verificar se estudante existe e pertence ao usuário
       // ✅ Query by student_id (Firebase UUID)
-      const { data: existingStudent, error: checkError } = await supabaseAdmin
+      const { data: existingStudent, error: checkError } = (await supabaseAdmin
         .from('students')
         .select('id, student_id')
         .eq('student_id', id)
         .eq('deleted', false)
-        .single();
+        .single()) as { data: { id: string; student_id: string } | null; error: any };
 
       if (checkError || !existingStudent) {
         return notFoundResponse('Estudante', id);
@@ -277,12 +277,12 @@ export const DELETE = withAuth(
 
       // 1. Verificar se estudante existe e pertence ao usuário
       // ✅ Query by student_id (Firebase UUID)
-      const { data: existingStudent, error: checkError } = await supabaseAdmin
+      const { data: existingStudent, error: checkError } = (await supabaseAdmin
         .from('students')
         .select('id, student_id')
         .eq('student_id', id)
         .eq('deleted', false)
-        .single();
+        .single()) as { data: { id: string; student_id: string } | null; error: any };
 
       if (checkError || !existingStudent) {
         return notFoundResponse('Estudante', id);
@@ -350,6 +350,7 @@ function convertSupabaseToEstudante(student: any, verifiedWhatsAppMap?: Map<stri
       const verificationData = verifiedWhatsAppMap?.get(contact.phone);
 
       return {
+        id: contact.id, // ✅ CRITICAL: ID do contato para updates
         nome: contact.name,
         parentesco: contact.relationship || '',
         telefone: contact.phone || '',

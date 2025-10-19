@@ -73,17 +73,22 @@ function convertSupabaseContactToLegacy(contact: StudentContact): Contato {
   const whatsappData = (contact.whatsapp_data as any) || {};
 
   return {
+    id: contact.id, // ✅ Adicionar ID do contato (necessário para updates)
     nome: contact.name,
     parentesco: contact.relationship || '',
     telefone: contact.phone || '',
-    podeReceberMensagem: contact.can_receive_whatsapp,
+    telefoneNumerico: contact.phone_numeric || undefined,
+    podeReceberWhatsapp: contact.can_receive_whatsapp,
+    podeReceberMensagem: contact.can_receive_whatsapp, // Alias para compatibilidade
     whatsapp: whatsappData.verified ? {
       verified: whatsappData.verified || false,
       exists: whatsappData.exists || false,
-      verifiedAt: whatsappData.verified_at || null,
+      verifiedAt: whatsappData.verifiedAt || whatsappData.verified_at || null, // ✅ Aceitar ambos formatos
       name: whatsappData.name || null,
       number: whatsappData.number || null,
     } : undefined,
+    whatsappData: whatsappData, // ✅ Adicionar campo direto para APIs
+    whatsapp_data: whatsappData, // ✅ Adicionar também snake_case
   };
 }
 
