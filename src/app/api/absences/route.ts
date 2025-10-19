@@ -46,6 +46,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       turma,
       page,
       limit,
+      allowAll,
     } = validation.data;
 
     // 2. Resolver Firebase UUID para Internal ID (se fornecido)
@@ -100,9 +101,25 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // Paginação
     const from = (page - 1) * limit;
     const to = from + limit - 1;
+
+    // 🔍 DEBUG: Log dos parâmetros de paginação
+    console.log(`📄 [GET /api/absences] Paginação:`, {
+        page,
+        limit,
+        from,
+        to,
+        range: `${from}-${to}`
+    });
+
+    // ⚠️ IMPORTANTE: Supabase tem limite padrão de 1000 registros!
+    // Precisamos usar AMBOS .range() E verificar se limit > 1000
     query = query.range(from, to);
 
-    // 3. Executar query
+    // Se limit > 1000, precisamos setar explicitamente (Supabase JS não respeita range > 1000)
+    // A solução é usar APENAS range, que já define o tamanho da página
+    // Ref: https://supabase.com/docs/reference/javascript/limit
+
+    // 4. Executar query
     const { data, error, count } = await query;
 
     if (error) {
@@ -126,10 +143,10 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       }, { status: 500 });
     }
 
-    // 4. Converter para formato legacy
+    // 5. Converter para formato legacy
     const absences = (data || []).map(convertSupabaseToAbsence);
 
-    // 5. Retornar com paginação
+    // 6. Retornar com paginação
     return paginatedResponse(absences, page, limit, count || 0);
   } catch (error) {
     return handleError(error, 'GET /api/absences');
@@ -263,19 +280,22 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 function convertSupabaseToAbsence(absence: any): any {
   return {
     id: absence.id,
-    estudanteId: absence.students?.student_id || absence.student_id, // ✅ Firebase UUID, não Internal ID
+    estudanteId: absence.students?.student_id || absence.student_id, // ✅ Firebase UUID (legacy)
+    student_id: absence.student_id, // ✅ Internal ID (para comparações)
     estudanteNome: absence.students?.name || 'Nome não disponível',
     turma: absence.students?.class || 'Turma não disponível',
-    data: absence.absence_date,
+    data: absence.absence_date, // ✅ Formato legacy (YYYY-MM-DD)
+    absence_date: absence.absence_date, // ✅ Formato Supabase (para compatibilidade)
     bimestre: absence.bimester,
-    justificada: absence.is_justified,
-    justified: absence.is_justified, // ✅ Alias para compatibilidade
+    justificada: absence.is_justified, // ✅ Formato legacy
+    justified: absence.is_justified, // ✅ Alias
+    is_justified: absence.is_justified, // ✅ Formato Supabase (para compatibilidade)
     motivoJustificativa: undefined, // Coluna não existe
     atestadoId: absence.medical_certificate_id || undefined,
-    suspensaoId: absence.suspension_id || undefined, // ✅ ADICIONAR suspension_id
+    suspensaoId: absence.suspension_id || undefined,
     observacoes: undefined, // Coluna não existe
-    anoLetivo: new Date().getFullYear().toString(), // Calcular do absence_date
-    criadoPor: 'system', // Coluna não existe
+    anoLetivo: new Date().getFullYear().toString(),
+    criadoPor: 'system',
     criadoEm: absence.created_at,
   };
 }

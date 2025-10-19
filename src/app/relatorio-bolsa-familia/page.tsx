@@ -11,9 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FullPageSkeleton } from "@/components/shared/LoadingSkeletons";
 import { EmptySearchState } from "@/components/shared";
-import { useAbsenceControls, useAbsences } from "@/hooks/api";
+import { useAbsenceControls, useAbsences, useStudents } from "@/hooks/api";
 import { logger } from "@/utils/logger";
-import { useStudents } from "@/hooks/useStudents";
 import {
     FileText,
     Search,
@@ -32,7 +31,8 @@ import {
 } from "lucide-react";
 
 interface Estudante {
-    estudanteId: string;
+    id: string; // Internal ID (usado para queries)
+    estudanteId: string; // Firebase UUID (legacy)
     turma: string;
     nome: string;
     status: string;
@@ -87,7 +87,9 @@ export default function RelatorioFaltasPage() {
 
     // ✅ Usar hooks da API REST (sem Supabase direto)
     const { controls: absenceControls, loading: loadingAbsenceControls } = useAbsenceControls({ academic_year: 2025 });
-    const { absences, loading: loadingAbsences } = useAbsences({});
+    const { absences, loading: loadingAbsences } = useAbsences({
+        allowAll: true // ✅ Carrega TODAS as faltas com paginação recursiva paralela
+    });
 
     const parseDate = (dateStr: string): Date | null => {
         if (!dateStr) return null;
@@ -111,6 +113,7 @@ export default function RelatorioFaltasPage() {
 
     // Calcular dias letivos quando absenceControls mudar
     useEffect(() => {
+
         if (!absenceControls || absenceControls.length === 0) {
             return;
         }
@@ -144,15 +147,15 @@ export default function RelatorioFaltasPage() {
         }
     }, [absenceControls]);
 
-    // Usar hook useStudents ao invés de buscar manualmente
-    const { students: allStudents, loading: loadingAllStudents } = useStudents();
+    // ✅ Usar hook da API REST com filtros corretos
+    const { students: allStudents, loading: loadingAllStudents } = useStudents({
+        status: "ATIVO",
+        bolsa_familia: "SIM"
+    });
 
     useEffect(() => {
-        // Filtrar apenas estudantes com Bolsa Família
-        const studentList = allStudents.filter(
-            (student) => student.status === "ATIVO" && student.bolsaFamilia === "SIM"
-        ) as any[];
-        setStudents(studentList);
+        // Estudantes já vêm filtrados da API
+        setStudents(allStudents as any[]);
         setLoadingStudents(loadingAllStudents);
     }, [allStudents, loadingAllStudents]);
 
@@ -160,19 +163,42 @@ export default function RelatorioFaltasPage() {
     const absencesByStudentMonth = useMemo(() => {
         const cache: Record<string, Record<number, number>> = {};
 
-        if (!absences) return cache;
+        if (!absences || absences.length === 0) {
+            return cache;
+        }
 
-        students.forEach(student => {
-            cache[student.estudanteId] = {};
+        // 🚀 OTIMIZAÇÃO CRÍTICA: Criar índice de faltas por estudante ANTES do loop
+        // Reduz de O(n × m × k) para O(k + n × m) onde k=faltas, n=estudantes, m=meses
+        const absencesByStudent = new Map<string, typeof absences>();
+
+        absences.forEach((absence) => {
+            // Aplicar filtro de justificadas UMA VEZ
+            if (excludeJustified && absence.is_justified) return;
+
+            const studentId = absence.student_id;
+            if (!studentId) return;
+
+            if (!absencesByStudent.has(studentId)) {
+                absencesByStudent.set(studentId, []);
+            }
+            absencesByStudent.get(studentId)!.push(absence);
+        });
+
+        // Agora processar estudantes com lookup O(1)
+        students.forEach((student) => {
+            const studentKey = student.id; // Internal ID
+            cache[studentKey] = {};
+
+            const studentAbsences = absencesByStudent.get(studentKey) || [];
+
             months.forEach((_, monthIndex) => {
-                cache[student.estudanteId][monthIndex] = absences.filter(absence => {
-                    const recordDate = new Date(absence.absence_date);
-                    return (
-                        absence.student_id === student.estudanteId &&
-                        recordDate.getMonth() === monthIndex &&
-                        (!excludeJustified || !absence.is_justified)
-                    );
+                // Filter apenas nas faltas DESTE estudante (não todas!)
+                const count = studentAbsences.filter(absence => {
+                    const recordDate = parseDate(absence.absence_date);
+                    return recordDate && recordDate.getMonth() === monthIndex;
                 }).length;
+
+                cache[studentKey][monthIndex] = count;
             });
         });
 
@@ -191,30 +217,84 @@ export default function RelatorioFaltasPage() {
     }, [getAbsencesByMonth, diasLetivos]);
 
     const hasLowFrequency = useCallback((estudanteId: string): boolean => {
-        return months.some((month, index) => {
-            if (selectedMonths.has(month) && showFrequency) {
-                const absences = getAbsencesByMonth(estudanteId, index);
-                const diasLetivosMes = diasLetivos[index] || 0;
-                const frequency = diasLetivosMes > 0 ? (1 - absences / diasLetivosMes) * 100 : 100;
-                return frequency < 75;
+        // ⚠️ IMPORTANTE: Se não há dias letivos calculados, NÃO filtrar nada
+        if (Object.keys(diasLetivos).length === 0) {
+            return false; // Não filtra ninguém se não há dados
+        }
+
+        // ✅ CORREÇÃO CRÍTICA: Verificar APENAS os meses SELECIONADOS no filtro
+        const result = months.some((month, index) => {
+            // 🎯 Só calcular para meses que estão SELECIONADOS
+            if (!selectedMonths.has(month)) {
+                return false; // Ignora meses não selecionados
             }
-            return false;
+
+            const absences = getAbsencesByMonth(estudanteId, index);
+            const diasLetivosMes = diasLetivos[index] || 0;
+
+            // Se não há dias letivos no mês, ignorar (100% de frequência)
+            if (diasLetivosMes === 0) return false;
+
+            const frequency = (1 - absences / diasLetivosMes) * 100;
+            return frequency < 75;
         });
-    }, [selectedMonths, showFrequency, getAbsencesByMonth, diasLetivos]);
+
+        return result;
+    }, [getAbsencesByMonth, diasLetivos, students, selectedMonths]);
 
     const filteredStudents = useMemo(() => {
-        return students
+        const filtered = students
             .filter(student => {
                 const matchesSearch = debouncedSearchFilter === "" ||
                     student.turma.toLowerCase().includes(debouncedSearchFilter.toLowerCase()) ||
                     student.nome.toLowerCase().includes(debouncedSearchFilter.toLowerCase());
 
-                const matchesFrequencyFilter = !showOnlyLowFrequency || hasLowFrequency(student.estudanteId);
+                const matchesFrequencyFilter = !showOnlyLowFrequency || hasLowFrequency(student.id); // ✅ Internal ID
 
                 return matchesSearch && matchesFrequencyFilter;
             })
             .sort((a, b) => a.nome.localeCompare(b.nome));
-    }, [students, debouncedSearchFilter, showOnlyLowFrequency, hasLowFrequency]);
+
+        // 🔍 DEBUG: Log do filtro (apenas meses SELECIONADOS)
+        if (showOnlyLowFrequency && filtered.length > 0) {
+            // Calcular frequência APENAS para meses SELECIONADOS
+            const primeiros5ComFrequencia = filtered.slice(0, 5).map(s => {
+                const mesesSelecionadosArray = Array.from(selectedMonths);
+                const totalFaltas = months.reduce((sum, month, idx) =>
+                    selectedMonths.has(month) ? sum + getAbsencesByMonth(s.id, idx) : sum,
+                    0
+                );
+                const totalDias = months.reduce((sum, month, idx) =>
+                    selectedMonths.has(month) ? sum + (diasLetivos[idx] || 0) : sum,
+                    0
+                );
+                const freq = totalDias > 0 ? ((totalDias - totalFaltas) / totalDias * 100) : 100;
+
+                // Identificar QUAIS meses SELECIONADOS têm frequência < 75%
+                const mesesComBaixaFreq = months
+                    .map((month, idx) => {
+                        // ✅ Só analisar meses SELECIONADOS
+                        if (!selectedMonths.has(month)) return null;
+
+                        const faltas = getAbsencesByMonth(s.id, idx);
+                        const dias = diasLetivos[idx] || 0;
+                        if (dias === 0) return null;
+                        const freqMes = (1 - faltas / dias) * 100;
+                        return freqMes < 75 ? { mes: month, freq: freqMes.toFixed(1) + '%', faltas, dias } : null;
+                    })
+                    .filter(m => m !== null);
+
+                return {
+                    nome: s.nome,
+                    mesesSelecionados: mesesSelecionadosArray.join(', '),
+                    frequenciaMesesSelecionados: freq.toFixed(1) + '%',
+                    mesesComProblema: mesesComBaixaFreq
+                };
+            });
+        }
+
+        return filtered;
+    }, [students, debouncedSearchFilter, showOnlyLowFrequency, hasLowFrequency, getAbsencesByMonth, diasLetivos, selectedMonths]);
 
     const totalRecords = filteredStudents.length;
     const totalPages = Math.ceil(totalRecords / recordsPerPage);
@@ -306,15 +386,15 @@ export default function RelatorioFaltasPage() {
                     <tbody>
                         ${filteredStudents
                 .map(student => `
-                                <tr class="${hasLowFrequency(student.estudanteId) ? 'low-frequency' : ''}">
+                                <tr class="${hasLowFrequency(student.id) ? 'low-frequency' : ''}">
                                     <td>${student.turma}</td>
                                     <td>${student.nome}</td>
                                     ${months
                         .filter(month => selectedMonths.has(month))
                         .map((month) => {
                             const monthIndex = months.indexOf(month);
-                            const absences = getAbsencesByMonth(student.estudanteId, monthIndex);
-                            const percentage = getPercentageByMonth(student.estudanteId, monthIndex);
+                            const absences = getAbsencesByMonth(student.id, monthIndex); // ✅ Internal ID
+                            const percentage = getPercentageByMonth(student.id, monthIndex); // ✅ Internal ID
                             return `
                                                 <td>
                                                     ${showAbsences && showFrequency ? `
@@ -349,7 +429,7 @@ export default function RelatorioFaltasPage() {
     };
 
     // Estatísticas para o header
-    const lowFrequencyStudents = filteredStudents.filter(student => hasLowFrequency(student.estudanteId)).length;
+    const lowFrequencyStudents = filteredStudents.filter(student => hasLowFrequency(student.id)).length; // ✅ Internal ID
     const selectedMonthsCount = selectedMonths.size;
 
     if (loadingStudents || loadingAbsences) {
@@ -625,13 +705,13 @@ export default function RelatorioFaltasPage() {
                                         currentRecords.map(student => (
                                             <TableRow
                                                 key={student.estudanteId}
-                                                className={`hover:bg-slate-50 transition-colors ${hasLowFrequency(student.estudanteId) ? 'bg-red-50 border-red-200' : ''
+                                                className={`hover:bg-slate-50 transition-colors ${hasLowFrequency(student.id) ? 'bg-red-50 border-red-200' : '' // ✅ Internal ID
                                                     }`}
                                             >
                                                 <TableCell className="text-center font-medium border-r border-slate-200">
                                                     {student.turma}
                                                 </TableCell>
-                                                <TableCell className={`border-r border-slate-200 ${hasLowFrequency(student.estudanteId) ? 'text-red-700 font-semibold' : ''
+                                                <TableCell className={`border-r border-slate-200 ${hasLowFrequency(student.id) ? 'text-red-700 font-semibold' : '' // ✅ Internal ID
                                                     }`}>
                                                     {student.nome}
                                                 </TableCell>
@@ -640,25 +720,25 @@ export default function RelatorioFaltasPage() {
                                                         <TableCell key={month} className="text-center border-r border-slate-200 last:border-r-0">
                                                             {showAbsences && showFrequency ? (
                                                                 <div className="flex justify-center items-center gap-2">
-                                                                    <span className={`w-8 text-right font-medium ${hasLowFrequency(student.estudanteId) ? 'text-red-600' : 'text-slate-700'
+                                                                    <span className={`w-8 text-right font-medium ${hasLowFrequency(student.id) ? 'text-red-600' : 'text-slate-700' // ✅ Internal ID
                                                                         }`}>
-                                                                        {getAbsencesByMonth(student.estudanteId, index)}
+                                                                        {getAbsencesByMonth(student.id, index)} {/* ✅ Internal ID */}
                                                                     </span>
                                                                     <span className="text-slate-400">|</span>
-                                                                    <span className={`w-12 text-left font-medium ${hasLowFrequency(student.estudanteId) ? 'text-red-600' : 'text-slate-700'
+                                                                    <span className={`w-12 text-left font-medium ${hasLowFrequency(student.id) ? 'text-red-600' : 'text-slate-700' // ✅ Internal ID
                                                                         }`}>
-                                                                        {getPercentageByMonth(student.estudanteId, index)}
+                                                                        {getPercentageByMonth(student.id, index)} {/* ✅ Internal ID */}
                                                                     </span>
                                                                 </div>
                                                             ) : showAbsences ? (
-                                                                <span className={`font-medium ${hasLowFrequency(student.estudanteId) ? 'text-red-600' : 'text-slate-700'
+                                                                <span className={`font-medium ${hasLowFrequency(student.id) ? 'text-red-600' : 'text-slate-700' // ✅ Internal ID
                                                                     }`}>
-                                                                    {getAbsencesByMonth(student.estudanteId, index)}
+                                                                    {getAbsencesByMonth(student.id, index)} {/* ✅ Internal ID */}
                                                                 </span>
                                                             ) : (
-                                                                <span className={`font-medium ${hasLowFrequency(student.estudanteId) ? 'text-red-600' : 'text-slate-700'
+                                                                <span className={`font-medium ${hasLowFrequency(student.id) ? 'text-red-600' : 'text-slate-700' // ✅ Internal ID
                                                                     }`}>
-                                                                    {getPercentageByMonth(student.estudanteId, index)}
+                                                                    {getPercentageByMonth(student.id, index)} {/* ✅ Internal ID */}
                                                                 </span>
                                                             )}
                                                         </TableCell>

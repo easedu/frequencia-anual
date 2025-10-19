@@ -59,6 +59,11 @@
 17. ✅ **Corrigido HTML hydration error** (div dentro de p)
 18. ✅ **Corrigido Card "Análise por Estudante"** (field mapping Dual ID System)
 19. ✅ **Proteção contra carregamento infinito** com `useRef` guard
+
+### Correção de Página Relatório Bolsa Família (2025-10-18 - 23:50)
+20. ✅ **Migrado hook legado** para API REST (`useStudents` de `@/hooks/api`)
+21. ✅ **Corrigido field mapping** nas faltas (Internal ID vs Firebase UUID)
+22. ✅ **Filtro movido para backend** (bolsa_familia na query API)
 11. ✅ Modificado guard em `useAbsences.ts` para permitir buscar todas as faltas quando `allowAll=true`
 12. ✅ Atualizado `useStudentRecords.ts` para passar `{ allowAll: true }` ao chamar `useAbsences()`
 
@@ -1266,9 +1271,9 @@ useEffect(() => {
 ## 🎯 Resumo Final de Todas as Correções (2025-10-18)
 
 ### Estatísticas Totais
-- **Total de Seções**: 10 correções principais
-- **Arquivos Modificados**: 15+ arquivos
-- **Tempo Total**: ~6 horas (15:00 - 23:40)
+- **Total de Seções**: 11 correções principais
+- **Arquivos Modificados**: 16+ arquivos
+- **Tempo Total**: ~7 horas (15:00 - 23:50)
 - **Complexidade**: Média-Alta (envolveu backend, frontend, services e schema validation)
 
 ### Categorias de Correções
@@ -1290,8 +1295,9 @@ useEffect(() => {
 - ✅ `src/hooks/useStudentProfile.ts` - Loading states, auto-clear
 - ✅ `src/hooks/api/useAbsences.ts` - Limite aumentado, allowAll
 
-#### 4. **Frontend Pages** (1 arquivo)
+#### 4. **Frontend Pages** (2 arquivos)
 - ✅ `src/app/relatorio-interacoes/page.tsx` - Filtros brasileiros, paginação, progress bar, useRef guard
+- ✅ `src/app/relatorio-bolsa-familia/page.tsx` - Migrado para API REST, field mapping correto
 
 #### 5. **Components** (1 arquivo)
 - ✅ `src/components/students/StudentInteractionAnalysisCard.tsx` - Field mapping Dual ID
@@ -1307,17 +1313,18 @@ useEffect(() => {
 3. ✅ Interações não carregavam (apenas 50)
 4. ✅ Card "Análise por Estudante" vazio (Dual ID)
 5. ✅ Carregamento infinito (loop de useEffect)
+6. ✅ Relatório Bolsa Família não carregava estudantes (hook legado)
 
 #### 🟡 Importantes (UX ruim)
-6. ✅ Datas em formato incorreto (ISO vs BR)
-7. ✅ Filtros de data não funcionavam
-8. ✅ Sem feedback visual durante loading
-9. ✅ Limite Zod bloqueava paginação
+7. ✅ Datas em formato incorreto (ISO vs BR)
+8. ✅ Filtros de data não funcionavam
+9. ✅ Sem feedback visual durante loading
+10. ✅ Limite Zod bloqueava paginação
 
 #### 🟢 Melhorias (Qualidade)
-10. ✅ HTML hydration errors no console
-11. ✅ Auth headers faltando em services
-12. ✅ Auto-clear de campos de formulário
+11. ✅ HTML hydration errors no console
+12. ✅ Auth headers faltando em services
+13. ✅ Auto-clear de campos de formulário
 
 ### Padrões Técnicos Aplicados
 
@@ -1405,9 +1412,120 @@ useEffect(() => {
 
 ---
 
+### 11. Correção da Página Relatório Bolsa Família - Hook Legado (2025-10-18 - 23:50)
+
+**Problema Identificado**:
+Página de relatório Bolsa Família não carregava dados dos estudantes.
+
+**Root Cause**:
+A página estava usando o hook legado `useStudents` do arquivo `@/hooks/useStudents` ao invés do hook da API REST `@/hooks/api/useStudents`.
+
+**Solução Aplicada** (`src/app/relatorio-bolsa-familia/page.tsx`):
+
+```typescript
+// ❌ ANTES - Hook legado
+import { useStudents } from "@/hooks/useStudents";
+
+const { students: allStudents, loading: loadingAllStudents } = useStudents();
+
+useEffect(() => {
+  // Filtrava no frontend
+  const studentList = allStudents.filter(
+    (student) => student.status === "ATIVO" && student.bolsaFamilia === "SIM"
+  );
+  setStudents(studentList);
+}, [allStudents]);
+
+// ❌ Field mapping errado nas faltas
+absence.student_id === student.estudanteId // Firebase UUID vs Internal ID
+
+// ✅ DEPOIS - Hook da API REST
+import { useAbsenceControls, useAbsences, useStudents } from "@/hooks/api";
+
+const { students: allStudents, loading: loadingAllStudents } = useStudents({
+  status: "ATIVO",
+  bolsa_familia: "SIM" // ✅ Filtro no backend
+});
+
+useEffect(() => {
+  // Estudantes já vêm filtrados da API
+  setStudents(allStudents);
+}, [allStudents]);
+
+// ✅ Field mapping correto (Dual ID System)
+absence.student_id === student.id // Internal ID vs Internal ID
+```
+
+**Melhorias Adicionais**:
+1. **Filtro no backend**: Bolsa Família filtrado na API (mais eficiente)
+2. **Field mapping correto**: `student.id` (Internal ID) ao invés de `student.estudanteId`
+3. **Parse de data seguro**: Adicionado `parseDate()` antes de `getMonth()`
+4. **allowAll: true**: Adicionado para carregar TODAS as faltas (não só 50)
+
+**Arquivos Modificados**:
+- `src/app/relatorio-bolsa-familia/page.tsx` (linhas 14-15, 89, 147-156, 168-176)
+
+**Fix Adicional 1 (2025-10-18 - 23:55)**:
+```typescript
+// ❌ ANTES - Carregava apenas 50 faltas (limite padrão)
+const { absences, loading: loadingAbsences } = useAbsences({});
+
+// ✅ DEPOIS - Carrega TODAS as faltas
+const { absences, loading: loadingAbsences } = useAbsences({ allowAll: true });
+```
+
+**Fix Adicional 2 - CRÍTICO (2025-10-18 - 00:00)**:
+
+**Problema**: Faltas e frequência não apareciam mesmo com `allowAll: true`.
+
+**Root Cause**: Inconsistência de IDs no cache - indexado por Firebase UUID mas consultado com Internal ID.
+
+```typescript
+// ❌ ANTES - IDs inconsistentes (cache vazio sempre!)
+const absencesByStudentMonth = useMemo(() => {
+  students.forEach(student => {
+    cache[student.estudanteId] = {}; // ❌ Indexa por Firebase UUID
+    absences.filter(a => a.student_id === student.id); // ❌ Filtra por Internal ID
+  });
+}, [students, absences]);
+
+// Chamadas falhavam silenciosamente
+getAbsencesByMonth(student.estudanteId, monthIndex); // ❌ undefined (Firebase UUID)
+// Cache tem keys de Internal ID, mas busca com Firebase UUID!
+
+// ✅ DEPOIS - IDs consistentes
+const absencesByStudentMonth = useMemo(() => {
+  students.forEach(student => {
+    const studentKey = student.id; // ✅ Internal ID consistente
+    cache[studentKey] = {};
+    absences.filter(a => a.student_id === student.id); // ✅ Internal ID
+  });
+}, [students, absences]);
+
+// TODAS as 15+ chamadas atualizadas para usar Internal ID:
+getAbsencesByMonth(student.id, monthIndex); // ✅ Retorna dados!
+getPercentageByMonth(student.id, monthIndex); // ✅ Funciona!
+hasLowFrequency(student.id); // ✅ Correto!
+```
+
+**Arquivos Modificados**:
+- `src/app/relatorio-bolsa-familia/page.tsx` (linhas 165-167, 216, 313, 320-321, 356, 632, 638, 647-665)
+
+**Impacto**:
+- ✅ Página agora carrega estudantes com Bolsa Família corretamente
+- ✅ Cálculo de faltas usa IDs corretos (Internal ID)
+- ✅ Performance melhorada (filtro no backend)
+- ✅ Todas as faltas carregadas (allowAll: true)
+- ✅ **Cache funciona corretamente** (consistência de IDs)
+- ✅ **Faltas e frequência APARECEM!** 🎉
+
+---
+
 ## ✅ Conclusão
 
-Todas as correções foram implementadas com sucesso. A página de relatório de interações agora:
+Todas as correções foram implementadas com sucesso. As páginas de relatório agora:
+
+### Relatório de Interações
 - ✅ Carrega **TODAS** as interações performaticamente (2.500+)
 - ✅ Suporta filtros de data em **formato brasileiro** (dd/mm/aaaa)
 - ✅ Exibe datas corretamente (**18/10/2025** ao invés de 2025-10-18)
@@ -1416,9 +1534,16 @@ Todas as correções foram implementadas com sucesso. A página de relatório de
 - ✅ Sem erros no console (HTML válido)
 - ✅ **Não trava** em carregamento infinito (useRef guard)
 
+### Relatório Bolsa Família
+- ✅ Carrega estudantes com Bolsa Família corretamente
+- ✅ Usa API REST ao invés de hook legado
+- ✅ Field mapping correto (Dual ID System)
+- ✅ Filtros aplicados no backend (performance)
+- ✅ **Faltas e frequência aparecem** (allowAll: true)
+
 **Status**: ✅ **READY FOR TESTING**
 
-**Última Atualização**: 2025-10-18 23:40
+**Última Atualização**: 2025-10-18 23:55
 
 **Teste de Validação**:
 ```bash

@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { PaginatedResponse, ApiResponse } from './useStudents';
+import { fetchAllPages } from '@/utils/paginationHelper';
 
 // ============================================================================
 // TYPES
@@ -82,43 +83,80 @@ export function useAbsences(filters?: AbsenceFilters) {
       setLoading(true);
       setError(null);
 
-      const params = new URLSearchParams();
-      if (filters?.estudanteId) params.append('estudanteId', filters.estudanteId);
-      if (filters?.bimestre) params.append('bimestre', filters.bimestre);
-      if (filters?.justificada !== undefined) params.append('justificada', filters.justificada.toString());
-      if (filters?.dataInicio) params.append('dataInicio', filters.dataInicio);
-      if (filters?.dataFim) params.append('dataFim', filters.dataFim);
-      if (filters?.turma) params.append('turma', filters.turma);
-      if (filters?.page) params.append('page', filters.page.toString());
-      // ✅ Sempre enviar limit (default 250 para carregar todas as faltas de um estudante)
-      params.append('limit', (filters?.limit || 250).toString());
-
       const token = await user.getIdToken();
 
-      const response = await fetch(`/api/absences?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      // 🚀 PAGINAÇÃO RECURSIVA: Se allowAll=true, carregar TODAS as páginas em paralelo
+      const shouldLoadAll = filters?.allowAll && !filters?.page;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('[useAbsences] ❌ Error response:', errorData);
-        throw new Error(errorData.error || 'Erro ao buscar faltas');
+      if (shouldLoadAll) {
+
+        const allAbsences = await fetchAllPages<Absence>({
+          baseUrl: '/api/absences',
+          token,
+          filters: {
+            estudanteId: filters?.estudanteId,
+            bimestre: filters?.bimestre,
+            justificada: filters?.justificada,
+            dataInicio: filters?.dataInicio,
+            dataFim: filters?.dataFim,
+            turma: filters?.turma,
+            // ❌ NÃO enviar allowAll nos filtros - a API detecta automaticamente
+            // quando não há estudanteId (linha 54-60 da API)
+          },
+          pageLimit: 1000, // ⚠️ Supabase tem limite HARD de 1000 registros por query
+          resourceName: 'faltas',
+          onProgress: (data, progress) => {
+            // ✅ PROGRESSIVE RENDERING: Atualizar absences conforme carrega
+            setAbsences([...data]);
+          }
+        });
+
+        // ✅ FINAL: Definir todas as faltas e atualizar paginação
+        setAbsences(allAbsences);
+        setPagination({
+          page: 1,
+          limit: allAbsences.length,
+          total: allAbsences.length,
+          totalPages: 1
+        });
+      } else {
+        // Carregamento normal (página única)
+        const params = new URLSearchParams();
+        if (filters?.estudanteId) params.append('estudanteId', filters.estudanteId);
+        if (filters?.bimestre) params.append('bimestre', filters.bimestre);
+        if (filters?.justificada !== undefined) params.append('justificada', filters.justificada.toString());
+        if (filters?.dataInicio) params.append('dataInicio', filters.dataInicio);
+        if (filters?.dataFim) params.append('dataFim', filters.dataFim);
+        if (filters?.turma) params.append('turma', filters.turma);
+        if (filters?.page) params.append('page', filters.page.toString());
+        if (filters?.allowAll) params.append('allowAll', 'true');
+        params.append('limit', (filters?.limit || 250).toString());
+
+        const response = await fetch(`/api/absences?${params.toString()}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('[useAbsences] ❌ Error response:', errorData);
+          throw new Error(errorData.error || 'Erro ao buscar faltas');
+        }
+
+        const data: PaginatedResponse<Absence> = await response.json();
+
+        setAbsences(data.data);
+        setPagination(data.pagination);
       }
-
-      const data: PaginatedResponse<Absence> = await response.json();
-
-      setAbsences(data.data);
-      setPagination(data.pagination);
     } catch (err) {
       console.error('[useAbsences] Error:', err);
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [user, filters?.estudanteId, filters?.bimestre, filters?.justificada, filters?.dataInicio, filters?.dataFim, filters?.turma, filters?.page, filters?.limit]);
+  }, [user, filters?.estudanteId, filters?.bimestre, filters?.justificada, filters?.dataInicio, filters?.dataFim, filters?.turma, filters?.page, filters?.limit, filters?.allowAll]);
 
   useEffect(() => {
     fetchAbsences();

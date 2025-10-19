@@ -79,7 +79,11 @@ export const absenceQuerySchema = z.object({
     .string()
     .optional()
     .transform((val) => (val ? parseInt(val, 10) : 50))
-    .pipe(z.number().min(1).max(1000).default(50)), // ✅ Aumentado para 1000 (melhor performance)
+    .pipe(z.number().min(1).max(50000).default(50)), // ✅ Aumentado para 50000 (suportar relatórios)
+  allowAll: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true'), // ✅ Permitir buscar todas as faltas (dashboard/relatórios)
 });
 
 /**

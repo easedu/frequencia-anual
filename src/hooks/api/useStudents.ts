@@ -35,6 +35,7 @@ export interface StudentFilters {
   turma?: string;
   turno?: 'MANHÃ' | 'TARDE';
   status?: 'ATIVO' | 'INATIVO' | 'TRANSFERIDO';
+  bolsa_familia?: 'SIM' | 'NÃO';
   search?: string;
   page?: number;
   limit?: number;
@@ -97,6 +98,7 @@ export function useStudents(filters?: StudentFilters) {
             turma: filters?.turma,
             turno: filters?.turno,
             status: filters?.status,
+            bolsaFamilia: filters?.bolsa_familia, // ✅ API espera camelCase
             search: filters?.search,
           },
           resourceName: 'estudantes'
@@ -115,6 +117,7 @@ export function useStudents(filters?: StudentFilters) {
         if (filters?.turma) params.append('turma', filters.turma);
         if (filters?.turno) params.append('turno', filters.turno);
         if (filters?.status) params.append('status', filters.status);
+        if (filters?.bolsa_familia) params.append('bolsaFamilia', filters.bolsa_familia); // ✅ API espera camelCase
         if (filters?.search) params.append('search', filters.search);
         if (filters?.page) params.append('page', filters.page.toString());
         if (filters?.limit) params.append('limit', filters.limit.toString());
@@ -144,7 +147,7 @@ export function useStudents(filters?: StudentFilters) {
     } finally {
       setLoading(false);
     }
-  }, [user, filters?.turma, filters?.turno, filters?.status, filters?.search, filters?.page, filters?.limit]);
+  }, [user, filters?.turma, filters?.turno, filters?.status, filters?.bolsa_familia, filters?.search, filters?.page, filters?.limit]);
 
   useEffect(() => {
     fetchStudents();
