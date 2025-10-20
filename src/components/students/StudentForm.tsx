@@ -145,12 +145,14 @@ const ContactField = memo(({
     index,
     form,
     onRemove,
-    canRemove
+    canRemove,
+    editingEstudante
 }: {
     index: number;
     form: UseFormReturn<z.infer<typeof studentCompleteFormSchema>>;
     onRemove: () => void;
     canRemove: boolean;
+    editingEstudante: Estudante | null;
 }) => {
     const [whatsappStatus, setWhatsappStatus] = useState<{
         isVerifying: boolean;
@@ -172,8 +174,24 @@ const ContactField = memo(({
             // Só carregar se tiver telefone válido com 11 dígitos
             if (!cleanPhone || cleanPhone.length !== 11) return;
 
+            // ✅ USAR dados de whatsapp que já vêm do backend (editingEstudante)
+            if (editingEstudante?.contatos?.[index]?.whatsapp) {
+                const whatsappData = editingEstudante.contatos[index].whatsapp;
+
+                // Verificar se tem dados de verificação (verified = true)
+                if (whatsappData.verified) {
+                    setWhatsappStatus({
+                        isVerifying: false,
+                        hasWhatsApp: whatsappData.exists ?? false,
+                        whatsappName: whatsappData.name || undefined,
+                        verified: true
+                    });
+                    return; // Não precisa buscar novamente
+                }
+            }
+
             try {
-                // Buscar número verificado no Supabase
+                // Buscar número verificado no Supabase apenas se não tiver dados
                 const verifiedData = await getVerifiedNumber(cleanPhone);
 
                 if (verifiedData && verifiedData.isVerified) {
@@ -190,7 +208,7 @@ const ContactField = memo(({
         };
 
         loadWhatsAppStatus();
-    }, [form, index]);
+    }, [form, index, editingEstudante]);
 
     // Função para verificar WhatsApp quando telefone for alterado
     const verifyWhatsApp = useCallback(async (phone: string) => {
@@ -475,6 +493,7 @@ ContactField.displayName = 'ContactField';
 
 export const StudentForm = memo(function StudentForm({
     form,
+    editingEstudante,
     handleFormSubmit,
     handleCancel,
     cepChangedManually,
@@ -944,6 +963,7 @@ export const StudentForm = memo(function StudentForm({
                                         form={form}
                                         onRemove={() => removeContact(index)}
                                         canRemove={index > 0}
+                                        editingEstudante={editingEstudante}
                                     />
                                 ))}
 

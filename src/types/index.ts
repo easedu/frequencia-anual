@@ -13,8 +13,7 @@ export interface Contato {
   telefone: string;
   telefoneNumerico?: string; // Telefone sem formatação (apenas dígitos)
   parentesco?: string;
-  podeReceberMensagem?: boolean;
-  podeReceberWhatsapp?: boolean; // Alias para compatibilidade
+  podeReceberMensagem?: boolean; // ✅ Campo PADRÃO (mapeia para can_receive_whatsapp no DB)
   whatsapp?: {
     verified: boolean;
     exists: boolean;

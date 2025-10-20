@@ -284,12 +284,13 @@ export default function CadastrarEstudantePage() {
                     ...data.endereco,
                     cep: data.endereco.cep?.replace(/\D/g, '') || '',
                 } : undefined,
-                contatos: data.contatos?.filter((contato: any) => 
+                contatos: data.contatos?.filter((contato: any) =>
                     contato.nome.trim() || contato.telefone.trim() || contato.parentesco.trim()
                 ).map((contato: any) => ({
                     nome: contato.nome || '',
                     telefone: contato.telefone ? contato.telefone.replace(/\D/g, '') : '',
                     parentesco: contato.parentesco || '',
+                    podeReceberMensagem: contato.podeReceberMensagem ?? true, // ✅ Preservar valor do checkbox
                 })) || [],
                 deficiencia: data.deficiencia ? {
                     estudanteComDeficiencia: data.deficiencia.estudanteComDeficiencia || false,

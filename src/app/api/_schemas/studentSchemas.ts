@@ -11,12 +11,14 @@ import { z } from 'zod';
 // ============================================================================
 
 const contatoSchema = z.object({
+  id: z.string().optional(), // ID do contato (UUID do Supabase)
   nome: z.string().min(1, 'Nome do contato é obrigatório').max(100),
   telefone: z
     .string()
     .regex(/^\d{10,11}$/, 'Telefone deve ter 10 ou 11 dígitos (apenas números)'),
+  telefoneNumerico: z.string().optional(), // Telefone sem formatação
   parentesco: z.string().optional(),
-  podeReceberMensagem: z.boolean().optional(),
+  podeReceberMensagem: z.boolean().optional(), // ✅ Campo PADRÃO do formulário
   whatsapp: z
     .object({
       verified: z.boolean(),
@@ -26,15 +28,17 @@ const contatoSchema = z.object({
       number: z.string().nullable(),
     })
     .optional(),
+  whatsappData: z.any().optional(), // WhatsApp data JSONB
+  whatsapp_data: z.any().optional(), // WhatsApp data JSONB (snake_case)
 });
 
 const enderecoSchema = z.object({
-  rua: z.string().min(1, 'Rua é obrigatória'),
-  numero: z.string().min(1, 'Número é obrigatório'),
-  bairro: z.string().min(1, 'Bairro é obrigatório'),
-  cidade: z.string().min(1, 'Cidade é obrigatória'),
-  estado: z.string().length(2, 'Estado deve ter 2 caracteres (ex: SP)'),
-  cep: z.string().regex(/^\d{8}$/, 'CEP deve ter 8 dígitos (apenas números)'),
+  rua: z.string().optional(),
+  numero: z.string().optional(),
+  bairro: z.string().optional(),
+  cidade: z.string().optional(),
+  estado: z.string().optional(),
+  cep: z.string().optional(),
   complemento: z.string().optional(),
 });
 

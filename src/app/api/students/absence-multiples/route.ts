@@ -449,7 +449,7 @@ async function loadVerifiedWhatsAppContacts(activeStudents: Student[]): Promise<
         if (
           whatsappData?.verified &&
           whatsappData?.exists &&
-          contact.podeReceberWhatsapp !== false
+          contact.podeReceberMensagem !== false // ✅ Campo padronizado
         ) {
           verifiedContacts.push({
             nome: contact.nome || 'Contato não identificado',

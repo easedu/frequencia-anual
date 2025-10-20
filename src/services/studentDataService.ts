@@ -78,8 +78,7 @@ function convertSupabaseContactToLegacy(contact: StudentContact): Contato {
     parentesco: contact.relationship || '',
     telefone: contact.phone || '',
     telefoneNumerico: contact.phone_numeric || undefined,
-    podeReceberWhatsapp: contact.can_receive_whatsapp,
-    podeReceberMensagem: contact.can_receive_whatsapp, // Alias para compatibilidade
+    podeReceberMensagem: contact.can_receive_whatsapp, // ✅ Campo padronizado (type-safe)
     whatsapp: whatsappData.verified ? {
       verified: whatsappData.verified || false,
       exists: whatsappData.exists || false,
@@ -298,7 +297,10 @@ export class StudentDataService {
 
       let query = supabase
         .from('students')
-        .select(includeContacts ? '*, student_contacts(*)' : '*'); // JOIN automático!
+        .select(includeContacts
+          ? '*, student_contacts(id, name, relationship, phone, phone_numeric, email, can_receive_whatsapp, whatsapp_data)'
+          : '*'
+        ); // JOIN com campos explícitos para garantir JSONB
 
       if (!includeDeleted) {
         query = query.eq('deleted', false);
@@ -328,7 +330,11 @@ export class StudentDataService {
 
       const { data, error } = await supabase
         .from('students')
-        .select('*, student_contacts(*), student_absences(*)')
+        .select(`
+          *,
+          student_contacts(id, name, relationship, phone, phone_numeric, email, can_receive_whatsapp, whatsapp_data),
+          student_absences(*)
+        `)
         .eq('student_id', estudanteId)
         .single();
 

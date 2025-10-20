@@ -152,6 +152,10 @@ export const PUT = withAuth(
       const validation = updateStudentSchema.safeParse(body);
 
       if (!validation.success) {
+        console.error('[API PUT /api/students/[id]] Validation failed:', {
+          errors: validation.error.errors,
+          body: JSON.stringify(body, null, 2)
+        });
         return validationErrorResponse(validation.error.errors);
       }
 
@@ -213,21 +217,45 @@ export const PUT = withAuth(
 
       // 7. Atualizar contatos (se fornecidos)
       if (sanitizedData.contatos !== undefined) {
+        // ✅ PRESERVAR whatsappData: Buscar contatos existentes antes de deletar
+        const { data: existingContacts } = (await supabaseAdmin
+          .from('student_contacts')
+          .select('phone, whatsapp_data')
+          .eq('student_id', internalId)) as { data: any[] | null };
+
+        // Criar mapa de whatsappData por telefone
+        const whatsappDataMap = new Map<string, any>();
+        if (existingContacts) {
+          existingContacts.forEach((contact: any) => {
+            if (contact.phone && contact.whatsapp_data) {
+              whatsappDataMap.set(contact.phone, contact.whatsapp_data);
+            }
+          });
+        }
+
         // Deletar contatos existentes (using Internal ID)
         await supabaseAdmin.from('student_contacts').delete().eq('student_id', internalId);
 
         // Inserir novos contatos (using Internal ID)
         if (sanitizedData.contatos.length > 0) {
-          const contactsInsert = sanitizedData.contatos.map((contato: any) => ({
-            student_id: internalId,
-            name: contato.nome,
-            relationship: contato.parentesco || '',
-            phone: contato.telefone,
-            phone_numeric: contato.telefone.replace(/\D/g, ''),
-            can_receive_whatsapp: contato.podeReceberMensagem ?? true,
-            whatsapp_data: contato.whatsapp || {},
-            version: '3.0',
-          }));
+          const contactsInsert = sanitizedData.contatos.map((contato: any) => {
+            // ✅ PADRONIZADO: Usar apenas podeReceberMensagem (campo padrão do formulário)
+            const canReceiveWhatsapp = contato.podeReceberMensagem ?? true;
+
+            // ✅ PRESERVAR whatsappData: Usar dados existentes se telefone não mudou
+            const preservedWhatsappData = whatsappDataMap.get(contato.telefone);
+
+            return {
+              student_id: internalId,
+              name: contato.nome,
+              relationship: contato.parentesco || '',
+              phone: contato.telefone,
+              phone_numeric: contato.telefone.replace(/\D/g, ''),
+              can_receive_whatsapp: canReceiveWhatsapp,
+              whatsapp_data: preservedWhatsappData || {},
+              version: '3.0',
+            };
+          });
 
           const { error: contactsError } = (await supabaseAdmin
             .from('student_contacts')
