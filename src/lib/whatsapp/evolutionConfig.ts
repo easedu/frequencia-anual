@@ -15,6 +15,7 @@ export const evolutionConfig: EvolutionConfig = {
   apiKey: process.env.EVOLUTION_API_KEY || '',
   instanceName: process.env.EVOLUTION_INSTANCE_NAME || 'frequencia-anual',
   timeout: 30000, // 30 segundos
+  delay: 3000,    // 3 segundos
 };
 
 /**

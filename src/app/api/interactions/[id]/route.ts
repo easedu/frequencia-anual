@@ -88,14 +88,25 @@ export const DELETE = withAuth(async (req: NextRequest, userId: string, context?
     const params = await context?.params;
     const id = params?.id;
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+      console.error('[DELETE /api/interactions/[id]] Invalid ID format:', id);
       return errorResponse('INVALID_ID', 'ID inválido', 400);
     }
+
+    console.log('[DELETE /api/interactions/[id]] Attempting to delete interaction with ID:', id);
 
     const { data: existing, error: checkError } = await supabaseAdmin
       .from('family_interactions')
       .select('id, students(student_id)')
       .eq('id', id)
       .single();
+
+    if (checkError) {
+      console.error('[DELETE /api/interactions/[id]] Error finding interaction:', checkError);
+    }
+
+    if (!existing) {
+      console.warn('[DELETE /api/interactions/[id]] Interaction not found in database:', id);
+    }
 
     if (checkError || !existing) return notFoundResponse('Interação', id);
 

@@ -13,6 +13,7 @@ export interface EvolutionConfig {
   apiKey: string;           // API key para autenticação
   instanceName: string;     // Nome da instância WhatsApp
   timeout?: number;         // Timeout em ms (padrão: 30000)
+  delay?: number;           // Delay entre requisições em ms (padrão: 3000)
 }
 
 /**

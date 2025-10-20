@@ -743,6 +743,15 @@ export function useStudentProfile() {
 
   const handleDeleteInteraction = useCallback(async (interactionId: string): Promise<void> => {
     if (!selectedStudentId) return;
+
+    // ✅ Validar se ID é válido antes de deletar
+    if (!interactionId || typeof interactionId !== 'string') {
+      toast.error("ID da interação inválido. Recarregue a página e tente novamente.");
+      logger.error("ID da interação inválido", new Error(`Invalid ID: ${interactionId}`));
+      setShowDeleteDialog(null);
+      return;
+    }
+
     try {
       setIsDeletingInteraction(true);
       setShowDeleteDialog(null); // Fechar modal imediatamente
@@ -759,8 +768,17 @@ export function useStudentProfile() {
 
       toast.success("Interação excluída com sucesso!");
     } catch (error) {
+      const errorMessage = (error as Error).message || '';
       logger.error("Erro ao excluir interação", error as Error);
-      toast.error("Erro ao excluir interação. Tente novamente.");
+
+      // ✅ Feedback mais específico baseado no erro
+      if (errorMessage.includes('NOT_FOUND') || errorMessage.includes('404')) {
+        toast.error("Interação não encontrada. Ela pode já ter sido excluída. Atualizando...");
+        // Recarregar dados mesmo em caso de erro 404
+        await fetchStudentData(selectedStudentId);
+      } else {
+        toast.error("Erro ao excluir interação. Tente novamente.");
+      }
     } finally {
       setIsDeletingInteraction(false);
     }
