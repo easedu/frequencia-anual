@@ -33,6 +33,15 @@ interface FrequencySectionProps {
  * Só re-renderiza quando student ID ou absences mudam.
  */
 export const FrequencySection = memo(function FrequencySection(props: FrequencySectionProps) {
+  console.log('[FrequencySection] Render', {
+    hasStudent: !!props.student,
+    hasStudentRecord: !!props.studentRecord,
+    hasStudentRecordWithoutJustified: !!props.studentRecordWithoutJustified,
+    loadingProfile: props.loadingProfile,
+    studentRecord: props.studentRecord,
+    studentRecordWithoutJustified: props.studentRecordWithoutJustified
+  });
+
   // Se não há estudante selecionado, não renderizar nada
   if (!props.student) {
     return null;
@@ -42,8 +51,11 @@ export const FrequencySection = memo(function FrequencySection(props: FrequencyS
   if (props.loadingProfile) {
     return (
       <div className="space-y-6">
-        <FrequencyCardSkeleton />
-        <FrequencyCardSkeleton />
+        {/* Skeletons lado a lado em desktop */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <FrequencyCardSkeleton />
+          <FrequencyCardSkeleton />
+        </div>
         <FrequencyCardSkeleton />
       </div>
     );
@@ -51,24 +63,25 @@ export const FrequencySection = memo(function FrequencySection(props: FrequencyS
 
   return (
     <div className="space-y-6">
-      {/* Card: Frequência COM faltas justificadas (atestados) */}
-      {props.studentRecord && (
+      {/* Cards de Frequência: SEMPRE visíveis, lado a lado em desktop */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Card: Frequência COM faltas justificadas (atestados) */}
         <FrequencyAllAbsencesCard
           studentRecord={props.studentRecord}
           student={props.student}
         />
-      )}
 
-      {/* Card: Frequência SEM faltas justificadas (visão pedagógica) */}
-      {props.studentRecordWithoutJustified && (
+        {/* Card: Frequência SEM faltas justificadas (visão pedagógica) */}
         <FrequencyNoJustifiedCard
           studentRecord={props.studentRecordWithoutJustified}
           student={props.student}
         />
-      )}
+      </div>
 
       {/* Card: Lista de faltas registradas por bimestre */}
-      {props.absences.length > 0 && (
+      {/* ✅ SEMPRE renderizar (mesmo com 0 faltas) - componente tem mensagem "Nenhuma falta" */}
+      {/* ✅ Renderiza também se houver atestados/suspensões (podem ter faltas justificadas) */}
+      {(props.absences.length > 0 || props.atestados.length > 0 || props.suspensoes.length > 0) && (
         <RegisteredAbsencesCard
           absences={props.absences}
           atestados={props.atestados}

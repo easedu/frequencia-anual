@@ -278,6 +278,141 @@ export function useStudentProfile() {
   const [studentRecord, setStudentRecord] = useState<StudentRecord | null>(null);
   const [studentRecordWithoutJustified, setStudentRecordWithoutJustified] = useState<StudentRecord | null>(null);
 
+  // ✅ CALCULAR studentRecord e studentRecordWithoutJustified quando dados mudam
+  useEffect(() => {
+    console.log('[useStudentProfile] useEffect triggered', {
+      hasStudent: !!student,
+      loadingStudent,
+      loadingAbsences,
+      loadingAbsenceControls,
+      absencesLength: absences?.length,
+      bimesterDatesKeys: Object.keys(bimesterDates).length
+    });
+
+    // ⚠️ CORREÇÃO: Não setar null durante loading (race condition fix)
+    // Só setar null se dados já carregaram mas estudante não existe
+    if (!student && !loadingStudent) {
+      console.log('[useStudentProfile] No student and not loading, setting null');
+      setStudentRecord(null);
+      setStudentRecordWithoutJustified(null);
+      return;
+    }
+
+    // ⚠️ IMPORTANTE: Aguardar todos os dados carregarem antes de calcular
+    if (loadingStudent || loadingAbsences || loadingAbsenceControls) {
+      console.log('[useStudentProfile] Still loading, waiting...');
+      // Não setar null, apenas aguardar
+      return;
+    }
+
+    // ⚠️ Se não há estudante após loading, setar null
+    // IMPORTANTE: absences pode ser array vazio [] (estudante sem faltas) - isso é válido!
+    if (!student || absences === null || absences === undefined || Object.keys(bimesterDates).length === 0) {
+      console.log('[useStudentProfile] Missing data after loading, setting null', {
+        hasStudent: !!student,
+        absencesIsNullOrUndefined: absences === null || absences === undefined,
+        bimesterDatesEmpty: Object.keys(bimesterDates).length === 0
+      });
+      setStudentRecord(null);
+      setStudentRecordWithoutJustified(null);
+      return;
+    }
+
+    console.log('[useStudentProfile] All data ready, calculating records...');
+    const calculateRecords = async () => {
+      const today = new Date();
+      const currentYear = parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || new Date().getFullYear().toString());
+      const startDate = new Date(currentYear, 0, 1); // 1º de janeiro do ano letivo
+
+      // Calcular dias letivos (função assíncrona importada de @/app/utils)
+      const diasLetivosData = await calculateDiasLetivos(
+        startDate.toLocaleDateString("pt-BR"),
+        today.toLocaleDateString("pt-BR")
+      );
+
+    // ============================================
+    // 1. studentRecord (COM faltas justificadas)
+    // ============================================
+    const faltasB1 = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 1).length;
+    const faltasB2 = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 2).length;
+    const faltasB3 = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 3).length;
+    const faltasB4 = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 4).length;
+    const totalFaltas = faltasB1 + faltasB2 + faltasB3 + faltasB4;
+
+    const totalFaltasAteHoje = absences.filter((record) => {
+      const date = parseDate(record.data);
+      return date !== null && date >= startDate && date <= today;
+    }).length;
+
+    const aggregated: StudentRecord = {
+      estudanteId: student.estudanteId,
+      turma: student.turma || "",
+      nome: student.nome || "",
+      faltasB1,
+      faltasB2,
+      faltasB3,
+      faltasB4,
+      totalFaltas,
+      totalFaltasAteHoje,
+      percentualFaltas: diasLetivosData.anual ? Number((totalFaltas / diasLetivosData.anual * 100).toFixed(1)) : 0,
+      percentualFaltasAteHoje: diasLetivosData.ateHoje ? Number((totalFaltasAteHoje / diasLetivosData.ateHoje * 100).toFixed(1)) : 0,
+      percentualFrequencia: diasLetivosData.anual ? Number((100 - (totalFaltas / diasLetivosData.anual * 100)).toFixed(1)) : 100,
+      percentualFrequenciaAteHoje: diasLetivosData.ateHoje ? Number((100 - (totalFaltasAteHoje / diasLetivosData.ateHoje * 100)).toFixed(1)) : 100,
+      diasLetivosAteHoje: diasLetivosData.ateHoje,
+      diasLetivosB1: diasLetivosData.b1,
+      diasLetivosB2: diasLetivosData.b2,
+      diasLetivosB3: diasLetivosData.b3,
+      diasLetivosB4: diasLetivosData.b4,
+      diasLetivosAnual: diasLetivosData.anual,
+    };
+    setStudentRecord(aggregated);
+
+    // ============================================
+    // 2. studentRecordWithoutJustified (SEM faltas justificadas)
+    // ============================================
+    const faltasB1NoJustified = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 1 && !d.justified).length;
+    const faltasB2NoJustified = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 2 && !d.justified).length;
+    const faltasB3NoJustified = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 3 && !d.justified).length;
+    const faltasB4NoJustified = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 4 && !d.justified).length;
+    const totalFaltasNoJustified = faltasB1NoJustified + faltasB2NoJustified + faltasB3NoJustified + faltasB4NoJustified;
+
+    const totalFaltasAteHojeNoJustified = absences.filter((record) => {
+      const date = parseDate(record.data);
+      return date !== null && date >= startDate && date <= today && !record.justified;
+    }).length;
+
+    const aggregatedNoJustified: StudentRecord = {
+      estudanteId: student.estudanteId,
+      turma: student.turma || "",
+      nome: student.nome || "",
+      faltasB1: faltasB1NoJustified,
+      faltasB2: faltasB2NoJustified,
+      faltasB3: faltasB3NoJustified,
+      faltasB4: faltasB4NoJustified,
+      totalFaltas: totalFaltasNoJustified,
+      totalFaltasAteHoje: totalFaltasAteHojeNoJustified,
+      percentualFaltas: diasLetivosData.anual ? Number((totalFaltasNoJustified / diasLetivosData.anual * 100).toFixed(1)) : 0,
+      percentualFaltasAteHoje: diasLetivosData.ateHoje ? Number((totalFaltasAteHojeNoJustified / diasLetivosData.ateHoje * 100).toFixed(1)) : 0,
+      percentualFrequencia: diasLetivosData.anual ? Number((100 - (totalFaltasNoJustified / diasLetivosData.anual * 100)).toFixed(1)) : 100,
+      percentualFrequenciaAteHoje: diasLetivosData.ateHoje ? Number((100 - (totalFaltasAteHojeNoJustified / diasLetivosData.ateHoje * 100)).toFixed(1)) : 100,
+      diasLetivosAteHoje: diasLetivosData.ateHoje,
+      diasLetivosB1: diasLetivosData.b1,
+      diasLetivosB2: diasLetivosData.b2,
+      diasLetivosB3: diasLetivosData.b3,
+      diasLetivosB4: diasLetivosData.b4,
+      diasLetivosAnual: diasLetivosData.anual,
+    };
+    setStudentRecordWithoutJustified(aggregatedNoJustified);
+
+    console.log('[useStudentProfile] Records calculated successfully', {
+      studentRecord: aggregated,
+      studentRecordWithoutJustified: aggregatedNoJustified
+    });
+    };
+
+    calculateRecords();
+  }, [student, absences, bimesterDates, loadingStudent, loadingAbsences, loadingAbsenceControls]);
+
   // 🔄 Auto-refresh de status WhatsApp (polling adaptativo)
   // ✅ REFATORADO: Agora usa refetch externo ao invés de criar useInteractions duplicado
   const interactionsWithLiveStatus = useWhatsAppStatusPolling(interactions, {
