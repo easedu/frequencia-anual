@@ -37,6 +37,8 @@ export default function DashboardDeficiencia() {
     setFiltroEstagiario,
     filtroAve,
     setFiltroAve,
+    filtroTurno,
+    setFiltroTurno,
     filtroTurma,
     setFiltroTurma,
     filtroTabelaEstagiario,
@@ -153,6 +155,8 @@ export default function DashboardDeficiencia() {
         onFiltroEstagiarioChange={setFiltroEstagiario}
         filtroAve={filtroAve}
         onFiltroAveChange={setFiltroAve}
+        filtroTurno={filtroTurno}
+        onFiltroTurnoChange={setFiltroTurno}
       />
 
       {/* Cards de Big Numbers */}

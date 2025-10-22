@@ -1,7 +1,7 @@
 /**
  * DisabilityFilters Component
  *
- * Filtros para o dashboard de deficiência (6 selects + StudentSelector).
+ * Filtros para o dashboard de deficiência (7 selects).
  * Componente presentacional memoizado.
  */
 
@@ -36,6 +36,9 @@ interface DisabilityFiltersProps {
 
   filtroAve: string;
   onFiltroAveChange: (value: string) => void;
+
+  filtroTurno: string;
+  onFiltroTurnoChange: (value: string) => void;
 }
 
 export const DisabilityFilters = memo(function DisabilityFilters({
@@ -52,6 +55,8 @@ export const DisabilityFilters = memo(function DisabilityFilters({
   onFiltroEstagiarioChange,
   filtroAve,
   onFiltroAveChange,
+  filtroTurno,
+  onFiltroTurnoChange,
 }: DisabilityFiltersProps) {
   return (
     <Card className="mb-6">
@@ -166,6 +171,23 @@ export const DisabilityFilters = memo(function DisabilityFilters({
                 <SelectItem value="TODOS">Todos</SelectItem>
                 <SelectItem value="true">Com AVE</SelectItem>
                 <SelectItem value="false">Sem AVE</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Turno */}
+          <div>
+            <Label htmlFor="filtro-turno" className="mb-2 block">
+              Filtrar por Turno
+            </Label>
+            <Select onValueChange={onFiltroTurnoChange} value={filtroTurno}>
+              <SelectTrigger id="filtro-turno">
+                <SelectValue placeholder="Selecione o turno" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODOS">Todos</SelectItem>
+                <SelectItem value="MANHÃ">Manhã</SelectItem>
+                <SelectItem value="TARDE">Tarde</SelectItem>
               </SelectContent>
             </Select>
           </div>

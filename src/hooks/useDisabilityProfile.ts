@@ -92,6 +92,7 @@ export function useDisabilityProfile({ students }: UseDisabilityProfileProps) {
   const [filtroHorario, setFiltroHorario] = useState<string>("TODOS");
   const [filtroEstagiario, setFiltroEstagiario] = useState<string>("TODOS");
   const [filtroAve, setFiltroAve] = useState<string>("TODOS");
+  const [filtroTurno, setFiltroTurno] = useState<string>("TODOS");
   const [filtroTurma, setFiltroTurma] = useState<string | null>(null);
   const [filtroTabelaEstagiario, setFiltroTabelaEstagiario] = useState<string>("");
   const [filtroTabelaAve, setFiltroTabelaAve] = useState<string>("");
@@ -451,6 +452,7 @@ export function useDisabilityProfile({ students }: UseDisabilityProfileProps) {
         (filtroAve === "TODOS" ||
           (filtroAve === "true" && def.ave) ||
           (filtroAve === "false" && !def.ave)) &&
+        (filtroTurno === "TODOS" || student.turno === filtroTurno) &&
         (filtroTurma === null || student.turma === filtroTurma)
       );
     });
@@ -462,6 +464,7 @@ export function useDisabilityProfile({ students }: UseDisabilityProfileProps) {
     filtroHorario,
     filtroEstagiario,
     filtroAve,
+    filtroTurno,
     filtroTurma,
   ]);
 
@@ -648,6 +651,8 @@ export function useDisabilityProfile({ students }: UseDisabilityProfileProps) {
     setFiltroEstagiario,
     filtroAve,
     setFiltroAve,
+    filtroTurno,
+    setFiltroTurno,
     filtroTurma,
     setFiltroTurma,
     filtroTabelaEstagiario,
