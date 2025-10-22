@@ -75,7 +75,10 @@ export default function MonitorarFaltasConsecutivasPage() {
 
   // Hooks da API
   const { academicYearComplete, loading: loadingAcademicYear } = useAcademicYearComplete(2025);
-  const { absences, loading: loadingAbsences } = useAbsences({});
+  const { absences, loading: loadingAbsences } = useAbsences({
+    allowAll: true, // ✅ CRÍTICO: Permitir buscar todas as faltas (análise global)
+    limit: 50000 // Carregar todas as faltas para análise
+  });
   const { createInteraction, loading: creatingInteraction } = useCreateInteraction();
   const { resolvedCases: apiResolvedCases, loading: loadingResolvedCases, refetch: refetchResolvedCases } = useResolvedCases({});
   const { createResolvedCase, loading: creatingResolvedCase } = useCreateResolvedCase();
@@ -267,7 +270,11 @@ export default function MonitorarFaltasConsecutivasPage() {
 
       // Processar faltas
       unjustifiedAbsences.forEach((absence: any) => {
-        if (absence.student_id && absence.absence_date) {
+        // ✅ PRIORIZAR estudanteId (Firebase UUID) que é usado no array de estudantes
+        // student_id é o Internal ID do Supabase (UUID diferente)
+        const studentId = absence.estudanteId || absence.student_id;
+
+        if (studentId && absence.absence_date) {
           // Converter formato ISO para dd/mm/yyyy se necessário
           let dateStr = absence.absence_date;
           if (dateStr.includes('-')) {
@@ -276,8 +283,10 @@ export default function MonitorarFaltasConsecutivasPage() {
           }
 
           // Filtrar apenas faltas em dias letivos
-          if (schoolDayDates.has(dateStr) && absencesByStudent[absence.student_id]) {
-            absencesByStudent[absence.student_id].push(dateStr);
+          if (schoolDayDates.has(dateStr)) {
+            if (absencesByStudent[studentId]) {
+              absencesByStudent[studentId].push(dateStr);
+            }
           }
         }
       });
