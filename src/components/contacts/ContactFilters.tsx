@@ -33,6 +33,8 @@ interface ContactFiltersProps {
   onPhoneTypeChange: (value: string) => void;
   selectedWhatsAppStatus: string;
   onWhatsAppStatusChange: (value: string) => void;
+  selectedStudentWhatsAppFilter: string;
+  onStudentWhatsAppFilterChange: (value: string) => void;
   uniqueTurmas: string[];
 }
 
@@ -51,6 +53,8 @@ export const ContactFilters = memo(function ContactFilters({
   onPhoneTypeChange,
   selectedWhatsAppStatus,
   onWhatsAppStatusChange,
+  selectedStudentWhatsAppFilter,
+  onStudentWhatsAppFilterChange,
   uniqueTurmas,
 }: ContactFiltersProps) {
   return (
@@ -61,7 +65,7 @@ export const ContactFilters = memo(function ContactFilters({
           <h3 className="text-lg font-semibold text-gray-800">Filtros</h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           {/* Busca */}
           <div className="space-y-2">
             <Label className="text-sm font-medium text-gray-700">Buscar</Label>
@@ -134,6 +138,21 @@ export const ContactFilters = memo(function ContactFilters({
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="has-whatsapp">Tem WhatsApp</SelectItem>
                 <SelectItem value="no-whatsapp">Sem WhatsApp</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Filtro de Estudantes com/sem WhatsApp */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">Estudantes</Label>
+            <Select value={selectedStudentWhatsAppFilter} onValueChange={onStudentWhatsAppFilterChange}>
+              <SelectTrigger className="h-10 border-gray-300">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os Estudantes</SelectItem>
+                <SelectItem value="students-with-whatsapp">Com WhatsApp</SelectItem>
+                <SelectItem value="students-without-whatsapp">Sem WhatsApp</SelectItem>
               </SelectContent>
             </Select>
           </div>

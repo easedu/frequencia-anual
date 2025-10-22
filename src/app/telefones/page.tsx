@@ -53,6 +53,8 @@ export default function TelefonesPage() {
     setSelectedPhoneType,
     selectedWhatsAppStatus,
     setSelectedWhatsAppStatus,
+    selectedStudentWhatsAppFilter,
+    setSelectedStudentWhatsAppFilter,
 
     // Modal WhatsApp
     isWhatsAppModalOpen,
@@ -267,6 +269,8 @@ export default function TelefonesPage() {
           verified={stats.verified}
           withWhatsApp={stats.withWhatsApp}
           mobile={stats.mobile}
+          studentsWithWhatsApp={stats.studentsWithWhatsApp}
+          studentsWithoutWhatsApp={stats.studentsWithoutWhatsApp}
         />
 
         {/* Filtros - Componente Extraído */}
@@ -281,6 +285,8 @@ export default function TelefonesPage() {
           onPhoneTypeChange={setSelectedPhoneType}
           selectedWhatsAppStatus={selectedWhatsAppStatus}
           onWhatsAppStatusChange={setSelectedWhatsAppStatus}
+          selectedStudentWhatsAppFilter={selectedStudentWhatsAppFilter}
+          onStudentWhatsAppFilterChange={setSelectedStudentWhatsAppFilter}
           uniqueTurmas={uniqueTurmas}
         />
 
@@ -301,6 +307,7 @@ export default function TelefonesPage() {
                     setSelectedVerificationStatus('all');
                     setSelectedPhoneType('all');
                     setSelectedWhatsAppStatus('all');
+                    setSelectedStudentWhatsAppFilter('all');
                   }}
                   className="text-gray-600"
                 >

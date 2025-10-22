@@ -65,6 +65,7 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
   const [selectedVerificationStatus, setSelectedVerificationStatus] = useState<string>('all');
   const [selectedPhoneType, setSelectedPhoneType] = useState<string>('all');
   const [selectedWhatsAppStatus, setSelectedWhatsAppStatus] = useState<string>('all');
+  const [selectedStudentWhatsAppFilter, setSelectedStudentWhatsAppFilter] = useState<string>('all');
 
   // Modal WhatsApp
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
@@ -222,6 +223,25 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
       filtered = filtered.filter(c => c.whatsAppVerified && c.hasWhatsApp === false);
     }
 
+    // Filtro por estudante com/sem WhatsApp
+    if (selectedStudentWhatsAppFilter === 'students-with-whatsapp') {
+      // Pegar IDs de estudantes que têm pelo menos 1 WhatsApp verificado
+      const studentsWithWhatsApp = new Set(
+        phoneContacts
+          .filter(c => c.hasWhatsApp === true)
+          .map(c => c.estudanteId)
+      );
+      filtered = filtered.filter(c => studentsWithWhatsApp.has(c.estudanteId));
+    } else if (selectedStudentWhatsAppFilter === 'students-without-whatsapp') {
+      // Pegar IDs de estudantes que NÃO têm nenhum WhatsApp verificado
+      const studentsWithWhatsApp = new Set(
+        phoneContacts
+          .filter(c => c.hasWhatsApp === true)
+          .map(c => c.estudanteId)
+      );
+      filtered = filtered.filter(c => !studentsWithWhatsApp.has(c.estudanteId));
+    }
+
     return filtered.sort((a, b) => {
       const matchA = a.turma.match(/(\d+)([A-Z]+)/);
       const matchB = b.turma.match(/(\d+)([A-Z]+)/);
@@ -239,7 +259,7 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
 
       return a.estudanteNome.localeCompare(b.estudanteNome);
     });
-  }, [phoneContacts, debouncedSearchTerm, selectedTurma, selectedVerificationStatus, selectedPhoneType, selectedWhatsAppStatus]);
+  }, [phoneContacts, debouncedSearchTerm, selectedTurma, selectedVerificationStatus, selectedPhoneType, selectedWhatsAppStatus, selectedStudentWhatsAppFilter]);
 
   // ──────────────────────────────────────────────────────────────
   // Estatísticas
@@ -251,8 +271,25 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
     const withWhatsApp = filteredPhones.filter(c => c.hasWhatsApp).length;
     const mobile = filteredPhones.filter(c => c.telefone.length === 11).length;
 
-    return { total, verified, withWhatsApp, mobile };
-  }, [filteredPhones]);
+    // Calcular estudantes únicos com/sem WhatsApp
+    const studentsWithWhatsApp = new Set(
+      phoneContacts
+        .filter(c => c.hasWhatsApp === true)
+        .map(c => c.estudanteId)
+    );
+
+    const allStudents = new Set(phoneContacts.map(c => c.estudanteId));
+    const studentsWithoutWhatsApp = allStudents.size - studentsWithWhatsApp.size;
+
+    return {
+      total,
+      verified,
+      withWhatsApp,
+      mobile,
+      studentsWithWhatsApp: studentsWithWhatsApp.size,
+      studentsWithoutWhatsApp
+    };
+  }, [filteredPhones, phoneContacts]);
 
   // ──────────────────────────────────────────────────────────────
   // Helpers
@@ -541,6 +578,8 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
     setSelectedPhoneType,
     selectedWhatsAppStatus,
     setSelectedWhatsAppStatus,
+    selectedStudentWhatsAppFilter,
+    setSelectedStudentWhatsAppFilter,
 
     // Modal WhatsApp
     isWhatsAppModalOpen,
