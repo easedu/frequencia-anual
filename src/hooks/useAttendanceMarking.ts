@@ -116,10 +116,20 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
         const todayTimestamp = today.getTime();
         const filteredDates = sortedDates.filter((d) => d.timestamp <= todayTimestamp);
 
-        if (role === "user") {
-            return filteredDates.slice(-5).map((d) => d.date);
+        // Para user e super-user: mostrar todos os dias letivos do mês corrente
+        if (role === "user" || role === "super-user") {
+            const currentMonth = today.getMonth();
+            const currentYear = today.getFullYear();
+
+            return filteredDates
+                .filter((d) => {
+                    const date = new Date(d.timestamp);
+                    return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+                })
+                .map((d) => d.date);
         }
 
+        // Admin: mostrar todos os dias letivos até hoje
         return filteredDates.map((d) => d.date);
     }, []);
 
