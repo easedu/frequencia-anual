@@ -139,7 +139,7 @@ const SearchByClassCard = memo(function SearchByClassCard({
                             <div className="relative">
                                 <Select
                                     onValueChange={onStudentChange}
-                                    value={selectedStudentId}
+                                    key={`${selectedTurma}-${selectedStudentId}`}
                                     disabled={!selectedTurma || isDisabled}
                                 >
                                     <SelectTrigger
@@ -154,8 +154,8 @@ const SearchByClassCard = memo(function SearchByClassCard({
                                     <SelectContent className="max-h-60">
                                         {studentsInTurma.map((student: Student) => (
                                             <SelectItem
-                                                key={student.id || student.estudanteId}
-                                                value={student.id || student.estudanteId}
+                                                key={student.estudanteId}
+                                                value={student.estudanteId}
                                                 className="cursor-pointer hover:bg-teal-50 focus:bg-teal-50 py-2"
                                             >
                                                 <div className="flex items-center gap-2">

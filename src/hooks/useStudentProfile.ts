@@ -104,6 +104,7 @@ export function useStudentProfile() {
   const debouncedSearchName = useDebounce(searchName, 300);
   const [suggestions, setSuggestions] = useState<Student[]>([]);
   const isSelectingStudent = useRef(false);
+  const lastSelectedIdRef = useRef<string>('');
 
   // Map API students para formato esperado
   const allStudents = useMemo(() => {
@@ -629,31 +630,45 @@ export function useStudentProfile() {
 
   const handleSelectStudent = useCallback(
     (studentId: string) => {
-      isSelectingStudent.current = true;
-
-      // ✅ NORMALIZAR: Se recebeu Internal ID, converter para Firebase UUID
+      // ✅ NORMALIZAR PRIMEIRO: Se recebeu Internal ID, converter para Firebase UUID
       const student = allStudents.find((s: any) =>
         s.id === studentId || s.estudanteId === studentId
       );
 
       const normalizedId = student?.estudanteId || studentId;
 
+      // ✅ GUARD 1: Evitar re-seleção do mesmo estudante (usar normalizedId!)
+      if (normalizedId === selectedStudentId) {
+        return;
+      }
+
+      // ✅ GUARD 2: Evitar chamada duplicada imediata (verificar contra lastSelectedIdRef)
+      if (normalizedId === lastSelectedIdRef.current) {
+        return;
+      }
+
+      // ✅ GUARD 3: Evitar chamadas múltiplas enquanto ainda está selecionando
+      if (isSelectingStudent.current) {
+        return;
+      }
+
+      isSelectingStudent.current = true;
+      lastSelectedIdRef.current = normalizedId;
+
       setSelectedStudentId(normalizedId);
       setSearchName("");
       setSuggestions([]);
       fetchStudentData(normalizedId);
 
-      // ✅ Limpar campos de seleção por turma após carregar o perfil
-      setTimeout(() => {
-        setSelectedTurma("");
-      }, 500); // Delay para permitir visualização do loading
+      // ✅ NÃO limpar selectedTurma - causa re-mount do Select e comportamento estranho
+      // O usuário pode querer selecionar outro estudante da mesma turma
 
       // Reset selecting flag after a short delay
       setTimeout(() => {
         isSelectingStudent.current = false;
-      }, 100);
+      }, 1000);
     },
-    [fetchStudentData, allStudents]
+    [fetchStudentData, allStudents, selectedStudentId]
   );
 
   // ═══════════════════════════════════════════════════════════
