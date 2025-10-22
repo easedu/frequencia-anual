@@ -31,7 +31,7 @@ const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studen
             </CardHeader>
 
             <CardContent className="p-4">
-                {record && (
+                {record ? (
                     <div className="space-y-4">
                         {/* Resumo Compacto */}
                         <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-4 border border-emerald-100">
@@ -175,6 +175,11 @@ const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studen
                                 </p>
                             </div>
                         </div>
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                        <UserCheck className="w-12 h-12 mb-3 opacity-50" />
+                        <p className="text-sm font-medium">Selecione um estudante para visualizar a frequência</p>
                     </div>
                 )}
             </CardContent>

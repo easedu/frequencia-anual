@@ -28,7 +28,7 @@ const FrequencyAllAbsencesCard = memo(function FrequencyAllAbsencesCard({ studen
             </CardHeader>
 
             <CardContent className="p-4">
-                {studentRecord && (
+                {studentRecord ? (
                     <div className="space-y-4">
                         {/* Resumo Compacto */}
                         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-100">
@@ -172,6 +172,11 @@ const FrequencyAllAbsencesCard = memo(function FrequencyAllAbsencesCard({ studen
                                 </p>
                             </div>
                         </div>
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                        <Calendar className="w-12 h-12 mb-3 opacity-50" />
+                        <p className="text-sm font-medium">Selecione um estudante para visualizar a frequência</p>
                     </div>
                 )}
             </CardContent>

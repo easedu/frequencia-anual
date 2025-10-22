@@ -33,15 +33,6 @@ interface FrequencySectionProps {
  * Só re-renderiza quando student ID ou absences mudam.
  */
 export const FrequencySection = memo(function FrequencySection(props: FrequencySectionProps) {
-  console.log('[FrequencySection] Render', {
-    hasStudent: !!props.student,
-    hasStudentRecord: !!props.studentRecord,
-    hasStudentRecordWithoutJustified: !!props.studentRecordWithoutJustified,
-    loadingProfile: props.loadingProfile,
-    studentRecord: props.studentRecord,
-    studentRecordWithoutJustified: props.studentRecordWithoutJustified
-  });
-
   // Se não há estudante selecionado, não renderizar nada
   if (!props.student) {
     return null;
@@ -95,10 +86,14 @@ export const FrequencySection = memo(function FrequencySection(props: FrequencyS
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison: só re-renderizar se mudar estudante ou faltas
-  return (
+  // Custom comparison: só re-renderizar se mudar estudante, faltas ou studentRecord
+  const shouldNotUpdate = (
     prevProps.student?.estudanteId === nextProps.student?.estudanteId &&
     prevProps.absences.length === nextProps.absences.length &&
-    prevProps.loadingProfile === nextProps.loadingProfile
+    prevProps.loadingProfile === nextProps.loadingProfile &&
+    prevProps.studentRecord === nextProps.studentRecord &&
+    prevProps.studentRecordWithoutJustified === nextProps.studentRecordWithoutJustified
   );
+
+  return shouldNotUpdate;
 });

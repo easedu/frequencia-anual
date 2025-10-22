@@ -280,19 +280,9 @@ export function useStudentProfile() {
 
   // ✅ CALCULAR studentRecord e studentRecordWithoutJustified quando dados mudam
   useEffect(() => {
-    console.log('[useStudentProfile] useEffect triggered', {
-      hasStudent: !!student,
-      loadingStudent,
-      loadingAbsences,
-      loadingAbsenceControls,
-      absencesLength: absences?.length,
-      bimesterDatesKeys: Object.keys(bimesterDates).length
-    });
-
     // ⚠️ CORREÇÃO: Não setar null durante loading (race condition fix)
     // Só setar null se dados já carregaram mas estudante não existe
     if (!student && !loadingStudent) {
-      console.log('[useStudentProfile] No student and not loading, setting null');
       setStudentRecord(null);
       setStudentRecordWithoutJustified(null);
       return;
@@ -300,7 +290,6 @@ export function useStudentProfile() {
 
     // ⚠️ IMPORTANTE: Aguardar todos os dados carregarem antes de calcular
     if (loadingStudent || loadingAbsences || loadingAbsenceControls) {
-      console.log('[useStudentProfile] Still loading, waiting...');
       // Não setar null, apenas aguardar
       return;
     }
@@ -308,17 +297,11 @@ export function useStudentProfile() {
     // ⚠️ Se não há estudante após loading, setar null
     // IMPORTANTE: absences pode ser array vazio [] (estudante sem faltas) - isso é válido!
     if (!student || absences === null || absences === undefined || Object.keys(bimesterDates).length === 0) {
-      console.log('[useStudentProfile] Missing data after loading, setting null', {
-        hasStudent: !!student,
-        absencesIsNullOrUndefined: absences === null || absences === undefined,
-        bimesterDatesEmpty: Object.keys(bimesterDates).length === 0
-      });
       setStudentRecord(null);
       setStudentRecordWithoutJustified(null);
       return;
     }
 
-    console.log('[useStudentProfile] All data ready, calculating records...');
     const calculateRecords = async () => {
       const today = new Date();
       const currentYear = parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || new Date().getFullYear().toString());
@@ -403,11 +386,6 @@ export function useStudentProfile() {
       diasLetivosAnual: diasLetivosData.anual,
     };
     setStudentRecordWithoutJustified(aggregatedNoJustified);
-
-    console.log('[useStudentProfile] Records calculated successfully', {
-      studentRecord: aggregated,
-      studentRecordWithoutJustified: aggregatedNoJustified
-    });
     };
 
     calculateRecords();
