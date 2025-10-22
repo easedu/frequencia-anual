@@ -5,7 +5,7 @@
  * Substitui: Firebase Admin collection 'automationExecutions'
  */
 
-import { supabase } from '@/lib/supabaseClient';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { logger } from '@/utils/logger';
 
 /**
@@ -121,7 +121,7 @@ export class AutomationExecutionService {
         notification_phone: data.notificationPhone || null,
       };
 
-      const { data: execution, error } = await ((supabase
+      const { data: execution, error } = await ((supabaseAdmin
         .from('automation_executions') as any)
         .insert(insertData)
         .select()
@@ -147,7 +147,7 @@ export class AutomationExecutionService {
    */
   static async getExecutionById(executionId: string): Promise<AutomationExecution | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('automation_executions')
         .select('*')
         .eq('id', executionId)
@@ -178,7 +178,7 @@ export class AutomationExecutionService {
         updateData.completed_at = new Date().toISOString();
       }
 
-      const { error } = await (supabase
+      const { error } = await (supabaseAdmin
         .from('automation_executions') as any)
         .update(updateData)
         .eq('id', executionId);
@@ -205,7 +205,7 @@ export class AutomationExecutionService {
     checkpoint: UpdateCheckpointData
   ): Promise<boolean> {
     try {
-      const { error } = await (supabase
+      const { error } = await (supabaseAdmin
         .from('automation_executions') as any)
         .update({
           processed_students: checkpoint.processedStudents,
@@ -234,7 +234,7 @@ export class AutomationExecutionService {
    */
   static async updateError(executionId: string, errorMessage: string): Promise<boolean> {
     try {
-      const { error } = await (supabase
+      const { error } = await (supabaseAdmin
         .from('automation_executions') as any)
         .update({
           status: 'FAILED' as ExecutionStatus,
@@ -262,7 +262,7 @@ export class AutomationExecutionService {
    */
   static async getRecentExecutions(limit: number = 10): Promise<AutomationExecution[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('automation_executions')
         .select('*')
         .order('created_at', { ascending: false })
@@ -282,7 +282,7 @@ export class AutomationExecutionService {
    */
   static async getExecutionsByStatus(status: ExecutionStatus): Promise<AutomationExecution[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('automation_executions')
         .select('*')
         .eq('status', status)
@@ -302,7 +302,7 @@ export class AutomationExecutionService {
    */
   static async getLastRunningExecution(): Promise<AutomationExecution | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('automation_executions')
         .select('*')
         .eq('status', 'RUNNING')
@@ -330,7 +330,7 @@ export class AutomationExecutionService {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-      const { data, error } = await ((supabase
+      const { data, error } = await ((supabaseAdmin
         .from('automation_executions') as any)
         .delete()
         .lt('created_at', cutoffDate.toISOString())

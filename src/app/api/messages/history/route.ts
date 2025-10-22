@@ -89,23 +89,23 @@ export async function GET(request: NextRequest) {
 
     // Aplicar filtros
     if (filters.estudante_id) {
-      query = query.eq('estudante_id', filters.estudante_id)
+      query = query.eq('student_id', filters.estudante_id)
     }
 
     if (filters.contato_telefone) {
-      query = query.eq('contato_telefone', filters.contato_telefone)
+      query = query.eq('contact_phone', filters.contato_telefone)
     }
 
     if (filters.ano_referencia) {
-      query = query.eq('ano_referencia', parseInt(filters.ano_referencia))
+      query = query.eq('reference_year', parseInt(filters.ano_referencia))
     }
 
     if (filters.mes_referencia) {
-      query = query.eq('mes_referencia', parseInt(filters.mes_referencia))
+      query = query.eq('reference_month', parseInt(filters.mes_referencia))
     }
 
     if (filters.quantidade_faltas) {
-      query = query.eq('quantidade_faltas', parseInt(filters.quantidade_faltas))
+      query = query.eq('absence_count', parseInt(filters.quantidade_faltas))
     }
 
     if (filters.status) {
@@ -113,13 +113,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (filters.is_dry_run) {
-      query = query.eq('is_dry_run', filters.is_dry_run === 'true')
+      query = query.eq('dry_run', filters.is_dry_run === 'true')
     }
 
     // Aplicar paginação e ordenação
     query = query
       .range(offset, offset + limit - 1)
-      .order('data_primeiro_envio', { ascending: false })
+      .order('sent_at', { ascending: false })
 
     const { data, error, count } = await query
 
@@ -188,11 +188,11 @@ export async function POST(request: NextRequest) {
     const { data: existing, error: searchError } = await supabaseAdmin
       .from('whatsapp_message_history')
       .select('id')
-      .eq('estudante_id', validated.estudante_id)
-      .eq('contato_telefone', validated.contato_telefone)
-      .eq('ano_referencia', validated.ano_referencia)
-      .eq('mes_referencia', validated.mes_referencia)
-      .eq('quantidade_faltas', validated.quantidade_faltas)
+      .eq('student_id', validated.estudante_id)
+      .eq('contact_phone', validated.contato_telefone)
+      .eq('reference_year', validated.ano_referencia)
+      .eq('reference_month', validated.mes_referencia)
+      .eq('absence_count', validated.quantidade_faltas)
       .maybeSingle()
 
     if (searchError) {
@@ -211,24 +211,20 @@ export async function POST(request: NextRequest) {
       return errorResponse('Mensagem já foi registrada para esta combinação', 409)
     }
 
-    // Criar registro no Supabase
+    // ✅ Criar registro no Supabase com nomes corretos das colunas
     const { data, error } = await supabaseAdmin
       .from('whatsapp_message_history')
       .insert({
-        estudante_id: validated.estudante_id,
-        contato_telefone: validated.contato_telefone,
-        ano_referencia: validated.ano_referencia,
-        mes_referencia: validated.mes_referencia,
-        quantidade_faltas: validated.quantidade_faltas,
-        estudante_nome: validated.estudante_nome,
-        contato_nome: validated.contato_nome,
-        task_id: validated.task_id || null,
-        status: validated.status,
+        student_id: validated.estudante_id,
+        contact_name: validated.contato_nome,
+        contact_phone: validated.contato_telefone,
+        absence_count: validated.quantidade_faltas,
+        reference_year: validated.ano_referencia,
+        reference_month: validated.mes_referencia,
         message_id: validated.message_id || null,
-        sent_at: validated.sent_at || null,
-        retry_count: validated.retry_count || 0,
-        is_dry_run: validated.is_dry_run || false,
-        data_primeiro_envio: new Date().toISOString(),
+        status: validated.status,
+        sent_at: validated.sent_at ? new Date(validated.sent_at).toISOString() : null,
+        dry_run: validated.is_dry_run || false,
       } as any)
       .select()
       .single()

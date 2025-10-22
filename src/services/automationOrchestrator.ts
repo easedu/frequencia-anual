@@ -19,6 +19,7 @@ import {
 import { WhatsAppRetryService } from './whatsappRetryService';
 import { MessageHistoryService } from './messageHistoryService';
 import { generateAbsenceAlertMessage } from '@/utils/messageTemplates';
+import { logger } from '@/utils/logger';
 
 const DELAY_BETWEEN_STUDENTS_MS = 2000; // 2s entre estudantes
 const DELAY_BETWEEN_MESSAGES_MS = 5000; // 5s entre mensagens (rate limiting)
@@ -45,9 +46,9 @@ async function fetchStudentsWithAbsences(
   multiple: number
 ): Promise<Student[]> {
   try {
-    const apiUrl = process.env.BASE_URL_API_HABIB_KYRILLOS || '';
-    const apiUser = process.env.API_USER || '';
-    const apiPassword = process.env.API_PASSWORD || '';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || '';
+    const apiUser = process.env.API_HABIB_KYRILLOS_USERNAME || '';
+    const apiPassword = process.env.API_HABIB_KYRILLOS_PASSWORD || '';
 
     if (!apiUrl || !apiUser || !apiPassword) {
       throw new Error('API credentials not configured');
@@ -55,8 +56,12 @@ async function fetchStudentsWithAbsences(
 
     const basicAuth = Buffer.from(`${apiUser}:${apiPassword}`).toString('base64');
 
+    // Obter mês de referência (mês atual)
+    const now = new Date();
+    const referenceMonth = now.getMonth() + 1; // 1-12
+
     const response = await fetch(
-      `${apiUrl}/api/students/absence-multiples?multiple=${multiple}`,
+      `${apiUrl}/api/students/absence-multiples?absenceMultiple=${multiple}&referenceMonth=${referenceMonth}`,
       {
         headers: {
           'Authorization': `Basic ${basicAuth}`,
@@ -70,7 +75,7 @@ async function fetchStudentsWithAbsences(
     }
 
     const data = await response.json();
-    return data.students || [];
+    return data.data || [];
   } catch (error) {
     console.error('Error fetching students:', error);
     throw error;
@@ -92,12 +97,14 @@ async function processStudentAbsences(
     errors: []
   };
 
-  const hasContacts = student.contatos && student.contatos.length > 0;
+  // ✅ CORREÇÃO: API retorna 'verifiedWhatsAppContacts' não 'contatos'
+  const contacts = (student as any).verifiedWhatsAppContacts || student.contatos || [];
+  const hasContacts = contacts && contacts.length > 0;
 
   // 1. SE TEM CONTATOS: Enviar mensagens
   if (hasContacts) {
-    for (let i = 0; i < student.contatos!.length; i++) {
-      const contato = student.contatos![i];
+    for (let i = 0; i < contacts.length; i++) {
+      const contato = contacts[i];
       const phone = contato.telefone?.replace(/\D/g, '');
 
       // Validar telefone WhatsApp (celular brasileiro: 11 dígitos)
@@ -189,7 +196,7 @@ async function processStudentAbsences(
         }
 
         // Rate limiting entre mensagens
-        if (i < student.contatos!.length - 1) {
+        if (i < contacts.length - 1) {
           await sleep(DELAY_BETWEEN_MESSAGES_MS);
         }
 
@@ -238,6 +245,29 @@ async function processStudentAbsences(
 }
 
 /**
+ * Resolver Firebase UUID para Internal ID do Supabase
+ */
+async function resolveStudentInternalId(firebaseUUID: string, authorization: string): Promise<string | null> {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || 'http://localhost:3000';
+
+    const response = await fetch(`${apiUrl}/api/students?estudanteId=${firebaseUUID}`, {
+      headers: { 'Authorization': authorization }
+    });
+
+    if (!response.ok) return null;
+
+    const result = await response.json();
+    const student = result.data?.[0];
+
+    return student?.id || null; // Internal ID
+  } catch (error) {
+    logger.error('[AutomationOrchestrator] Erro ao resolver Internal ID', error as Error);
+    return null;
+  }
+}
+
+/**
  * Criar tarefa FECHADA (resolvida) - para mensagens enviadas com sucesso
  */
 async function createTaskClosed(params: {
@@ -250,22 +280,23 @@ async function createTaskClosed(params: {
   authorization: string;
 }): Promise<{ success: boolean; taskId: string; error?: string }> {
   try {
-    const apiUrl = process.env.BASE_URL_API_HABIB_KYRILLOS || '';
+    // ✅ CRÍTICO: Resolver Firebase UUID → Internal ID do Supabase
+    const internalId = await resolveStudentInternalId(params.estudanteId, params.authorization);
 
+    if (!internalId) {
+      throw new Error(`Estudante não encontrado no Supabase: ${params.estudanteId}`);
+    }
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || 'http://localhost:3000';
+
+    // ✅ CORREÇÃO: Usar Internal ID (não Firebase UUID!)
     const taskData = {
-      estudante_id: params.estudanteId,
-      absences_count: params.absencesCount,
-      reference_month: params.referenceMonth,
-      reference_year: params.referenceYear,
-      created_at: new Date().toISOString(),
+      student_id: internalId,  // ✅ Internal ID do Supabase
+      title: `Alerta de ${params.absencesCount} faltas - ${params.referenceMonth}/${params.referenceYear}`,
+      description: params.actionDescription,
       action_taken: 'Contato digital',
       is_resolved: true,
-      priority: 2,
       created_by: 'AUTOMAÇÃO',
-      solved_by: 'AUTOMAÇÃO',
-      processed_at: new Date().toISOString(),
-      action_description: params.actionDescription,
-      whatsapp_phone: params.whatsappPhone
     };
 
     const response = await fetch(`${apiUrl}/api/tasks`, {
@@ -308,19 +339,24 @@ async function createTaskOpen(params: {
   authorization: string;
 }): Promise<{ success: boolean; taskId: string; error?: string }> {
   try {
-    const apiUrl = process.env.BASE_URL_API_HABIB_KYRILLOS || '';
+    // ✅ CRÍTICO: Resolver Firebase UUID → Internal ID do Supabase
+    const internalId = await resolveStudentInternalId(params.estudanteId, params.authorization);
 
+    if (!internalId) {
+      throw new Error(`Estudante não encontrado no Supabase: ${params.estudanteId}`);
+    }
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || 'http://localhost:3000';
+
+    // ✅ CORREÇÃO: Usar Internal ID (não Firebase UUID!)
     const taskData = {
-      estudante_id: params.estudanteId,
-      absences_count: params.absencesCount,
-      reference_month: params.referenceMonth,
-      reference_year: params.referenceYear,
-      created_at: new Date().toISOString(),
-      action_taken: 'Pendente',
+      student_id: internalId,  // ✅ Internal ID do Supabase
+      title: `⚠️ ${params.absencesCount} faltas SEM CONTATO - ${params.referenceMonth}/${params.referenceYear}`,
+      description: params.actionDescription,
+      recommended_action: 'Contato telefônico ou busca ativa - Estudante sem contato WhatsApp',
+      action_taken: null,
       is_resolved: false,
-      priority: 2,
       created_by: 'AUTOMAÇÃO',
-      action_description: params.actionDescription
     };
 
     const response = await fetch(`${apiUrl}/api/tasks`, {

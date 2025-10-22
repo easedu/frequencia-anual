@@ -1,7 +1,7 @@
 import type { WhatsAppSendResult } from '@/types';
 import { logger } from '@/utils/logger';
 
-const WHATSAPP_API_URL = process.env.BASE_URL_API_HABIB_KYRILLOS || '';
+const WHATSAPP_API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || 'http://localhost:3000';
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 5000; // 5 segundos
 
@@ -46,7 +46,7 @@ export class WhatsAppRetryService {
       try {
         logger.info(`[WhatsAppRetry] Tentativa ${attempt}/${MAX_RETRIES}`, { phone });
 
-        const response = await fetch(`${WHATSAPP_API_URL}/whatsapp/send-message`, {
+        const response = await fetch(`${WHATSAPP_API_URL}/api/evolution/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone, message })
@@ -54,24 +54,26 @@ export class WhatsAppRetryService {
 
         const data = await response.json();
 
-        if (data.success && data.data?.status === 'sent') {
+        // ✅ Sucesso: API retornou success=true
+        if (data.success && data.data?.messageId) {
           logger.info(`[WhatsAppRetry] ✅ Sucesso na tentativa ${attempt}`, {
             phone,
-            messageId: data.data.messageId
+            messageId: data.data.messageId,
+            status: data.data.status
           });
 
           return {
             success: true,
             messageId: data.data.messageId,
             phone,
-            status: 'sent',
-            sentAt: data.data.sentAt,
+            status: data.data.status || 'sent',
+            sentAt: data.data.sentAt || Date.now(),
             retryCount: attempt - 1 // Quantas retries até sucesso
           };
         }
 
         // Falha da API (ex: número sem WhatsApp)
-        lastError = data.message || 'Erro desconhecido';
+        lastError = data.error || data.message || 'Erro desconhecido';
         logger.warn(`[WhatsAppRetry] ⚠️ Falha na tentativa ${attempt}: ${lastError}`, { phone });
 
         // Se não tem WhatsApp, não adianta tentar de novo

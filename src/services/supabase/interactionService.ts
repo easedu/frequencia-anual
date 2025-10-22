@@ -1,6 +1,15 @@
 /**
  * Supabase Service: Family Interactions (Interações Familiares)
  *
+ * @deprecated Use hooks from @/hooks/api/useInteractions instead
+ *
+ * Este service está sendo gradualmente substituído por hooks da API REST.
+ * Para componentes React, use:
+ * - useInteractions() - Listar interações
+ * - useCreateInteraction() - Criar interação
+ * - useUpdateInteraction() - Atualizar interação
+ * - useDeleteInteraction() - Deletar interação
+ *
  * Este serviço gerencia as interações com as famílias dos estudantes
  * (contatos telefônicos, visitas, reuniões, etc.)
  */
@@ -8,6 +17,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 import type { FamilyInteraction, WhatsAppMessageStatus } from '@/types';
+import { getAuthHeaders } from '@/utils/authToken';
 
 interface SupabaseInteraction {
   id: string;
@@ -130,40 +140,43 @@ export class InteractionService {
         return [];
       }
 
-      // 🔧 FIX: Buscar ID interno do Supabase a partir do Firebase UUID
-      const { data: student, error: studentError } = await (supabase
-        .from('students')
-        .select('id')
-        .eq('student_id', firebaseStudentId)
-        .single() as any);
+      // ✅ Usar API REST ao invés de Supabase direto
+      const headers = await getAuthHeaders();
 
-      if (studentError || !student) {
-        logger.error('Estudante não encontrado', { firebaseStudentId }, studentError as Error);
-        return [];
+      const response = await fetch(`/api/interactions?estudanteId=${firebaseStudentId}`, {
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
       }
 
-      // 🐛 DEBUG: Log do ID interno para diagnóstico
-      logger.debug('getStudentInteractions - ID interno encontrado', {
-        firebaseStudentId,
-        internalId: student.id,
-        studentData: student
-      });
+      const result = await response.json();
 
-      const { data, error } = await supabase
-        .from('family_interactions')
-        .select('*')
-        .eq('student_id', student.id)  // ✅ Usar ID interno do Supabase (sem casting)
-        .order('interaction_date', { ascending: false });
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao buscar interações');
+      }
 
-      if (error) throw error;
-
-      // ✅ FIX: Mapear e substituir studentId interno pelo Firebase UUID
-      return (data || []).map(record => {
-        const interaction = this.mapSupabaseToInteraction(record);
-        // Substituir ID interno pelo Firebase UUID
-        interaction.studentId = firebaseStudentId;
-        return interaction;
-      });
+      // Converter do formato API para formato FamilyInteraction
+      return (result.data || []).map((interaction: any) => ({
+        id: interaction.id,
+        studentId: interaction.studentId,
+        type: interaction.type,
+        date: interaction.date,
+        description: interaction.description,
+        createdBy: interaction.createdBy,
+        sensitive: interaction.sensitive,
+        whatsappMessage: interaction.whatsappMessage,
+        whatsappPhones: interaction.whatsappPhones,
+        whatsappMessageId: interaction.whatsappMessageId,
+        whatsappStatus: interaction.whatsappStatus as WhatsAppMessageStatus | undefined,
+        whatsappStatusHistory: interaction.whatsappStatusHistory,
+        whatsappSentAt: interaction.whatsappSentAt,
+        whatsappDeliveredAt: interaction.whatsappDeliveredAt,
+        whatsappReadAt: interaction.whatsappReadAt,
+        whatsappPlayedAt: interaction.whatsappPlayedAt,
+        whatsappUpdatedAt: interaction.whatsappUpdatedAt,
+      }));
     } catch (error) {
       logger.error('Erro ao buscar interações do estudante', { firebaseStudentId }, error as Error);
       return [];
@@ -178,33 +191,54 @@ export class InteractionService {
     interaction: Omit<FamilyInteraction, 'id'>
   ): Promise<FamilyInteraction> {
     try {
-      // 🔧 FIX: Buscar ID interno do Supabase a partir do Firebase UUID
-      const { data: student, error: studentError } = await (supabase
-        .from('students')
-        .select('id')
-        .eq('student_id', firebaseStudentId)
-        .single() as any);
+      // ✅ Usar API REST ao invés de Supabase direto
+      const headers = await getAuthHeaders();
 
-      if (studentError || !student) {
-        throw new Error(`Estudante não encontrado: ${firebaseStudentId}`);
+      const response = await fetch('/api/interactions', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          estudanteId: firebaseStudentId, // Firebase UUID (a API resolve internamente)
+          data: interaction.date,
+          tipo: interaction.type,
+          descricao: interaction.description,
+          criadoPor: interaction.createdBy,
+          whatsapp_message: interaction.whatsappMessage,
+          whatsapp_phones: interaction.whatsappPhones,
+          whatsapp_message_id: interaction.whatsappMessageId,
+          whatsapp_status: interaction.whatsappStatus,
+          whatsapp_sent_at: interaction.whatsappSentAt,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `API returned ${response.status}`);
       }
 
-      // Substituir o Firebase UUID pelo ID interno do Supabase
-      const insertData = {
-        ...this.mapInteractionToSupabase(interaction),
-        student_id: student.id  // ✅ Usar ID interno do Supabase (sem casting)
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Erro ao criar interação');
+      }
+
+      logger.info('Interação criada com sucesso via API', { interactionId: result.data?.id });
+
+      // Retornar interação completa (buscar novamente)
+      return {
+        id: result.data.id,
+        studentId: firebaseStudentId,
+        type: interaction.type,
+        date: interaction.date,
+        description: interaction.description,
+        createdBy: interaction.createdBy,
+        sensitive: interaction.sensitive,
+        whatsappMessage: interaction.whatsappMessage,
+        whatsappPhones: interaction.whatsappPhones,
+        whatsappMessageId: interaction.whatsappMessageId,
+        whatsappStatus: interaction.whatsappStatus,
+        whatsappSentAt: interaction.whatsappSentAt,
       };
-
-      const { data, error } = await ((supabase
-        .from('family_interactions') as any)
-        .insert(insertData)
-        .select()
-        .single());
-
-      if (error) throw error;
-
-      logger.info('Interação criada no Supabase', { firebaseStudentId, interactionId: data.id });
-      return this.mapSupabaseToInteraction(data);
     } catch (error) {
       logger.error('Erro ao criar interação', { firebaseStudentId }, error as Error);
       throw error;

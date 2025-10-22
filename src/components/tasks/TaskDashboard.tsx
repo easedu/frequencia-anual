@@ -66,7 +66,8 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   });
 
   // Hooks da API REST
-  const { tasks: apiTasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ created_by: 'BOT' });
+  // ✅ CORREÇÃO: Filtrar por 'AUTOMAÇÃO' (não 'BOT')
+  const { tasks: apiTasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ created_by: 'AUTOMAÇÃO' });
   const { students } = useStudents();
   const { interactions } = useInteractions();
   const { updateTask } = useUpdateTask();
@@ -235,6 +236,13 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     try {
       setLoading(true);
 
+      // ✅ VALIDAÇÃO: Garantir que apiTasks é array
+      if (!Array.isArray(apiTasks)) {
+        logger.warn('[TaskDashboard] apiTasks não é array', { apiTasks });
+        setLoading(false);
+        return;
+      }
+
       // Limpar referências de interações deletadas
       await cleanupDeletedInteractions(apiTasks as any);
 
@@ -286,6 +294,13 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
 
     try {
       setClearingData(true);
+
+      // ✅ VALIDAÇÃO: Garantir que apiTasks é array
+      if (!Array.isArray(apiTasks)) {
+        toast.error('Erro: dados de tarefas inválidos');
+        setClearingData(false);
+        return;
+      }
 
       // Deletar todas as tarefas
       if (apiTasks.length > 0) {

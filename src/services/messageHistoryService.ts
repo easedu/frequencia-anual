@@ -7,6 +7,10 @@ import { logger } from '@/utils/logger';
  * Refatorado para usar /api/messages/history
  */
 export class MessageHistoryService {
+  // ✅ Base URL com fallback
+  private static getBaseUrl(): string {
+    return process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || 'http://localhost:3000';
+  }
   /**
    * Verifica se já foi enviada mensagem para essa combinação exata
    */
@@ -29,7 +33,7 @@ export class MessageHistoryService {
         limit: '1'
       });
 
-      const response = await fetch(`/api/messages/history?${queryParams}`);
+      const response = await fetch(`${this.getBaseUrl()}/api/messages/history?${queryParams}`);
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
@@ -60,7 +64,7 @@ export class MessageHistoryService {
    */
   static async recordSent(data: Omit<WhatsAppMessageHistory, 'dataPrimeiroEnvio'>): Promise<string | null> {
     try {
-      const response = await fetch('/api/messages/history', {
+      const response = await fetch(`${this.getBaseUrl()}/api/messages/history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -126,7 +130,7 @@ export class MessageHistoryService {
         mes_referencia: mesReferencia.toString()
       });
 
-      const response = await fetch(`/api/messages/history?${queryParams}`);
+      const response = await fetch(`${this.getBaseUrl()}/api/messages/history?${queryParams}`);
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
@@ -176,7 +180,7 @@ export class MessageHistoryService {
         limit: '9999' // Precisamos de todos para calcular stats
       });
 
-      const response = await fetch(`/api/messages/history?${queryParams}`);
+      const response = await fetch(`${this.getBaseUrl()}/api/messages/history?${queryParams}`);
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
