@@ -668,8 +668,8 @@ export default function MonitorarFaltasConsecutivasPage() {
 
   // Função para navegar ao perfil do estudante
   const navigateToStudentProfile = (estudanteId: string) => {
-    // Usar query parameter para passar o ID do estudante
-    router.push(`/perfil-estudante?id=${estudanteId}`);
+    // Usar query parameter para passar o ID do estudante (studentId é o esperado pelo hook)
+    router.push(`/perfil-estudante?studentId=${estudanteId}`);
   };
 
   // Sincronizar casos resolvidos do hook com estado local
