@@ -46,6 +46,7 @@ import {
 
 interface UserProfile {
     id: string;
+    firebaseUid: string;
     nome: string;
     email: string;
     perfil: "admin" | "user" | "super-user" | "user-pcd";
@@ -75,6 +76,7 @@ export default function UserManagementPage() {
             const userList: UserProfile[] = allUsers.map((user) => {
                 return {
                     id: user.id,
+                    firebaseUid: user.firebaseUid,
                     nome: user.fullName,
                     email: user.email,
                     perfil: user.role?.toLowerCase() as "admin" | "user" | "super-user" | "user-pcd",
@@ -214,20 +216,20 @@ export default function UserManagementPage() {
 
     const handleDisableUser = async (userId: string) => {
         try {
-            // Buscar usuário para pegar o firebase_uid
+            // Buscar usuário pelo ID para pegar o firebase_uid
             const user = users.find(u => u.id === userId);
             if (!user) {
                 toast.error("Usuário não encontrado.");
                 return;
             }
 
-            const userProfile = await UserProfilesService.getByEmail(user.email);
-            if (userProfile && userProfile.firebaseUid) {
-                await UserProfilesService.setActive(userProfile.firebaseUid, false);
+            // Usar firebaseUid diretamente do estado
+            const success = await UserProfilesService.setActive(user.firebaseUid, false);
+            if (success) {
                 toast.success("Usuário desabilitado!");
                 await fetchUsers(); // Re-carrega e re-ordena a lista
             } else {
-                toast.error("Usuário não encontrado no Supabase.");
+                toast.error("Erro ao desabilitar usuário no Supabase.");
             }
         } catch (err) {
             logger.error("Erro ao desabilitar usuário", err as Error);
