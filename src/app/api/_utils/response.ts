@@ -2,9 +2,48 @@
  * Util Utilitários de Resposta Padronizada
  *
  * Fornece funções para criar respostas consistentes em todas as API Routes
+ * OTIMIZADO: Inclui políticas de cache HTTP para performance
  */
 
 import { NextResponse } from 'next/server';
+
+// ============================================================================
+// CONFIGURAÇÕES DE CACHE HTTP
+// ============================================================================
+
+/**
+ * Cache policies para diferentes tipos de dados
+ * OTIMIZAÇÃO: Reduzir requests redundantes com cache edge/CDN
+ */
+export const CACHE_POLICIES = {
+  // Dados que mudam frequentemente (estudantes, faltas)
+  dynamic: {
+    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+    'CDN-Cache-Control': 'max-age=60',
+    'Vercel-CDN-Cache-Control': 'max-age=60',
+  },
+
+  // Dados que mudam raramente (configurações, ano letivo)
+  static: {
+    'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+    'CDN-Cache-Control': 'max-age=3600',
+    'Vercel-CDN-Cache-Control': 'max-age=3600',
+  },
+
+  // Dados privados (dados do usuário logado)
+  private: {
+    'Cache-Control': 'private, max-age=60',
+  },
+
+  // Sem cache (mutations, dados sensíveis)
+  none: {
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  },
+};
+
+export type CachePolicy = keyof typeof CACHE_POLICIES;
 
 /**
  * Tipo de resposta de sucesso
@@ -193,9 +232,10 @@ export function paginatedResponse<T>(
   page: number,
   limit: number,
   total: number,
-  message?: string
+  cachePolicy: CachePolicy = 'dynamic'
 ): NextResponse {
   const responseData = {
+    success: true,
     data: items,
     pagination: {
       page,
@@ -205,5 +245,11 @@ export function paginatedResponse<T>(
     },
   };
 
-  return NextResponse.json(responseData);
+  return NextResponse.json(responseData, {
+    status: 200,
+    headers: {
+      ...CACHE_POLICIES[cachePolicy],
+      'Vary': 'Accept-Encoding, Authorization',
+    },
+  });
 }

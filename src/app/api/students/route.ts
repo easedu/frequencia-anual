@@ -4,6 +4,8 @@
  * CRUD de Estudantes
  * - GET: Listar estudantes com filtros
  * - POST: Criar novo estudante
+ *
+ * OTIMIZADO: SELECT estratificado para reduzir over-fetching
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -21,8 +23,10 @@ import {
   paginatedResponse,
 } from '@/app/api/_utils/response';
 import { handleError } from '@/app/api/_utils/errorHandler';
+import { STUDENT_SELECT_QUERIES } from '@/app/api/_utils/selectStrategies';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { v4 as uuidv4 } from 'uuid';
+import type { DetailLevel } from '@/types/api-responses';
 
 // ============================================================================
 // GET /api/students - Listar estudantes com filtros
@@ -46,12 +50,16 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       page,
       limit,
       search,
+      detail = 'minimal', // ✅ OTIMIZAÇÃO: Padrão é minimal
     } = validation.data;
 
-    // 2. Construir query no Supabase
+    // 2. ✅ OTIMIZAÇÃO: SELECT estratificado baseado no DetailLevel
+    const selectQuery = STUDENT_SELECT_QUERIES[detail as DetailLevel];
+
+    // 3. Construir query no Supabase
     let query: any = supabaseAdmin
       .from('students')
-      .select('id, student_id, name, class, shift, status, birth_date, school_year, registration_number, bolsa_familia, address, disabilities, student_contacts(*)', { count: 'exact' })
+      .select(selectQuery, { count: 'exact' }) // ✅ Query otimizada
       .eq('deleted', false)
       .order('name', { ascending: true });
 
@@ -104,11 +112,13 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       );
     }
 
-    // 4. Converter para formato legacy (Estudante)
-    const students = (data || []).map(convertSupabaseToEstudante);
+    // 4. Converter para formato legacy (Estudante) baseado no detail level
+    const students = (data || []).map((student) =>
+      convertSupabaseToEstudante(student, detail as DetailLevel)
+    );
 
-    // 5. Retornar com paginação
-    return paginatedResponse(students, page, limit, count || 0);
+    // 5. ✅ OTIMIZAÇÃO: Retornar com paginação e cache HTTP
+    return paginatedResponse(students, page, limit, count || 0, 'dynamic');
   } catch (error) {
     return handleError(error, 'GET /api/students');
   }
@@ -229,22 +239,67 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 
 /**
  * Converte Student do Supabase para formato legacy Estudante
+ * ✅ OTIMIZAÇÃO: Suporta diferentes níveis de detalhamento
+ *
+ * @param student - Dados do estudante do Supabase
+ * @param detailLevel - Nível de detalhamento (minimal, summary, detailed, full)
  */
-function convertSupabaseToEstudante(student: any): any {
-  return {
+function convertSupabaseToEstudante(student: any, detailLevel: DetailLevel = 'minimal'): any {
+  // Base (sempre presente)
+  const base = {
     id: student.id,
-    student_id: student.student_id, // ✅ Retornar com nome correto (snake_case)
-    estudanteId: student.student_id, // ✅ Manter compatibilidade legada (camelCase)
+    student_id: student.student_id,
+    estudanteId: student.student_id,
     nome: student.name,
-    name: student.name, // ✅ Adicionar também snake_case
+    name: student.name,
     turma: student.class,
-    class: student.class, // ✅ Adicionar também snake_case
+    class: student.class,
     status: student.status,
     turno: student.shift,
-    shift: student.shift, // ✅ Adicionar também snake_case
+    shift: student.shift,
+  };
+
+  // Minimal: apenas campos essenciais
+  if (detailLevel === 'minimal') {
+    return base;
+  }
+
+  // Summary: + alguns campos extras
+  const summary = {
+    ...base,
     bolsaFamilia: student.bolsa_familia || 'NÃO',
-    matricula: student.registration_number || undefined,
     dataNascimento: student.birth_date || undefined,
+    // Se student_contacts for array, retornar count, se for objeto, já é count
+    totalContatos: Array.isArray(student.student_contacts)
+      ? student.student_contacts.length
+      : student.student_contacts?.count || 0,
+  };
+
+  if (detailLevel === 'summary') {
+    return summary;
+  }
+
+  // Detailed: todos os campos principais (sem relacionamentos)
+  const detailed = {
+    ...summary,
+    matricula: student.registration_number || undefined,
+    endereco: student.address || undefined,
+    address: student.address,
+    deficiencia: Array.isArray(student.disabilities) && student.disabilities.length > 0
+      ? student.disabilities[0]
+      : undefined,
+    disabilities: student.disabilities,
+    createdAt: student.created_at,
+    updatedAt: student.updated_at,
+  };
+
+  if (detailLevel === 'detailed') {
+    return detailed;
+  }
+
+  // Full: tudo + relacionamentos
+  return {
+    ...detailed,
     email: undefined,
     contatos: (student.student_contacts || []).map((contact: any) => ({
       nome: contact.name,
@@ -253,13 +308,7 @@ function convertSupabaseToEstudante(student: any): any {
       podeReceberMensagem: contact.can_receive_whatsapp,
       whatsapp: contact.whatsapp_data || undefined,
     })),
-    student_contacts: student.student_contacts, // ✅ Adicionar também snake_case
-    endereco: student.address || undefined,
-    address: student.address, // ✅ Adicionar também snake_case
-    deficiencia: Array.isArray(student.disabilities) && student.disabilities.length > 0
-      ? student.disabilities[0]
-      : undefined,
-    disabilities: student.disabilities, // ✅ Adicionar também snake_case
+    student_contacts: student.student_contacts,
     provaSaoPaulo: [],
   };
 }

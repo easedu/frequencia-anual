@@ -111,6 +111,7 @@ export const updateStudentSchema = createStudentSchema.partial();
 
 /**
  * Schema para query params de listagem (GET)
+ * OTIMIZADO: Inclui parâmetro 'detail' para SELECT estratificado
  */
 export const studentQuerySchema = z.object({
   turma: z.string().optional(),
@@ -132,6 +133,10 @@ export const studentQuerySchema = z.object({
     .transform((val) => (val ? parseInt(val, 10) : 50))
     .pipe(z.number().min(1).max(10000).default(50)),
   search: z.string().optional(), // Busca por nome
+  // ✅ OTIMIZAÇÃO: Nível de detalhamento para reduzir over-fetching
+  detail: z.enum(['minimal', 'summary', 'detailed', 'full']).default('minimal'),
+  // ✅ OTIMIZAÇÃO: Cursor para paginação eficiente (Fase 2)
+  cursor: z.string().optional(),
 });
 
 /**
