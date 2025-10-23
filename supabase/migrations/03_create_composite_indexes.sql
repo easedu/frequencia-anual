@@ -107,7 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_assigned_resolved
 -- Uso: Alertas de tarefas atrasadas
 CREATE INDEX IF NOT EXISTS idx_tasks_overdue
   ON user_tasks(due_date, is_resolved)
-  WHERE is_resolved = false AND due_date < CURRENT_DATE;
+  WHERE is_resolved = false;
 
 COMMENT ON INDEX idx_tasks_student_resolved IS
 'Critical for dashboard: open tasks by student with due dates.';
