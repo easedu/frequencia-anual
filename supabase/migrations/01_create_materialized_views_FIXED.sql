@@ -304,7 +304,7 @@ RETURNS TABLE(
   view_name TEXT,
   row_count BIGINT,
   total_size TEXT,
-  last_refresh TIMESTAMP
+  last_refresh TIMESTAMPTZ
 )
 LANGUAGE plpgsql
 SECURITY DEFINER

@@ -1,8 +1,9 @@
 -- ============================================================================
--- FIX: Corrigir função get_mv_metadata (erro de alias pg_class)
+-- FIX v2: Corrigir função get_mv_metadata (timestamp type mismatch)
 -- ============================================================================
--- Erro: "invalid reference to FROM-clause entry for table pg_class"
--- Causa: Linha 316 usa pg_class.reltuples ao invés de c.reltuples (alias)
+-- Erro: "Returned type timestamp with time zone does not match expected type timestamp without time zone"
+-- Causa: GREATEST() retorna TIMESTAMPTZ mas função declara TIMESTAMP
+-- Solução: Mudar tipo de retorno para TIMESTAMPTZ OU fazer cast para TIMESTAMP
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION get_mv_metadata()
@@ -10,7 +11,7 @@ RETURNS TABLE(
   view_name TEXT,
   row_count BIGINT,
   total_size TEXT,
-  last_refresh TIMESTAMPTZ
+  last_refresh TIMESTAMPTZ  -- ✅ MUDADO: TIMESTAMP → TIMESTAMPTZ
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -19,7 +20,7 @@ BEGIN
   RETURN QUERY
   SELECT
     c.relname::TEXT AS view_name,
-    c.reltuples::BIGINT AS row_count,  -- ✅ CORRIGIDO: c.reltuples ao invés de pg_class.reltuples
+    c.reltuples::BIGINT AS row_count,
     pg_size_pretty(pg_total_relation_size(c.oid))::TEXT AS total_size,
     GREATEST(
       pg_stat_get_last_analyze_time(c.oid),
