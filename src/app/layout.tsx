@@ -7,6 +7,7 @@ import Footer from "@/components/layout/Footer";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { ServiceWorkerProvider } from "@/components/shared/ServiceWorkerProvider";
 import { AuthProvider } from "@/components/layout/AuthProvider";
+import { QueryProvider } from "@/providers/QueryProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,17 +53,20 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col min-h-screen`}
       >
         <ErrorBoundary>
-          <AuthProvider>
-            <ServiceWorkerProvider>
-              <Header />
-              <main className="flex-grow container mx-auto px-4 py-6">
-                <ErrorBoundary>
-                  {children}
-                </ErrorBoundary>
-              </main>
-              <Footer />
-            </ServiceWorkerProvider>
-          </AuthProvider>
+          {/* ✅ OTIMIZAÇÃO: QueryProvider envolvendo toda a aplicação */}
+          <QueryProvider>
+            <AuthProvider>
+              <ServiceWorkerProvider>
+                <Header />
+                <main className="flex-grow container mx-auto px-4 py-6">
+                  <ErrorBoundary>
+                    {children}
+                  </ErrorBoundary>
+                </main>
+                <Footer />
+              </ServiceWorkerProvider>
+            </AuthProvider>
+          </QueryProvider>
         </ErrorBoundary>
       </body>
     </html>
