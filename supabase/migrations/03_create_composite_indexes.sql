@@ -124,8 +124,7 @@ CREATE INDEX IF NOT EXISTS idx_certificates_student_date
 -- Query: Atestados pendentes de validação
 -- Uso: Fila de aprovação
 CREATE INDEX IF NOT EXISTS idx_certificates_status_date
-  ON medical_certificates(status, submitted_date DESC)
-  WHERE status IN ('PENDING', 'UNDER_REVIEW');
+  ON medical_certificates(status, submitted_date DESC);
 
 -- ============================================================================
 -- 1.6. STUDENT_SUSPENSIONS: Suspensões
@@ -162,10 +161,15 @@ CREATE INDEX IF NOT EXISTS idx_tasks_open_only
   ON user_tasks(student_id, due_date, created_at)
   WHERE is_resolved = false;
 
--- Certificates: Apenas pendentes
+-- Certificates: Apenas pendentes (PENDING)
 CREATE INDEX IF NOT EXISTS idx_certificates_pending_only
   ON medical_certificates(student_id, submitted_date)
-  WHERE status IN ('PENDING', 'UNDER_REVIEW');
+  WHERE status = 'PENDING';
+
+-- Certificates: Apenas em revisão (UNDER_REVIEW)
+CREATE INDEX IF NOT EXISTS idx_certificates_under_review_only
+  ON medical_certificates(student_id, submitted_date)
+  WHERE status = 'UNDER_REVIEW';
 
 COMMENT ON INDEX idx_students_active_only IS
 'Partial index: 99% of queries filter by active students. Significantly smaller and faster than full index.';
