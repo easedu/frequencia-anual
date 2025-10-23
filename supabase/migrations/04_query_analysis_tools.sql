@@ -243,15 +243,15 @@ DECLARE
   tbl RECORD;
 BEGIN
   FOR tbl IN
-    SELECT tablename
+    SELECT tablename::TEXT AS tablename
     FROM pg_tables
     WHERE schemaname = 'public'
   LOOP
     BEGIN
-      EXECUTE 'VACUUM ANALYZE ' || tbl.tablename;
-      RETURN QUERY SELECT tbl.tablename, 'VACUUM ANALYZE'::TEXT, 'SUCCESS'::TEXT;
+      EXECUTE 'VACUUM ANALYZE ' || quote_ident(tbl.tablename);
+      RETURN QUERY SELECT tbl.tablename::TEXT, 'VACUUM ANALYZE'::TEXT, 'SUCCESS'::TEXT;
     EXCEPTION WHEN OTHERS THEN
-      RETURN QUERY SELECT tbl.tablename, 'VACUUM ANALYZE'::TEXT, 'FAILED: ' || SQLERRM;
+      RETURN QUERY SELECT tbl.tablename::TEXT, 'VACUUM ANALYZE'::TEXT, ('FAILED: ' || SQLERRM)::TEXT;
     END;
   END LOOP;
 END;
