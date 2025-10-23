@@ -1,11 +1,8 @@
 /**
- * Middleware de Autenticação + Timeout
+ * Middleware de Autenticação
  *
  * Verifica se o usuário está autenticado via Firebase Auth
  * e fornece o userId para as API Routes.
- *
- * ⚠️ IMPORTANTE: Automaticamente adiciona timeout de 8s para evitar
- * exceder o limite do Vercel Free Plan (10s).
  *
  * **NOTA**: Firebase é usado APENAS para autenticação.
  * Dados são armazenados no Supabase PostgreSQL.
@@ -14,7 +11,6 @@
  * ```typescript
  * export const GET = withAuth(async (req, userId) => {
  *   // userId está disponível aqui (Firebase UID)
- *   // Timeout de 8s aplicado automaticamente
  * });
  * ```
  */
@@ -29,32 +25,10 @@ export type AuthenticatedHandler<T = any> = (
 ) => Promise<NextResponse>;
 
 /**
- * Higher-order function que adiciona autenticação + timeout a uma API Route
- *
- * @param handler - Handler da API
- * @param timeoutMs - Timeout em ms (padrão: 8000ms)
+ * Higher-order function que adiciona autenticação a uma API Route
  */
-export function withAuth<T = any>(
-  handler: AuthenticatedHandler<T>,
-  timeoutMs: number = 8000
-) {
+export function withAuth<T = any>(handler: AuthenticatedHandler<T>) {
   return async (req: NextRequest, context?: T): Promise<NextResponse> => {
-    const startTime = Date.now();
-
-    // Promise de timeout
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        const elapsed = Date.now() - startTime;
-        reject(
-          new Error(
-            `Auth timeout após ${elapsed}ms - ${req.method} ${req.nextUrl.pathname}`
-          )
-        );
-      }, timeoutMs);
-    });
-
-    // Promise de autenticação + handler
-    const authPromise = async (): Promise<NextResponse> => {
     try {
       // 1. Obter token de autenticação do header
       const authHeader = req.headers.get('Authorization');
@@ -87,66 +61,15 @@ export function withAuth<T = any>(
         );
       }
 
-        // 4. Executar handler com userId (Firebase UID) e context (para rotas dinâmicas [id])
-        return await handler(req, decodedToken.uid, context);
-      } catch (error) {
-        console.error('[Auth Middleware] Error:', error);
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Internal Server Error',
-            message: 'Erro ao verificar autenticação.',
-          },
-          { status: 500 }
-        );
-      }
-    };
-
-    try {
-      // Race: timeout vs autenticação
-      const response = await Promise.race([authPromise(), timeoutPromise]);
-
-      // Log de performance
-      const elapsed = Date.now() - startTime;
-      if (elapsed > 2000) {
-        console.warn(`⚠️ API lenta (auth): ${req.method} ${req.nextUrl.pathname} - ${elapsed}ms`);
-      }
-
-      return response;
+      // 4. Executar handler com userId (Firebase UID) e context (para rotas dinâmicas [id])
+      return await handler(req, decodedToken.uid, context);
     } catch (error) {
-      const elapsed = Date.now() - startTime;
-
-      // Log estruturado
-      console.error('❌ Erro na API (auth):', {
-        method: req.method,
-        path: req.nextUrl.pathname,
-        elapsed: `${elapsed}ms`,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-
-      // Retornar 504 se foi timeout
-      if (error instanceof Error && error.message.includes('timeout')) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'TIMEOUT',
-            message: 'A operação demorou muito tempo. Tente novamente.',
-            details: {
-              elapsed: `${elapsed}ms`,
-              limit: `${timeoutMs}ms`
-            }
-          },
-          { status: 504 }
-        );
-      }
-
-      // Retornar 500 para outros erros
+      console.error('[Auth Middleware] Error:', error);
       return NextResponse.json(
         {
           success: false,
-          error: 'INTERNAL_ERROR',
-          message: error instanceof Error ? error.message : 'Erro interno',
-          details: { elapsed: `${elapsed}ms` }
+          error: 'Internal Server Error',
+          message: 'Erro ao verificar autenticação.',
         },
         { status: 500 }
       );
