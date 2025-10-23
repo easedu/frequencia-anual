@@ -54,19 +54,34 @@ function getSupabaseClient(): SupabaseClient<Database> {
       autoRefreshToken: false,
     },
     global: {
-      fetch: (url, options = {}) => {
-        // Força HTTP/2 ao invés de QUIC/HTTP/3 para evitar ERR_QUIC_PROTOCOL_ERROR
-        // em redes que bloqueiam ou têm problemas com QUIC
-        //
-        // IMPORTANTE: Adiciona apikey manualmente para garantir que sempre seja enviado
-        return fetch(url, {
-          ...options,
-          headers: {
-            ...(options.headers || {}),
-            'Alt-Svc': 'clear', // Desabilita QUIC
-            'apikey': supabaseAnonKey, // Garante que apikey seja sempre enviado
+      fetch: async (url, options = {}) => {
+        // Timeout de 8 segundos (antes do limit de 10s do Vercel)
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 8000)
+
+        try {
+          // Força HTTP/2 ao invés de QUIC/HTTP/3 para evitar ERR_QUIC_PROTOCOL_ERROR
+          // em redes que bloqueiam ou têm problemas com QUIC
+          //
+          // IMPORTANTE: Adiciona apikey manualmente para garantir que sempre seja enviado
+          const response = await fetch(url, {
+            ...options,
+            signal: controller.signal,
+            headers: {
+              ...(options.headers || {}),
+              'Alt-Svc': 'clear', // Desabilita QUIC
+              'apikey': supabaseAnonKey, // Garante que apikey seja sempre enviado
+            }
+          })
+          clearTimeout(timeoutId)
+          return response
+        } catch (error) {
+          clearTimeout(timeoutId)
+          if (error instanceof Error && error.name === 'AbortError') {
+            throw new Error('Supabase request timeout (8s)')
           }
-        })
+          throw error
+        }
       }
     }
   })
