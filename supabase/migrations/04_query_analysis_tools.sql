@@ -120,21 +120,24 @@ AS $$
 BEGIN
   RETURN QUERY
   SELECT
-    schemaname || '.' || tablename AS table_name,
+    (schemaname || '.' || relname)::TEXT AS table_name,
     n_live_tup AS row_count,
-    pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) AS total_size,
-    pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) AS table_size,
-    pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename) - pg_relation_size(schemaname || '.' || tablename)) AS indexes_size,
+    pg_size_pretty(pg_total_relation_size((schemaname || '.' || relname)::regclass)) AS total_size,
+    pg_size_pretty(pg_relation_size((schemaname || '.' || relname)::regclass)) AS table_size,
+    pg_size_pretty(
+      pg_total_relation_size((schemaname || '.' || relname)::regclass) -
+      pg_relation_size((schemaname || '.' || relname)::regclass)
+    ) AS indexes_size,
     seq_scan AS seq_scans,
-    idx_scan AS idx_scans,
+    COALESCE(idx_scan, 0) AS idx_scans,
     CASE
-      WHEN (seq_scan + idx_scan) > 0
-      THEN ROUND(100.0 * idx_scan / (seq_scan + idx_scan), 2)
+      WHEN (seq_scan + COALESCE(idx_scan, 0)) > 0
+      THEN ROUND(100.0 * COALESCE(idx_scan, 0) / (seq_scan + COALESCE(idx_scan, 0)), 2)
       ELSE 0
     END AS index_usage_pct
   FROM pg_stat_user_tables
   WHERE schemaname = 'public'
-  ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC;
+  ORDER BY pg_total_relation_size((schemaname || '.' || relname)::regclass) DESC;
 END;
 $$;
 
