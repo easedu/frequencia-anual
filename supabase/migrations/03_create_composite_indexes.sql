@@ -182,13 +182,13 @@ COMMENT ON INDEX idx_students_active_only IS
 -- Uso: Filtrar estudantes com deficiências específicas
 CREATE INDEX IF NOT EXISTS idx_students_disabilities_gin
   ON students USING gin(disabilities)
-  WHERE disabilities IS NOT NULL AND disabilities != '[]'::jsonb;
+  WHERE disabilities IS NOT NULL;
 
 -- Students: Busca em address (JSONB object)
 -- Uso: Busca por CEP, bairro, etc
 CREATE INDEX IF NOT EXISTS idx_students_address_gin
   ON students USING gin(address)
-  WHERE address IS NOT NULL AND address != '{}'::jsonb;
+  WHERE address IS NOT NULL;
 
 -- Student Contacts: Busca em whatsapp_data (JSONB)
 -- Uso: Verificar contatos verificados no WhatsApp
