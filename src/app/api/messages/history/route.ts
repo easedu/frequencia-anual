@@ -34,8 +34,11 @@ const createMessageHistorySchema = z.object({
   ano_referencia: z.number().int().min(2020).max(2100),
   mes_referencia: z.number().int().min(1).max(12),
   quantidade_faltas: z.number().int().min(0),
-  estudante_nome: z.string().min(1),
+  // estudante_nome opcional (não armazenado no DB)
+  estudante_nome: z.string().min(1).optional(),
+  // contato_nome obrigatório (armazenado no DB)
   contato_nome: z.string().min(1),
+  // task_id opcional mas NÃO armazenado (campo não existe no DB)
   task_id: z.string().uuid().nullable().optional(),
   status: z.enum(['SUCCESS', 'FAILED', 'NO_CONTACT']),
   message_id: z.string().nullable().optional(),
@@ -87,7 +90,7 @@ export async function GET(request: NextRequest) {
       .from('whatsapp_message_history')
       .select('*', { count: 'exact' })
 
-    // Aplicar filtros
+    // Aplicar filtros (usando nomes das colunas Supabase em inglês)
     if (filters.estudante_id) {
       query = query.eq('student_id', filters.estudante_id)
     }
@@ -150,16 +153,16 @@ export async function GET(request: NextRequest) {
  * {
  *   "estudante_id": "uuid",
  *   "contato_telefone": "5511988384664",
+ *   "contato_nome": "Maria Silva (Mãe)", (OBRIGATÓRIO)
  *   "ano_referencia": 2025,
  *   "mes_referencia": 10,
  *   "quantidade_faltas": 15,
- *   "estudante_nome": "João Silva",
- *   "contato_nome": "Maria Silva (Mãe)",
- *   "task_id": "uuid" (opcional),
+ *   "estudante_nome": "João Silva" (opcional - não armazenado),
+ *   "task_id": "uuid" (opcional - não armazenado),
  *   "status": "SUCCESS" | "FAILED" | "NO_CONTACT",
  *   "message_id": "string" (opcional),
  *   "sent_at": 1729180800000 (opcional - Unix timestamp),
- *   "retry_count": 0 (opcional),
+ *   "retry_count": 0 (opcional - não usado),
  *   "is_dry_run": false (opcional)
  * }
  *
@@ -168,11 +171,10 @@ export async function GET(request: NextRequest) {
  * {
  *   "estudante_id": "550e8400-e29b-41d4-a716-446655440000",
  *   "contato_telefone": "5511988384664",
+ *   "contato_nome": "Maria Silva (Mãe)",
  *   "ano_referencia": 2025,
  *   "mes_referencia": 10,
  *   "quantidade_faltas": 15,
- *   "estudante_nome": "João Silva",
- *   "contato_nome": "Maria Silva (Mãe)",
  *   "status": "SUCCESS",
  *   "message_id": "msg_123456"
  * }
@@ -211,7 +213,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('Mensagem já foi registrada para esta combinação', 409)
     }
 
-    // ✅ Criar registro no Supabase com nomes corretos das colunas
+    // ✅ Criar registro no Supabase (schema real da tabela)
     const { data, error } = await supabaseAdmin
       .from('whatsapp_message_history')
       .insert({
@@ -241,6 +243,97 @@ export async function POST(request: NextRequest) {
     })
 
     return successResponse(data as any, 201)
+  } catch (error) {
+    return handleError(error)
+  }
+}
+
+/**
+ * DELETE /api/messages/history
+ * Limpa histórico de mensagens WhatsApp da automação
+ *
+ * @description Útil para testes - permite que a automação reenvie mensagens
+ * @warning Estratégia dupla:
+ *   1. Se existem tasks da automação → deleta apenas mensagens vinculadas
+ *   2. Se NÃO existem tasks → deleta TODAS as mensagens (não há como diferenciar origem)
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    // Autenticação obrigatória
+    const authHeader = request.headers.get('Authorization')
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return errorResponse('Não autorizado', 401)
+    }
+
+    // PASSO 1: Buscar IDs de todas as tasks criadas pela automação
+    const { data: automationTasks, error: tasksError } = await supabaseAdmin
+      .from('user_tasks')
+      .select('id')
+      .eq('created_by', 'AUTOMAÇÃO')
+
+    if (tasksError) {
+      logger.error('Erro ao buscar tasks da automação', tasksError)
+      return errorResponse(tasksError.message, 500)
+    }
+
+    const taskIds = (automationTasks || []).map((task: any) => task.id)
+
+    let deletedCount = 0
+    let strategy = ''
+
+    // ESTRATÉGIA 1: Se há tasks da automação, deletar apenas mensagens vinculadas
+    if (taskIds.length > 0) {
+      strategy = 'SELECTIVE'
+      const { error: deleteError, count } = await supabaseAdmin
+        .from('whatsapp_message_history')
+        .delete()
+        .in('task_id', taskIds)
+
+      if (deleteError) {
+        logger.error('Erro ao limpar histórico de mensagens da automação', deleteError)
+        return errorResponse(deleteError.message, 500)
+      }
+
+      deletedCount = count || 0
+
+      logger.info('Histórico de mensagens da automação limpo (SELECTIVE)', {
+        deletedCount,
+        taskIdsCount: taskIds.length
+      })
+
+      return successResponse({
+        deletedCount,
+        taskIdsFound: taskIds.length,
+        strategy: 'SELECTIVE',
+        message: `Histórico da automação limpo (seletivo): ${deletedCount} mensagens vinculadas a ${taskIds.length} tasks`
+      })
+    }
+
+    // ESTRATÉGIA 2: Se NÃO há tasks, deletar TODAS as mensagens (fallback)
+    strategy = 'FULL'
+    const { error: deleteError, count } = await supabaseAdmin
+      .from('whatsapp_message_history')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000') // Truque para deletar todos
+
+    if (deleteError) {
+      logger.error('Erro ao limpar histórico de mensagens (FULL)', deleteError)
+      return errorResponse(deleteError.message, 500)
+    }
+
+    deletedCount = count || 0
+
+    logger.warn('Histórico de mensagens limpo (FULL) - sem tasks da automação encontradas', {
+      deletedCount
+    })
+
+    return successResponse({
+      deletedCount,
+      taskIdsFound: 0,
+      strategy: 'FULL',
+      message: `Histórico limpo (completo): ${deletedCount} mensagens deletadas (sem tasks da automação para vincular)`
+    })
   } catch (error) {
     return handleError(error)
   }

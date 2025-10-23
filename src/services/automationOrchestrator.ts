@@ -11,6 +11,7 @@
  */
 
 import { AutomationExecutionService } from './supabase/automationExecutionService';
+import { getStudentByFirebaseUUID } from './supabase/studentService';
 import {
   AutomationExecution,
   AutomationExecutionSummary,
@@ -35,8 +36,79 @@ interface AutomationParams {
 interface StudentProcessResult {
   messagesSucceeded: number;
   messagesFailed: number;
+  messagesSkippedAlreadySent: number;
   tasksCreated: number;
+  tasksSkippedDuplicate: number;
   errors: Array<{ estudanteId: string; estudanteNome: string; error: string }>;
+}
+
+/**
+ * Verifica se já existe uma task para o estudante + contato com mesma quantidade de faltas e mês
+ * IMPORTANTE: Verifica por contato (whatsapp_phone) para permitir múltiplas tasks para diferentes contatos
+ */
+async function checkDuplicateTask(params: {
+  estudanteId: string;
+  absencesCount: number;
+  referenceMonth: number;
+  referenceYear: number;
+  whatsappPhone: string; // ✅ NOVO: Verificar por contato também
+}): Promise<boolean> {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || 'http://localhost:3000';
+    const apiUser = process.env.API_HABIB_KYRILLOS_USERNAME || '';
+    const apiPassword = process.env.API_HABIB_KYRILLOS_PASSWORD || '';
+    const basicAuth = Buffer.from(`${apiUser}:${apiPassword}`).toString('base64');
+
+    // Buscar tasks do estudante neste mês/ano
+    const queryParams = new URLSearchParams({
+      estudanteId: params.estudanteId,
+      limit: '100' // Verificar últimas 100 tasks
+    });
+
+    const response = await fetch(`${apiUrl}/api/tasks?${queryParams}`, {
+      headers: {
+        'Authorization': `Basic ${basicAuth}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      return false; // Em caso de erro, assumir que não há duplicata (fail-safe)
+    }
+
+    const result = await response.json();
+    const tasks = result.data || [];
+
+    // Verificar se já existe task com:
+    // - Mesmo estudante
+    // - Mesmo mês/ano
+    // - Mesmo número de faltas (no title)
+    // - Mesmo telefone (whatsapp_phone) ✅ NOVO
+    // - Criada pela automação
+    const titlePattern = `Alerta de ${params.absencesCount} faltas - ${params.referenceMonth}/${params.referenceYear}`;
+
+    const duplicate = tasks.some((task: any) => {
+      return (
+        task.title === titlePattern &&
+        task.created_by === 'AUTOMAÇÃO' &&
+        task.whatsapp_phone === params.whatsappPhone // ✅ Verificar por contato
+      );
+    });
+
+    if (duplicate) {
+      logger.info('[checkDuplicateTask] Task duplicada detectada', {
+        estudanteId: params.estudanteId,
+        absencesCount: params.absencesCount,
+        referenceMonth: params.referenceMonth,
+        whatsappPhone: params.whatsappPhone // ✅ Log do telefone
+      });
+    }
+
+    return duplicate;
+  } catch (error) {
+    logger.error('[checkDuplicateTask] Erro ao verificar duplicata', error as Error);
+    return false; // Em caso de erro, assumir que não há duplicata (fail-safe)
+  }
 }
 
 /**
@@ -93,7 +165,9 @@ async function processStudentAbsences(
   const result: StudentProcessResult = {
     messagesSucceeded: 0,
     messagesFailed: 0,
+    messagesSkippedAlreadySent: 0,
     tasksCreated: 0,
+    tasksSkippedDuplicate: 0,
     errors: []
   };
 
@@ -125,6 +199,22 @@ async function processStudentAbsences(
 
         if (alreadySent) {
           console.log(`⏭️ [${student.nome}] Mensagem já enviada para ${phone}, pulando`);
+          result.messagesSkippedAlreadySent++;
+
+          // ✅ IMPORTANTE: Se mensagem já foi enviada, a task também já deve existir
+          // Verificar e contar como duplicata (mesmo sem tentar criar novamente)
+          const isDuplicateTask = await checkDuplicateTask({
+            estudanteId: student.estudanteId,
+            absencesCount: params.absenceMultiple,
+            referenceMonth: params.referenceMonth,
+            referenceYear: params.referenceYear,
+            whatsappPhone: phone // ✅ Passar telefone do contato
+          });
+
+          if (isDuplicateTask) {
+            result.tasksSkippedDuplicate++;
+          }
+
           continue;
         }
 
@@ -164,25 +254,40 @@ async function processStudentAbsences(
             isDryRun: params.dryRun
           });
 
-          // Criar tarefa fechada (RESOLVIDA)
-          const taskResult = await createTaskClosed({
+          // Verificar se já existe task duplicada (POR CONTATO)
+          const isDuplicateTask = await checkDuplicateTask({
             estudanteId: student.estudanteId,
             absencesCount: params.absenceMultiple,
             referenceMonth: params.referenceMonth,
             referenceYear: params.referenceYear,
-            actionDescription: `Enviado alerta de ${params.absenceMultiple} faltas via WhatsApp para ${contato.nome} (${phone})`,
-            whatsappPhone: phone,
-            authorization
+            whatsappPhone: phone // ✅ Passar telefone do contato
           });
 
-          if (taskResult.success) {
-            result.tasksCreated++;
+          if (isDuplicateTask) {
+            result.tasksSkippedDuplicate++;
+            console.log(`⏭️ [${student.nome}] Task já existe para ${phone}, pulando criação`);
           } else {
-            result.errors.push({
+            // Criar tarefa fechada (RESOLVIDA) + interação
+            const taskResult = await createTaskClosed({
               estudanteId: student.estudanteId,
-              estudanteNome: student.nome,
-              error: taskResult.error || 'Erro ao criar tarefa'
+              absencesCount: params.absenceMultiple,
+              referenceMonth: params.referenceMonth,
+              referenceYear: params.referenceYear,
+              actionDescription: `Enviado alerta de ${params.absenceMultiple} faltas via WhatsApp para ${contato.nome} (${phone})`,
+              whatsappPhone: phone,
+              whatsappMessage: message,
+              whatsappMessageId: sendResult.messageId
             });
+
+            if (taskResult.success) {
+              result.tasksCreated++;
+            } else {
+              result.errors.push({
+                estudanteId: student.estudanteId,
+                estudanteNome: student.nome,
+                error: taskResult.error || 'Erro ao criar tarefa'
+              });
+            }
           }
 
           console.log(`✅ [${student.nome}] Mensagem enviada para ${phone}`);
@@ -213,24 +318,37 @@ async function processStudentAbsences(
   // 2. SE NÃO TEM CONTATOS: Criar tarefa aberta
   else {
     try {
-      const taskResult = await createTaskOpen({
+      // Verificar se já existe task duplicada (sem telefone = 'NO_CONTACT')
+      const isDuplicateTask = await checkDuplicateTask({
         estudanteId: student.estudanteId,
         absencesCount: params.absenceMultiple,
         referenceMonth: params.referenceMonth,
         referenceYear: params.referenceYear,
-        actionDescription: `Estudante com ${params.absenceMultiple} faltas sem contatos cadastrados. Necessário buscar contato e alertar família.`,
-        authorization
+        whatsappPhone: 'NO_CONTACT' // ✅ Marcador para estudantes sem contato
       });
 
-      if (taskResult.success) {
-        result.tasksCreated++;
-        console.log(`📋 [${student.nome}] Tarefa ABERTA criada (sem contatos)`);
+      if (isDuplicateTask) {
+        result.tasksSkippedDuplicate++;
+        console.log(`⏭️ [${student.nome}] Task já existe (sem contato), pulando criação`);
       } else {
-        result.errors.push({
+        const taskResult = await createTaskOpen({
           estudanteId: student.estudanteId,
-          estudanteNome: student.nome,
-          error: taskResult.error || 'Erro ao criar tarefa aberta'
+          absencesCount: params.absenceMultiple,
+          referenceMonth: params.referenceMonth,
+          referenceYear: params.referenceYear,
+          actionDescription: `Estudante com ${params.absenceMultiple} faltas sem contatos cadastrados. Necessário buscar contato e alertar família.`
         });
+
+        if (taskResult.success) {
+          result.tasksCreated++;
+          console.log(`📋 [${student.nome}] Tarefa ABERTA criada (sem contatos)`);
+        } else {
+          result.errors.push({
+            estudanteId: student.estudanteId,
+            estudanteNome: student.nome,
+            error: taskResult.error || 'Erro ao criar tarefa aberta'
+          });
+        }
       }
     } catch (error) {
       result.errors.push({
@@ -246,29 +364,42 @@ async function processStudentAbsences(
 
 /**
  * Resolver Firebase UUID para Internal ID do Supabase
+ *
+ * ✅ MIGRADO: Usa StudentService (busca direta no Supabase)
+ * Anteriormente: Chamava /api/students via HTTP (lento + auth complexo)
+ *
+ * @deprecated Use getStudentByFirebaseUUID() diretamente para mais detalhes
  */
-async function resolveStudentInternalId(firebaseUUID: string, authorization: string): Promise<string | null> {
+async function resolveStudentInternalId(firebaseUUID: string): Promise<string | null> {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || 'http://localhost:3000';
+    const student = await getStudentByFirebaseUUID(firebaseUUID);
 
-    const response = await fetch(`${apiUrl}/api/students?estudanteId=${firebaseUUID}`, {
-      headers: { 'Authorization': authorization }
+    if (!student) {
+      logger.warn('[AutomationOrchestrator] Estudante não encontrado', { firebaseUUID });
+      return null;
+    }
+
+    logger.debug('[AutomationOrchestrator] Estudante resolvido', {
+      firebaseUUID,
+      internalId: student.id,
+      nome: student.nome
     });
 
-    if (!response.ok) return null;
-
-    const result = await response.json();
-    const student = result.data?.[0];
-
-    return student?.id || null; // Internal ID
+    return student.id; // Internal ID
   } catch (error) {
-    logger.error('[AutomationOrchestrator] Erro ao resolver Internal ID', error as Error);
+    logger.error('[AutomationOrchestrator] Erro ao resolver Internal ID', {
+      firebaseUUID,
+      error: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
     return null;
   }
 }
 
 /**
  * Criar tarefa FECHADA (resolvida) - para mensagens enviadas com sucesso
+ *
+ * ✅ OTIMIZADO: Usa StudentService para resolver Internal ID (sem HTTP)
+ * ✅ NOVO: Cria também uma interação "Contato digital" registrando o envio
  */
 async function createTaskClosed(params: {
   estudanteId: string;
@@ -277,21 +408,33 @@ async function createTaskClosed(params: {
   referenceYear: number;
   actionDescription: string;
   whatsappPhone: string;
-  authorization: string;
+  whatsappMessage?: string;
+  whatsappMessageId?: string;
 }): Promise<{ success: boolean; taskId: string; error?: string }> {
   try {
-    // ✅ CRÍTICO: Resolver Firebase UUID → Internal ID do Supabase
-    const internalId = await resolveStudentInternalId(params.estudanteId, params.authorization);
+    // ✅ OTIMIZADO: Busca direta no Supabase (sem HTTP)
+    const student = await getStudentByFirebaseUUID(params.estudanteId);
 
-    if (!internalId) {
-      throw new Error(`Estudante não encontrado no Supabase: ${params.estudanteId}`);
+    if (!student) {
+      const errorMsg = `Estudante não encontrado: ${params.estudanteId}`;
+      logger.error('[createTaskClosed] ' + errorMsg, { estudanteId: params.estudanteId });
+      throw new Error(errorMsg);
     }
 
+    logger.debug('[createTaskClosed] Estudante encontrado', {
+      firebaseUUID: params.estudanteId,
+      internalId: student.id,
+      nome: student.nome
+    });
+
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || 'http://localhost:3000';
+    const apiUser = process.env.API_HABIB_KYRILLOS_USERNAME || '';
+    const apiPassword = process.env.API_HABIB_KYRILLOS_PASSWORD || '';
+    const basicAuth = `Basic ${Buffer.from(`${apiUser}:${apiPassword}`).toString('base64')}`;
 
     // ✅ CORREÇÃO: Usar Internal ID (não Firebase UUID!)
     const taskData = {
-      student_id: internalId,  // ✅ Internal ID do Supabase
+      student_id: student.id,  // ✅ Internal ID do Supabase
       title: `Alerta de ${params.absencesCount} faltas - ${params.referenceMonth}/${params.referenceYear}`,
       description: params.actionDescription,
       action_taken: 'Contato digital',
@@ -302,7 +445,7 @@ async function createTaskClosed(params: {
     const response = await fetch(`${apiUrl}/api/tasks`, {
       method: 'POST',
       headers: {
-        'Authorization': params.authorization,
+        'Authorization': basicAuth,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(taskData)
@@ -314,11 +457,72 @@ async function createTaskClosed(params: {
       throw new Error(data.error || `API returned ${response.status}`);
     }
 
+    const taskId = data.taskId || data.task?.id || 'unknown';
+
+    logger.info('[createTaskClosed] Tarefa criada com sucesso', {
+      taskId,
+      estudante: student.nome
+    });
+
+    // 🆕 CRIAR INTERAÇÃO "Contato digital" registrando o envio do WhatsApp
+    try {
+      const today = new Date();
+      const formattedDate = `${String(today.getDate()).padStart(2, '0')}${String(today.getMonth() + 1).padStart(2, '0')}${today.getFullYear()}`;
+
+      const interactionData = {
+        estudanteId: params.estudanteId, // Firebase UUID
+        tipo: 'Contato digital',
+        data: formattedDate,
+        descricao: `Alerta automático de ${params.absencesCount} faltas enviado via WhatsApp`,
+        responsavel: 'AUTOMAÇÃO',
+        assunto: `Alerta de ${params.absencesCount} faltas`,
+        criadoPor: 'AUTOMAÇÃO',
+        whatsapp_message: params.whatsappMessage || `Alerta de ${params.absencesCount} faltas`,
+        whatsapp_phones: [params.whatsappPhone],
+        whatsapp_message_id: params.whatsappMessageId,
+        whatsapp_status: 'sent'
+      };
+
+      const interactionResponse = await fetch(`${apiUrl}/api/interactions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': basicAuth,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(interactionData)
+      });
+
+      const interactionResult = await interactionResponse.json();
+
+      if (interactionResponse.ok && interactionResult.success) {
+        logger.info('[createTaskClosed] Interação criada com sucesso', {
+          interactionId: interactionResult.data?.id,
+          estudante: student.nome
+        });
+      } else {
+        logger.warn('[createTaskClosed] Erro ao criar interação (não crítico)', {
+          error: interactionResult.error,
+          estudante: student.nome
+        });
+      }
+    } catch (interactionError) {
+      // Não falhar a task se a interação falhar
+      logger.warn('[createTaskClosed] Erro ao criar interação (não crítico)', {
+        error: interactionError instanceof Error ? interactionError.message : 'Erro desconhecido',
+        estudante: student.nome
+      });
+    }
+
     return {
       success: true,
-      taskId: data.taskId || data.task?.id || 'unknown'
+      taskId
     };
   } catch (error) {
+    logger.error('[createTaskClosed] Erro ao criar tarefa', {
+      estudanteId: params.estudanteId,
+      error: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+
     return {
       success: false,
       taskId: '',
@@ -329,6 +533,8 @@ async function createTaskClosed(params: {
 
 /**
  * Criar tarefa ABERTA (não resolvida) - para estudantes sem contatos
+ *
+ * ✅ OTIMIZADO: Usa StudentService para resolver Internal ID (sem HTTP)
  */
 async function createTaskOpen(params: {
   estudanteId: string;
@@ -336,21 +542,31 @@ async function createTaskOpen(params: {
   referenceMonth: number;
   referenceYear: number;
   actionDescription: string;
-  authorization: string;
 }): Promise<{ success: boolean; taskId: string; error?: string }> {
   try {
-    // ✅ CRÍTICO: Resolver Firebase UUID → Internal ID do Supabase
-    const internalId = await resolveStudentInternalId(params.estudanteId, params.authorization);
+    // ✅ OTIMIZADO: Busca direta no Supabase (sem HTTP)
+    const student = await getStudentByFirebaseUUID(params.estudanteId);
 
-    if (!internalId) {
-      throw new Error(`Estudante não encontrado no Supabase: ${params.estudanteId}`);
+    if (!student) {
+      const errorMsg = `Estudante não encontrado: ${params.estudanteId}`;
+      logger.error('[createTaskOpen] ' + errorMsg, { estudanteId: params.estudanteId });
+      throw new Error(errorMsg);
     }
 
+    logger.debug('[createTaskOpen] Estudante encontrado', {
+      firebaseUUID: params.estudanteId,
+      internalId: student.id,
+      nome: student.nome
+    });
+
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BASE_URL_API_HABIB_KYRILLOS || 'http://localhost:3000';
+    const apiUser = process.env.API_HABIB_KYRILLOS_USERNAME || '';
+    const apiPassword = process.env.API_HABIB_KYRILLOS_PASSWORD || '';
+    const basicAuth = `Basic ${Buffer.from(`${apiUser}:${apiPassword}`).toString('base64')}`;
 
     // ✅ CORREÇÃO: Usar Internal ID (não Firebase UUID!)
     const taskData = {
-      student_id: internalId,  // ✅ Internal ID do Supabase
+      student_id: student.id,  // ✅ Internal ID do Supabase
       title: `⚠️ ${params.absencesCount} faltas SEM CONTATO - ${params.referenceMonth}/${params.referenceYear}`,
       description: params.actionDescription,
       recommended_action: 'Contato telefônico ou busca ativa - Estudante sem contato WhatsApp',
@@ -362,7 +578,7 @@ async function createTaskOpen(params: {
     const response = await fetch(`${apiUrl}/api/tasks`, {
       method: 'POST',
       headers: {
-        'Authorization': params.authorization,
+        'Authorization': basicAuth,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(taskData)
@@ -374,11 +590,21 @@ async function createTaskOpen(params: {
       throw new Error(data.error || `API returned ${response.status}`);
     }
 
+    logger.info('[createTaskOpen] Tarefa ABERTA criada com sucesso', {
+      taskId: data.taskId,
+      estudante: student.nome
+    });
+
     return {
       success: true,
       taskId: data.taskId || data.task?.id || 'unknown'
     };
   } catch (error) {
+    logger.error('[createTaskOpen] Erro ao criar tarefa aberta', {
+      estudanteId: params.estudanteId,
+      error: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+
     return {
       success: false,
       taskId: '',
@@ -406,7 +632,7 @@ async function sendExecutionReport(
     const durationMinutes = Math.round(summary.durationMs / 1000 / 60);
     const successRate = summary.messagesAttempted > 0
       ? Math.round((summary.messagesSucceeded / summary.messagesAttempted) * 100)
-      : 0;
+      : null; // null quando não houve tentativas (exibir como "N/A")
 
     const message = `📊 *Relatório de Automação de Alertas*
 
@@ -426,7 +652,7 @@ ${isDryRun ? '🧪 MODO TESTE (Dry-Run)\n' : ''}
 • Enviadas: ${summary.messagesSucceeded} ✅
 • Falhas: ${summary.messagesFailed} ❌
 • Já enviadas (puladas): ${summary.messagesSkippedAlreadySent}
-• Taxa de sucesso: ${successRate}%
+• Taxa de sucesso: ${successRate !== null ? `${successRate}%` : 'N/A'}
 
 📋 *Tarefas*
 • Criadas: ${summary.tasksCreated}
@@ -534,7 +760,9 @@ export async function processAbsencesWithCheckpoint(
     const results = {
       messagesSucceeded: 0,
       messagesFailed: 0,
+      messagesSkippedAlreadySent: 0,
       tasksCreated: 0,
+      tasksSkippedDuplicate: 0,
       errors: [] as Array<{ estudanteId: string; estudanteNome: string; error: string }>
     };
 
@@ -554,7 +782,9 @@ export async function processAbsencesWithCheckpoint(
         // Acumular resultados
         results.messagesSucceeded += studentResult.messagesSucceeded;
         results.messagesFailed += studentResult.messagesFailed;
+        results.messagesSkippedAlreadySent += studentResult.messagesSkippedAlreadySent;
         results.tasksCreated += studentResult.tasksCreated;
+        results.tasksSkippedDuplicate += studentResult.tasksSkippedDuplicate;
         results.errors.push(...studentResult.errors);
 
         // CHECKPOINT: Atualizar no Supabase
@@ -566,7 +796,9 @@ export async function processAbsencesWithCheckpoint(
           results: {
             messagesSucceeded: results.messagesSucceeded,
             messagesFailed: results.messagesFailed,
+            messagesSkippedAlreadySent: results.messagesSkippedAlreadySent,
             tasksCreated: results.tasksCreated,
+            tasksSkippedDuplicate: results.tasksSkippedDuplicate,
             errors: results.errors
           }
         });
@@ -592,8 +824,19 @@ export async function processAbsencesWithCheckpoint(
 
     // 6. CRIAR SUMÁRIO FINAL
     const endTime = Date.now();
-    const studentsWithContacts = students.filter(s => s.contatos && s.contatos.length > 0).length;
-    const studentsWithoutContacts = students.length - studentsWithContacts;
+
+    // ✅ CORRIGIDO: Contar baseado nos estudantes PROCESSADOS (remainingStudents)
+    // não nos estudantes ENCONTRADOS (students), pois alguns podem ter sido
+    // pulados devido a checkpoint (já processados em execução anterior)
+    //
+    // ✅ CRÍTICO: Verificar AMBOS os campos de contatos:
+    // - student.contatos (campo padrão)
+    // - student.verifiedWhatsAppContacts (retornado pela API /api/students/absence-multiples)
+    const studentsWithContacts = remainingStudents.filter(s => {
+      const contacts = (s as any).verifiedWhatsAppContacts || s.contatos || [];
+      return contacts && contacts.length > 0;
+    }).length;
+    const studentsWithoutContacts = remainingStudents.length - studentsWithContacts;
 
     const summary: AutomationExecutionSummary = {
       executionId,
@@ -610,9 +853,9 @@ export async function processAbsencesWithCheckpoint(
       messagesAttempted: results.messagesSucceeded + results.messagesFailed,
       messagesSucceeded: results.messagesSucceeded,
       messagesFailed: results.messagesFailed,
-      messagesSkippedAlreadySent: 0, // TODO: contar
+      messagesSkippedAlreadySent: results.messagesSkippedAlreadySent,
       tasksCreated: results.tasksCreated,
-      tasksSkippedDuplicate: 0, // TODO: contar
+      tasksSkippedDuplicate: results.tasksSkippedDuplicate,
       errors: results.errors
     };
 
@@ -626,7 +869,9 @@ export async function processAbsencesWithCheckpoint(
         summary,
         messagesSucceeded: results.messagesSucceeded,
         messagesFailed: results.messagesFailed,
+        messagesSkippedAlreadySent: results.messagesSkippedAlreadySent,
         tasksCreated: results.tasksCreated,
+        tasksSkippedDuplicate: results.tasksSkippedDuplicate,
         errors: results.errors
       }
     });

@@ -757,6 +757,7 @@ Confirme no console do navegador:
 - [ ] Identificar tipos existentes em `src/types/`
 - [ ] Verificar se já existe componente/hook similar
 - [ ] Planejar a solução antes de codificar
+- [ ] **⚠️ NUNCA DEIXAR TODOs** - Implementar TUDO antes de commitar
 
 #### Planejamento
 ```markdown
@@ -3512,6 +3513,21 @@ npm run bundle:report
 ### 🚫 Código - NUNCA
 
 ```typescript
+// ❌ ⚠️ NUNCA CRIAR TODOs - IMPLEMENTAR TUDO IMEDIATAMENTE ⚠️
+// REGRA CRÍTICA: Se você identificou algo que precisa ser feito, FAÇA AGORA!
+// NÃO deixe comentários TODO, FIXME, HACK ou similares.
+// Se não pode fazer agora, crie uma issue ou tarefa no sistema de tasks.
+
+// ❌ PÉSSIMO - Deixar TODO no código
+const summary = {
+  tasksSkippedDuplicate: 0, // TODO: contar (quando implementar detecção de task duplicada)
+};
+
+// ✅ BOM - Implementar imediatamente
+const summary = {
+  tasksSkippedDuplicate: results.tasksSkippedDuplicate, // ✅ Implementado!
+};
+
 // ❌ NUNCA usar setDoc() diretamente
 import { setDoc } from 'firebase/firestore';
 await setDoc(doc(db, 'estudantes', id), data);

@@ -65,6 +65,7 @@ export default function StudentProfilePage() {
             handleSelectStudent={profile.handleSelectStudent}
             student={profile.student}
             loadingProfile={profile.loadingProfile}
+            studentRecordWithoutJustified={profile.studentRecordWithoutJustified}
           />
 
           {/* Mostrar seções apenas se houver estudante selecionado */}

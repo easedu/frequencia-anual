@@ -10,7 +10,7 @@
 import SearchByNameCard from '@/components/students/SearchByNameCard';
 import SearchByClassCard from '@/components/students/SearchByClassCard';
 import StudentInfoCard from '@/components/students/StudentInfoCard';
-import type { Student } from '@/types';
+import type { Student, StudentRecord } from '@/types';
 
 interface StudentSearchProps {
   // Search by name
@@ -30,6 +30,7 @@ interface StudentSearchProps {
   // Selected student
   student: Student | null;
   loadingProfile: boolean;
+  studentRecordWithoutJustified?: StudentRecord | null;
 }
 
 export function StudentSearch(props: StudentSearchProps) {
@@ -64,6 +65,7 @@ export function StudentSearch(props: StudentSearchProps) {
         <StudentInfoCard
           student={props.student}
           loading={props.loadingProfile}
+          studentRecordWithoutJustified={props.studentRecordWithoutJustified}
         />
       )}
     </div>

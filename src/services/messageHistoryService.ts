@@ -33,12 +33,16 @@ export class MessageHistoryService {
         limit: '1'
       });
 
-      const response = await fetch(`${this.getBaseUrl()}/api/messages/history?${queryParams}`);
+      const url = `${this.getBaseUrl()}/api/messages/history?${queryParams}`;
+
+      const response = await fetch(url);
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
       const result = await response.json();
-      const wasAlreadySent = result.data && result.data.length > 0;
+      // ✅ API retorna { success: true, data: { data: [...], pagination: {...} } }
+      const records = result.data?.data || [];
+      const wasAlreadySent = records.length > 0;
 
       if (wasAlreadySent) {
         logger.info('[MessageHistory] Mensagem já enviada anteriormente', {
@@ -47,7 +51,7 @@ export class MessageHistoryService {
           anoReferencia,
           mesReferencia,
           quantidadeFaltas,
-          existingRecords: result.data.length
+          existingRecords: records.length
         });
       }
 

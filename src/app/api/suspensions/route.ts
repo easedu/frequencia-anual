@@ -57,25 +57,40 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
     // Buscar nomes dos usuários (decision_by) para enriquecer os dados
     if (data && data.length > 0) {
-      // Coletar IDs únicos de decision_by
-      const userIds = [...new Set(
+      // Coletar IDs únicos de decision_by (filtrar apenas valores que parecem ser Firebase UIDs)
+      const potentialUIDs = [...new Set(
         data.map((susp: any) => susp.decision_by).filter(Boolean)
-      )];
+      )].filter((id: any) => id.length > 20); // Firebase UIDs têm 28 caracteres
 
-      if (userIds.length > 0) {
+      let userMap = new Map<string, string>();
+
+      if (potentialUIDs.length > 0) {
         const { data: users } = await supabaseAdmin
           .from('user_profiles')
           .select('firebase_uid, full_name')
-          .in('firebase_uid', userIds);
+          .in('firebase_uid', potentialUIDs);
 
-        const userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
-
-        // Adicionar nome do usuário aos dados
-        data.forEach((susp: any) => {
-          const userName = userMap.get(susp.decision_by);
-          susp.decision_by_name = userName || susp.decision_by || 'Desconhecido';
-        });
+        userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
       }
+
+      // Adicionar nome do usuário aos dados
+      data.forEach((susp: any) => {
+        // Tentar buscar nome do Firebase UID primeiro
+        let userName = userMap.get(susp.decision_by);
+
+        // Se não encontrou no userMap, verificar se é um nome direto (dados antigos)
+        if (!userName) {
+          // Se decision_by tem menos de 20 caracteres, provavelmente é um nome direto
+          if (susp.decision_by && susp.decision_by.length < 20) {
+            userName = susp.decision_by;
+          } else {
+            // Firebase UID não encontrado em user_profiles
+            userName = 'Usuário não encontrado';
+          }
+        }
+
+        susp.decision_by_name = userName || 'Desconhecido';
+      });
     }
 
     return paginatedResponse(data || [], page, limit, count || 0);

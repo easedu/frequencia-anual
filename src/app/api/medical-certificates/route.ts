@@ -72,30 +72,42 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
     // Buscar nomes dos usuários (submitted_by e created_by) para enriquecer os dados
     if (data && data.length > 0) {
-      // Coletar IDs de ambos os campos
-      const userIds = [...new Set(
+      // Coletar IDs de ambos os campos (filtrar apenas valores que parecem ser Firebase UIDs)
+      const potentialUIDs = [...new Set(
         data.flatMap((cert: any) => [cert.submitted_by, cert.created_by].filter(Boolean))
-      )];
+      )].filter((id: any) => id.length > 20); // Firebase UIDs têm 28 caracteres
 
-      if (userIds.length > 0) {
-        const { data: users, error: usersError } = await supabaseAdmin
+      let userMap = new Map<string, string>();
+
+      if (potentialUIDs.length > 0) {
+        const { data: users } = await supabaseAdmin
           .from('user_profiles')
           .select('firebase_uid, full_name')
-          .in('firebase_uid', userIds);
+          .in('firebase_uid', potentialUIDs);
 
-        const userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
-
-        // Adicionar nome do usuário aos dados
-        data.forEach((cert: any) => {
-          const submitterName = userMap.get(cert.submitted_by) || userMap.get(cert.created_by);
-          cert.submitter = { name: submitterName || cert.submitted_by || cert.created_by || 'Desconhecido' };
-        });
-      } else {
-        // Se não há IDs, ainda precisamos criar o campo submitter
-        data.forEach((cert: any) => {
-          cert.submitter = { name: 'Desconhecido' };
-        });
+        userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
       }
+
+      // Adicionar nome do usuário aos dados
+      data.forEach((cert: any) => {
+        // Tentar buscar nome do Firebase UID primeiro
+        let submitterName = userMap.get(cert.submitted_by) || userMap.get(cert.created_by);
+
+        // Se não encontrou no userMap, verificar se é um nome direto (dados antigos)
+        if (!submitterName) {
+          // Se submitted_by tem menos de 20 caracteres, provavelmente é um nome direto
+          if (cert.submitted_by && cert.submitted_by.length < 20) {
+            submitterName = cert.submitted_by;
+          } else if (cert.created_by && cert.created_by.length < 20) {
+            submitterName = cert.created_by;
+          } else {
+            // Firebase UID não encontrado em user_profiles
+            submitterName = 'Usuário não encontrado';
+          }
+        }
+
+        cert.submitter = { name: submitterName || 'Desconhecido' };
+      });
     }
 
     return paginatedResponse(data || [], page, limit, count || 0);

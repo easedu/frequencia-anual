@@ -92,25 +92,40 @@ export async function GET(request: NextRequest) {
 
     // Buscar nomes dos usuários (reported_by) para enriquecer os dados
     if (data && data.length > 0) {
-      // Coletar IDs únicos de reported_by
-      const userIds = [...new Set(
+      // Coletar IDs únicos de reported_by (filtrar apenas valores que parecem ser Firebase UIDs)
+      const potentialUIDs = [...new Set(
         data.map((occ: any) => occ.reported_by).filter(Boolean)
-      )];
+      )].filter((id: any) => id.length > 20); // Firebase UIDs têm 28 caracteres
 
-      if (userIds.length > 0) {
+      let userMap = new Map<string, string>();
+
+      if (potentialUIDs.length > 0) {
         const { data: users } = await supabaseAdmin
           .from('user_profiles')
           .select('firebase_uid, full_name')
-          .in('firebase_uid', userIds);
+          .in('firebase_uid', potentialUIDs);
 
-        const userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
-
-        // Adicionar nome do usuário aos dados
-        data.forEach((occ: any) => {
-          const userName = userMap.get(occ.reported_by);
-          occ.reported_by_name = userName || occ.reported_by || 'Desconhecido';
-        });
+        userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
       }
+
+      // Adicionar nome do usuário aos dados
+      data.forEach((occ: any) => {
+        // Tentar buscar nome do Firebase UID primeiro
+        let userName = userMap.get(occ.reported_by);
+
+        // Se não encontrou no userMap, verificar se é um nome direto (dados antigos)
+        if (!userName) {
+          // Se reported_by tem menos de 20 caracteres, provavelmente é um nome direto
+          if (occ.reported_by && occ.reported_by.length < 20) {
+            userName = occ.reported_by;
+          } else {
+            // Firebase UID não encontrado em user_profiles
+            userName = 'Usuário não encontrado';
+          }
+        }
+
+        occ.reported_by_name = userName || 'Desconhecido';
+      });
     }
 
     return successResponse({

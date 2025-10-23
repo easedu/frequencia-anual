@@ -78,6 +78,88 @@ export function withAuth<T = any>(handler: AuthenticatedHandler<T>) {
 }
 
 /**
+ * Middleware que aceita AMBOS: Bearer Token (Firebase) OU Basic Auth
+ *
+ * Usado para APIs que precisam ser chamadas tanto pelo frontend (Bearer Token)
+ * quanto por automações internas (Basic Auth).
+ *
+ * @example
+ * ```typescript
+ * export const POST = withBearerOrBasicAuth(async (req, userId) => {
+ *   // userId = Firebase UID (se Bearer) ou 'AUTOMAÇÃO' (se Basic Auth)
+ * });
+ * ```
+ */
+export function withBearerOrBasicAuth<T = any>(handler: AuthenticatedHandler<T>) {
+  return async (req: NextRequest, context?: T): Promise<NextResponse> => {
+    try {
+      const authHeader = req.headers.get('Authorization');
+
+      if (!authHeader) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Unauthorized',
+            message: 'Token de autenticação ausente.',
+          },
+          { status: 401 }
+        );
+      }
+
+      // 🔐 OPÇÃO 1: Bearer Token (Firebase - Frontend)
+      if (authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const decodedToken = await adminAuth.verifyIdToken(token);
+
+        if (!decodedToken || !decodedToken.uid) {
+          return NextResponse.json(
+            { success: false, error: 'Unauthorized', message: 'Token inválido.' },
+            { status: 401 }
+          );
+        }
+
+        return await handler(req, decodedToken.uid, context);
+      }
+
+      // 🔐 OPÇÃO 2: Basic Auth (Automação Interna)
+      if (authHeader.startsWith('Basic ')) {
+        const base64Credentials = authHeader.substring(6);
+        const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
+        const [username, password] = credentials.split(':');
+
+        const expectedUsername = process.env.API_HABIB_KYRILLOS_USERNAME;
+        const expectedPassword = process.env.API_HABIB_KYRILLOS_PASSWORD;
+
+        if (username === expectedUsername && password === expectedPassword) {
+          // ✅ Basic Auth válido - usar userId especial para automação
+          return await handler(req, 'AUTOMAÇÃO', context);
+        }
+
+        return NextResponse.json(
+          { success: false, error: 'Unauthorized', message: 'Credenciais inválidas.' },
+          { status: 401 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unauthorized',
+          message: 'Tipo de autenticação não suportado. Use Bearer ou Basic.',
+        },
+        { status: 401 }
+      );
+    } catch (error) {
+      console.error('[BearerOrBasicAuth Middleware] Error:', error);
+      return NextResponse.json(
+        { success: false, error: 'Internal Server Error', message: 'Erro ao verificar autenticação.' },
+        { status: 500 }
+      );
+    }
+  };
+}
+
+/**
  * Middleware de autenticação opcional
  * Fornece userId se autenticado, null caso contrário
  */

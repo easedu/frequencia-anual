@@ -148,7 +148,6 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
             if (editingInteraction.type === "Contato digital") {
                 // Se tem whatsappMessage salvo no banco, usar ele (NOVO)
                 if (editingInteraction.whatsappMessage) {
-                    console.log('✅ Usando whatsappMessage do banco:', editingInteraction.whatsappMessage);
                     onWhatsAppMessageChange(editingInteraction.whatsappMessage);
                     setInteractionDescription(editingInteraction.description);
 
@@ -159,8 +158,6 @@ const RegisterInteractionCard = memo(function RegisterInteractionCard({
                 } else {
                     // FALLBACK: Tentar extrair da descrição (dados antigos)
                     const match = editingInteraction.description.match(/Mensagem enviada via WhatsApp para: .+ - (\d+)\n\n([\s\S]*)/);
-
-                    console.log('⚠️ whatsappMessage não encontrado, tentando extrair da descrição');
 
                     if (match) {
                         const phoneNumber = match[1];

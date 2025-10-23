@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { withAuth } from '@/app/api/_middleware/auth';
+import { withAuth, withBearerOrBasicAuth } from '@/app/api/_middleware/auth';
 import { validateQueryParams, sanitizeObject } from '@/app/api/_middleware/validation';
 import { createInteractionSchema, interactionQuerySchema } from '@/app/api/_schemas/interactionSchemas';
 import { successResponse, errorResponse, validationErrorResponse, paginatedResponse } from '@/app/api/_utils/response';
@@ -67,25 +67,40 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
     // Buscar nomes dos usuários (created_by) para enriquecer os dados
     if (data && data.length > 0) {
-      // Coletar IDs únicos de created_by
-      const userIds = [...new Set(
+      // Coletar IDs únicos de created_by (filtrar apenas valores que parecem ser Firebase UIDs)
+      const potentialUIDs = [...new Set(
         data.map((interaction: any) => interaction.created_by).filter(Boolean)
-      )];
+      )].filter((id: any) => id.length > 20); // Firebase UIDs têm 28 caracteres
 
-      if (userIds.length > 0) {
+      let userMap = new Map<string, string>();
+
+      if (potentialUIDs.length > 0) {
         const { data: users } = await supabaseAdmin
           .from('user_profiles')
           .select('firebase_uid, full_name')
-          .in('firebase_uid', userIds);
+          .in('firebase_uid', potentialUIDs);
 
-        const userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
-
-        // Adicionar nome do usuário aos dados
-        data.forEach((interaction: any) => {
-          const userName = userMap.get(interaction.created_by);
-          interaction.created_by_name = userName || interaction.created_by || 'Desconhecido';
-        });
+        userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
       }
+
+      // Adicionar nome do usuário aos dados
+      data.forEach((interaction: any) => {
+        // Tentar buscar nome do Firebase UID primeiro
+        let userName = userMap.get(interaction.created_by);
+
+        // Se não encontrou no userMap, verificar se é um nome direto (dados antigos)
+        if (!userName) {
+          // Se created_by tem menos de 20 caracteres, provavelmente é um nome direto
+          if (interaction.created_by && interaction.created_by.length < 20) {
+            userName = interaction.created_by;
+          } else {
+            // Firebase UID não encontrado em user_profiles
+            userName = 'Usuário não encontrado';
+          }
+        }
+
+        interaction.created_by_name = userName || 'Desconhecido';
+      });
     }
 
     // Mapear dados do Supabase para o formato esperado pelo frontend
@@ -126,7 +141,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
   }
 });
 
-export const POST = withAuth(async (req: NextRequest, userId: string) => {
+export const POST = withBearerOrBasicAuth(async (req: NextRequest, userId: string) => {
   try {
     const body = await req.json();
     const validation = createInteractionSchema.safeParse(body);

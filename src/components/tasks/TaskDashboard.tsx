@@ -26,13 +26,13 @@ import {
 import { auth } from '@/firebase.config';
 // ✅ SPRINT 4 - FASE 7: 100% migrado para API REST
 import {
-  useTasks,
   useStudents,
   useInteractions,
   useUpdateTask,
   useDeleteTask,
   useCreateInteraction
 } from '@/hooks/api';
+import { useEnrichedTasks, EnrichedTask } from '@/hooks/useEnrichedTasks';
 import type { DashboardTask, TaskSection, TaskPriorityLevel } from '@/types/dashboardTasks';
 import type { UserTask } from '@/types/tasks';
 import type { Contato } from '@/types';
@@ -56,6 +56,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [taskSections, setTaskSections] = useState<TaskSection[]>([]);
   const [clearingData, setClearingData] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const [studentContacts, setStudentContacts] = useState<Contato[]>([]);
 
   // Estados para controlar a visibilidade das seções resolvidas
@@ -66,9 +67,10 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   });
 
   // Hooks da API REST
-  // ✅ CORREÇÃO: Filtrar por 'AUTOMAÇÃO' (não 'BOT')
-  const { tasks: apiTasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ created_by: 'AUTOMAÇÃO' });
-  const { students } = useStudents();
+  // ✅ MELHOR PRÁTICA: useEnrichedTasks já traz dados do estudante
+  const { tasks: enrichedTasks, loading: tasksLoading, refetch: refetchTasks } = useEnrichedTasks({
+    created_by: 'AUTOMAÇÃO'
+  });
   const { interactions } = useInteractions();
   const { updateTask } = useUpdateTask();
   const { deleteTask } = useDeleteTask();
@@ -103,16 +105,28 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     return phone;
   };
 
-  // Função para buscar dados completos do estudante (usando hook API REST)
+  // Função para buscar dados completos do estudante (mantida para compatibilidade)
+  // ✅ NOTA: enrichedTasks já tem studentName, studentClass, etc.
+  // Esta função é usada apenas para buscar contatos ao resolver tarefa
   const getStudentData = (estudanteId: string) => {
     try {
-      const student = students.find(s => s.student_id === estudanteId);
-      if (!student) return null;
+      // enrichedTasks usa Internal ID, então buscamos por student_id (Internal ID)
+      const enrichedTask = enrichedTasks.find(t => t.student_id === estudanteId);
 
-      // Mapear de snake_case (API) para camelCase (frontend) se necessário
+      if (!enrichedTask) {
+        logger.warn('[getStudentData] Estudante não encontrado', { estudanteId });
+        return null;
+      }
+
+      // Retornar dados básicos já enriquecidos
       return {
-        ...student,
-        contatos: (student as any).contacts || []
+        id: enrichedTask.student_id,
+        student_id: enrichedTask.student_id,
+        name: enrichedTask.studentName,
+        class: enrichedTask.studentClass,
+        shift: enrichedTask.studentShift,
+        status: enrichedTask.studentStatus,
+        contatos: [] // Será buscado via API quando necessário
       };
     } catch (error) {
       logger.error('Erro ao buscar dados do estudante:', error as Error);
@@ -150,50 +164,55 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
-  // Função para converter UserTask para DashboardTask com dados de interação atualizados
-  const convertUserTaskToDashboardTask = (userTask: UserTask): DashboardTask => {
-    const monthName = new Date(userTask.createdAt).toLocaleDateString('pt-BR', { month: 'long' });
+  // Função para converter EnrichedTask para DashboardTask
+  const convertEnrichedTaskToDashboardTask = (enrichedTask: EnrichedTask): DashboardTask => {
+    const monthName = new Date(enrichedTask.created_at).toLocaleDateString('pt-BR', { month: 'long' });
 
-    let resolvedAction = userTask.interactionType || 'Resolvida via API';
-    let resolvedDescription = userTask.interactionDescription || 'Tarefa marcada como resolvida automaticamente pela API';
-    let resolvedBy = userTask.resolvedBy || 'BOT';
+    // ✅ Dados do estudante já vêm enriquecidos!
+    // Não precisa buscar, já está em enrichedTask.studentName, etc
 
-    // Se a tarefa está completada e tem interactionId, buscar dados atuais da interação
-    if (userTask.status === 'COMPLETED' && userTask.interactionId) {
-      const interactionData = getInteractionData(userTask.estudanteId, userTask.interactionId);
-      if (interactionData) {
-        resolvedAction = interactionData.type;
-        resolvedDescription = interactionData.description;
-        resolvedBy = interactionData.createdBy;
+    // Parsear metadata para obter dados específicos da tarefa (se houver)
+    const metadata = enrichedTask.metadata || {};
+    const absencesCount = metadata.absencesCount || 0;
+    const frequencyPercentage = metadata.frequencyPercentage || 100;
+    const bimester = metadata.bimester || 'N/A';
 
-        // Se a interação foi deletada, manter a tarefa como completada mas indicar que foi removida
-        if (!interactionData.exists) {
-          logger.info(`Interação ${userTask.interactionId} foi deletada para a tarefa ${userTask.id}`);
-        }
-      }
+    // Determinar ação recomendada e prioridade baseado no título/descrição
+    let recommendedAction = enrichedTask.action_taken || 'Contato com a família';
+    let priority: TaskPriorityLevel = 'routine';
+
+    // Inferir prioridade baseado no título/descrição
+    if (enrichedTask.title.includes('CRÍTICO') || enrichedTask.title.includes('SEM CONTATO')) {
+      priority = 'critical';
+    } else if (enrichedTask.title.includes('⚠️') || absencesCount >= 10) {
+      priority = 'attention';
     }
 
+    let resolvedAction = enrichedTask.action_taken || 'Resolvida via API';
+    let resolvedDescription = enrichedTask.description || 'Tarefa marcada como resolvida automaticamente';
+    let resolvedBy = enrichedTask.resolved_by || enrichedTask.created_by;
+
     return {
-      id: userTask.id,
-      title: `${userTask.taskType === 'CONSELHO_TUTELAR' ? 'Conselho Tutelar' : 'Tarefa'} - ${userTask.studentName}`,
-      studentName: userTask.studentName,
-      studentClass: userTask.studentClass,
-      shift: 'N/A', // UserTask não tem shift
-      bimester: userTask.bimestre,
-      month: capitalizeFirstLetter(monthName), // Primeira letra maiúscula
-      absencesCount: userTask.absencesCount,
-      frequencyPercentage: userTask.frequencyPercentage,
-      isPCD: userTask.isPCD,
-      recommendedAction: userTask.recommendedAction, // Usar ação recomendada real
-      priority: userTask.priority, // Usar prioridade da API
-      status: userTask.status === 'COMPLETED' ? 'resolved' : 'pending',
-      createdAt: new Date(userTask.createdAt),
-      createdBy: userTask.createdBy || 'Não informado',
-      resolvedAt: userTask.completedAt ? new Date(userTask.completedAt) : undefined,
-      resolvedAction: userTask.status === 'COMPLETED' ? resolvedAction : undefined,
-      resolvedDescription: userTask.status === 'COMPLETED' ? resolvedDescription : undefined,
-      resolvedBy: userTask.status === 'COMPLETED' ? resolvedBy : undefined,
-      estudanteId: userTask.estudanteId // Incluir ID do estudante
+      id: enrichedTask.id,
+      title: enrichedTask.title,
+      studentName: enrichedTask.studentName,       // ✅ Já enriquecido!
+      studentClass: enrichedTask.studentClass,     // ✅ Já enriquecido!
+      shift: enrichedTask.studentShift,            // ✅ Já enriquecido!
+      bimester,
+      month: capitalizeFirstLetter(monthName),
+      absencesCount,
+      frequencyPercentage,
+      isPCD: enrichedTask.studentIsPCD || false,   // ✅ Já enriquecido!
+      recommendedAction,
+      priority,
+      status: enrichedTask.is_resolved ? 'resolved' : 'pending',
+      createdAt: new Date(enrichedTask.created_at),
+      createdBy: enrichedTask.created_by || 'Não informado',
+      resolvedAt: enrichedTask.resolved_at ? new Date(enrichedTask.resolved_at) : undefined,
+      resolvedAction: enrichedTask.is_resolved ? resolvedAction : undefined,
+      resolvedDescription: enrichedTask.is_resolved ? resolvedDescription : undefined,
+      resolvedBy: enrichedTask.is_resolved ? resolvedBy : undefined,
+      estudanteId: enrichedTask.student_id // Internal ID do Supabase
     };
   };
 
@@ -224,30 +243,26 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
         for (const { id, updates } of tasksToUpdate) {
           await updateTask(id, updates as any);
         }
-        logger.info(`Atualizadas ${tasksToUpdate.length} tarefa(s) com interações removidas`);
       } catch (error) {
         logger.error('Erro ao atualizar tarefas com interações removidas:', error as Error);
       }
     }
   };
 
-  // Carregar tarefas (usando hook API REST)
+  // Carregar tarefas (usando hook API REST com dados enriquecidos)
   const loadTasks = async () => {
     try {
       setLoading(true);
 
-      // ✅ VALIDAÇÃO: Garantir que apiTasks é array
-      if (!Array.isArray(apiTasks)) {
-        logger.warn('[TaskDashboard] apiTasks não é array', { apiTasks });
+      // ✅ VALIDAÇÃO: Garantir que enrichedTasks é array
+      if (!Array.isArray(enrichedTasks)) {
+        logger.warn('[TaskDashboard] enrichedTasks não é array', { enrichedTasks });
         setLoading(false);
         return;
       }
 
-      // Limpar referências de interações deletadas
-      await cleanupDeletedInteractions(apiTasks as any);
-
-      // Converter para DashboardTask e organizar por prioridade
-      const dashboardTasks = (apiTasks as any).map(convertUserTaskToDashboardTask);
+      // Converter para DashboardTask (agora muito mais simples!)
+      const dashboardTasks = enrichedTasks.map(convertEnrichedTaskToDashboardTask);
 
       // Criar seções baseadas nas tarefas reais
       const sections: TaskSection[] = [
@@ -295,19 +310,19 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     try {
       setClearingData(true);
 
-      // ✅ VALIDAÇÃO: Garantir que apiTasks é array
-      if (!Array.isArray(apiTasks)) {
+      // ✅ VALIDAÇÃO: Garantir que enrichedTasks é array
+      if (!Array.isArray(enrichedTasks)) {
         toast.error('Erro: dados de tarefas inválidos');
         setClearingData(false);
         return;
       }
 
       // Deletar todas as tarefas
-      if (apiTasks.length > 0) {
-        for (const task of apiTasks) {
+      if (enrichedTasks.length > 0) {
+        for (const task of enrichedTasks) {
           await deleteTask(task.id);
         }
-        toast.success(`${apiTasks.length} tarefa(s) excluída(s) com sucesso!`);
+        toast.success(`${enrichedTasks.length} tarefa(s) excluída(s) com sucesso!`);
 
         // Recarregar dados
         await refetchTasks();
@@ -322,6 +337,61 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
+  // Função para limpar histórico de mensagens WhatsApp (APENAS AUTOMAÇÃO)
+  const clearMessageHistory = async () => {
+    if (!confirm('Tem certeza que deseja limpar o histórico de mensagens da AUTOMAÇÃO? Isso permitirá que a automação reenvie mensagens. Esta ação não pode ser desfeita.')) {
+      return;
+    }
+
+    try {
+      setClearingHistory(true);
+
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error('Usuário não autenticado');
+        return;
+      }
+
+      const token = await user.getIdToken();
+      const response = await fetch('/api/messages/history', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`API retornou ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        const { deletedCount, taskIdsFound, strategy } = result;
+
+        if (strategy === 'SELECTIVE') {
+          toast.success(
+            `Histórico da automação limpo (seletivo)!\n${deletedCount || 0} mensagens excluídas (vinculadas a ${taskIdsFound || 0} tasks)`,
+            { duration: 5000 }
+          );
+        } else {
+          toast.success(
+            `Histórico limpo (completo)!\n${deletedCount || 0} mensagens excluídas (sem tasks para vincular)`,
+            { duration: 5000 }
+          );
+        }
+      } else {
+        toast.error('Erro ao limpar histórico');
+      }
+    } catch (error) {
+      logger.error('Erro ao limpar histórico de mensagens:', error as Error);
+      toast.error('Erro ao limpar histórico de mensagens');
+    } finally {
+      setClearingHistory(false);
+    }
+  };
+
   // Função para copiar telefone
   const copyPhoneToClipboard = async (phone: string, contactName: string) => {
     try {
@@ -332,12 +402,12 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     }
   };
 
-  // Carregar dados quando apiTasks mudar
+  // Carregar dados quando enrichedTasks mudar
   useEffect(() => {
     if (!tasksLoading) {
       loadTasks();
     }
-  }, [apiTasks, tasksLoading]);
+  }, [enrichedTasks, tasksLoading]);
 
   // Filtrar seções baseado no role do usuário
   const getFilteredSections = (): TaskSection[] => {
@@ -420,11 +490,6 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
         description: interactionDescription,
         is_sensitive: interactionSensitive,
         created_by: currentUser
-      });
-
-      logger.info('[TASK-DASHBOARD] Interação salva via API', {
-        interactionId: createdInteraction.interaction_id,
-        estudanteId: selectedTask.estudanteId
       });
 
       // 3. Atualizar tarefa como completada
@@ -526,22 +591,39 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
             Recarregar
           </Button>
 
-          {/* Botão para limpar dados da API - TEMPORÁRIO */}
+          {/* Botões para limpar dados - TEMPORÁRIO (apenas admin) */}
           {userRole === 'admin' && (
-            <Button
-              onClick={clearApiData}
-              variant="destructive"
-              size="sm"
-              disabled={clearingData}
-              className="flex items-center gap-2"
-            >
-              {clearingData ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Trash2 className="w-4 h-4" />
-              )}
-              {clearingData ? 'Limpando...' : 'Limpar Dados API'}
-            </Button>
+            <>
+              <Button
+                onClick={clearApiData}
+                variant="destructive"
+                size="sm"
+                disabled={clearingData}
+                className="flex items-center gap-2"
+              >
+                {clearingData ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                {clearingData ? 'Limpando...' : 'Limpar Dados API'}
+              </Button>
+
+              <Button
+                onClick={clearMessageHistory}
+                variant="destructive"
+                size="sm"
+                disabled={clearingHistory}
+                className="flex items-center gap-2"
+              >
+                {clearingHistory ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                {clearingHistory ? 'Limpando...' : 'Limpar Histórico (Automação)'}
+              </Button>
+            </>
           )}
         </div>
       </div>

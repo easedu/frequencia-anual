@@ -78,12 +78,16 @@ export async function GET(request: NextRequest) {
       return errorResponse(error.message, 500)
     }
 
-    return successResponse({
+    // ✅ Retornar com formato correto (data já é o array de tasks)
+    return NextResponse.json({
+      success: true,
       data: data || [],
       pagination: {
         total: count || 0,
         limit,
         offset,
+        page: Math.floor(offset / limit) + 1,
+        totalPages: Math.ceil((count || 0) / limit),
         hasMore: (count || 0) > offset + limit
       }
     })
