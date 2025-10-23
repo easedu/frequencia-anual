@@ -7,7 +7,22 @@
   },
   "functions": {
     "src/app/api/**/route.ts": {
-      "maxDuration": 30
+      "maxDuration": 10
     }
-  }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Connection",
+          "value": "keep-alive"
+        },
+        {
+          "key": "Keep-Alive",
+          "value": "timeout=10"
+        }
+      ]
+    }
+  ]
 }

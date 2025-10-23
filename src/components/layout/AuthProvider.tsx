@@ -51,18 +51,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const [authProgress, setAuthProgress] = useState(0);
   const [profileProgress, setProfileProgress] = useState(0);
+  const [authError, setAuthError] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
   const isAuthenticated = !!user;
 
-  // Função para buscar perfil do usuário com timeout
+  // Função para buscar perfil do usuário com timeout aumentado
   const fetchUserProfile = async (firebaseUser: User) => {
     try {
-      // Timeout para busca do perfil (3 segundos máximo)
+      // Timeout aumentado para 10 segundos (conexões lentas)
       const profilePromise = UserProfilesService.getByFirebaseUid(firebaseUser.uid);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 3000)
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
       );
 
       const userProfileData = await Promise.race([profilePromise, timeoutPromise]) as any;
@@ -75,16 +76,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
           status: userProfileData.isActive ? 'ativo' : 'desabilitado'
         };
         setUserProfile(profile);
+        logger.info('✅ Perfil do usuário carregado com sucesso', { userId: firebaseUser.uid });
       } else {
-        setUserProfile({
+        // Fallback: perfil padrão
+        const fallbackProfile = {
           nome: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
           email: firebaseUser.email || '',
-          perfil: 'user',
-          status: 'ativo'
-        });
+          perfil: 'user' as const,
+          status: 'ativo' as const
+        };
+        setUserProfile(fallbackProfile);
+        logger.warn('⚠️ Perfil não encontrado no Supabase, usando fallback', { userId: firebaseUser.uid });
       }
     } catch (error) {
-      logger.error('❌ Erro ao buscar perfil do usuário (usando fallback):', { error });
+      // Error handling robusto
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('❌ Erro ao buscar perfil do usuário (usando fallback):', {
+        error: errorMessage,
+        userId: firebaseUser.uid
+      });
+
+      // Fallback sempre funcional
       setUserProfile({
         nome: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
         email: firebaseUser.email || '',
@@ -108,13 +120,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
     }, 200);
 
-    // Timeout de segurança para evitar loading infinito
+    // Timeout de segurança aumentado para conexões lentas (30s)
     const timeoutId = setTimeout(() => {
-      logger.warn('⏰ Timeout na verificação de autenticação, forçando redirecionamento');
+      logger.error('⏰ Timeout na verificação de autenticação após 30s', {
+        pathname,
+        timestamp: new Date().toISOString()
+      });
       setLoading(false);
       clearInterval(authProgressInterval);
-      router.replace('/login');
-    }, 10000); // 10 segundos máximo
+      setAuthError('Erro de conexão. Por favor, recarregue a página.');
+
+      // Não forçar redirecionamento abrupto - pode causar ERR_CONNECTION_RESET
+      // Apenas parar o loading e mostrar erro
+      setAuthProgress(0);
+      setProfileProgress(0);
+    }, 30000); // 30 segundos máximo (conexões lentas/cold start)
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       clearTimeout(timeoutId); // Cancelar timeout se auth resolver
@@ -290,11 +310,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
               </div>
 
               {/* Status text dinâmico */}
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {authProgress < 100 ? 'Conectando com servidor...' :
-                 profileProgress < 100 ? 'Carregando dados do usuário...' :
-                 'Finalizando...'}
-              </p>
+              {authError ? (
+                <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                  <p className="text-sm text-red-600 dark:text-red-400 font-medium mb-2">
+                    {authError}
+                  </p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Recarregar Página
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {authProgress < 100 ? 'Conectando com servidor...' :
+                   profileProgress < 100 ? 'Carregando dados do usuário...' :
+                   'Finalizando...'}
+                </p>
+              )}
             </div>
 
             {/* Footer minimalista */}
