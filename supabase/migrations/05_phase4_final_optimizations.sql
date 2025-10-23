@@ -251,7 +251,9 @@ SELECT * FROM get_table_statistics();
 SELECT * FROM query_performance_dashboard;
 
 -- Otimizar todas as tabelas após mudanças
-SELECT * FROM optimize_all_tables();
+-- NOTA: VACUUM não pode rodar em transaction block (Supabase SQL Editor)
+-- Execute separadamente se necessário: SELECT * FROM optimize_all_tables();
+-- SELECT * FROM optimize_all_tables();
 
 -- ============================================================================
 -- ROLLBACK INSTRUCTIONS
