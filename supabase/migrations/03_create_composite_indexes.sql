@@ -271,15 +271,16 @@ WHERE schemaname = 'public'
 ORDER BY pg_relation_size(indexname::regclass) DESC;
 
 -- ============================================================================
--- VACUUM E ANALYZE
+-- ANALYZE (Atualizar estatísticas do query planner)
 -- ============================================================================
--- Atualizar estatísticas do planner após criar índices
+-- Atualizar estatísticas após criar índices
+-- Nota: VACUUM não pode rodar em transação, apenas ANALYZE
 -- ============================================================================
 
-VACUUM ANALYZE students;
-VACUUM ANALYZE student_absences;
-VACUUM ANALYZE family_interactions;
-VACUUM ANALYZE user_tasks;
-VACUUM ANALYZE medical_certificates;
-VACUUM ANALYZE student_suspensions;
-VACUUM ANALYZE student_contacts;
+ANALYZE students;
+ANALYZE student_absences;
+ANALYZE family_interactions;
+ANALYZE user_tasks;
+ANALYZE medical_certificates;
+ANALYZE student_suspensions;
+ANALYZE student_contacts;
