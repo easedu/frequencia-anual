@@ -51,17 +51,24 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       limit,
       search,
       detail = 'minimal', // ✅ OTIMIZAÇÃO: Padrão é minimal
+      cursor, // ✅ OTIMIZAÇÃO Fase 2: cursor para infinite scroll
     } = validation.data;
 
     // 2. ✅ OTIMIZAÇÃO: SELECT estratificado baseado no DetailLevel
     const selectQuery = STUDENT_SELECT_QUERIES[detail as DetailLevel];
 
-    // 3. Construir query no Supabase
+    // 3. Determinar modo de paginação (cursor vs offset)
+    const useCursorPagination = !!cursor;
+
+    // 4. Construir query no Supabase
     let query: any = supabaseAdmin
       .from('students')
-      .select(selectQuery, { count: 'exact' }) // ✅ Query otimizada
+      .select(selectQuery, {
+        // ✅ count apenas na primeira página (cursor pagination)
+        count: useCursorPagination ? undefined : 'exact',
+      })
       .eq('deleted', false)
-      .order('name', { ascending: true });
+      .order('name', { ascending: true }); // ✅ IMPORTANTE: ordem consistente
 
     // Aplicar filtros
     if (turma) {
@@ -81,7 +88,6 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     if (estudanteComDeficiencia !== undefined) {
-      // Filtrar por presença de deficiências
       if (estudanteComDeficiencia) {
         query = query.not('disabilities', 'is', null);
       } else {
@@ -90,16 +96,25 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     if (search) {
-      // Busca por nome (case insensitive)
       query = query.ilike('name', `%${search}%`);
     }
 
-    // Paginação
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
-    query = query.range(from, to);
+    // ✅ OTIMIZAÇÃO Fase 2: Paginação baseada em cursor ou offset
+    if (useCursorPagination) {
+      // Cursor-based: começar após o cursor
+      if (cursor) {
+        query = query.gt('student_id', cursor);
+      }
+      // Buscar limit + 1 para saber se há próxima página
+      query = query.limit(limit + 1);
+    } else {
+      // Offset-based (paginação tradicional)
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+      query = query.range(from, to);
+    }
 
-    // 3. Executar query
+    // 5. Executar query
     const { data, error, count } = await query;
 
     if (error) {
@@ -112,13 +127,51 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       );
     }
 
-    // 4. Converter para formato legacy (Estudante) baseado no detail level
-    const students = (data || []).map((student) =>
-      convertSupabaseToEstudante(student, detail as DetailLevel)
-    );
+    // 6. Processar resultado baseado no tipo de paginação
+    let students: any[];
+    let hasNextPage = false;
+    let nextCursor: string | null = null;
 
-    // 5. ✅ OTIMIZAÇÃO: Retornar com paginação e cache HTTP
-    return paginatedResponse(students, page, limit, count || 0, 'dynamic');
+    if (useCursorPagination) {
+      // ✅ Cursor pagination: determinar se há próxima página
+      hasNextPage = (data || []).length > limit;
+      const items = hasNextPage ? (data || []).slice(0, limit) : (data || []);
+      students = items.map((s) => convertSupabaseToEstudante(s, detail as DetailLevel));
+      nextCursor = hasNextPage && students.length > 0
+        ? items[items.length - 1].student_id
+        : null;
+    } else {
+      // Offset pagination tradicional
+      students = (data || []).map((s) =>
+        convertSupabaseToEstudante(s, detail as DetailLevel)
+      );
+    }
+
+    // 7. ✅ OTIMIZAÇÃO: Retornar com paginação apropriada e cache HTTP
+    if (useCursorPagination) {
+      // Response com cursor pagination
+      return NextResponse.json(
+        {
+          success: true,
+          data: students,
+          pagination: {
+            limit,
+            hasNextPage,
+            nextCursor,
+          },
+        },
+        {
+          status: 200,
+          headers: {
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+            'Vary': 'Accept-Encoding, Authorization',
+          },
+        }
+      );
+    } else {
+      // Response tradicional
+      return paginatedResponse(students, page, limit, count || 0, 'dynamic');
+    }
   } catch (error) {
     return handleError(error, 'GET /api/students');
   }
