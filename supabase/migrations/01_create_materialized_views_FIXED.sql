@@ -313,7 +313,7 @@ BEGIN
   RETURN QUERY
   SELECT
     c.relname::TEXT AS view_name,
-    pg_class.reltuples::BIGINT AS row_count,
+    c.reltuples::BIGINT AS row_count,
     pg_size_pretty(pg_total_relation_size(c.oid))::TEXT AS total_size,
     GREATEST(
       pg_stat_get_last_analyze_time(c.oid),
