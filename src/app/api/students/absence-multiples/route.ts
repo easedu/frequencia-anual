@@ -521,6 +521,10 @@ export async function GET(request: NextRequest) {
     const referenceMonth = searchParams.get('referenceMonth') || new Date().getMonth() + 1 + ''; // Mês atual por default
     const clearCache = searchParams.get('clearCache') === 'true';
 
+    // 🚀 PAGINAÇÃO PROGRESSIVA
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 1000);
+
     // Limpar cache se solicitado
     if (clearCache) {
       apiCache.clear();
@@ -681,9 +685,21 @@ export async function GET(request: NextRequest) {
     const whatsappContactsLoaded = Object.keys(verifiedContacts).length > 0;
     const studentsWithWhatsappContacts = Object.keys(verifiedContacts).length;
 
+    // 🚀 PAGINAÇÃO PROGRESSIVA: Aplicar paginação nos resultados
+    const totalResults = results.length;
+    const from = (page - 1) * limit;
+    const to = from + limit;
+    const paginatedResults = results.slice(from, to);
+
     return NextResponse.json({
       success: true,
-      data: results,
+      data: paginatedResults,
+      pagination: {
+        page,
+        limit,
+        total: totalResults,
+        totalPages: Math.ceil(totalResults / limit)
+      },
       metadata: {
         totalStudentsAnalyzed: activeStudents.length,
         totalActiveStudents: activeStudents.length,

@@ -20,6 +20,10 @@ import { logger } from '@/utils/logger'
  */
 export const GET = withAuth(async (req: NextRequest, userId: string) => {
   try {
+    const { searchParams } = new URL(req.url)
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 1000)
+
     // Chamar RPC function do Supabase
     const { data, error } = (await supabaseAdmin.rpc('find_duplicate_absences')) as {
       data: Array<{ student_id: string; absence_date: string; count: number }> | null
@@ -31,9 +35,23 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       return errorResponse('DATABASE_ERROR', 'Erro ao buscar duplicatas', 500)
     }
 
+    const allDuplicates = data || []
+    const total = allDuplicates.length
+
+    // 🚀 PAGINAÇÃO PROGRESSIVA: Aplicar paginação no resultado
+    const from = (page - 1) * limit
+    const to = from + limit
+    const paginatedDuplicates = allDuplicates.slice(from, to)
+
     return successResponse({
-      duplicates: data || [],
-      count: (data || []).length,
+      duplicates: paginatedDuplicates,
+      count: paginatedDuplicates.length,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
     })
   } catch (error) {
     return handleError(error, 'GET /api/absences/duplicates')

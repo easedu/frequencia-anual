@@ -313,6 +313,10 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const minConsecutiveDays = parseInt(searchParams.get('minConsecutiveDays') || '10');
     const bimesters = searchParams.get('bimesters')?.split(',') || [];
+
+    // 🚀 PAGINAÇÃO PROGRESSIVA
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 1000);
     const onlyActive = searchParams.get('onlyActive') === 'true'; // Filtrar apenas casos com período ativo
     const ongoingOnly = searchParams.get('ongoingOnly') === 'true'; // Filtrar apenas casos ongoing (em andamento)
     const clearCache = searchParams.get('clearCache') === 'true'; // Limpar cache se solicitado
@@ -493,9 +497,21 @@ export async function GET(request: NextRequest) {
 
     const executionTime = Date.now() - startTime;
 
+    // 🚀 PAGINAÇÃO PROGRESSIVA: Aplicar paginação nos resultados
+    const totalResults = results.length;
+    const from = (page - 1) * limit;
+    const to = from + limit;
+    const paginatedResults = results.slice(from, to);
+
     return NextResponse.json({
       success: true,
-      data: results,
+      data: paginatedResults,
+      pagination: {
+        page,
+        limit,
+        total: totalResults,
+        totalPages: Math.ceil(totalResults / limit)
+      },
       metadata: {
         totalStudentsAnalyzed: limitedStudents.length,
         totalActiveStudents: activeStudents.length,
