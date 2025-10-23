@@ -39,11 +39,20 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({ data });
+    return NextResponse.json({
+      success: true,
+      data,
+      pagination: {
+        page: 1,
+        limit: 1,
+        total: data ? 1 : 0,
+        totalPages: data ? 1 : 0
+      }
+    });
   } catch (error) {
     console.error('Erro ao buscar usuário por email:', error);
     return NextResponse.json(
-      { error: 'Erro ao buscar usuário' },
+      { success: false, error: 'Erro ao buscar usuário' },
       { status: 500 }
     );
   }
