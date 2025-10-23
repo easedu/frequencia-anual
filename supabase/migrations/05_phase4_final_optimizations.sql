@@ -177,40 +177,12 @@ COMMENT ON VIEW task_statistics IS
 -- ============================================================================
 -- PARTE 3: OTIMIZAÇÃO DE RLS (Row Level Security)
 -- ============================================================================
--- Simplificar policies para melhor performance
+-- SKIP: Students table não tem coluna user_id
+-- RLS será configurado via Supabase Dashboard conforme necessário
 -- ============================================================================
 
--- ============================================================================
--- RLS: Students Table
--- ============================================================================
--- Otimizar policy de leitura (evitar subqueries complexas)
--- ============================================================================
-
--- Remover policies antigas se existirem
-DROP POLICY IF EXISTS students_read_policy ON students;
-DROP POLICY IF EXISTS students_write_policy ON students;
-
--- Policy otimizada de leitura
-CREATE POLICY students_read_policy ON students
-  FOR SELECT
-  USING (
-    deleted = false
-    AND (
-      user_id = auth.uid()
-      OR auth.uid() IN (
-        SELECT id FROM auth.users WHERE email LIKE '%@admin.com'
-      )
-    )
-  );
-
--- Policy otimizada de escrita
-CREATE POLICY students_write_policy ON students
-  FOR ALL
-  USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
-
-COMMENT ON POLICY students_read_policy ON students IS
-'Optimized RLS: users can read their own data + admins can read all. Simplified subquery.';
+-- Nota: RLS policies devem ser configuradas manualmente no Supabase Dashboard
+-- baseado na estrutura real da tabela students e requisitos de segurança.
 
 -- ============================================================================
 -- PARTE 4: CONFIGURAÇÕES DE PERFORMANCE DO POSTGRESQL
