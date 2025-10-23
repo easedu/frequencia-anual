@@ -27,7 +27,11 @@
     "icons:shortcuts": "node scripts/generate-icons.js --shortcuts",
     "clean": "rm -rf .next out dist",
     "quality": "npm run lint && npm run type-check && npm run test && npm run build",
-    "ci:full": "npm run quality && npm run analyze && npm run bundle:report"
+    "ci:full": "npm run quality && npm run analyze && npm run bundle:report",
+    "perf:test": "node scripts/test-performance.js",
+    "perf:baseline": "node scripts/test-performance.js",
+    "compression:test": "node scripts/test-compression.js",
+    "compression:prod": "node scripts/test-compression.js https://seu-app.vercel.app"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
