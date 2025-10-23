@@ -17,18 +17,36 @@ const supabase = createClient(
 
 export async function GET(request: NextRequest) {
   try {
-    const { data, error } = await supabaseAdmin
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 1000);
+
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    // 🚀 PAGINAÇÃO PROGRESSIVA
+    const { data, error, count } = await supabaseAdmin
       .from('users')
-      .select('*')
-      .order('name', { ascending: true });
+      .select('*', { count: 'exact' })
+      .order('name', { ascending: true })
+      .range(from, to);
 
     if (error) throw error;
 
-    return NextResponse.json({ data: data || [] });
+    return NextResponse.json({
+      success: true,
+      data: data || [],
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit)
+      }
+    });
   } catch (error) {
     console.error('Erro ao listar usuários:', error);
     return NextResponse.json(
-      { error: 'Erro ao listar usuários' },
+      { success: false, error: 'Erro ao listar usuários' },
       { status: 500 }
     );
   }

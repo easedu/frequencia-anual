@@ -101,7 +101,17 @@ export function useStudents(filters?: StudentFilters) {
             bolsaFamilia: filters?.bolsa_familia, // ✅ API espera camelCase
             search: filters?.search,
           },
-          resourceName: 'estudantes'
+          resourceName: 'estudantes',
+          // 🚀 LOADING PROGRESSIVO: Atualiza UI conforme dados carregam
+          onProgress: (currentData, progress) => {
+            setStudents([...currentData]);
+            setPagination({
+              page: 1,
+              limit: currentData.length,
+              total: progress.total,
+              totalPages: 1
+            });
+          }
         });
 
         setStudents(allLoadedStudents);
