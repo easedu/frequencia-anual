@@ -227,8 +227,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  start_time TIMESTAMP;
-  end_time TIMESTAMP;
+  start_time TIMESTAMPTZ;
+  end_time TIMESTAMPTZ;
   duration INTEGER;
 BEGIN
   -- 1. Absences
