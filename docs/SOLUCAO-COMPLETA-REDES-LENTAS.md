@@ -815,23 +815,76 @@ const response = await fetch(
 
 **Commit**: `03fc320`
 
-6. ✅ `getByTurmaAndDate()` - GET por turma + data (CRÍTICO!) ← **FIX REAL!**
+6. ✅ `getByTurmaAndDate()` - GET por turma + data (CRÍTICO!)
 
-#### Por que AGORA resolve de verdade?
+#### ⚠️⚠️ BUG CRÍTICO #2: Parâmetros errados na query! (24/10/2025 18:00)
 
-**Antes (Fase 3)**:
+**Usuário reportou NOVAMENTE**: "o mesmo erro ainda continua"
+
+**Análise mais profunda**:
+```typescript
+// getByTurmaAndDate() - APÓS commit 03fc320 (AINDA BUGADO!)
+const response = await fetch(
+  `/api/absences?turma=5A&data=24102025`,  // ❌ Parâmetro "data" NÃO EXISTE!
+);
+```
+
+**Problema**: API **NÃO aceita** parâmetro `data`!
+
+**Schema da API** (`absenceQuerySchema`):
+- ✅ Aceita: `dataInicio`, `dataFim`, `turma`, `estudanteId`, `bimestre`
+- ❌ **NÃO aceita**: `data`
+
+**O que acontecia**:
+1. `getByTurmaAndDate()` passava `?turma=5A&data=24102025`
+2. API ignorava parâmetro `data` (não existe no schema!)
+3. Query rodava **SEM filtro de data** → Retornava **TODAS as faltas da turma** (100+ registros)
+4. Payload muito grande em 2G/3G (150KB+) → `ERR_CONNECTION_RESET`
+
+**Solução correta** (Commit `eddba52`):
+```typescript
+// Passar MESMA data em dataInicio E dataFim
+const response = await fetch(
+  `/api/absences?turma=5A&dataInicio=24102025&dataFim=24102025`,
+);
+```
+
+**Por que isso resolve**:
+- `.gte('absence_date', '24102025')` → absence_date >= 24102025
+- `.lte('absence_date', '24102025')` → absence_date <= 24102025
+- Resultado: **Apenas faltas do dia 24/10/2025** (2-5 registros, ~5KB)
+
+7. ✅ `getByTurmaAndDate()` - Correção de parâmetros ← **FIX REAL FINAL!**
+
+**Commit final**: `eddba52`
+
+#### Por que AGORA sim resolve definitivamente?
+
+**Antes (Commit 03fc320 - Bug de parâmetros)**:
 ```
 handleSaveAbsences()
-  → getByTurmaAndDate() [supabase client] ❌ ERR_CONNECTION_RESET
-  → NUNCA chega em addAbsence()
+  → getByTurmaAndDate()
+      → GET /api/absences?turma=5A&data=X
+      → API ignora "data" (não existe no schema)
+      → Query SEM filtro de data
+      → Retorna 100+ registros (TODAS as faltas da turma)
+      → Payload: 150KB
+      → ERR_CONNECTION_RESET em 2G/3G ❌
 ```
 
-**Depois (Fase 3 + Fix Crítico)**:
+**Depois (Commit eddba52 - Parâmetros corretos)**:
 ```
 handleSaveAbsences()
-  → getByTurmaAndDate() [API REST + timeout 60s] ✅
-  → addAbsence() [já tinha timeout] ✅
-  → Sucesso em 2G/3G!
+  → getByTurmaAndDate()
+      → GET /api/absences?turma=5A&dataInicio=X&dataFim=X
+      → API filtra corretamente pela data
+      → Retorna 2-5 registros (APENAS do dia)
+      → Payload: 5KB
+      → Sucesso em 2G/3G! ✅
+  → addAbsence()
+      → POST /api/absences
+      → Timeout 60s + keepalive
+      → Sucesso! ✅
 ```
 
 ### Validação Final do Sistema Completo
