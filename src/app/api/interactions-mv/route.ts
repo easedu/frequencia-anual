@@ -1,11 +1,13 @@
 /**
  * API Route: Interactions usando Materialized View
  * Elimina N+1 queries usando interactions_with_student_info
+ * ✅ OTIMIZAÇÃO FASE 1: HTTP Cache headers configurados
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { successResponse, errorResponse } from '@/app/api/_utils/response';
+import { errorResponse } from '@/app/api/_utils/response';
+import { responseWithCache, mvCacheHeaders, MV_CACHE_STRATEGY } from '@/app/api/_utils/cacheHeaders';
 
 export async function GET(req: NextRequest) {
   try {
@@ -44,11 +46,16 @@ export async function GET(req: NextRequest) {
     const items = hasNextPage ? data.slice(0, limit) : data;
     const nextCursor = hasNextPage ? items[items.length - 1].interaction_date : null;
 
-    return successResponse({
-      items,
-      pagination: { limit, hasNextPage, nextCursor },
-      meta: { total: items.length, source: 'materialized_view' }
-    });
+    // ✅ OTIMIZAÇÃO FASE 1: Response com cache headers
+    return responseWithCache(
+      {
+        items,
+        pagination: { limit, hasNextPage, nextCursor },
+        meta: { total: items.length, source: 'materialized_view' }
+      },
+      MV_CACHE_STRATEGY,
+      mvCacheHeaders()
+    );
 
   } catch (error) {
     return errorResponse('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unknown error', 500);

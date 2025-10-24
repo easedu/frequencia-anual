@@ -2,7 +2,7 @@
  * API Route: Suspensions usando Materialized View
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { successResponse, errorResponse } from '@/app/api/_utils/response';
 
@@ -34,10 +34,10 @@ export async function GET(req: NextRequest) {
       return errorResponse('DATABASE_ERROR', error.message, 500);
     }
 
-    return successResponse({
+    return responseWithCache({
       items: data,
       meta: { total: data.length, source: 'materialized_view' }
-    });
+    , MV_CACHE_STRATEGY, mvCacheHeaders());
 
   } catch (error) {
     return errorResponse('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unknown error', 500);
