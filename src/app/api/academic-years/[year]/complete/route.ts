@@ -33,7 +33,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { cache } from '@/utils/cache';
+import { serverCache } from '@/utils/serverCache';
 import { logger } from '@/utils/logger';
 
 // ════════════════════════════════════════════════════════════════
@@ -120,7 +120,7 @@ export async function GET(req: NextRequest, context: RouteParams) {
 
     // ✅ PASSO 1: Verificar cache primeiro
     const cacheKey = `academic-year-complete-${year}`;
-    const cached = cache.get<AcademicYearComplete>(cacheKey);
+    const cached = serverCache.get<AcademicYearComplete>(cacheKey);
 
     if (cached) {
       logger.info(`Cache HIT para ano letivo ${year}`, { year, cached: true });
@@ -248,7 +248,7 @@ export async function GET(req: NextRequest, context: RouteParams) {
     });
 
     // ✅ PASSO 6: Salvar no cache
-    cache.set(cacheKey, result, CACHE_TTL);
+    serverCache.set(cacheKey, result, CACHE_TTL);
 
     logger.info(`Cache ARMAZENADO para ano letivo ${year}`, {
       year,
