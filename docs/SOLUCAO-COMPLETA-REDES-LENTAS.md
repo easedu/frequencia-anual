@@ -460,6 +460,31 @@ export const maxDuration = 60; // 60 segundos para redes muito lentas
 
 **Conclusão**: Sistema agora suporta redes **extremamente lentas** (2G). A 1ª carga pode ser demorada, mas as próximas são instantâneas graças ao cache.
 
+#### 4. APIs de Absences (Salvamento de Faltas) ✅ (24/10/2025 - Fase Final)
+
+**Problema descoberto APÓS fixes anteriores**: Salvamento de faltas também falhava em redes 2G/3G.
+
+**Sintoma**: `ERR_CONNECTION_RESET` ao salvar faltas em `/marcar-faltas`
+
+**Causa**: APIs de absences sem configuração de timeout (usavam Edge runtime padrão = 10s)
+
+**Solução**: Adicionar mesmo pattern de timeout usado nas outras APIs:
+
+**APIs atualizadas**:
+- `/api/absences/route.ts` - GET (listar) + POST (criar)
+- `/api/absences/[id]/route.ts` - GET/PUT/DELETE individual
+- `/api/absences/bulk/route.ts` - POST (criar múltiplas)
+
+**Configuração adicionada**:
+```typescript
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+```
+
+**Performance esperada**:
+- Redes rápidas: Normal (< 1s)
+- Redes lentas (2G/3G): Salvamento funciona (até 60s)
+
 ---
 
 ## 📖 COMO USAR
