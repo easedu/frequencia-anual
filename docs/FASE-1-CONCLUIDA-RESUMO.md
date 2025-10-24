@@ -1,7 +1,7 @@
 # ✅ FASE 1: OTIMIZAÇÕES CRÍTICAS - CONCLUÍDA
 
 **Data de Conclusão**: 2025-10-23
-**Status**: ✅ **BACKEND 100% COMPLETO** | ⏳ **FRONTEND 12.5% MIGRADO**
+**Status**: ✅ **BACKEND 100% COMPLETO** | ✅ **BUILD PASSANDO** | ⏳ **FRONTEND 50% MIGRADO**
 
 ---
 
@@ -25,9 +25,9 @@ Reduzir tempo de carregamento de **60-90 segundos → 15-20 segundos** (4x mais 
 | **2. Compressão Brotli** | ✅ Validado | 100% |
 | **3. HTTP Cache** | ✅ Backend | 100% |
 | **4. React Query** | ✅ Provider | 100% |
-| **5. Frontend Migration** | ⏳ Em Progresso | 12.5% |
+| **5. Frontend Migration** | ⏳ Em Progresso | 50% |
 | **TOTAL BACKEND** | ✅ Completo | **100%** |
-| **TOTAL FRONTEND** | ⏳ Parcial | **12.5%** |
+| **TOTAL FRONTEND** | ⏳ Parcial | **50%** |
 
 ---
 
@@ -290,9 +290,9 @@ export default function RootLayout({ children }) {
 
 ---
 
-## ⏳ 5. FRONTEND MIGRATION (12.5% CONCLUÍDA)
+## ⏳ 5. FRONTEND MIGRATION (50% CONCLUÍDA)
 
-### Componente Migrado (1/8)
+### Componentes Migrados (4/8)
 
 #### ✅ `src/app/cadastrar-estudante/page.tsx`
 
@@ -324,21 +324,68 @@ const updateStudentMutation = useUpdateStudent();
 - ✅ Retry automático (3 tentativas)
 - ✅ Invalidação de cache após mutações
 
-### Componentes Pendentes (7/8)
+#### ✅ `src/app/controlar-faltas/page.tsx`
+
+**Depois** (React Query):
+```typescript
+import { useStudents } from "@/hooks/api/query";
+
+// ✅ Apenas dados mínimos necessários (5KB/estudante)
+const { data: students = [] } = useStudents({
+  status: 'ATIVO',
+  detail: 'minimal', // ✅ 10x redução de payload
+});
+```
+
+**Benefícios**:
+- ✅ Payload: 500KB → 50KB (10x redução)
+- ✅ Cache automático (reaproveitamento entre rotas)
+
+#### ✅ `src/app/relatorio-interacoes/page.tsx`
+
+**Depois** (React Query):
+```typescript
+import { useStudents } from "@/hooks/api/query";
+
+// ✅ Lista minimalista para filtros
+const { data: students = [], isLoading: loadingStudents } = useStudents({
+  status: "ATIVO",
+  detail: 'minimal',
+});
+```
+
+**Benefícios**:
+- ✅ Mesma redução de payload
+- ✅ Compartilha cache com controlar-faltas
+
+#### ✅ `src/app/perfil-deficiente/page.tsx`
+
+**Depois** (React Query):
+```typescript
+import { useStudents } from "@/hooks/api/query";
+
+// ✅ Necessita campo JSONB (disabilities)
+const { data: students = [], isLoading: loading, error } = useStudents({
+  detail: 'detailed', // ✅ Inclui disabilities sem over-fetching de contacts
+});
+```
+
+**Benefícios**:
+- ✅ Payload: 500KB → 250KB (2x redução)
+- ✅ Inclui apenas campos necessários (disabilities + dados principais)
+
+### Componentes Pendentes (4/8)
 
 | Componente | Uso de Dados | Prioridade | Estimativa |
 |------------|--------------|------------|------------|
 | `home/page.tsx` | Dashboard (não usa students diretamente) | Baixa | 30 min |
-| `controlar-faltas/page.tsx` | Absences (usa MV) | **Alta** | 1h |
-| `gerenciador-tarefas/page.tsx` | Tasks (usa MV) | Média | 45 min |
-| `relatorio-interacoes/page.tsx` | Interactions (usa MV) | Média | 45 min |
-| `perfil-deficiente/page.tsx` | Students com deficiências | Baixa | 30 min |
-| `components/StudentTable.tsx` | Students (tabela principal) | **Alta** | 1h |
-| `components/cards/KPIsCard.tsx` | KPIs agregados | Média | 30 min |
+| `gerenciador-tarefas/page.tsx` | Tasks (lazy load) | Baixa | 15 min |
+| `components/StudentTable.tsx` | Students (presentation only) | Baixa | 15 min |
+| `components/cards/KPIsCard.tsx` | KPIs (recebe props) | Baixa | 15 min |
 
-**Tempo Total Estimado**: **5 horas**
+**Tempo Total Estimado**: **1.25 horas**
 
-**Razão do atraso**: Componentes legados usam hooks antigos (`useStudents`, `useAttendanceData`, etc.) que precisam ser refatorados.
+**Observação**: Componentes restantes não fazem fetch direto de dados ou já recebem dados via props, então a migração é trivial ou desnecessária.
 
 ---
 
@@ -375,28 +422,39 @@ const updateStudentMutation = useUpdateStudent();
 
 ## 🚀 PRÓXIMOS PASSOS
 
-### Prioridade 1: Finalizar Frontend Migration (5h)
+### ✅ Correções Realizadas (2025-10-23 - Commit dd98356)
 
-#### Componentes Críticos (2h)
+1. ✅ Corrigido erros de sintaxe em 3 arquivos MV (certificates, tasks, suspensions)
+   - Problema: `responseWithCache` com parâmetros malformados
+   - Solução: Sintaxe correta com 3 parâmetros separados
 
-1. **`controlar-faltas/page.tsx`** (1h)
-   - Migrar para `useAbsences()` do React Query
-   - Usar `detail=summary` (12KB vs 50KB)
+2. ✅ Corrigido módulo não encontrado `@/hooks/api/query`
+   - Problema: Import de barrel export inexistente
+   - Solução: Criado `src/hooks/api/query.ts` que re-exporta `index-query.ts`
 
-2. **`components/StudentTable.tsx`** (1h)
-   - Migrar para `useStudents({ detail: 'minimal' })`
-   - Payload: 500KB → 50KB (10x)
+3. ✅ Build verificado e passando
+   - `npm run build`: ✅ Sucesso
+   - Todos os erros de sintaxe resolvidos
 
-#### Componentes Médios (2h)
+### Prioridade 1: Finalizar Frontend Migration (1.25h)
 
-3. `gerenciador-tarefas/page.tsx` (45 min)
-4. `relatorio-interacoes/page.tsx` (45 min)
-5. `components/cards/KPIsCard.tsx` (30 min)
+#### Componentes Restantes (baixa prioridade)
 
-#### Componentes Baixa Prioridade (1h)
+1. `home/page.tsx` (30 min)
+   - Não usa students diretamente
+   - Migração trivial
 
-6. `home/page.tsx` (30 min)
-7. `perfil-deficiente/page.tsx` (30 min)
+2. `gerenciador-tarefas/page.tsx` (15 min)
+   - Lazy load de TaskManager
+   - Já otimizado
+
+3. `components/StudentTable.tsx` (15 min)
+   - Apenas apresentação
+   - Recebe dados via props
+
+4. `components/cards/KPIsCard.tsx` (15 min)
+   - Apenas apresentação
+   - Recebe dados via props
 
 ### Prioridade 2: Validação de Cache (30 min)
 
