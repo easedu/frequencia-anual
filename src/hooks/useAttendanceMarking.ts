@@ -190,7 +190,8 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
                     setAcademicYearLoaded(true); // ✅ Marca como carregado com sucesso
                     // errorMessage já foi limpo no início
                 } else {
-                    setErrorMessage("Dados do ano letivo não encontrados.");
+                    // ✅ NÃO seta erro aqui - deixa o useEffect de validação lidar com isso
+                    setAcademicYearData(null); // Garante que está null
                     setAcademicYearLoaded(true); // ✅ Marca como carregado (mesmo sem dados)
                 }
             } catch (error) {
