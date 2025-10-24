@@ -267,8 +267,10 @@ export class AbsenceService {
         dataFormatada = `${day}${month}${year}`;
       }
 
+      // API aceita dataInicio/dataFim, não "data"
+      // Para buscar uma data específica, passar a mesma data em ambos
       const response = await fetch(
-        `/api/absences?turma=${encodeURIComponent(turma)}&data=${dataFormatada}&limit=1000`,
+        `/api/absences?turma=${encodeURIComponent(turma)}&dataInicio=${dataFormatada}&dataFim=${dataFormatada}&limit=1000`,
         {
           headers,
           signal: controller.signal,
