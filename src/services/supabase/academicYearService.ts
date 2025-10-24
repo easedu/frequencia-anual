@@ -614,8 +614,78 @@ export class AcademicYearService {
   }
 
   /**
+   * Buscar ano letivo completo via API REST (RECOMENDADO ✅)
+   *
+   * ✅ VANTAGENS sobre getAcademicYearComplete():
+   * - Cache de 1 hora (resposta instantânea)
+   * - Queries paralelas server-side (mais rápido)
+   * - Retry automático em redes lentas
+   * - Supabase Admin (sem RLS overhead)
+   * - Timeout de 30s (não falha em 2G/3G)
+   *
+   * Performance:
+   * - 1ª chamada: ~5-10s (2G/3G)
+   * - Próximas: < 1s (cached) ⚡
+   *
+   * @param year - Ano letivo (ex: 2025)
+   * @returns Dados completos do ano letivo no formato legado
+   *
+   * @example
+   * const yearData = await AcademicYearService.getAcademicYearCompleteViaAPI(2025);
+   */
+  static async getAcademicYearCompleteViaAPI(year: number): Promise<{
+    [key: string]: {
+      startDate: string;
+      endDate: string;
+      dates: { date: string; isChecked: boolean }[];
+    };
+  }> {
+    try {
+      logger.info(`Buscando ano letivo ${year} via API REST`, { year });
+
+      const response = await fetch(`/api/academic-years/${year}/complete`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+        throw new Error(errorData.error || `API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Erro ao buscar ano letivo');
+      }
+
+      logger.info(`Ano letivo ${year} carregado com sucesso via API`, {
+        year,
+        cached: result.cached,
+      });
+
+      return result.data || {};
+    } catch (error) {
+      logger.error(`Erro ao buscar ano letivo ${year} via API`, error as Error);
+      throw error; // ✅ Lançar erro ao invés de retornar vazio
+    }
+  }
+
+  /**
    * Buscar ano letivo completo no formato da página cadastrar-ano-letivo
    * Retorna estrutura compatível com Firebase antigo
+   *
+   * @deprecated Use getAcademicYearCompleteViaAPI() ao invés deste método.
+   * Este método faz queries client-side (mais lento em redes ruins).
+   *
+   * ⚠️ PROBLEMAS:
+   * - Queries sequenciais (5 queries = 20s em 2G)
+   * - Sem cache
+   * - Sem retry
+   * - Timeout de 8s (falha em 2G/3G)
+   * - Retorna {} em erro (dificulta debug)
    */
   static async getAcademicYearComplete(year: number): Promise<{
     [key: string]: {

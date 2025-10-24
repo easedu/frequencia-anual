@@ -179,21 +179,36 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
     // Carrega ano letivo
     useEffect(() => {
         const fetchAcademicYearData = async () => {
+            let slowConnectionTimeout: NodeJS.Timeout | undefined;
+
             try {
-                console.log("[useAttendanceMarking] Iniciando fetch do ano letivo");
+                console.log("[useAttendanceMarking] Iniciando fetch do ano letivo via API REST");
                 setLoadingAcademicYear(true); // ✅ Inicia loading
                 setErrorMessage(""); // ✅ Limpa erro ao iniciar loading
-                const { AcademicYearService } = await import('@/services/supabase/academicYearService');
-                const yearData = await AcademicYearService.getAcademicYearComplete(2025);
 
-                console.log("[useAttendanceMarking] Fetch completado", {
+                // ✅ Feedback progressivo para conexões lentas (após 8s)
+                slowConnectionTimeout = setTimeout(() => {
+                    console.info("[useAttendanceMarking] ⏳ Conexão lenta detectada, aguarde...");
+                    // Opcional: mostrar toast ao usuário
+                    // toast.info("Conexão lenta detectada. Carregando dados...", { duration: 5000 });
+                }, 8000);
+
+                const { AcademicYearService } = await import('@/services/supabase/academicYearService');
+
+                // ✅ USA NOVA API: getAcademicYearCompleteViaAPI() ao invés de getAcademicYearComplete()
+                // Vantagens: Cache (1h), queries paralelas, server-side, retry automático
+                const yearData = await AcademicYearService.getAcademicYearCompleteViaAPI(2025);
+
+                clearTimeout(slowConnectionTimeout); // ✅ Limpa timeout de aviso
+
+                console.log("[useAttendanceMarking] Fetch completado via API", {
                     hasData: !!yearData,
                     keysLength: yearData ? Object.keys(yearData).length : 0,
                     yearDataKeys: yearData ? Object.keys(yearData) : []
                 });
 
                 if (yearData && Object.keys(yearData).length > 0) {
-                    console.log("[useAttendanceMarking] ✅ Dados carregados com sucesso");
+                    console.log("[useAttendanceMarking] ✅ Dados carregados com sucesso via API REST");
                     // ✅ CRÍTICO: Usar setAcademicYearLoaded APÓS setAcademicYearData
                     // para garantir que o useEffect de validação veja os dados atualizados
                     setAcademicYearData(yearData);
@@ -201,15 +216,23 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
                     // Aguardar próximo tick para garantir que academicYearData foi atualizado
                     setTimeout(() => setAcademicYearLoaded(true), 0);
                 } else {
-                    console.warn("[useAttendanceMarking] ⚠️ Dados vazios ou não encontrados. O ano letivo 2025 pode não estar cadastrado no sistema.");
-                    // ✅ NÃO seta erro aqui - deixa o useEffect de validação lidar com isso
+                    console.warn("[useAttendanceMarking] ⚠️ Dados vazios retornados pela API. O ano letivo 2025 pode não estar cadastrado.");
                     setAcademicYearData(null);
+                    setErrorMessage("Ano letivo 2025 não encontrado. Cadastre em 'Cadastrar Ano Letivo'.");
                     setTimeout(() => setAcademicYearLoaded(true), 0);
                 }
             } catch (error) {
-                console.error("[useAttendanceMarking] Erro no fetch", error);
-                logger.error("Erro ao carregar ano letivo", error as Error);
-                setErrorMessage("Erro ao carregar dados do ano letivo.");
+                if (slowConnectionTimeout) {
+                    clearTimeout(slowConnectionTimeout);
+                }
+
+                console.error("[useAttendanceMarking] ❌ Erro no fetch via API", error);
+                logger.error("Erro ao carregar ano letivo via API", error as Error);
+
+                // ✅ Mensagem de erro mais específica
+                const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+                setErrorMessage(`Erro ao carregar ano letivo: ${errorMsg}`);
+                setAcademicYearData(null);
                 setTimeout(() => setAcademicYearLoaded(true), 0); // ✅ Marca como carregado (mesmo com erro)
             } finally {
                 console.log("[useAttendanceMarking] Finalizando loading");

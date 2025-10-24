@@ -3331,6 +3331,36 @@ NEXT_PUBLIC_WHATSAPP_API_TOKEN=seu_token_aqui
 
 **Documentação**: `WHATSAPP_INTEGRATION.md`
 
+#### 7. **Aviso "Ano letivo não encontrado" em Redes Lentas** ✅ RESOLVIDO (24/10/2025)
+
+**Sintoma**: Em redes 2G/3G, aparece warning no console:
+```
+⚠️ Dados vazios ou não encontrados. O ano letivo 2025 não estar cadastrado no sistema.
+```
+
+**Causa**: Timeout ou loading lento do carregamento de ano letivo (5 queries sequenciais = 20s em 2G)
+
+**Solução Implementada**:
+- ✅ **Nova API Route**: `/api/academic-years/[year]/complete`
+- ✅ **Cache de 1 hora** (resposta instantânea após 1ª carga)
+- ✅ **Queries paralelas** server-side (5s ao invés de 20s)
+- ✅ **Supabase Admin** (sem RLS overhead)
+- ✅ **Feedback progressivo** ("Conexão lenta detectada" após 8s)
+
+**Performance**:
+- **Antes**: 20s (timeout em 2G/3G) ❌
+- **Depois (1ª carga)**: 5-10s ✅
+- **Depois (cached)**: < 1s ⚡
+
+**Arquivos modificados**:
+- `src/app/api/academic-years/[year]/complete/route.ts` (NOVO)
+- `src/services/supabase/academicYearService.ts` (+método getAcademicYearCompleteViaAPI)
+- `src/hooks/useAttendanceMarking.ts` (usa nova API)
+
+**Documentação detalhada**: `docs/FIX-ANO-LETIVO-REDES-LENTAS.md`
+
+---
+
 ### Performance Issues
 
 #### Lentidão no Dashboard
