@@ -159,18 +159,33 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
             hasNextPage,
             nextCursor,
           },
+          meta: {
+            detail: detail as DetailLevel,
+            timestamp: new Date().toISOString(),
+          },
         },
         {
           status: 200,
           headers: {
-            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+            // ✅ OTIMIZAÇÃO Fase 1: HTTP Cache headers
+            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+            // s-maxage=300 (5 min cache no CDN/Vercel)
+            // stale-while-revalidate=600 (10 min adicional com revalidação em background)
             'Vary': 'Accept-Encoding, Authorization',
+            'X-Detail-Level': detail as DetailLevel,
           },
         }
       );
     } else {
-      // Response tradicional
-      return paginatedResponse(students, page, limit, count || 0, 'dynamic');
+      // Response tradicional com cache
+      const response = paginatedResponse(students, page, limit, count || 0, 'dynamic');
+
+      // ✅ OTIMIZAÇÃO Fase 1: Adicionar HTTP Cache headers
+      response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+      response.headers.set('Vary', 'Accept-Encoding, Authorization');
+      response.headers.set('X-Detail-Level', detail as DetailLevel);
+
+      return response;
     }
   } catch (error) {
     return handleError(error, 'GET /api/students');

@@ -57,19 +57,34 @@ export async function GET(req: NextRequest) {
     const items = hasNextPage ? data.slice(0, limit) : data;
     const nextCursor = hasNextPage ? items[items.length - 1].absence_date : null;
 
-    return successResponse({
-      items,
-      pagination: {
-        limit,
-        hasNextPage,
-        nextCursor
+    // ✅ OTIMIZAÇÃO Fase 1: Response com HTTP Cache headers
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          items,
+          pagination: {
+            limit,
+            hasNextPage,
+            nextCursor
+          },
+          meta: {
+            total: items.length,
+            source: 'materialized_view', // Indicador de que usa MV
+            timestamp: new Date().toISOString(),
+          }
+        }
       },
-      meta: {
-        total: items.length,
-        source: 'materialized_view', // Indicador de que usa MV
-        cached: false
+      {
+        status: 200,
+        headers: {
+          // ✅ HTTP Cache headers (5 min cache + 10 min stale)
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+          'Vary': 'Accept-Encoding, Authorization',
+          'X-Source': 'materialized_view',
+        },
       }
-    });
+    );
 
   } catch (error) {
     console.error('[API absences-mv] Error:', error);

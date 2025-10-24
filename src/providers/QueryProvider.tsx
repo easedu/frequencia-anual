@@ -1,54 +1,66 @@
+'use client';
+
 /**
  * React Query Provider
  *
- * Gerencia cache global de todas as queries da aplicação
- * OTIMIZAÇÃO: Cache automático, revalidation, prefetching
+ * ✅ OTIMIZAÇÃO FASE 1: Cache automático com React Query
+ *
+ * Configurações:
+ * - staleTime: 5 minutos (sincronizado com MV refresh)
+ * - gcTime: 10 minutos (garbage collection)
+ * - retry: 3 tentativas com exponential backoff
+ * - refetchOnWindowFocus: false (evitar refetches desnecessários)
  */
-
-'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { useState, ReactNode } from 'react';
-
-// ============================================================================
-// CONFIGURAÇÃO DE CACHE
-// ============================================================================
-
-const CACHE_CONFIG = {
-  // Dados considerados "fresh" por 5 minutos
-  staleTime: 5 * 60 * 1000, // 5 min
-
-  // Dados mantidos em cache por 30 minutos (mesmo se stale)
-  gcTime: 30 * 60 * 1000, // 30 min (era cacheTime em v4, agora é gcTime em v5)
-
-  // Retry automático em caso de falha
-  retry: 3,
-  retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30000),
-
-  // Não refetch automaticamente ao focar janela
-  refetchOnWindowFocus: false,
-
-  // Não refetch ao reconectar (dados ainda estão válidos)
-  refetchOnReconnect: false,
-
-  // Não refetch ao montar (usar cache se disponível)
-  refetchOnMount: false,
-};
+import { useState, type ReactNode } from 'react';
 
 interface QueryProviderProps {
   children: ReactNode;
 }
 
 export function QueryProvider({ children }: QueryProviderProps) {
-  // ✅ useState garante que QueryClient seja criado apenas uma vez
+  // ✅ OTIMIZAÇÃO: Criar QueryClient dentro do componente
+  // Garante que cada navegador/tab tem sua própria instância
   const [queryClient] = useState(
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: CACHE_CONFIG,
+          queries: {
+            // ✅ staleTime: Quanto tempo os dados são considerados "frescos"
+            // 5 minutos (sincronizado com refresh de MVs via pg_cron)
+            staleTime: 5 * 60 * 1000,
+
+            // ✅ gcTime: Quanto tempo os dados ficam em cache após não serem usados
+            // 10 minutos (2x staleTime)
+            gcTime: 10 * 60 * 1000,
+
+            // ✅ retry: Retry automático em caso de falha
+            // 3 tentativas (integrado com p-retry no fetchWithRetry)
+            retry: 3,
+
+            // ✅ retryDelay: Exponential backoff
+            retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+
+            // ✅ refetchOnWindowFocus: Não refetch ao focar janela
+            // (Evita refetches desnecessários, dados já têm 5 min de validade)
+            refetchOnWindowFocus: false,
+
+            // ✅ refetchOnReconnect: Refetch quando reconectar internet
+            refetchOnReconnect: true,
+
+            // ✅ refetchOnMount: Refetch ao montar apenas se stale
+            refetchOnMount: 'stale',
+          },
           mutations: {
-            retry: 1, // Mutations: apenas 1 retry
+            // ✅ retry: Mutations não fazem retry por padrão (evitar duplicação)
+            retry: 0,
+
+            // ✅ onError global para mutations
+            onError: (error) => {
+              console.error('[React Query Mutation Error]', error);
+            },
           },
         },
       })
@@ -57,9 +69,14 @@ export function QueryProvider({ children }: QueryProviderProps) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      {/* ✅ DevTools apenas em desenvolvimento */}
+
+      {/* ✅ DevTools: Apenas em desenvolvimento */}
       {process.env.NODE_ENV === 'development' && (
-        <ReactQueryDevtools initialIsOpen={false} position="bottom-right" />
+        <ReactQueryDevtools
+          initialIsOpen={false}
+          position="bottom-right"
+          buttonPosition="bottom-right"
+        />
       )}
     </QueryClientProvider>
   );

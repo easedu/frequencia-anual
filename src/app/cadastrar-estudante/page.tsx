@@ -7,8 +7,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { v4 as uuidv4 } from "uuid";
 
-import { useStudents } from "@/hooks/useStudents";
-import { useCreateStudent, useUpdateStudent } from "@/hooks/api"; // ✅ Novos hooks
+// ✅ OTIMIZAÇÃO FASE 1: Migrar para React Query hooks
+import { useStudents, useCreateStudent, useUpdateStudent } from "@/hooks/api/query";
 import { StudentFilters } from "@/components/students/StudentFilters";
 import { StudentTable } from "@/components/students/StudentTable";
 import { StudentPagination } from "@/components/students/StudentPagination";
@@ -28,11 +28,15 @@ const StudentDialog = lazy(() =>
 );
 
 export default function CadastrarEstudantePage() {
-    const { students, loading, error, setStudents, fetchStudents } = useStudents();
+    // ✅ OTIMIZAÇÃO FASE 1: React Query hook com cache automático
+    const { data: students = [], isLoading: loading, error, refetch: fetchStudents } = useStudents({
+        status: 'ATIVO', // Filtro padrão
+        detail: 'summary', // ✅ SELECT estratificado (apenas campos necessários)
+    });
 
-    // ✅ Novos hooks de mutação
-    const { createStudent, loading: creating } = useCreateStudent();
-    const { updateStudent, loading: updating } = useUpdateStudent();
+    // ✅ Hooks de mutação com invalidação automática de cache
+    const createStudentMutation = useCreateStudent();
+    const updateStudentMutation = useUpdateStudent();
 
     // Filter states
     const [turmaFiltro, setTurmaFiltro] = useState<string>("");
