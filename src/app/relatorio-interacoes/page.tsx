@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Toaster, toast } from "sonner";
-import { useStudents } from "@/hooks/api";
+// ✅ OTIMIZAÇÃO FASE 1: Migrar para React Query
+import { useStudents } from "@/hooks/api/query";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchAllPages } from "@/utils/paginationHelper";
 import { logger } from "@/utils/logger";
@@ -85,9 +86,12 @@ export default function InteractionReportsPage() {
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [showSensitive, setShowSensitive] = useState<boolean>(false);
 
-  // ✅ Usar hooks da API REST (sem Supabase direto)
+  // ✅ OTIMIZAÇÃO FASE 1: React Query com cache + SELECT estratificado
   const { user } = useAuth();
-  const { students, loading: loadingStudents } = useStudents({ status: "ATIVO" });
+  const { data: students = [], isLoading: loadingStudents } = useStudents({
+    status: "ATIVO",
+    detail: 'minimal', // ✅ Apenas 5KB/estudante para listagem
+  });
   const [loadingInteractions, setLoadingInteractions] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0 });
 

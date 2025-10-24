@@ -4,7 +4,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { successResponse, errorResponse } from '@/app/api/_utils/response';
+import { errorResponse } from '@/app/api/_utils/response';
+import { responseWithCache, mvCacheHeaders, MV_CACHE_STRATEGY } from '@/app/api/_utils/cacheHeaders';
 
 export async function GET(req: NextRequest) {
   try {
@@ -34,10 +35,14 @@ export async function GET(req: NextRequest) {
       return errorResponse('DATABASE_ERROR', error.message, 500);
     }
 
-    return responseWithCache({
-      items: data,
-      meta: { total: data.length, source: 'materialized_view' }
-    , MV_CACHE_STRATEGY, mvCacheHeaders());
+    return responseWithCache(
+      {
+        items: data,
+        meta: { total: data.length, source: 'materialized_view' }
+      },
+      MV_CACHE_STRATEGY,
+      mvCacheHeaders()
+    );
 
   } catch (error) {
     return errorResponse('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unknown error', 500);
