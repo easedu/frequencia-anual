@@ -156,21 +156,25 @@ function convertSupabaseToFrontend(student: any): any {
 
     // Contatos (se incluídos)
     contatos: Array.isArray(student.student_contacts)
-      ? student.student_contacts.map((contact: any) => ({
-          nome: contact.name || '',
-          parentesco: contact.relationship || '',
-          telefone: contact.phone || '',
-          email: contact.email || '',
+      ? student.student_contacts.map((contact: any) => {
+          // WhatsApp data está em JSONB field
+          const whatsappData = contact.whatsapp_data || {};
 
-          // WhatsApp
-          numeroWhatsapp: contact.whatsapp_number || '',
-          statusWhatsapp: contact.whatsapp_status || 'NAO_VERIFICADO',
-          ultimaVerificacao: contact.whatsapp_last_verified
-            ? new Date(contact.whatsapp_last_verified).toISOString()
-            : null,
-          idWhatsapp: contact.whatsapp_id || null,
-          profilePicUrl: contact.whatsapp_profile_pic || null,
-        }))
+          return {
+            nome: contact.name || '',
+            parentesco: contact.relationship || '',
+            telefone: contact.phone || '',
+            email: contact.email || '',
+            podeReceberMensagem: contact.can_receive_whatsapp !== false,
+
+            // WhatsApp (extraído do JSONB whatsapp_data)
+            numeroWhatsapp: whatsappData.numeroWhatsapp || '',
+            statusWhatsapp: whatsappData.statusWhatsapp || 'NAO_VERIFICADO',
+            ultimaVerificacao: whatsappData.ultimaVerificacao || null,
+            idWhatsapp: whatsappData.idWhatsapp || null,
+            profilePicUrl: whatsappData.profilePicUrl || null,
+          };
+        })
       : [],
 
     // Metadados
@@ -259,15 +263,14 @@ export async function GET(req: NextRequest) {
             deleted_at,
             deleted,
             student_contacts (
+              id,
               name,
               relationship,
               phone,
+              phone_numeric,
               email,
-              whatsapp_number,
-              whatsapp_status,
-              whatsapp_last_verified,
-              whatsapp_id,
-              whatsapp_profile_pic
+              can_receive_whatsapp,
+              whatsapp_data
             )
           `
           : `
