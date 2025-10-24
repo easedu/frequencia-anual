@@ -115,8 +115,12 @@ function brazilianToCompact(brDate: string): string {
 
 /**
  * Converter dados do Supabase para formato frontend (compatível com Firebase legacy)
+ * Baseado em: studentDataService.ts (conversão que funciona)
  */
 function convertSupabaseToFrontend(student: any): any {
+  // Parse address JSONB que pode conter dados legados
+  const addressData = (student.address as any) || {};
+
   return {
     // IDs
     estudanteId: student.student_id, // Firebase UUID (compatibilidade)
@@ -129,59 +133,86 @@ function convertSupabaseToFrontend(student: any): any {
     status: student.status || 'ATIVO',
 
     // Dados pessoais
-    dataNascimento: brazilianToCompact(convertISOToBrazilian(student.birth_date)),
-    genero: student.gender || '',
-    corRaca: student.race || '',
-    cpf: student.cpf || '',
-    numeroRA: student.ra_number || '',
-    numeroRG: student.rg_number || '',
-
-    // Endereço
-    cep: student.address_zip || '',
-    logradouro: student.address_street || '',
-    numeroEndereco: student.address_number || '',
-    complemento: student.address_complement || '',
-    bairro: student.address_neighborhood || '',
-    cidade: student.address_city || '',
-    estado: student.address_state || '',
+    dataNascimento: student.birth_date || undefined,
+    matricula: student.registration_number || undefined,
+    email: undefined, // Não está no schema Supabase
 
     // Informações sociais
-    bolsaFamilia: student.bolsa_familia === true ? 'SIM' : 'NÃO',
-    auxilioBrasil: student.auxilio_brasil === true ? 'SIM' : 'NÃO',
+    bolsaFamilia: student.bolsa_familia || 'NÃO',
 
-    // Deficiências
-    deficiencias: Array.isArray(student.disabilities) ? student.disabilities : [],
-    aee: student.special_education_service || '',
-    possuiAVE: student.has_school_assistant === true ? 'SIM' : 'NÃO',
+    // Endereço (JSONB)
+    endereco: addressData,
+
+    // Deficiências (JSONB array)
+    deficiencia: parseDisabilities(student.disabilities || [], addressData),
 
     // Contatos (se incluídos)
     contatos: Array.isArray(student.student_contacts)
       ? student.student_contacts.map((contact: any) => {
-          // WhatsApp data está em JSONB field
-          const whatsappData = contact.whatsapp_data || {};
+          const whatsappData = (contact.whatsapp_data as any) || {};
 
           return {
+            id: contact.id,
             nome: contact.name || '',
             parentesco: contact.relationship || '',
             telefone: contact.phone || '',
-            email: contact.email || '',
-            podeReceberMensagem: contact.can_receive_whatsapp !== false,
+            telefoneNumerico: contact.phone_numeric || undefined,
+            podeReceberMensagem: contact.can_receive_whatsapp,
 
-            // WhatsApp (extraído do JSONB whatsapp_data)
-            numeroWhatsapp: whatsappData.numeroWhatsapp || '',
-            statusWhatsapp: whatsappData.statusWhatsapp || 'NAO_VERIFICADO',
-            ultimaVerificacao: whatsappData.ultimaVerificacao || null,
-            idWhatsapp: whatsappData.idWhatsapp || null,
-            profilePicUrl: whatsappData.profilePicUrl || null,
+            // WhatsApp (extraído do JSONB)
+            whatsapp: whatsappData.verified
+              ? {
+                  verified: whatsappData.verified || false,
+                  exists: whatsappData.exists || false,
+                  verifiedAt: whatsappData.verifiedAt || whatsappData.verified_at || null,
+                  name: whatsappData.name || null,
+                  number: whatsappData.number || null,
+                }
+              : undefined,
+            whatsappData: whatsappData,
+            whatsapp_data: whatsappData,
           };
         })
       : [],
+
+    // Prova São Paulo (não migrado)
+    provaSaoPaulo: [],
 
     // Metadados
     createdAt: student.created_at ? new Date(student.created_at).toISOString() : '',
     updatedAt: student.updated_at ? new Date(student.updated_at).toISOString() : '',
     deletedAt: student.deleted_at ? new Date(student.deleted_at).toISOString() : null,
     deleted: student.deleted || false,
+  };
+}
+
+/**
+ * Helper: Parse disabilities from Supabase JSONB array + legacy data in address
+ * Baseado em: studentDataService.ts
+ */
+function parseDisabilities(disabilities: any[], addressData: any = {}): any {
+  // Extrair dados legados de deficiência do address JSONB
+  const legacyDeficiencia = addressData.deficiencia || addressData;
+
+  // Se não há disabilities no Supabase MAS há dados legados, usar dados legados
+  if ((!disabilities || disabilities.length === 0) && legacyDeficiencia) {
+    if (legacyDeficiencia.estudanteComDeficiencia !== undefined) {
+      return legacyDeficiencia;
+    }
+  }
+
+  // Se não há disabilities nem dados legados
+  if (!disabilities || disabilities.length === 0) {
+    return {
+      estudanteComDeficiencia: false,
+      tipoDeficiencia: [],
+    };
+  }
+
+  // Se há disabilities array, converter para formato legado
+  return {
+    estudanteComDeficiencia: disabilities.length > 0,
+    tipoDeficiencia: disabilities,
   };
 }
 
@@ -229,80 +260,13 @@ export async function GET(req: NextRequest) {
     });
 
     // ✅ PASSO 2: Buscar estudantes do Supabase
+    // Usar '*' para pegar todas as colunas (evita erros de schema)
     let query = supabaseAdmin
       .from('students')
       .select(
         includeContacts
-          ? `
-            id,
-            student_id,
-            name,
-            class,
-            shift,
-            status,
-            birth_date,
-            gender,
-            race,
-            cpf,
-            ra_number,
-            rg_number,
-            address_zip,
-            address_street,
-            address_number,
-            address_complement,
-            address_neighborhood,
-            address_city,
-            address_state,
-            bolsa_familia,
-            auxilio_brasil,
-            disabilities,
-            special_education_service,
-            has_school_assistant,
-            created_at,
-            updated_at,
-            deleted_at,
-            deleted,
-            student_contacts (
-              id,
-              name,
-              relationship,
-              phone,
-              phone_numeric,
-              email,
-              can_receive_whatsapp,
-              whatsapp_data
-            )
-          `
-          : `
-            id,
-            student_id,
-            name,
-            class,
-            shift,
-            status,
-            birth_date,
-            gender,
-            race,
-            cpf,
-            ra_number,
-            rg_number,
-            address_zip,
-            address_street,
-            address_number,
-            address_complement,
-            address_neighborhood,
-            address_city,
-            address_state,
-            bolsa_familia,
-            auxilio_brasil,
-            disabilities,
-            special_education_service,
-            has_school_assistant,
-            created_at,
-            updated_at,
-            deleted_at,
-            deleted
-          `
+          ? '*, student_contacts(id, name, relationship, phone, phone_numeric, email, can_receive_whatsapp, whatsapp_data)'
+          : '*'
       )
       .order('name', { ascending: true });
 
