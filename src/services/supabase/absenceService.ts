@@ -253,28 +253,50 @@ export class AbsenceService {
    */
   static async getByTurmaAndDate(turma: string, absenceDate: string): Promise<AbsenceRecord[]> {
     try {
-      // Join com students para filtrar por turma
-      const { data, error } = await supabase
-        .from('student_absences')
-        .select(`
-          *,
-          students!inner (
-            student_id,
-            class
-          )
-        `)
-        .eq('students.class', turma)
-        .eq('absence_date', absenceDate)
-        .order('absence_date', { ascending: false });
+      // ✅ Usar API REST ao invés de Supabase direto
+      const headers = await getAuthHeaders();
 
-      if (error) throw error;
+      // 🔧 FIX: AbortController com timeout para redes 2G/3G
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-      return (data || []).map((absence: any) => ({
+      // Converter data de YYYY-MM-DD para DDMMYYYY (formato esperado pela API)
+      let dataFormatada = absenceDate;
+      if (absenceDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const [year, month, day] = absenceDate.split('-');
+        dataFormatada = `${day}${month}${year}`;
+      }
+
+      const response = await fetch(
+        `/api/absences?turma=${encodeURIComponent(turma)}&data=${dataFormatada}&limit=1000`,
+        {
+          headers,
+          signal: controller.signal,
+          keepalive: true,
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      // API retorna { data: [...], pagination: {...} }
+      if (!result.data || !Array.isArray(result.data)) {
+        throw new Error('Resposta inválida da API');
+      }
+
+      // Converter formato API para formato esperado
+      return result.data.map((absence: any) => ({
         id: absence.id,
-        estudanteId: absence.students?.student_id,
-        absence_date: absence.absence_date,
-        is_justified: absence.is_justified,
-        atestadoId: absence.medical_certificate_id || undefined,
+        estudanteId: absence.estudanteId,
+        data: absence.data, // DDMMYYYY
+        absence_date: absenceDate, // YYYY-MM-DD (mantém formato original)
+        is_justified: absence.justificada,
+        atestadoId: absence.atestadoId || undefined,
       }));
     } catch (error) {
       logger.error('Erro ao buscar faltas por turma e data', { turma, absenceDate }, error as Error);
