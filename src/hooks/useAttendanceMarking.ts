@@ -188,19 +188,20 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
 
                 console.log("[useAttendanceMarking] Fetch completado", {
                     hasData: !!yearData,
-                    keysLength: yearData ? Object.keys(yearData).length : 0
+                    keysLength: yearData ? Object.keys(yearData).length : 0,
+                    yearDataKeys: yearData ? Object.keys(yearData) : []
                 });
 
                 if (yearData && Object.keys(yearData).length > 0) {
-                    console.log("[useAttendanceMarking] Dados carregados com sucesso");
+                    console.log("[useAttendanceMarking] ✅ Dados carregados com sucesso");
                     setAcademicYearData(yearData);
-                    setAcademicYearLoaded(true); // ✅ Marca como carregado com sucesso
-                    // errorMessage já foi limpo no início
+                    setAcademicYearLoaded(true);
+                    setErrorMessage(""); // Limpa qualquer erro
                 } else {
-                    console.log("[useAttendanceMarking] Dados vazios - setando null");
+                    console.warn("[useAttendanceMarking] ⚠️ Dados vazios ou não encontrados. O ano letivo 2025 pode não estar cadastrado no sistema.");
                     // ✅ NÃO seta erro aqui - deixa o useEffect de validação lidar com isso
-                    setAcademicYearData(null); // Garante que está null
-                    setAcademicYearLoaded(true); // ✅ Marca como carregado (mesmo sem dados)
+                    setAcademicYearData(null);
+                    setAcademicYearLoaded(true);
                 }
             } catch (error) {
                 console.error("[useAttendanceMarking] Erro no fetch", error);
