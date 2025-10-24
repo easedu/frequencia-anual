@@ -349,15 +349,23 @@ export async function GET(req: NextRequest) {
       count: convertedStudents.length,
     } as ApiResponse);
   } catch (error) {
-    logger.error('[API /students/all] Erro ao buscar estudantes', error as Error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    logger.error('[API /students/all] Erro ao buscar estudantes', {
+      message: errorMessage,
+      stack: errorStack,
+      error: error,
+    });
+
+    // Log completo para debug em produção
+    console.error('[API /students/all] Erro completo:', error);
 
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Erro desconhecido ao buscar estudantes',
+        error: errorMessage || 'Erro desconhecido ao buscar estudantes',
+        details: process.env.NODE_ENV === 'development' ? errorStack : undefined,
       } as ApiResponse,
       { status: 500 }
     );
