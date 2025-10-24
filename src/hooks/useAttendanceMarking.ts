@@ -63,6 +63,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
 
     const [academicYearData, setAcademicYearData] = useState<AcademicYearData | null>(null);
     const [loadingAcademicYear, setLoadingAcademicYear] = useState(true); // ✅ NOVO: Estado de loading
+    const [academicYearLoaded, setAcademicYearLoaded] = useState(false); // ✅ Flag de primeira carga completa
     const [selectedDate, setSelectedDate] = useState<string>("");
     const [isValidDay, setIsValidDay] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
@@ -180,18 +181,22 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
         const fetchAcademicYearData = async () => {
             try {
                 setLoadingAcademicYear(true); // ✅ Inicia loading
+                setErrorMessage(""); // ✅ Limpa erro ao iniciar loading
                 const { AcademicYearService } = await import('@/services/supabase/academicYearService');
                 const yearData = await AcademicYearService.getAcademicYearComplete(2025);
 
                 if (yearData && Object.keys(yearData).length > 0) {
                     setAcademicYearData(yearData);
-                    setErrorMessage(""); // ✅ Limpa erro se sucesso
+                    setAcademicYearLoaded(true); // ✅ Marca como carregado com sucesso
+                    // errorMessage já foi limpo no início
                 } else {
                     setErrorMessage("Dados do ano letivo não encontrados.");
+                    setAcademicYearLoaded(true); // ✅ Marca como carregado (mesmo sem dados)
                 }
             } catch (error) {
                 logger.error("Erro ao carregar ano letivo", error as Error);
                 setErrorMessage("Erro ao carregar dados do ano letivo.");
+                setAcademicYearLoaded(true); // ✅ Marca como carregado (mesmo com erro)
             } finally {
                 setLoadingAcademicYear(false); // ✅ Finaliza loading
             }
@@ -207,6 +212,11 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
 
     // Valida data selecionada
     useEffect(() => {
+        // ✅ CORREÇÃO: Não validar antes da primeira carga completar
+        if (!academicYearLoaded) {
+            return; // Aguarda primeira carga completar (sucesso ou erro)
+        }
+
         if (academicYearData && selectedDate) {
             let valid = false;
             Object.values(academicYearData).forEach((bimData) => {
@@ -220,8 +230,11 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
             });
             setIsValidDay(valid);
             setErrorMessage(valid ? "" : "O dia selecionado não está disponível para marcação de faltas.");
+        } else if (!academicYearData) {
+            // ✅ Só executa se primeira carga completou mas não há dados
+            setErrorMessage("Dados do ano letivo não encontrados.");
         }
-    }, [academicYearData, selectedDate]);
+    }, [academicYearData, selectedDate, academicYearLoaded]);
 
     // Carrega perfil do usuário
     useEffect(() => {
