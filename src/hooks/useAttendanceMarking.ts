@@ -194,20 +194,23 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
 
                 if (yearData && Object.keys(yearData).length > 0) {
                     console.log("[useAttendanceMarking] ✅ Dados carregados com sucesso");
+                    // ✅ CRÍTICO: Usar setAcademicYearLoaded APÓS setAcademicYearData
+                    // para garantir que o useEffect de validação veja os dados atualizados
                     setAcademicYearData(yearData);
-                    setAcademicYearLoaded(true);
                     setErrorMessage(""); // Limpa qualquer erro
+                    // Aguardar próximo tick para garantir que academicYearData foi atualizado
+                    setTimeout(() => setAcademicYearLoaded(true), 0);
                 } else {
                     console.warn("[useAttendanceMarking] ⚠️ Dados vazios ou não encontrados. O ano letivo 2025 pode não estar cadastrado no sistema.");
                     // ✅ NÃO seta erro aqui - deixa o useEffect de validação lidar com isso
                     setAcademicYearData(null);
-                    setAcademicYearLoaded(true);
+                    setTimeout(() => setAcademicYearLoaded(true), 0);
                 }
             } catch (error) {
                 console.error("[useAttendanceMarking] Erro no fetch", error);
                 logger.error("Erro ao carregar ano letivo", error as Error);
                 setErrorMessage("Erro ao carregar dados do ano letivo.");
-                setAcademicYearLoaded(true); // ✅ Marca como carregado (mesmo com erro)
+                setTimeout(() => setAcademicYearLoaded(true), 0); // ✅ Marca como carregado (mesmo com erro)
             } finally {
                 console.log("[useAttendanceMarking] Finalizando loading");
                 setLoadingAcademicYear(false); // ✅ Finaliza loading
@@ -251,10 +254,13 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
             setIsValidDay(valid);
             setErrorMessage(valid ? "" : "O dia selecionado não está disponível para marcação de faltas.");
             console.log("[useAttendanceMarking] Validação executada", { valid });
-        } else if (!academicYearData) {
-            // ✅ Só executa se primeira carga completou mas não há dados
-            console.log("[useAttendanceMarking] Setando erro: dados não encontrados");
+        } else if (!academicYearData && selectedDate) {
+            // ✅ Só mostra erro se primeira carga completou, não há dados E usuário já tem data selecionada
+            console.log("[useAttendanceMarking] Setando erro: dados não encontrados (selectedDate presente)");
             setErrorMessage("Dados do ano letivo não encontrados.");
+        } else if (!academicYearData && !selectedDate) {
+            // ✅ Ainda carregando ambos - não fazer nada
+            console.log("[useAttendanceMarking] Aguardando dados e selectedDate");
         }
     }, [academicYearData, selectedDate, academicYearLoaded, loadingAcademicYear]);
 
