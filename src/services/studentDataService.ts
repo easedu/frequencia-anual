@@ -305,32 +305,52 @@ export class StudentDataService {
         includeContacts: includeContacts.toString(),
       });
 
-      const response = await fetch(`/api/students/all?${params}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      // ✅ AbortController com timeout generoso para redes 2G/3G
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 segundos
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
-          error: 'Erro desconhecido',
-        }));
-        throw new Error(errorData.error || `API returned ${response.status}`);
+      try {
+        const response = await fetch(`/api/students/all?${params}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+          // ⚠️ IMPORTANTE: keepalive ajuda em redes instáveis
+          keepalive: true,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({
+            error: 'Erro desconhecido',
+          }));
+          throw new Error(errorData.error || `API returned ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Erro ao buscar estudantes');
+        }
+
+        logger.info('[getStudentsViaAPI] ✅ Estudantes carregados via API', {
+          count: result.count || 0,
+          cached: result.cached || false,
+        });
+
+        return result.data || [];
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+
+        // Verificar se foi timeout
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          throw new Error('Timeout ao buscar estudantes (rede muito lenta). Tente novamente.');
+        }
+
+        throw fetchError;
       }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Erro ao buscar estudantes');
-      }
-
-      logger.info('[getStudentsViaAPI] ✅ Estudantes carregados via API', {
-        count: result.count || 0,
-        cached: result.cached || false,
-      });
-
-      return result.data || [];
     } catch (error) {
       logger.error('[getStudentsViaAPI] ❌ Erro ao buscar estudantes via API', error as Error);
       throw error;

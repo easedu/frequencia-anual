@@ -37,6 +37,16 @@ import { serverCache } from '@/utils/serverCache';
 import { logger } from '@/utils/logger';
 
 // ════════════════════════════════════════════════════════════════
+// RUNTIME CONFIG (Vercel)
+// ════════════════════════════════════════════════════════════════
+
+// ⚠️ IMPORTANTE: maxDuration aumentado para redes 2G/3G
+// Vercel Free Plan: max 10s (Edge), max 60s (Serverless)
+// Usando nodejs runtime para ter 60s disponíveis
+export const runtime = 'nodejs'; // não usar 'edge' (limite de 10s)
+export const maxDuration = 60; // 60 segundos para redes muito lentas
+
+// ════════════════════════════════════════════════════════════════
 // TYPES
 // ════════════════════════════════════════════════════════════════
 
