@@ -2,7 +2,37 @@
 
 **Data**: 2025-10-24
 **Ambiente**: Vercel Production (`https://frequencia-anual.vercel.app`)
-**Status**: ✅ **VALIDADO COM SUCESSO**
+**Status**: ✅ **VALIDADO COM SUCESSO** (build passando após correções)
+
+---
+
+## 🔧 CORREÇÕES APLICADAS
+
+### Bug Fix: Destructuring de `useStudents` (2025-10-24 01:35)
+
+**Problema**: Erro `TypeError: a.find is not a function` em produção
+
+**Causa**: Hook `useStudents` retorna `PaginatedStudentsResponse` com estrutura `{ success, data, pagination }`, mas componentes esperavam array direto.
+
+**Arquivos Corrigidos**:
+1. [controlar-faltas/page.tsx](../src/app/controlar-faltas/page.tsx)
+2. [cadastrar-estudante/page.tsx](../src/app/cadastrar-estudante/page.tsx)
+3. [perfil-deficiente/page.tsx](../src/app/perfil-deficiente/page.tsx)
+4. [relatorio-interacoes/page.tsx](../src/app/relatorio-interacoes/page.tsx)
+
+**Correção Aplicada**:
+```typescript
+// ❌ ANTES (ERRADO)
+const { data: students = [] } = useStudents({ status: 'ATIVO' });
+
+// ✅ DEPOIS (CORRETO)
+const { data: studentsResponse } = useStudents({ status: 'ATIVO' });
+const students = studentsResponse?.data || [];
+```
+
+**Commit**: `e5486d0` - fix: corrigir destructuring de useStudents em 4 componentes
+
+**Status**: ✅ Build passando | ✅ Produção validada
 
 ---
 
