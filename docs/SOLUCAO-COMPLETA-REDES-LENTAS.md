@@ -776,19 +776,62 @@ serverCache.clear();
 **Arquivo**: `src/services/supabase/absenceService.ts`
 **Mudança**: +76 linhas, -19 linhas
 
-#### Por que isso resolve?
+#### ⚠️ DESCOBERTA CRÍTICA: getByTurmaAndDate() era o CULPADO! (24/10/2025 17:45)
 
-**Antes**:
-```
-Frontend fetch (timeout padrão ~30s) → ERR_CONNECTION_RESET em 2G/3G
-Backend API (timeout 60s) → Nunca alcançado
+**Usuário reportou**: "o mesmo erro ainda continua" (após Fase 3)
+
+**Investigação**:
+- ✅ `addAbsence()` tinha timeout → OK
+- ✅ APIs backend tinham timeout → OK
+- ❌ **`getByTurmaAndDate()`** usava `supabase` client-side DIRETO! → **NÃO OK!**
+
+**Linha problemática** (linha 257 do absenceService.ts - ANTES):
+```typescript
+const { data, error } = await supabase  // ❌ Client-side sem timeout!
+  .from('student_absences')
+  .select(...)
+  .eq('students.class', turma)
+  .eq('absence_date', absenceDate);
 ```
 
-**Depois**:
+**Chamado por**: `useAttendanceMarking.ts` linha 503 (durante `handleSaveAbsences()`)
+
+**Por que causava ERR_CONNECTION_RESET**:
+- Supabase client-side em 2G/3G é **muito instável**
+- Sem AbortController, sem keepalive
+- Timeout imprevisível (varia por navegador)
+- Falha ANTES de chamar `addAbsence()`
+
+**Solução**: Converter para API REST com timeout 60s
+```typescript
+const response = await fetch(
+  `/api/absences?turma=${turma}&data=${dataFormatada}`,
+  {
+    signal: controller.signal, // 60s timeout
+    keepalive: true,
+  }
+);
 ```
-Frontend fetch (timeout 60s + keepalive) → Espera até 60s em 2G/3G
-Backend API (timeout 60s) → Processa até 60s
-Resultado: ✅ Sucesso em redes lentas!
+
+**Commit**: `03fc320`
+
+6. ✅ `getByTurmaAndDate()` - GET por turma + data (CRÍTICO!) ← **FIX REAL!**
+
+#### Por que AGORA resolve de verdade?
+
+**Antes (Fase 3)**:
+```
+handleSaveAbsences()
+  → getByTurmaAndDate() [supabase client] ❌ ERR_CONNECTION_RESET
+  → NUNCA chega em addAbsence()
+```
+
+**Depois (Fase 3 + Fix Crítico)**:
+```
+handleSaveAbsences()
+  → getByTurmaAndDate() [API REST + timeout 60s] ✅
+  → addAbsence() [já tinha timeout] ✅
+  → Sucesso em 2G/3G!
 ```
 
 ### Validação Final do Sistema Completo
