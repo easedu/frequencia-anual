@@ -284,7 +284,64 @@ function extractNumericPhone(telefone: string): string {
 
 export class StudentDataService {
   /**
-   * Get all students
+   * Get all students via API REST (RECOMENDADO ✅)
+   *
+   * Otimizado para redes lentas (2G/3G) com cache server-side.
+   *
+   * Performance:
+   * - 1ª carga: ~3-8s (2G/3G)
+   * - 2ª+ cargas: < 500ms (cached) ⚡
+   *
+   * @param includeDeleted - Include soft-deleted students
+   * @param includeContacts - Include contacts (default: true)
+   */
+  static async getStudentsViaAPI(
+    includeDeleted: boolean = false,
+    includeContacts: boolean = true
+  ): Promise<Estudante[]> {
+    try {
+      const params = new URLSearchParams({
+        includeDeleted: includeDeleted.toString(),
+        includeContacts: includeContacts.toString(),
+      });
+
+      const response = await fetch(`/api/students/all?${params}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+          error: 'Erro desconhecido',
+        }));
+        throw new Error(errorData.error || `API returned ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Erro ao buscar estudantes');
+      }
+
+      logger.info('[getStudentsViaAPI] ✅ Estudantes carregados via API', {
+        count: result.count || 0,
+        cached: result.cached || false,
+      });
+
+      return result.data || [];
+    } catch (error) {
+      logger.error('[getStudentsViaAPI] ❌ Erro ao buscar estudantes via API', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all students (LEGACY - queries diretas ao Supabase client)
+   *
+   * ⚠️ AVISO: Este método pode ter problemas de timeout em redes lentas (2G/3G).
+   * Use getStudentsViaAPI() para melhor performance.
    *
    * @param includeDeleted - Include soft-deleted students
    * @param includeContacts - Include contacts (default: true, uses JOIN - no extra query!)
