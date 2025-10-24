@@ -29,10 +29,11 @@ const StudentDialog = lazy(() =>
 
 export default function CadastrarEstudantePage() {
     // ✅ OTIMIZAÇÃO FASE 1: React Query hook com cache automático
-    const { data: students = [], isLoading: loading, error, refetch: fetchStudents } = useStudents({
+    const { data: studentsResponse, isLoading: loading, error, refetch: fetchStudents } = useStudents({
         status: 'ATIVO', // Filtro padrão
         detail: 'summary', // ✅ SELECT estratificado (apenas campos necessários)
     });
+    const students = studentsResponse?.data || [];
 
     // ✅ Hooks de mutação com invalidação automática de cache
     const createStudentMutation = useCreateStudent();

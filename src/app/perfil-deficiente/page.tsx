@@ -19,9 +19,10 @@ export default function DashboardDeficiencia() {
   // ═══════════════════════════════════════════════════════════════
 
   // ✅ OTIMIZAÇÃO FASE 1: React Query com cache + SELECT estratificado
-  const { data: students = [], isLoading: loading, error } = useStudents({
+  const { data: studentsResponse, isLoading: loading, error } = useStudents({
     detail: 'detailed', // ✅ Precisa de disabilities (JSONB) - 25KB/estudante
   });
+  const students = studentsResponse?.data || [];
 
   // ═══════════════════════════════════════════════════════════════
   // HOOK CENTRALIZADO (TODA LÓGICA)

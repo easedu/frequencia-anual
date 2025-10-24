@@ -88,10 +88,11 @@ export default function InteractionReportsPage() {
 
   // ✅ OTIMIZAÇÃO FASE 1: React Query com cache + SELECT estratificado
   const { user } = useAuth();
-  const { data: students = [], isLoading: loadingStudents } = useStudents({
+  const { data: studentsResponse, isLoading: loadingStudents } = useStudents({
     status: "ATIVO",
     detail: 'minimal', // ✅ Apenas 5KB/estudante para listagem
   });
+  const students = studentsResponse?.data || [];
   const [loadingInteractions, setLoadingInteractions] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0 });
 

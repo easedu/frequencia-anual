@@ -38,10 +38,11 @@ export default function DashboardPage() {
     const [selectedStudent, setSelectedStudent] = useState<string>("");
 
     // ✅ OTIMIZAÇÃO FASE 1: React Query com cache automático e SELECT estratificado
-    const { data: students = [] } = useStudents({
+    const { data: studentsResponse } = useStudents({
         status: 'ATIVO',
         detail: 'minimal', // ✅ Apenas 5KB por estudante (vs 50KB full) - 10x redução
     });
+    const students = studentsResponse?.data || [];
     const { bimesterDates } = useBimesterPeriods();
     const { studentRecords } = useStudentRecords({ autoRefresh: true, excludeJustified }); // 🎯 Passar excludeJustified
     const { getSchoolDaysForPeriod } = useSchoolDays();
