@@ -359,23 +359,43 @@ export async function GET(req: NextRequest) {
       count: convertedStudents.length,
     } as ApiResponse);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
+    // Serializar erro corretamente (pode ser Error, objeto do Supabase, ou string)
+    let errorMessage = 'Erro desconhecido ao buscar estudantes';
+    let errorDetails: any = undefined;
+
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      errorDetails = {
+        name: error.name,
+        stack: error.stack,
+      };
+    } else if (typeof error === 'object' && error !== null) {
+      // Erro do Supabase ou outro objeto
+      errorMessage = JSON.stringify(error);
+      errorDetails = error;
+    } else {
+      errorMessage = String(error);
+    }
 
     logger.error('[API /students/all] Erro ao buscar estudantes', {
       message: errorMessage,
-      stack: errorStack,
-      error: error,
+      details: errorDetails,
+      rawError: error,
     });
 
-    // Log completo para debug em produção
-    console.error('[API /students/all] Erro completo:', error);
+    // Log completo para debug em produção (Vercel Logs)
+    console.error('[API /students/all] ❌ ERRO COMPLETO:');
+    console.error('Tipo:', typeof error);
+    console.error('É Error?', error instanceof Error);
+    console.error('Conteúdo:', error);
+    console.error('JSON:', JSON.stringify(error, null, 2));
 
     return NextResponse.json(
       {
         success: false,
-        error: errorMessage || 'Erro desconhecido ao buscar estudantes',
-        details: process.env.NODE_ENV === 'development' ? errorStack : undefined,
+        error: errorMessage,
+        // Em desenvolvimento, retornar detalhes completos
+        ...(process.env.NODE_ENV === 'development' && { details: errorDetails }),
       } as ApiResponse,
       { status: 500 }
     );
