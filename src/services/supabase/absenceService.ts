@@ -39,9 +39,17 @@ export class AbsenceService {
       // ✅ Usar API REST ao invés de Supabase direto
       const headers = await getAuthHeaders();
 
+      // 🔧 FIX: AbortController com timeout para redes 2G/3G
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
       const response = await fetch(`/api/absences?estudanteId=${firebaseStudentId}`, {
         headers,
+        signal: controller.signal,
+        keepalive: true,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`API returned ${response.status}: ${response.statusText}`);
@@ -316,27 +324,46 @@ export class AbsenceService {
         dataFormatada = `${day}${month}${year}`;
       }
 
-      const response = await fetch('/api/absences', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          estudanteId: record.estudanteId, // Firebase UUID (a API resolve internamente)
-          data: dataFormatada,
-          justificada: record.justified ?? false,
-          atestadoId: record.atestadoId || null,
-          bimestre: null, // Será calculado pela API
-        }),
-      });
+      // 🔧 FIX: AbortController com timeout generoso para redes 2G/3G
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `API returned ${response.status}`);
-      }
+      try {
+        const response = await fetch('/api/absences', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            estudanteId: record.estudanteId, // Firebase UUID (a API resolve internamente)
+            data: dataFormatada,
+            justificada: record.justified ?? false,
+            atestadoId: record.atestadoId || null,
+            bimestre: null, // Será calculado pela API
+          }),
+          signal: controller.signal, // ✅ Adicionar signal do AbortController
+          keepalive: true, // ✅ Manter conexão em redes instáveis
+        });
 
-      const result = await response.json();
+        clearTimeout(timeoutId);
 
-      if (!result.success) {
-        throw new Error(result.message || 'Erro ao criar falta');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || `API returned ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.message || 'Erro ao criar falta');
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+
+        // Verificar se foi timeout (AbortError)
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          throw new Error('Timeout ao salvar falta (rede muito lenta). Tente novamente.');
+        }
+
+        throw fetchError;
       }
 
     } catch (error) {
@@ -405,10 +432,18 @@ export class AbsenceService {
       // 1. Primeiro, buscar o ID da falta (GET /api/absences?estudanteId=X)
       const headers = await getAuthHeaders();
 
+      // 🔧 FIX: AbortController com timeout para redes 2G/3G
+      const searchController = new AbortController();
+      const searchTimeoutId = setTimeout(() => searchController.abort(), 60000);
+
       // Buscar máximo de faltas permitido pelo schema (limit=100)
       const searchResponse = await fetch(`/api/absences?estudanteId=${studentId}&limit=250`, {
         headers,
+        signal: searchController.signal,
+        keepalive: true,
       });
+
+      clearTimeout(searchTimeoutId);
 
       if (!searchResponse.ok) {
         throw new Error(`API returned ${searchResponse.status}: ${searchResponse.statusText}`);
@@ -431,10 +466,17 @@ export class AbsenceService {
       }
 
       // 3. Deletar usando o ID da falta (DELETE /api/absences/[id])
+      const deleteController = new AbortController();
+      const deleteTimeoutId = setTimeout(() => deleteController.abort(), 60000);
+
       const deleteResponse = await fetch(`/api/absences/${targetAbsence.id}`, {
         method: 'DELETE',
         headers,
+        signal: deleteController.signal,
+        keepalive: true,
       });
+
+      clearTimeout(deleteTimeoutId);
 
       if (!deleteResponse.ok) {
         const errorData = await deleteResponse.json();
@@ -487,7 +529,15 @@ export class AbsenceService {
   static async findDuplicates(): Promise<Array<{ student_id: string; absence_date: string; count: number }>> {
     try {
       // ✅ Usar API REST
-      const response = await fetch('/api/absences/duplicates');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+      const response = await fetch('/api/absences/duplicates', {
+        signal: controller.signal,
+        keepalive: true,
+      });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`API returned ${response.status}: ${response.statusText}`);
@@ -513,9 +563,16 @@ export class AbsenceService {
   static async removeDuplicates(): Promise<number> {
     try {
       // ✅ Usar API REST
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
       const response = await fetch('/api/absences/duplicates', {
         method: 'DELETE',
+        signal: controller.signal,
+        keepalive: true,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`API returned ${response.status}: ${response.statusText}`);
