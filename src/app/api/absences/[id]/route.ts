@@ -23,6 +23,13 @@ import {
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
+// ════════════════════════════════════════════════════════════════
+// RUNTIME CONFIG (Vercel) - Suporte para redes lentas 2G/3G
+// ════════════════════════════════════════════════════════════════
+
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 // Tipo para os parâmetros da rota
 type RouteParams = {
   params: Promise<{

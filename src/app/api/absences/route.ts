@@ -25,6 +25,13 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
 import { getCountStrategy } from '@/app/api/_utils/countStrategy';
 
+// ════════════════════════════════════════════════════════════════
+// RUNTIME CONFIG (Vercel) - Suporte para redes lentas 2G/3G
+// ════════════════════════════════════════════════════════════════
+
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 // ============================================================================
 // GET /api/absences - Listar faltas com filtros
 // ============================================================================

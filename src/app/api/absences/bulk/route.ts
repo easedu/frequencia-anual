@@ -20,6 +20,13 @@ import {
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
+// ════════════════════════════════════════════════════════════════
+// RUNTIME CONFIG (Vercel) - Suporte para redes lentas 2G/3G
+// ════════════════════════════════════════════════════════════════
+
+export const runtime = 'nodejs'; // Não usar 'edge' (limite de 10s)
+export const maxDuration = 60; // 60 segundos para redes muito lentas
+
 // ============================================================================
 // POST /api/absences/bulk - Criar múltiplas faltas
 // ============================================================================
