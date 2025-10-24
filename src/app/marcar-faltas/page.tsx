@@ -33,6 +33,8 @@ export default function MarcarFaltasPage() {
     // Hook centralizado com toda lógica
     const {
         // Estados
+        academicYearData,
+        loadingAcademicYear, // ✅ NOVO: Estado de loading do ano letivo
         selectedDate,
         setSelectedDate,
         isValidDay,
@@ -60,19 +62,21 @@ export default function MarcarFaltasPage() {
         // Handlers
         handleCheckboxChange,
         handleSaveAbsences,
-        academicYearData,
     } = useAttendanceMarking({ students, isOnline });
 
     // ──────────────────────────────────────────────────────────────
     // Renderização
     // ──────────────────────────────────────────────────────────────
 
-    if (loading) {
+    // ✅ NOVO: Loading unificado (estudantes + ano letivo)
+    if (loading || loadingAcademicYear) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600 font-medium">Carregando dados...</p>
+                    <p className="text-gray-600 font-medium">
+                        {loading ? "Carregando estudantes..." : "Carregando ano letivo..."}
+                    </p>
                 </div>
             </div>
         );

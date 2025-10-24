@@ -62,6 +62,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
     // ──────────────────────────────────────────────────────────────
 
     const [academicYearData, setAcademicYearData] = useState<AcademicYearData | null>(null);
+    const [loadingAcademicYear, setLoadingAcademicYear] = useState(true); // ✅ NOVO: Estado de loading
     const [selectedDate, setSelectedDate] = useState<string>("");
     const [isValidDay, setIsValidDay] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
@@ -178,17 +179,21 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
     useEffect(() => {
         const fetchAcademicYearData = async () => {
             try {
+                setLoadingAcademicYear(true); // ✅ Inicia loading
                 const { AcademicYearService } = await import('@/services/supabase/academicYearService');
                 const yearData = await AcademicYearService.getAcademicYearComplete(2025);
 
                 if (yearData && Object.keys(yearData).length > 0) {
                     setAcademicYearData(yearData);
+                    setErrorMessage(""); // ✅ Limpa erro se sucesso
                 } else {
                     setErrorMessage("Dados do ano letivo não encontrados.");
                 }
             } catch (error) {
                 logger.error("Erro ao carregar ano letivo", error as Error);
                 setErrorMessage("Erro ao carregar dados do ano letivo.");
+            } finally {
+                setLoadingAcademicYear(false); // ✅ Finaliza loading
             }
         };
         fetchAcademicYearData();
@@ -495,6 +500,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
     return {
         // Estados
         academicYearData,
+        loadingAcademicYear, // ✅ NOVO: Exporta estado de loading
         selectedDate,
         setSelectedDate,
         isValidDay,
