@@ -160,7 +160,6 @@ function convertSupabaseToFrontend(student: any): any {
           nome: contact.name || '',
           parentesco: contact.relationship || '',
           telefone: contact.phone || '',
-          telefone2: contact.phone2 || '',
           email: contact.email || '',
 
           // WhatsApp
@@ -263,7 +262,6 @@ export async function GET(req: NextRequest) {
               name,
               relationship,
               phone,
-              phone2,
               email,
               whatsapp_number,
               whatsapp_status,
