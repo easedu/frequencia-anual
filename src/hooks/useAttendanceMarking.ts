@@ -180,25 +180,35 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
     useEffect(() => {
         const fetchAcademicYearData = async () => {
             try {
+                console.log("[useAttendanceMarking] Iniciando fetch do ano letivo");
                 setLoadingAcademicYear(true); // ✅ Inicia loading
                 setErrorMessage(""); // ✅ Limpa erro ao iniciar loading
                 const { AcademicYearService } = await import('@/services/supabase/academicYearService');
                 const yearData = await AcademicYearService.getAcademicYearComplete(2025);
 
+                console.log("[useAttendanceMarking] Fetch completado", {
+                    hasData: !!yearData,
+                    keysLength: yearData ? Object.keys(yearData).length : 0
+                });
+
                 if (yearData && Object.keys(yearData).length > 0) {
+                    console.log("[useAttendanceMarking] Dados carregados com sucesso");
                     setAcademicYearData(yearData);
                     setAcademicYearLoaded(true); // ✅ Marca como carregado com sucesso
                     // errorMessage já foi limpo no início
                 } else {
+                    console.log("[useAttendanceMarking] Dados vazios - setando null");
                     // ✅ NÃO seta erro aqui - deixa o useEffect de validação lidar com isso
                     setAcademicYearData(null); // Garante que está null
                     setAcademicYearLoaded(true); // ✅ Marca como carregado (mesmo sem dados)
                 }
             } catch (error) {
+                console.error("[useAttendanceMarking] Erro no fetch", error);
                 logger.error("Erro ao carregar ano letivo", error as Error);
                 setErrorMessage("Erro ao carregar dados do ano letivo.");
                 setAcademicYearLoaded(true); // ✅ Marca como carregado (mesmo com erro)
             } finally {
+                console.log("[useAttendanceMarking] Finalizando loading");
                 setLoadingAcademicYear(false); // ✅ Finaliza loading
             }
         };
@@ -213,8 +223,16 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
 
     // Valida data selecionada
     useEffect(() => {
+        console.log("[useAttendanceMarking] Validação disparada", {
+            academicYearLoaded,
+            hasData: !!academicYearData,
+            selectedDate,
+            loadingAcademicYear
+        });
+
         // ✅ CORREÇÃO: Não validar antes da primeira carga completar
         if (!academicYearLoaded) {
+            console.log("[useAttendanceMarking] Aguardando primeira carga completar");
             return; // Aguarda primeira carga completar (sucesso ou erro)
         }
 
@@ -231,11 +249,13 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
             });
             setIsValidDay(valid);
             setErrorMessage(valid ? "" : "O dia selecionado não está disponível para marcação de faltas.");
+            console.log("[useAttendanceMarking] Validação executada", { valid });
         } else if (!academicYearData) {
             // ✅ Só executa se primeira carga completou mas não há dados
+            console.log("[useAttendanceMarking] Setando erro: dados não encontrados");
             setErrorMessage("Dados do ano letivo não encontrados.");
         }
-    }, [academicYearData, selectedDate, academicYearLoaded]);
+    }, [academicYearData, selectedDate, academicYearLoaded, loadingAcademicYear]);
 
     // Carrega perfil do usuário
     useEffect(() => {
