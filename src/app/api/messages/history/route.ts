@@ -11,6 +11,7 @@ import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { logger } from '@/utils/logger'
 import { z } from 'zod'
+import { getCountStrategy } from '@/app/api/_utils/countStrategy'
 
 // ============================================================================
 // SCHEMAS
@@ -85,10 +86,14 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(filters.limit)
     const offset = parseInt(filters.offset)
 
+    // ✅ FASE 4.1: Otimizar count
+    const page = Math.floor(offset / limit) + 1
+    const countOption = getCountStrategy(page)
+
     // Construir query
     let query = supabaseAdmin
       .from('whatsapp_message_history')
-      .select('*', { count: 'exact' })
+      .select('*', countOption)
 
     // Aplicar filtros (usando nomes das colunas Supabase em inglês)
     if (filters.estudante_id) {

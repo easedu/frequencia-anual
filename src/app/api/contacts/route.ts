@@ -22,6 +22,7 @@ import {
 } from '@/app/api/_utils/response';
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { getCountStrategy } from '@/app/api/_utils/countStrategy';
 
 // ============================================================================
 // GET /api/contacts - Listar contatos com filtros
@@ -44,10 +45,13 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       limit,
     } = validation.data;
 
-    // 2. Construir query no Supabase
+    // 2. ✅ FASE 4.1: Otimizar count
+    const countOption = getCountStrategy(page);
+
+    // Construir query no Supabase
     let query: any = supabaseAdmin
       .from('student_contacts')
-      .select('*, students(student_id)', { count: 'exact' })
+      .select('*, students(student_id)', countOption)
       .order('name', { ascending: true });
 
     // Aplicar filtros

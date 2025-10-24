@@ -12,6 +12,7 @@ import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { createAbsenceControlSchema, absenceControlFiltersSchema } from '@/app/api/_schemas/absenceControlSchemas'
 import { logger } from '@/utils/logger'
+import { getCountStrategy } from '@/app/api/_utils/countStrategy'
 
 /**
  * GET /api/absence-control
@@ -47,10 +48,14 @@ export const GET = withAuth(async (request: NextRequest, userId: string) => {
     const limit = parseInt(filters.limit)
     const offset = parseInt(filters.offset)
 
+    // ✅ FASE 4.1: Otimizar count
+    const page = Math.floor(offset / limit) + 1
+    const countOption = getCountStrategy(page)
+
     // Construir query
     let query = supabaseAdmin
       .from('absence_control')
-      .select('*', { count: 'exact' })
+      .select('*', countOption)
       .eq('academic_year', academicYear)
 
     // Filtrar por bimestre (opcional)

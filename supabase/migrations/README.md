@@ -1,61 +1,104 @@
-# 📊 Materialized Views - Fase 2 Otimizações
+# 📁 Supabase Migrations - Fases 2, 3 e 4
 
-## 🎯 Objetivo
+Este diretório contém as migrations SQL para otimizações de performance do banco de dados Supabase.
 
-Eliminar N+1 queries através de Materialized Views que pré-computam JOINs entre tabelas.
+## 🎯 Objetivo Geral
 
-**Performance Esperada**: 5-10x mais rápido em listagens (de 5s para 500-1000ms)
+Otimizar a aplicação para redes ruins (3G), reduzindo tempo de carregamento de **60-90s para 3-5s** (15-20x mais rápido).
 
 ---
 
-## 📋 Como Executar
+## 📋 Migrations Disponíveis
 
-### Passo 1: Abrir Supabase SQL Editor
+| Migration | Descrição | Fase | Impacto |
+|-----------|-----------|------|---------|
+| `001_materialized_views.sql` | 5 MVs para eliminar N+1 queries | Fase 2 | 15-20s → 5-8s (3x) |
+| `002_composite_indexes.sql` | Índices compostos e parciais | Fase 3 | 5-8s → 3-5s (1.5x) |
+| `003_query_analysis_functions.sql` | Funções de monitoramento de queries | Fase 3 | Diagnóstico |
 
-1. Acesse: https://supabase.com/dashboard/project/xccjifrggpgevqftwdkx/sql/new
-2. Faça login com suas credenciais
+---
 
-### Passo 2: Copiar e Executar SQL
+## 🚀 Como Executar
 
-1. Abra o arquivo `001_materialized_views.sql` nesta pasta
-2. Copie TODO o conteúdo
-3. Cole no SQL Editor do Supabase
-4. Clique em **RUN** (ou Ctrl/Cmd + Enter)
+### Via Supabase Dashboard (Recomendado)
 
-### Passo 3: Verificar Criação
+1. Acesse: https://supabase.com/dashboard/project/YOUR_PROJECT_ID/sql
+2. Abra o arquivo da migration desejada
+3. Copie e cole o conteúdo no SQL Editor
+4. Clique em "Run"
+5. Verifique os resultados na aba "Results"
 
-Após a execução, você deve ver:
+### Via Supabase CLI (Avançado)
 
-```
-✅ 5 Materialized Views criadas:
-  - absences_with_student_info
-  - interactions_with_student_info
-  - tasks_with_student_info
-  - certificates_with_student_info
-  - suspensions_with_student_info
-
-✅ 2 Funções criadas:
-  - refresh_all_materialized_views()
-  - get_mv_metadata()
-
-✅ ~20 Índices criados para performance
+```bash
+# Aplicar todas as migrations em ordem
+psql $DATABASE_URL -f supabase/migrations/001_materialized_views.sql
+psql $DATABASE_URL -f supabase/migrations/002_composite_indexes.sql
+psql $DATABASE_URL -f supabase/migrations/003_query_analysis_functions.sql
 ```
 
-Execute esta query para validar:
+---
+
+## ✅ Checklist de Validação
+
+### Migration 001: Materialized Views (Fase 2)
+
+- [ ] Todas as 5 Materialized Views criadas sem erros
+- [ ] Função `refresh_all_materialized_views()` criada
+- [ ] Função `get_mv_metadata()` criada
+- [ ] ~20 índices criados com sucesso
+- [ ] Executar query de validação:
 
 ```sql
 SELECT * FROM get_mv_metadata();
+-- Deve retornar 5 views
+```
+
+### Migration 002: Composite Indexes (Fase 3)
+
+- [ ] 7 índices compostos criados sem erros
+- [ ] 3 índices GIN (JSONB) criados sem erros
+- [ ] ANALYZE executado em todas as tabelas
+- [ ] Executar query de validação:
+
+```sql
+-- Ver statistics das tabelas
+SELECT schemaname, tablename, last_analyze, n_live_tup AS row_count
+FROM pg_stat_user_tables
+WHERE schemaname = 'public'
+ORDER BY n_live_tup DESC;
+
+-- Ver índices criados
+SELECT indexname, pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
+FROM pg_stat_user_indexes
+WHERE schemaname = 'public' AND indexrelname LIKE 'idx_%'
+ORDER BY pg_relation_size(indexrelid) DESC;
+```
+
+### Migration 003: Query Analysis Functions (Fase 3)
+
+- [ ] Função `get_query_stats()` criada
+- [ ] Função `get_slow_queries()` criada
+- [ ] Função `get_table_stats()` criada
+- [ ] Função `get_unused_indexes()` criada
+- [ ] Função `get_index_hit_rate()` criada
+- [ ] Extensão `pg_stat_statements` habilitada
+- [ ] Executar queries de validação:
+
+```sql
+-- Testar funções
+SELECT * FROM get_query_stats();
+SELECT * FROM get_slow_queries(100);
+SELECT * FROM get_table_stats();
+SELECT * FROM get_unused_indexes();
+SELECT * FROM get_index_hit_rate();
 ```
 
 ---
 
-## 🔄 Refresh Automático
+## 🔄 Refresh Automático de MVs
 
 ### Opção A: pg_cron (Recomendado)
-
-**⚠️ Nota**: pg_cron pode não estar disponível em todos os planos do Supabase.
-
-Se disponível, execute:
 
 ```sql
 -- 1. Habilitar extensão
@@ -74,129 +117,87 @@ SELECT * FROM cron.job WHERE jobname = 'refresh-all-mvs';
 
 ### Opção B: GitHub Actions (Fallback)
 
-Se pg_cron não estiver disponível, usaremos GitHub Actions.
-
-**Arquivo já criado**: `.github/workflows/refresh-materialized-views.yml`
+Já configurado em `.github/workflows/refresh-materialized-views.yml`
 
 **Configurar Secrets no GitHub**:
-
-1. Acesse: https://github.com/easedu/frequencia-anual/settings/secrets/actions
+1. Acesse: https://github.com/YOUR_USER/YOUR_REPO/settings/secrets/actions
 2. Adicione:
-   - `SUPABASE_URL`: `https://xccjifrggpgevqftwdkx.supabase.co`
-   - `SUPABASE_SERVICE_ROLE_KEY`: (pegar no Supabase → Settings → API)
-
-**Testar manualmente**:
-
-1. Acesse: https://github.com/easedu/frequencia-anual/actions
-2. Selecione workflow "Refresh Materialized Views"
-3. Clique em "Run workflow"
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
 
 ---
 
 ## 📊 Monitoramento
 
-### Ver Estatísticas das MVs
+### Endpoint de MVs: `/api/admin/materialized-views`
 
-```sql
-SELECT * FROM get_mv_metadata();
+```bash
+# Ver estatísticas das MVs
+curl -H "Authorization: Bearer $TOKEN" \
+  https://seu-app.vercel.app/api/admin/materialized-views
+
+# Forçar refresh manual
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  https://seu-app.vercel.app/api/admin/materialized-views
 ```
 
-**Resultado esperado**:
+### Endpoint de Health Check: `/api/monitoring/health`
 
-| view_name | row_count | total_size | last_refresh |
-|-----------|-----------|------------|--------------|
-| absences_with_student_info | ~5000 | 512 kB | 2025-10-24 02:00:00 |
-| interactions_with_student_info | ~800 | 128 kB | 2025-10-24 02:00:00 |
-| tasks_with_student_info | ~300 | 64 kB | 2025-10-24 02:00:00 |
-| certificates_with_student_info | ~100 | 32 kB | 2025-10-24 02:00:00 |
-| suspensions_with_student_info | ~50 | 16 kB | 2025-10-24 02:00:00 |
-
-### Refresh Manual (quando necessário)
-
-```sql
-SELECT * FROM refresh_all_materialized_views();
+```bash
+# Ver status geral do sistema
+curl https://seu-app.vercel.app/api/monitoring/health
 ```
 
-**Quando fazer refresh manual**:
-- Após importação de dados em massa
-- Após migração
-- Após correção de dados
-
----
-
-## 🧪 Validação de Performance
-
-### ANTES (sem MVs)
+### Queries de Monitoramento
 
 ```sql
-EXPLAIN ANALYZE
-SELECT a.*, s.name, s.class
-FROM student_absences a
-JOIN students s ON a.student_id = s.id
-LIMIT 1000;
--- Planning Time: ~50ms
--- Execution Time: ~2000ms ❌
-```
+-- Ver queries lentas (> 100ms)
+SELECT query, mean_time_ms, calls
+FROM get_slow_queries(100)
+LIMIT 10;
 
-### DEPOIS (com MVs)
+-- Ver índices nunca usados
+SELECT index_name, index_size
+FROM get_unused_indexes();
 
-```sql
-EXPLAIN ANALYZE
-SELECT * FROM absences_with_student_info
-LIMIT 1000;
--- Planning Time: ~5ms
--- Execution Time: ~300ms ✅ (7x mais rápido!)
+-- Ver taxa de cache hit (deve ser >= 99%)
+SELECT table_name, index_hit_rate
+FROM get_index_hit_rate()
+WHERE index_hit_rate < 99;
+
+-- Ver uso de índices por tabela (deve ser >= 90%)
+SELECT table_name, index_usage_pct
+FROM get_table_stats()
+WHERE index_usage_pct < 90;
 ```
 
 ---
 
-## ⚠️ Importante
-
-### Refresh CONCURRENTLY
-
-Todas as MVs usam `REFRESH MATERIALIZED VIEW CONCURRENTLY`, que:
-
-- ✅ **NÃO bloqueia** leituras (aplicação continua funcionando)
-- ✅ **Permite** queries simultâneas durante refresh
-- ⚠️ **Requer** índice único (já criado nos scripts)
-
-### Tamanho das MVs
-
-As MVs ocupam espaço em disco. Estimativa:
-
-- Total: **~750KB** (muito pequeno!)
-- Refresh time: **~500ms** para todas as 5 MVs
-
-### Custo de Refresh
-
-- **Read Operations**: ~5000 (uma vez a cada 5 min = ~1.4M reads/mês)
-- **Write Operations**: ~5000 (refresh)
-- **Impacto**: Mínimo (< 5% do quota gratuito do Supabase)
-
----
-
-## 🐛 Troubleshooting
-
-### Erro: "permission denied to create extension"
-
-**Problema**: pg_cron requer permissões de superuser
-
-**Solução**: Use GitHub Actions (Opção B)
+## 🚨 Troubleshooting
 
 ### Erro: "relation already exists"
 
-**Problema**: MVs já foram criadas antes
+```sql
+-- Solução: Dropar a MV existente
+DROP MATERIALIZED VIEW IF EXISTS absences_with_student_info CASCADE;
+-- Depois executar a migration novamente
+```
 
-**Solução**: Deletar e recriar:
+### Erro: "index already exists"
 
 ```sql
-DROP MATERIALIZED VIEW IF EXISTS absences_with_student_info CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS interactions_with_student_info CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS tasks_with_student_info CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS certificates_with_student_info CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS suspensions_with_student_info CASCADE;
+-- Solução: Dropar o índice existente
+DROP INDEX CONCURRENTLY IF EXISTS idx_students_class_status;
+-- Depois executar a migration novamente
+```
 
--- Depois executar 001_materialized_views.sql novamente
+### Erro: "extension pg_stat_statements does not exist"
+
+```sql
+-- Solução: Habilitar extensão (requer permissões)
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+-- Se não tiver permissão, solicitar via Supabase Support
 ```
 
 ### MVs não estão atualizando
@@ -219,19 +220,46 @@ LIMIT 10;
 
 ---
 
-## 📚 Próximos Passos
+## 🎯 Impacto Esperado
 
-Após executar esta migração:
-
-1. ✅ MVs criadas e populadas
-2. ⏳ **Próximo**: Criar API Routes para usar as MVs (`/api/absences-mv`, etc)
-3. ⏳ Configurar refresh automático (pg_cron OU GitHub Actions)
-4. ⏳ Criar endpoint de monitoramento (`/api/admin/materialized-views`)
-5. ⏳ Validar performance em produção
+| Métrica | Baseline | Após Fase 2 | Após Fase 3 | Melhoria Total |
+|---------|----------|-------------|-------------|----------------|
+| **Loading Time (3G)** | 60-90s | 5-8s | 3-5s | **15-20x** |
+| **TTFB** | 2-5s | < 500ms | < 300ms | **10x** |
+| **Query Time** | 2-5s | 300ms | 50-100ms | **20-40x** |
+| **N+1 Queries** | Sim | Não | Não | ✅ Eliminado |
+| **Index Usage** | ~60% | ~80% | ~95% | **1.5x** |
+| **Payload Size** | 4.2MB | 500KB | 500KB | **8x** |
 
 ---
 
-**Data de Criação**: 2025-10-24
-**Autor**: Claude Code
-**Fase**: 2 (Alta Prioridade)
-**Status**: Pronto para execução
+## 📚 Próximos Passos
+
+### Após Migration 001 (Fase 2)
+- [ ] Configurar refresh automático (pg_cron OU GitHub Actions)
+- [ ] Validar performance em produção
+- [ ] Monitorar `/api/admin/materialized-views`
+
+### Após Migration 002 (Fase 3)
+- [ ] Monitorar uso de índices (deve ser >= 90%)
+- [ ] Verificar queries lentas (deve ser < 100ms)
+- [ ] Remover índices não usados após 1 semana
+
+### Após Migration 003 (Fase 3)
+- [ ] Executar `get_query_stats()` diariamente
+- [ ] Monitorar `get_slow_queries(100)` semanalmente
+- [ ] Validar `get_index_hit_rate()` >= 99%
+
+---
+
+## 📖 Documentação Completa
+
+- **Fase 2**: `docs/FASE-2-CONCLUIDA.md`
+- **Fases 3-4**: `docs/FASE-3-4-CONCLUIDA.md`
+- **Plano Completo**: `docs/OTIMIZACAO-FASES-3-4-E-VALIDACAO-CONSOLIDADO.md`
+
+---
+
+**Última Atualização**: 2025-10-23
+**Autor**: Claude Code (Fases 2, 3 e 4)
+**Status**: ✅ Pronto para Execução

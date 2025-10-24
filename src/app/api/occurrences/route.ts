@@ -11,6 +11,7 @@ import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { createOccurrenceSchema, occurrenceFiltersSchema } from '@/app/api/_schemas/occurrenceSchemas'
 import { logger } from '@/utils/logger'
+import { getCountStrategy } from '@/app/api/_utils/countStrategy'
 
 /**
  * GET /api/occurrences
@@ -48,10 +49,14 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(filters.limit)
     const offset = parseInt(filters.offset)
 
+    // ✅ FASE 4.1: Otimizar count
+    const page = Math.floor(offset / limit) + 1
+    const countOption = getCountStrategy(page)
+
     // Construir query
     let query = supabaseAdmin
       .from('student_occurrences')
-      .select('*', { count: 'exact' })
+      .select('*', countOption)
 
     // Aplicar filtros
     if (filters.student_id) {

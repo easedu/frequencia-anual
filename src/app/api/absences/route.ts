@@ -23,6 +23,7 @@ import {
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
+import { getCountStrategy } from '@/app/api/_utils/countStrategy';
 
 // ============================================================================
 // GET /api/absences - Listar faltas com filtros
@@ -67,9 +68,12 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // 3. Construir query no Supabase
+    // ✅ FASE 4.1: Otimizar count (estimated na 1ª página, planned depois)
+    const countOption = getCountStrategy(page);
+
     let query: any = supabaseAdmin
       .from('student_absences')
-      .select('*, students(name, class, student_id)', { count: 'exact' })
+      .select('*, students(name, class, student_id)', countOption)
       .order('absence_date', { ascending: false });
 
     // Aplicar filtros

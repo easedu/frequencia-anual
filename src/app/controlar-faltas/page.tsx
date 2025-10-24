@@ -4,10 +4,7 @@ import { useState, useEffect, Suspense, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import FiltersCard from "@/components/cards/FiltersCard";
 import KPIsCard from "@/components/cards/KPIsCard";
-import ComparativeChartsCard from "@/components/cards/ComparativeChartsCard";
-import TemporalAnalysisCard from "@/components/cards/TemporalAnalysisCard";
 import AlertsCard from "@/components/cards/AlertsCard";
-import FrequencyTableCard from "@/components/cards/FrequencyTableCard";
 import StudentAbsencesCard from "@/components/cards/StudentAbsencesCard";
 import DuplicateAbsencesCard from "@/components/cards/DuplicateAbsencesCard";
 import {
@@ -22,9 +19,25 @@ import { useStudents } from "@/hooks/api/query";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import dynamic from "next/dynamic";
 
+// ✅ FASE 4.2: Lazy Loading de componentes pesados (Charts)
 const DayOfWeekDistributionCard = dynamic(() => import("@/components/cards/DayOfWeekDistributionCard"), {
     ssr: false,
     loading: () => <Skeleton className="h-64 w-full" />,
+});
+
+const ComparativeChartsCard = dynamic(() => import("@/components/cards/ComparativeChartsCard"), {
+    ssr: false,
+    loading: () => <Skeleton className="h-96 w-full" />,
+});
+
+const TemporalAnalysisCard = dynamic(() => import("@/components/cards/TemporalAnalysisCard"), {
+    ssr: false,
+    loading: () => <Skeleton className="h-80 w-full" />,
+});
+
+const FrequencyTableCard = dynamic(() => import("@/components/cards/FrequencyTableCard"), {
+    ssr: false,
+    loading: () => <Skeleton className="h-[600px] w-full" />,
 });
 
 export default function DashboardPage() {

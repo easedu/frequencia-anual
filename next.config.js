@@ -4,8 +4,20 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // ✅ OTIMIZAÇÃO: Habilitar compressão automática (gzip/brotli)
+  // ✅ OTIMIZAÇÃO FASE 1: Habilitar compressão automática (gzip/brotli)
   compress: true,
+
+  // ✅ OTIMIZAÇÃO FASE 4.3: Remover console.logs em produção
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? {
+      exclude: ['error', 'warn'], // Manter error e warn
+    } : false,
+  },
+
+  // ✅ OTIMIZAÇÃO FASE 4.3: Experimental optimizations
+  experimental: {
+    optimizeCss: true, // Minificar CSS
+  },
 
   // ✅ OTIMIZAÇÃO: Headers customizados para cache e compressão
   async headers() {

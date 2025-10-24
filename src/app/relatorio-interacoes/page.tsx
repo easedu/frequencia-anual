@@ -39,8 +39,18 @@ import { FamilyInteraction } from "@/types";
 import { Student as ApiStudent } from "@/hooks/api";
 import { formatFirebaseDate } from "../utils";
 import { CURRENT_SCHOOL_YEAR } from "@/config/constants";
-import InteractionChartsCard from "@/components/interactions/InteractionChartsCard";
-import StudentInteractionAnalysisCard from "@/components/students/StudentInteractionAnalysisCard";
+import dynamic from "next/dynamic";
+
+// ✅ FASE 4.2: Lazy Loading de componentes pesados (Charts)
+const InteractionChartsCard = dynamic(() => import("@/components/interactions/InteractionChartsCard"), {
+    ssr: false,
+    loading: () => <ChartCardSkeleton />,
+});
+
+const StudentInteractionAnalysisCard = dynamic(() => import("@/components/students/StudentInteractionAnalysisCard"), {
+    ssr: false,
+    loading: () => <ChartCardSkeleton />,
+});
 
 interface InteractionStats {
   total: number;

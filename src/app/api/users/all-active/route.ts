@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { createClient } from '@supabase/supabase-js';
+import { getCountStrategy } from '@/app/api/_utils/countStrategy';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,10 +25,13 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
+    // ✅ FASE 4.1: Otimizar count
+    const countOption = getCountStrategy(page);
+
     // 🚀 PAGINAÇÃO PROGRESSIVA
     const { data, error, count } = await supabaseAdmin
       .from('users')
-      .select('*', { count: 'exact' })
+      .select('*', countOption)
       .order('name', { ascending: true })
       .range(from, to);
 

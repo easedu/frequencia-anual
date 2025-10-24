@@ -12,6 +12,7 @@ import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
 import { getDiasLetivosNoPeriodo, parseDate, getBimesterByDate } from '@/app/utils';
+import { getCountStrategy } from '@/app/api/_utils/countStrategy';
 
 export const GET = withAuth(async (req: NextRequest, userId: string) => {
   try {
@@ -37,9 +38,12 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       internalStudentId = resolved;
     }
 
+    // ✅ FASE 4.1: Otimizar count
+    const countOption = getCountStrategy(page);
+
     let query: any = supabaseAdmin
       .from('student_suspensions')
-      .select('*, students( name, class)', { count: 'exact' })
+      .select('*, students( name, class)', countOption)
       .order('start_date', { ascending: false });
 
     if (internalStudentId) query = query.eq('student_id', internalStudentId);

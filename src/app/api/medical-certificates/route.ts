@@ -15,6 +15,7 @@ import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
 import { getDiasLetivosNoPeriodo, parseDate, getBimesterByDate } from '@/app/utils';
+import { getCountStrategy } from '@/app/api/_utils/countStrategy';
 
 /**
  * GET /api/medical-certificates
@@ -38,12 +39,15 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
 
+    // ✅ FASE 4.1: Otimizar count
+    const countOption = getCountStrategy(page);
+
     let query: any = supabaseAdmin
       .from('medical_certificates')
       .select(`
         *,
         students!inner(student_id, name, class)
-      `, { count: 'exact' })
+      `, countOption)
       .order('created_at', { ascending: false });
 
     // Se studentId fornecido, resolver Firebase UUID → Internal ID
