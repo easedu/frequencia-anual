@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { Users, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
