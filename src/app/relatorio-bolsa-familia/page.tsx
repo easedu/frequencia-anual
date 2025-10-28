@@ -25,7 +25,9 @@ import {
     XCircle,
     AlertTriangle,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    TrendingDown,
+    Calendar
 } from "lucide-react";
 
 interface Estudante {
@@ -60,7 +62,7 @@ export default function RelatorioFaltasPage() {
 
     // ✅ Usar hooks da API REST (sem Supabase direto)
     const { controls: absenceControls } = useAbsenceControls({ academic_year: 2025 });
-    const { absences } = useAbsences({
+    const { absences, loading: loadingAbsences } = useAbsences({
         allowAll: true // ✅ Carrega TODAS as faltas com paginação recursiva paralela
     });
 
@@ -120,15 +122,20 @@ export default function RelatorioFaltasPage() {
         }
     }, [absenceControls]);
 
-    // ✅ Usar hook da API REST com filtros corretos
-    const { students: allStudents, loading: loadingAllStudents } = useStudents({
-        status: "ATIVO",
-        bolsa_familia: "SIM"
-    });
+    // ✅ Usar hook da API REST (filtramos depois)
+    const { students: allStudents, loading: loadingAllStudents } = useStudents(false, true);
 
     useEffect(() => {
-        // Estudantes já vêm filtrados da API - os campos já existem via transformToClientModel
-        const mappedStudents: Estudante[] = allStudents.map(s => {
+        // Filtrar apenas estudantes ATIVOS com Bolsa Família
+        const filteredStudents = allStudents.filter(s => {
+            const student = s as unknown as Record<string, unknown>;
+            const status = student.status as string;
+            const bolsaFamilia = (student.bolsaFamilia || student.bolsa_familia || 'NÃO') as string;
+
+            return status === 'ATIVO' && bolsaFamilia === 'SIM';
+        });
+
+        const mappedStudents: Estudante[] = filteredStudents.map(s => {
             // API retorna tanto snake_case quanto camelCase
             const student = s as unknown as Record<string, unknown>;
             return {
@@ -267,6 +274,9 @@ export default function RelatorioFaltasPage() {
                         return freqMes < 75 ? { mes: month, freq: freqMes.toFixed(1) + '%', faltas, dias } : null;
                     })
                     .filter(m => m !== null);
+
+                // Array dos meses selecionados
+                const mesesSelecionadosArray = Array.from(selectedMonths);
 
                 return {
                     nome: s.nome,
