@@ -31,7 +31,8 @@ export default function CadastrarEstudantePage() {
     // ✅ OTIMIZAÇÃO FASE 1: React Query hook com cache automático
     const { data: studentsResponse, isLoading: loading, error } = useStudents({
         status: 'ATIVO', // Filtro padrão
-        detail: 'summary', // ✅ SELECT estratificado (apenas campos necessários)
+        detail: 'full', // ✅ Carregar TODOS os campos (endereço, contatos, deficiência)
+        limit: 10000, // ✅ Carregar TODOS os estudantes (sem limite de 50)
     });
     const students = studentsResponse?.data || [];
 
