@@ -8,7 +8,7 @@
  * OTIMIZADO: SELECT estratificado para reduzir over-fetching
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/app/api/_middleware/auth';
 import { validateQueryParams, sanitizeObject } from '@/app/api/_middleware/validation';
 import {
@@ -293,7 +293,7 @@ export const POST = withAuth(async (req: NextRequest, __userId: string) => {
     // 5. Preparar dados para Supabase
     const studentInsert: StudentInsert = {
       student_id: estudanteId,
-      user_id: userId, // RLS
+      user_id: __userId, // RLS
       name: sanitizedData.nome,
       class: sanitizedData.turma,
       shift: sanitizedData.turno,
