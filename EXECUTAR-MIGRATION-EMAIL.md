@@ -1,8 +1,16 @@
 # Como Adicionar Campo Email à Tabela Students
 
-## ⚠️ AÇÃO NECESSÁRIA
+## ℹ️ STATUS ATUAL
 
-O campo `email` foi adicionado ao código, mas ainda não existe no banco de dados Supabase.
+**⚠️ Migration ainda não executada**
+
+- ✅ **Código está funcionando** (email removido do SELECT temporariamente)
+- ❌ **Campo email não existe no banco** (migration pendente)
+- 📝 **Interface TypeScript preparada** (email?: string | null)
+
+## 🎯 Quando executar esta migration
+
+Execute quando quiser adicionar o campo email aos estudantes. O sistema continua funcionando normalmente sem ele.
 
 ## 📋 Instruções
 
