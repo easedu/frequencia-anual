@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
       { status: 202 } // 202 Accepted
     );
 
-  } catch (_error: unknown) {
+  } catch (error: unknown) {
     logger.error('[AUTOMATION] ❌ Erro ao criar execução', {
       error: error instanceof Error ? error.message : 'Erro desconhecido'
     });

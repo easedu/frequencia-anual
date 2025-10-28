@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Save, X, Calendar, MessageSquare, AlertTriangle, Edit3, Send, Loader2, CheckCircle2 } from "lucide-react";
 import { FamilyInteraction, Contato } from "@/types";
-import { _formatDateInput } from "@/app/utils";
+import { formatDateInput } from "@/app/utils";
 import WhatsAppContactSelector from "@/components/whatsapp/WhatsAppContactSelector";
 
 interface RegisterInteractionCardProps {

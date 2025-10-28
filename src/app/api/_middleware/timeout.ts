@@ -5,7 +5,7 @@
  * para garantir que não excedam o limite do Vercel Free Plan (10s)
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 /**
  * Handler type para API routes

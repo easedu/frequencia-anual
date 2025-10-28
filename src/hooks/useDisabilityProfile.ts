@@ -12,9 +12,10 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { Estudante } from "@/types";
 import { toast } from "sonner";
 import { getAuth } from "firebase/auth";
-import { _formatDateInput, parseDateToFirebase, _formatFirebaseDate } from "../app/utils";
+import { formatDateInput, parseDateToFirebase, formatFirebaseDate } from "../app/utils";
 import { UserProfilesService } from "@/services/supabase/userProfilesService";
 import { StudentOccurrencesService } from "@/services/supabase/studentOccurrencesService";
+import { logger } from "@/utils/logger";
 
 // ════════════════════════════════════════════════════════════════
 // TIPOS

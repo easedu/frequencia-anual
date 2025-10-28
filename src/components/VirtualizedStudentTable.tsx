@@ -1,5 +1,5 @@
-import React, { memo } from 'react';
-import { Edit, User, Clock, DollarSign, CheckCircle, XCircle } from 'lucide-react';
+import React, { memo, useMemo } from 'react';
+import { Edit, Phone, User, Clock, DollarSign, CheckCircle, XCircle } from 'lucide-react';
 import { VirtualizedList } from '@/components/ui/VirtualizedList';
 import { Estudante, Contato } from '@/types';
 import { formatPhoneNumber } from '@/utils/formatters';

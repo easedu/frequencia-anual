@@ -30,7 +30,7 @@ import type { WhatsAppData } from '@/types';
 // GET /api/contacts - Listar contatos com filtros
 // ============================================================================
 
-export const GET = withAuth(async (_req: NextRequest, __userId: string) => {
+export const GET = withAuth(async (req: NextRequest, __userId: string) => {
   try {
     // 1. Validar query params
     const validation = validateQueryParams(req, contactQuerySchema);
@@ -102,7 +102,7 @@ export const GET = withAuth(async (_req: NextRequest, __userId: string) => {
 // POST /api/contacts - Criar novo contato
 // ============================================================================
 
-export const POST = withAuth(async (_req: NextRequest, __userId: string) => {
+export const POST = withAuth(async (req: NextRequest, __userId: string) => {
   try {
     // 1. Parse body
     const body = await req.json();

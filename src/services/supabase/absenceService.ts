@@ -21,9 +21,9 @@
 
 import { supabase } from '@/lib/supabaseClient'; // ⚠️ Usado apenas em métodos legados (não refatorados)
 import type {
-  _StudentAbsence,
+  StudentAbsence,
   StudentAbsenceInsert,
-  _StudentAbsenceUpdate,
+  StudentAbsenceUpdate,
 } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 import type { AbsenceRecord } from '@/types';

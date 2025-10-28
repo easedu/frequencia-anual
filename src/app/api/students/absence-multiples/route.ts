@@ -242,7 +242,7 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
             const parts = date.split('-');
             if (parts.length !== 3) return false;
 
-            const [_yearPart, _monthPart, _dayPart] = parts;
+            const [_yearPart, monthPart, _dayPart] = parts;
             return monthPart === monthNumber;
           });
 

@@ -7,7 +7,7 @@ import { AcademicYearService } from './supabase/academicYearService';
 import { AbsenceService } from './supabase/absenceService';
 import { StudentDataService } from './studentDataService';
 import { logger } from '@/utils/logger';
-import type { UserTask, TaskGenerationResult, _BimesterTaskControl, TaskType } from '@/types/tasks';
+import type { UserTask, TaskGenerationResult, BimesterTaskControl, TaskType } from '@/types/tasks';
 
 /**
  * API Task Record type (from database)
@@ -417,7 +417,7 @@ export class TaskService {
       const result = await response.json();
       return (result.data || []).map((task: ApiTaskRecord) => this.mapApiToUserTask(task));
     } catch (error) {
-      logger.error('getUserTasksForUserId falhou', { userId }, error as Error);
+      logger.error('getUserTasksForUserId falhou', { userId: _userId }, error as Error);
       return [];
     }
   }

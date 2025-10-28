@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
 
           resumed.push(execution.id);
 
-        } catch (_error: unknown) {
+        } catch (error: unknown) {
           failed.push({
             executionId: execution.id,
             error: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
         : 'Nenhuma execução travada encontrada.'
     });
 
-  } catch (_error: unknown) {
+  } catch (error: unknown) {
     logger.error('[WATCHDOG] ❌ Erro no watchdog', {
       error: error instanceof Error ? error.message : 'Erro desconhecido'
     });

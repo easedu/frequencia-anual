@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { _formatDateInput } from "@/app/utils";
+import { formatDateInput } from "@/app/utils";
 import { Calendar, Clock, Edit3, Plus, X, Save, Loader2, LucideIcon } from "lucide-react";
 
 interface RegisterDateRangeFormCardProps<T> {

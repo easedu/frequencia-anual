@@ -855,7 +855,7 @@ export function useStudentProfile() {
 
       // ✅ SPRINT 4 - FASE 8: Usar hook de criação com campos no formato esperado pela API
       await createInteraction({
-        estudanteId: selectedStudentId,
+        studentId: selectedStudentId,
         tipo: interactionType,
         data: formattedDate.replace(/\//g, ''), // Converter DD/MM/YYYY para DDMMYYYY
         descricao: finalDescription,

@@ -1,4 +1,5 @@
 "use client";
+import { useStudents } from "@/hooks/useStudents";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDebounce } from "@/hooks/useDebounce";

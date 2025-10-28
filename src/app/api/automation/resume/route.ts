@@ -35,7 +35,7 @@ function extractExecutionData(execution: {
       summary: execution.metadata.summary as AutomationExecution['summary'],
       error: execution.metadata.error as string | undefined,
     };
-  } catch (_error) {
+  } catch (error) {
     logger.error('[RESUME] Erro ao extrair dados da execução', { executionId: execution.id }, error as Error);
     return null;
   }
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
       { status: 202 } // 202 Accepted
     );
 
-  } catch (_error: unknown) {
+  } catch (error: unknown) {
     logger.error('[AUTOMATION] ❌ Erro ao retomar execução', {
       executionId,
       error: error instanceof Error ? error.message : 'Erro desconhecido'

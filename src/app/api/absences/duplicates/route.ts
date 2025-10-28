@@ -37,14 +37,14 @@ interface SupabaseRpcResponse<T> {
  *
  * @returns Array de duplicatas { student_id, absence_date, count }
  */
-export const GET = withAuth(async (_req: NextRequest, __userId: string) => {
+export const GET = withAuth(async (req: NextRequest, __userId: string) => {
   try {
     const { searchParams } = new URL(req.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 1000)
 
     // Chamar RPC function do Supabase
-    const { data, error: _error } = (await supabaseAdmin.rpc('find_duplicate_absences')) as SupabaseRpcResponse<DuplicateAbsence[]>
+    const { data, error } = (await supabaseAdmin.rpc('find_duplicate_absences')) as SupabaseRpcResponse<DuplicateAbsence[]>
 
     if (error) {
       logger.error('Erro ao buscar duplicatas de faltas', {}, new Error(error.message || 'Erro desconhecido'))
@@ -83,14 +83,14 @@ export const GET = withAuth(async (_req: NextRequest, __userId: string) => {
 export const DELETE = withAuth(async (_req: NextRequest, __userId: string) => {
   try {
     // Chamar RPC function do Supabase
-    const { data, error: _error } = (await supabaseAdmin.rpc('remove_duplicate_absences')) as SupabaseRpcResponse<number>
+    const { data, error } = (await supabaseAdmin.rpc('remove_duplicate_absences')) as SupabaseRpcResponse<number>
 
     if (error) {
       logger.error('Erro ao remover duplicatas de faltas', {}, new Error(error.message || 'Erro desconhecido'))
       return errorResponse('DATABASE_ERROR', 'Erro ao remover duplicatas', 500)
     }
 
-    logger.info('Duplicatas removidas', { deleted_count: data || 0, userId })
+    logger.info('Duplicatas removidas', { deleted_count: data || 0, userId: __userId })
 
     return successResponse({
       deleted_count: data || 0,

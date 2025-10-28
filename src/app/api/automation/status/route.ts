@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
       executions: formattedExecutions
     });
 
-  } catch (_error: unknown) {
+  } catch (error: unknown) {
     logger.error('[AUTOMATION] ❌ Erro ao consultar status', {
       executionId,
       error: error instanceof Error ? error.message : 'Erro desconhecido'

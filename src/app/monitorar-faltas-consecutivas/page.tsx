@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { auth } from '@/firebase.config';
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -68,6 +70,7 @@ interface SchoolDay {
 }
 
 export default function MonitorarFaltasConsecutivasPage() {
+  const router = useRouter();
   const { students, loading: studentsLoading } = useStudents();
 
   // Hooks da API

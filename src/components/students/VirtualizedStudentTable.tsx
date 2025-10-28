@@ -1,8 +1,8 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Edit, Phone, User, Clock, DollarSign, CheckCircle, XCircle } from 'lucide-react';
 import { VirtualizedList } from '@/components/ui/VirtualizedList';
 import { Estudante, Contato } from '@/types';
-import { formatPhoneNumber, _formatDate } from '@/utils/formatters';
+import { formatPhoneNumber, formatDate } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 

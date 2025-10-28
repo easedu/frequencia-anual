@@ -67,7 +67,7 @@ interface InsertedAbsenceRow {
 // POST /api/absences/bulk - Criar múltiplas faltas
 // ============================================================================
 
-export const POST = withAuth(async (_req: NextRequest, __userId: string) => {
+export const POST = withAuth(async (req: NextRequest, __userId: string) => {
   try {
     // 1. Parse body
     const body = await req.json();
