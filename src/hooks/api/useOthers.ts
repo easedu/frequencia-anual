@@ -341,6 +341,26 @@ export interface Interaction {
   createdAt?: string;
 }
 
+// ✅ Tipo específico para criação de interação (payload para API POST)
+export interface CreateInteractionPayload {
+  estudanteId: string;  // ✅ API espera "estudanteId" (não "studentId")
+  data: string;         // DDMMYYYY
+  tipo: string;
+  descricao: string;
+  criadoPor: string;
+  responsavel: string;
+  assunto: string;
+  observacoes?: string;
+  proximaAcao?: string;
+  dataProximaAcao?: string;
+  // Campos WhatsApp opcionais
+  whatsapp_message?: string;
+  whatsapp_phones?: string[];
+  whatsapp_message_id?: string;
+  whatsapp_status?: string;
+  whatsapp_sent_at?: string;
+}
+
 export interface InteractionFilters {
   estudanteId?: string;
   tipo?: string;
@@ -401,7 +421,7 @@ export function useCreateInteraction() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createInteraction = useCallback(async (data: Partial<Omit<Interaction, 'id' | 'createdAt'>>) => {
+  const createInteraction = useCallback(async (data: CreateInteractionPayload) => {
     if (!user) throw new Error('Usuário não autenticado');
     try {
       setLoading(true);

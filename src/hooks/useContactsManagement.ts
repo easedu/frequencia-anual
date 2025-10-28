@@ -514,19 +514,20 @@ export function useContactsManagement({ students }: UseContactsManagementProps) 
 
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-      // ✅ MIGRADO: Usar hook da API REST
+      // ✅ MIGRADO: Usar hook da API REST com formato correto
       await createInteraction({
-        studentId: selectedContact.estudanteId,
-        type: 'Contato digital',
-        date: new Date().toISOString().split('T')[0],
-        description: finalDescription,
-        createdBy: currentUser,
-        sensitive: interactionSensitive,
-        whatsappMessage: whatsappMessageText,
-        whatsappPhones: whatsappPhones,
-        whatsappMessageId: whatsappMessageId,
-        whatsappStatus: 'SENT' as const,
-        whatsappSentAt: new Date().toISOString(),
+        estudanteId: selectedContact.estudanteId, // ✅ CORRETO: API espera "estudanteId"
+        tipo: 'Contato digital',
+        data: new Date().toLocaleDateString('pt-BR').split('/').reverse().join(''), // DDMMYYYY
+        descricao: finalDescription,
+        criadoPor: currentUser,
+        responsavel: currentUser,
+        assunto: 'Contato digital',
+        whatsapp_message: whatsappMessageText,
+        whatsapp_phones: whatsappPhones,
+        whatsapp_message_id: whatsappMessageId,
+        whatsapp_status: 'SENT',
+        whatsapp_sent_at: new Date().toISOString(),
       });
 
       logger.interactionOperation('create', selectedContact.estudanteId, 'Contato digital', { apiRest: true });

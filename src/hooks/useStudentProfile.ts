@@ -858,7 +858,7 @@ export function useStudentProfile() {
 
       // ✅ SPRINT 4 - FASE 8: Usar hook de criação com campos no formato esperado pela API
       await createInteraction({
-        studentId: selectedStudentId,
+        estudanteId: selectedStudentId, // ✅ CORRETO: API espera "estudanteId"
         tipo: interactionType,
         data: formattedDate.replace(/\//g, ''), // Converter DD/MM/YYYY para DDMMYYYY
         descricao: finalDescription,
@@ -1528,19 +1528,20 @@ export function useStudentProfile() {
       const contactName = contact ? `${contact.nome}${contact.parentesco ? ` (${contact.parentesco})` : ''}` : phoneNumber;
       const finalDescription = `Mensagem enviada via WhatsApp para: ${contactName} - ${phoneNumber}\n\n${interactionDescription}`;
 
-      // ✅ SPRINT 4 - FASE 8: Usar hook de criação com campos no formato correto (camelCase English)
+      // ✅ SPRINT 4 - FASE 8: Usar hook de criação com campos no formato esperado pela API
       await createInteraction({
-        studentId: selectedStudentId,
-        type: 'Contato digital',
-        date: new Date().toLocaleDateString('pt-BR').split('/').reverse().join(''), // DDMMYYYY format
-        description: finalDescription,
-        createdBy: currentUserName,
-        sensitive: interactionSensitive,
-        whatsappMessage: whatsappMessageText,
-        whatsappPhones: whatsappPhones,
-        whatsappMessageId: whatsappMessageId,
-        whatsappStatus: 'SENT',
-        whatsappSentAt: new Date().toISOString(),
+        estudanteId: selectedStudentId, // ✅ CORRETO: API espera "estudanteId"
+        tipo: 'Contato digital',
+        data: new Date().toLocaleDateString('pt-BR').split('/').reverse().join(''), // DDMMYYYY format
+        descricao: finalDescription,
+        criadoPor: currentUserName,
+        responsavel: currentUserName,
+        assunto: 'Contato digital',
+        whatsapp_message: whatsappMessageText,
+        whatsapp_phones: whatsappPhones,
+        whatsapp_message_id: whatsappMessageId,
+        whatsapp_status: 'SENT',
+        whatsapp_sent_at: new Date().toISOString(),
       });
 
       logger.interactionOperation('create', selectedStudentId, 'Contato digital', { apiRest: true });
