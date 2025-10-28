@@ -42,6 +42,7 @@ interface SupabaseStudent {
   bolsa_familia: string;
   registration_number?: string;
   birth_date?: string;
+  email?: string;
   address?: Record<string, unknown>;
   disabilities?: string[];
   created_at: string;
@@ -69,6 +70,7 @@ interface StudentInsert {
   bolsa_familia: string;
   registration_number?: string | null;
   birth_date?: string | null;
+  email?: string | null;
   school_year: string;
   address: Record<string, unknown>;
   disabilities: Record<string, unknown>[];
@@ -301,6 +303,7 @@ export const POST = withAuth(async (req: NextRequest, __userId: string) => {
       bolsa_familia: sanitizedData.bolsaFamilia,
       registration_number: sanitizedData.matricula || null,
       birth_date: sanitizedData.dataNascimento ? convertToISODate(sanitizedData.dataNascimento) : null,
+      email: sanitizedData.email || null,
       school_year: new Date().getFullYear().toString(),
       address: sanitizedData.endereco || {},
       disabilities: sanitizedData.deficiencia ? [sanitizedData.deficiencia] : [],
@@ -404,6 +407,7 @@ function convertSupabaseToEstudante(
     ...base,
     bolsaFamilia: student.bolsa_familia || 'NÃO',
     dataNascimento: student.birth_date || undefined,
+    email: student.email || '',
     // Se student_contacts for array, retornar count, se for objeto, já é count
     totalContatos: Array.isArray(student.student_contacts)
       ? student.student_contacts.length
@@ -439,7 +443,6 @@ function convertSupabaseToEstudante(
 
   return {
     ...detailed,
-    email: undefined,
     contatos: contacts.map((contact) => ({
       nome: contact.name,
       parentesco: contact.relationship || '',

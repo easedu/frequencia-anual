@@ -33,6 +33,7 @@ export const STUDENT_SELECT_QUERIES: Record<DetailLevel, string> = {
     status,
     birth_date,
     bolsa_familia,
+    email,
     student_contacts(count)
   `,
 
@@ -48,6 +49,7 @@ export const STUDENT_SELECT_QUERIES: Record<DetailLevel, string> = {
     bolsa_familia,
     registration_number,
     school_year,
+    email,
     address,
     disabilities,
     created_at,
@@ -66,6 +68,7 @@ export const STUDENT_SELECT_QUERIES: Record<DetailLevel, string> = {
     bolsa_familia,
     registration_number,
     school_year,
+    email,
     address,
     disabilities,
     created_at,

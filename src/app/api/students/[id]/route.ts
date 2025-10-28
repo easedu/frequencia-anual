@@ -45,6 +45,7 @@ interface SupabaseStudent {
   bolsa_familia: string;
   registration_number?: string;
   birth_date?: string;
+  email?: string;
   address?: Record<string, unknown>;
   disabilities?: string[];
   created_at: string;
@@ -250,6 +251,7 @@ export const PUT = withAuth(
         updateData.registration_number = sanitizedData.matricula;
       if (sanitizedData.dataNascimento !== undefined)
         updateData.birth_date = sanitizedData.dataNascimento;
+      if (sanitizedData.email !== undefined) updateData.email = sanitizedData.email;
       if (sanitizedData.endereco !== undefined) updateData.address = sanitizedData.endereco;
       if (sanitizedData.deficiencia !== undefined)
         updateData.disabilities = sanitizedData.deficiencia ? [sanitizedData.deficiencia] : [];
@@ -432,7 +434,7 @@ function convertSupabaseToEstudante(
     bolsaFamilia: student.bolsa_familia || 'NÃO',
     matricula: student.registration_number || undefined,
     dataNascimento: student.birth_date || undefined,
-    email: undefined,
+    email: student.email || '',
     contatos: (student.student_contacts || []).map((contact) => {
       // Buscar dados de verificação WhatsApp
       const verificationData = verifiedWhatsAppMap?.get(contact.phone);
