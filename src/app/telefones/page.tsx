@@ -31,6 +31,9 @@ import {
 export default function TelefonesPage() {
   const { students, loading: studentsLoading } = useStudents(false, true);
 
+  // Estados locais para upload de arquivo
+  const [processingFile, setProcessingFile] = React.useState(false);
+
   // Hook centralizado com toda lógica
   const {
     // Estados
@@ -38,8 +41,6 @@ export default function TelefonesPage() {
     setSearchTerm,
     verifyingPhone,
     loadingWhatsAppData,
-    uploading,
-    processingFile,
 
     // Filtros
     selectedTurma,
@@ -158,6 +159,8 @@ export default function TelefonesPage() {
     // Esta função seria movida para o hook, mas por simplicidade mantive aqui
     // pois é usada apenas na UI
     try {
+      setProcessingFile(true);
+
       const text = await file.text();
       const parseResult = Papa.parse(text, {
         header: false,
@@ -231,6 +234,8 @@ export default function TelefonesPage() {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       toast.error(`Erro ao processar arquivo: ${errorMessage}`);
+    } finally {
+      setProcessingFile(false);
     }
   };
 
@@ -381,16 +386,16 @@ export default function TelefonesPage() {
                       processExcelFile(file);
                     }
                   }}
-                  disabled={uploading || processingFile}
+                  disabled={processingFile}
                   className="flex-1"
                   key={Math.random()}
                 />
 
-                {(uploading || processingFile) && (
+                {processingFile && (
                   <div className="flex items-center gap-2 text-purple-600">
                     <RefreshCw className="h-4 w-4 animate-spin" />
                     <span className="text-sm">
-                      {uploading ? 'Lendo arquivo...' : 'Processando dados...'}
+                      Processando dados...
                     </span>
                   </div>
                 )}
@@ -425,7 +430,7 @@ export default function TelefonesPage() {
               interactionDescription={interactionDescription}
               interactionSensitive={interactionSensitive}
               editingInteraction={null}
-              userRole={userRole}
+              userRole={null}
               setInteractionType={() => {}}
               setInteractionDate={() => {}}
               setInteractionDescription={setInteractionDescription}
