@@ -14,7 +14,61 @@ import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolve
 import { getDiasLetivosNoPeriodo, parseDate, getBimesterByDate } from '@/app/utils';
 import { getCountStrategy } from '@/app/api/_utils/countStrategy';
 
-export const GET = withAuth(async (req: NextRequest, userId: string) => {
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface SuspensionWithStudent {
+  id: string;
+  student_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  description: string | null;
+  severity: string;
+  decision_by: string;
+  decision_by_name?: string;
+  decision_date: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  students: {
+    name: string;
+    class: string;
+  } | null;
+}
+
+interface UserProfile {
+  firebase_uid: string;
+  full_name: string;
+}
+
+interface SuspensionInsert {
+  student_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  description: string | null;
+  severity: string;
+  decision_by: string;
+  decision_date: string;
+  created_by: string;
+}
+
+interface AbsenceInsert {
+  student_id: string;
+  absence_date: string;
+  bimester: string | null;
+  is_justified: boolean;
+  suspension_id: string;
+}
+
+interface AbsenceUpdate {
+  is_justified: boolean;
+  suspension_id: string;
+}
+
+export const GET = withAuth(async (req: NextRequest, _userId: string) => {
   try {
     const validation = validateQueryParams(req, suspensionQuerySchema);
     if (!validation.success) return validation.response;
@@ -41,7 +95,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // ✅ FASE 4.1: Otimizar count
     const countOption = getCountStrategy(page);
 
-    let query: any = supabaseAdmin
+    let query = supabaseAdmin
       .from('student_suspensions')
       .select('*, students( name, class)', countOption)
       .order('start_date', { ascending: false });
@@ -63,8 +117,8 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     if (data && data.length > 0) {
       // Coletar IDs únicos de decision_by (filtrar apenas valores que parecem ser Firebase UIDs)
       const potentialUIDs = [...new Set(
-        data.map((susp: any) => susp.decision_by).filter(Boolean)
-      )].filter((id: any) => id.length > 20); // Firebase UIDs têm 28 caracteres
+        data.map((susp: SuspensionWithStudent) => susp.decision_by).filter(Boolean)
+      )].filter((id: string) => id.length > 20); // Firebase UIDs têm 28 caracteres
 
       let userMap = new Map<string, string>();
 
@@ -74,11 +128,11 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
           .select('firebase_uid, full_name')
           .in('firebase_uid', potentialUIDs);
 
-        userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
+        userMap = new Map((users || []).map((u: UserProfile) => [u.firebase_uid, u.full_name]));
       }
 
       // Adicionar nome do usuário aos dados
-      data.forEach((susp: any) => {
+      data.forEach((susp: SuspensionWithStudent) => {
         // Tentar buscar nome do Firebase UID primeiro
         let userName = userMap.get(susp.decision_by);
 
@@ -146,7 +200,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       return errorResponse('NOT_FOUND', 'Estudante não encontrado ou foi removido', 404);
     }
 
-    const suspensionInsert: any = {
+    const suspensionInsert: SuspensionInsert = {
       student_id: internalStudentId, // ✅ Usar Internal ID resolvido
       start_date: convertToISODate(sanitizedData.dataInicio),
       end_date: convertToISODate(sanitizedData.dataFim),
@@ -160,9 +214,9 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 
     const { data: suspensionData, error: suspensionError } = (await supabaseAdmin
       .from('student_suspensions')
-      .insert(suspensionInsert)
+      .insert([suspensionInsert] as never)
       .select('id')
-      .single()) as { data: any; error: any };
+      .single()) as { data: { id: string } | null; error: Error | null };
 
     if (suspensionError) {
       console.error('[POST /api/suspensions] Error:', suspensionError);
@@ -171,7 +225,10 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 
     // ✅ Criar faltas automaticamente para todos os dias letivos do período da suspensão
     try {
-      const suspensionId = suspensionData.id;
+      const suspensionId = suspensionData?.id;
+      if (!suspensionId) {
+        throw new Error('ID da suspensão não foi retornado');
+      }
       const startDate = suspensionInsert.start_date;
       const endDate = suspensionInsert.end_date;
 
@@ -209,9 +266,6 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
           return dateStr;
         };
 
-        let createdCount = 0;
-        let updatedCount = 0;
-
         for (const diaLetivo of diasLetivos) {
           const absenceDate = convertToISODate(diaLetivo);
           const bimester = getBimesterByDate(diaLetivo, bimesterDates);
@@ -226,34 +280,32 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
             .select('id')
             .eq('student_id', internalStudentId)
             .eq('absence_date', absenceDate)
-            .maybeSingle()) as { data: { id: string } | null };
+            .maybeSingle()) as { data: { id: string } | null; error: Error | null };
 
           if (existing) {
             // ✅ Falta existe: ATUALIZAR
-            const { error: updateError } = (await supabaseAdmin
-              .from('student_absences')
-              // @ts-ignore - Supabase types inference issue
-              .update({
-                is_justified: true,
-                suspension_id: suspensionId,
-              })
-              .eq('id', existing.id)) as { error: any };
+            const absenceUpdate: AbsenceUpdate = {
+              is_justified: true,
+              suspension_id: suspensionId,
+            };
 
-            if (!updateError) updatedCount++;
+            await supabaseAdmin
+              .from('student_absences')
+              .update(absenceUpdate as never)
+              .eq('id', existing.id);
           } else {
             // ✅ Falta não existe: CRIAR
-            const { error: insertError } = (await supabaseAdmin
-              .from('student_absences')
-              // @ts-ignore - Supabase types inference issue
-              .insert({
-                student_id: internalStudentId,
-                absence_date: absenceDate,
-                bimester: bimesterStr,
-                is_justified: true,
-                suspension_id: suspensionId,
-              })) as { error: any };
+            const absenceInsert: AbsenceInsert = {
+              student_id: internalStudentId,
+              absence_date: absenceDate,
+              bimester: bimesterStr,
+              is_justified: true,
+              suspension_id: suspensionId,
+            };
 
-            if (!insertError) createdCount++;
+            await supabaseAdmin
+              .from('student_absences')
+              .insert([absenceInsert] as never);
           }
         }
 
@@ -263,7 +315,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       // Não falhar a requisição se houver erro nas faltas
     }
 
-    return successResponse({ id: suspensionData.id }, 'Suspensão criada com sucesso', 201);
+    return successResponse({ id: suspensionData?.id || '' }, 'Suspensão criada com sucesso', 201);
   } catch (error) {
     return handleError(error, 'POST /api/suspensions');
   }

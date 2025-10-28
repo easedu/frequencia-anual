@@ -15,12 +15,21 @@
  * }
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { logger } from '@/utils/logger'
 import { z } from 'zod'
+import type {
+  AcademicYear,
+  Bimester,
+  SchoolDay,
+  CompleteAcademicYearData,
+  BimesterUpsertData,
+  SchoolDayInsertData,
+  SupabaseResult
+} from '@/types/academicYear'
 
 // ============================================================================
 // TYPES & SCHEMAS
@@ -132,14 +141,14 @@ export async function GET(request: NextRequest) {
     }
 
     // 1. Buscar academic_year
-    const { data: academicYear, error: yearError } = await supabaseAdmin
+    const { data: academicYear, error: yearError } = (await supabaseAdmin
       .from('academic_years')
       .select('id')
       .eq('year', year)
-      .single()
+      .single()) as SupabaseResult<Pick<AcademicYear, 'id'>>
 
     if (yearError) {
-      if (yearError.code === 'PGRST116') {
+      if ((yearError as Error & { code?: string }).code === 'PGRST116') {
         // Não encontrado - retornar objeto vazio
         return successResponse({})
       }
@@ -147,35 +156,39 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Buscar bimesters
-    const { data: bimesters, error: bimestersError } = await supabaseAdmin
+    const { data: bimesters, error: bimestersError } = (await supabaseAdmin
       .from('bimesters')
       .select('*')
-      .eq('academic_year_id', (academicYear as any).id)
-      .order('bimester_number', { ascending: true })
+      .eq('academic_year_id', academicYear!.id)
+      .order('bimester_number', { ascending: true })) as SupabaseResult<Bimester[]>
 
     if (bimestersError) throw bimestersError
 
     // 3. Para cada bimestre, buscar school_days
-    const bimesterKeys = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre']
-    const result: any = {}
+    const bimesterKeys: Array<keyof CompleteAcademicYearData> = [
+      '1º Bimestre',
+      '2º Bimestre',
+      '3º Bimestre',
+      '4º Bimestre'
+    ]
+    const result: Partial<CompleteAcademicYearData> = {}
 
     for (const bimester of (bimesters || [])) {
-      const bim = bimester as any
-      const bimesterKey = bimesterKeys[bim.bimester_number - 1]
+      const bimesterKey = bimesterKeys[bimester.bimester_number - 1]
 
       // Buscar dias letivos deste bimestre
-      const { data: schoolDays, error: daysError } = await supabaseAdmin
+      const { data: schoolDays, error: daysError } = (await supabaseAdmin
         .from('school_days')
         .select('*')
-        .eq('bimester_id', bim.id)
-        .order('date', { ascending: true })
+        .eq('bimester_id', bimester.id)
+        .order('date', { ascending: true })) as SupabaseResult<SchoolDay[]>
 
       if (daysError) throw daysError
 
       result[bimesterKey] = {
-        startDate: convertFromISO(bim.start_date),
-        endDate: convertFromISO(bim.end_date),
-        dates: (schoolDays || []).map((d: any) => ({
+        startDate: convertFromISO(bimester.start_date),
+        endDate: convertFromISO(bimester.end_date),
+        dates: (schoolDays || []).map((d) => ({
           date: convertFromISO(d.date),
           isChecked: d.is_checked,
         })),
@@ -230,7 +243,7 @@ export async function POST(request: NextRequest) {
       0
     )
 
-    const { data: academicYear, error: yearError } = await supabaseAdmin
+    const academicYearResult = await supabaseAdmin
       .from('academic_years')
       .upsert(
         {
@@ -238,13 +251,15 @@ export async function POST(request: NextRequest) {
           start_date: convertToISO(firstBimester?.startDate || ''),
           end_date: convertToISO(lastBimester?.endDate || ''),
           total_school_days: totalSchoolDays,
-        } as any,
+        } as never,
         {
           onConflict: 'year',
         }
       )
       .select()
       .single()
+
+    const { data: academicYear, error: yearError } = academicYearResult as unknown as SupabaseResult<AcademicYear>
 
     if (yearError) throw yearError
 
@@ -260,16 +275,18 @@ export async function POST(request: NextRequest) {
       const bimesterNumber = i + 1
 
       // 2.1. Criar ou atualizar bimester
-      const { data: bimester, error: bimesterError } = await supabaseAdmin
+      const bimesterUpsertData: BimesterUpsertData = {
+        academic_year_id: academicYear!.id,
+        bimester_number: bimesterNumber,
+        start_date: convertToISO(bimesterData.startDate),
+        end_date: convertToISO(bimesterData.endDate),
+        school_days_count: bimesterData.dates.filter(d => d.isChecked).length,
+      }
+
+      const bimesterResult = await supabaseAdmin
         .from('bimesters')
         .upsert(
-          {
-            academic_year_id: (academicYear as any).id,
-            bimester_number: bimesterNumber,
-            start_date: convertToISO(bimesterData.startDate),
-            end_date: convertToISO(bimesterData.endDate),
-            school_days_count: bimesterData.dates.filter(d => d.isChecked).length,
-          } as any,
+          bimesterUpsertData as never,
           {
             onConflict: 'academic_year_id,bimester_number',
           }
@@ -277,25 +294,29 @@ export async function POST(request: NextRequest) {
         .select()
         .single()
 
+      const { data: bimester, error: bimesterError } = bimesterResult as unknown as SupabaseResult<Bimester>
+
       if (bimesterError) throw bimesterError
 
       // 2.2. Deletar dias letivos antigos deste bimestre
-      await (supabaseAdmin
-        .from('school_days') as any)
+      await supabaseAdmin
+        .from('school_days')
         .delete()
-        .eq('bimester_id', (bimester as any).id)
+        .eq('bimester_id', bimester!.id)
 
       // 2.3. Inserir novos dias letivos
       if (bimesterData.dates && bimesterData.dates.length > 0) {
-        const schoolDaysToInsert = bimesterData.dates.map(d => ({
-          bimester_id: (bimester as any).id,
+        const schoolDaysToInsert: SchoolDayInsertData[] = bimesterData.dates.map(d => ({
+          bimester_id: bimester!.id,
           date: convertToISO(d.date),
           is_checked: d.isChecked,
         }))
 
-        const { error: daysError } = await supabaseAdmin
+        const insertResult = await supabaseAdmin
           .from('school_days')
-          .insert(schoolDaysToInsert as any)
+          .insert(schoolDaysToInsert as never)
+
+        const { error: daysError } = insertResult as unknown as SupabaseResult<SchoolDay[]>
 
         if (daysError) throw daysError
       }
@@ -303,8 +324,8 @@ export async function POST(request: NextRequest) {
       // 2.4. SINCRONIZAR com tabela absence_control (usada por 4 páginas)
       const schoolDaysCount = bimesterData.dates.filter(d => d.isChecked).length
 
-      const { error: absenceControlError } = await (supabaseAdmin
-        .from('absence_control') as any)
+      const absenceControlResult = await supabaseAdmin
+        .from('absence_control')
         .upsert(
           {
             academic_year: year,
@@ -314,14 +335,20 @@ export async function POST(request: NextRequest) {
             end_date: convertToISO(bimesterData.endDate),
             notes: bimesterKey,
             updated_by: 'academic_year_sync',
-          },
+          } as never,
           {
             onConflict: 'academic_year,bimester',
           }
         )
 
+      const { error: absenceControlError } = absenceControlResult as unknown as SupabaseResult<unknown>
+
       if (absenceControlError) {
-        logger.warn(`⚠️  Erro ao sincronizar absence_control bimestre ${bimesterNumber}:`, absenceControlError)
+        logger.warn(
+          `⚠️  Erro ao sincronizar absence_control bimestre ${bimesterNumber}`,
+          { bimesterNumber, year },
+          absenceControlError as Error
+        )
         // Não lançar erro - absence_control é secundário
       }
     }

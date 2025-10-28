@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { toast, Toaster } from "sonner";
+import { Toaster } from "sonner";
 import { useStudents } from "@/hooks/useStudents";
 import { useServiceWorkerContext } from "@/components/shared/ServiceWorkerProvider";
 import { useAttendanceMarking } from "@/hooks/useAttendanceMarking";
@@ -15,10 +15,10 @@ import {
 import { ClassSelector, EmptyState } from "@/components/shared";
 import {
     School,
-    Save,
     AlertCircle,
-    User,
     WifiOff,
+    Save,
+    User,
     Users
 } from "lucide-react";
 
@@ -122,7 +122,7 @@ export default function MarcarFaltasPage() {
 
                             {/* Seletor de Turma - Componente Reutilizável */}
                             <ClassSelector
-                                students={students as any}
+                                students={students as unknown as import('@/components/shared').Estudante[]}
                                 selectedClass={selectedClass}
                                 onClassChange={setSelectedClass}
                                 filterByStatus="ATIVO"

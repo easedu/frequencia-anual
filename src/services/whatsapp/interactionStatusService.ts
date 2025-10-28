@@ -45,12 +45,6 @@ export class InteractionStatusService {
         };
       }
 
-      logger.info('[InteractionStatus] Atualizando status WhatsApp', {
-        messageId,
-        newStatus,
-        timestamp
-      });
-
       // 1. Buscar interação existente
       console.log('[InteractionStatus] 🔍 Buscando interação...');
       console.log('  messageId:', messageId);
@@ -63,7 +57,7 @@ export class InteractionStatusService {
           data: {
             id: string;
             whatsapp_status?: string;
-            whatsapp_status_history?: any;
+            whatsapp_status_history?: StatusHistoryEntry[];
             whatsapp_sent_at?: string;
             whatsapp_delivered_at?: string;
             whatsapp_read_at?: string;
@@ -71,7 +65,7 @@ export class InteractionStatusService {
             student_id: number;
             description: string;
           } | null;
-          error: any;
+          error: unknown;
         }>);
 
       console.log('[InteractionStatus] Resultado da busca:');
@@ -102,10 +96,6 @@ export class InteractionStatusService {
 
       // 2. Verificar se status já foi atualizado (idempotência)
       if (oldStatus === newStatus) {
-        logger.info('[InteractionStatus] Status já atualizado (idempotente)', {
-          messageId,
-          status: newStatus
-        });
         return {
           success: true,
           interactionId: existing.id,
@@ -123,7 +113,7 @@ export class InteractionStatusService {
       });
 
       // 4. Preparar campos a atualizar
-      const updateFields: Record<string, any> = {
+      const updateFields: Record<string, unknown> = {
         whatsapp_status: newStatus,
         whatsapp_status_history: statusHistory,
         whatsapp_updated_at: new Date(timestamp).toISOString()
@@ -141,23 +131,15 @@ export class InteractionStatusService {
       }
 
       // 6. Executar atualização
-      const updateResult = await supabaseAdmin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updateResult = await (supabaseAdmin as any)
         .from('family_interactions')
-        // @ts-ignore - Supabase types issue with dynamic update fields
         .update(updateFields)
         .eq('whatsapp_message_id', messageId);
 
       if (updateResult.error) {
         throw updateResult.error;
       }
-
-      logger.info('[InteractionStatus] Status WhatsApp atualizado com sucesso', {
-        interactionId: existing.id,
-        messageId,
-        oldStatus,
-        newStatus,
-        studentId: existing.student_id
-      });
 
       return {
         success: true,
@@ -201,13 +183,13 @@ export class InteractionStatusService {
         .maybeSingle() as unknown as Promise<{
           data: {
             whatsapp_status?: string;
-            whatsapp_status_history?: any;
+            whatsapp_status_history?: StatusHistoryEntry[];
             whatsapp_sent_at?: string;
             whatsapp_delivered_at?: string;
             whatsapp_read_at?: string;
             whatsapp_played_at?: string;
           } | null;
-          error: any;
+          error: unknown;
         }>);
 
       if (error) throw error;
@@ -270,7 +252,11 @@ export class InteractionStatusService {
         TOTAL: 0
       };
 
-      (data || []).forEach((record: any) => {
+      interface StatusRecord {
+        whatsapp_status?: string;
+      }
+
+      (data || []).forEach((record: StatusRecord) => {
         const status = record.whatsapp_status || 'PENDING';
         stats[status] = (stats[status] || 0) + 1;
         stats.TOTAL += 1;

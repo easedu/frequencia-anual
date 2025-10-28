@@ -6,7 +6,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useBimesterPeriods } from './useBimesterPeriods';
-import { useAcademicYearComplete } from '@/hooks/api';
 import { logger } from '@/utils/logger';
 
 export interface SchoolDaysData {
@@ -61,12 +60,6 @@ export function useSchoolDays(): UseSchoolDaysReturn {
       const result = await response.json();
       const data = result.data || result; // API pode retornar {success, data} ou direto o objeto
 
-      logger.info('📡 Resposta da API /complete', {
-        hasData: !!data,
-        keys: Object.keys(data || {}),
-        year
-      });
-
       // Verificar se retornou dados válidos
       if (!data || Object.keys(data).length === 0) {
         logger.warn('❌ Ano letivo não configurado ou vazio', { year });
@@ -88,22 +81,14 @@ export function useSchoolDays(): UseSchoolDaysReturn {
       let total = 0;
 
       ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'].forEach((key, index) => {
-        const bimester = data[key];
+        const bimester = data[key as '1º Bimestre' | '2º Bimestre' | '3º Bimestre' | '4º Bimestre'];
         if (bimester?.dates) {
-          const count = bimester.dates.filter((d: any) => d.isChecked).length;
+          const count = bimester.dates.filter((d: { date: string; isChecked: boolean }) => d.isChecked).length;
           bimesterCounts[index + 1] = count;
           total += count;
         } else {
           bimesterCounts[index + 1] = 0;
         }
-      });
-
-      logger.info('✅ Dias letivos carregados', {
-        bimester1: bimesterCounts[1],
-        bimester2: bimesterCounts[2],
-        bimester3: bimesterCounts[3],
-        bimester4: bimesterCounts[4],
-        total
       });
 
       // ✅ MIGRADO: Contar dias letivos até hoje usando API
@@ -136,7 +121,7 @@ export function useSchoolDays(): UseSchoolDaysReturn {
         upToToday,
       });
     } catch (err) {
-      logger.error('Erro ao calcular dias letivos', err as Error);
+      logger.error('Erro ao calcular dias letivos', { year: process.env.NEXT_PUBLIC_SCHOOL_YEAR }, err as Error);
       setError(err as Error);
     } finally {
       setLoading(false);
@@ -167,7 +152,11 @@ export function useSchoolDays(): UseSchoolDaysReturn {
       const result = await response.json();
       return result.count || result.data?.count || 0;
     } catch (err) {
-      logger.error(`Erro ao contar dias letivos no período ${startDate} - ${endDate}`, err as Error);
+      logger.error(`Erro ao contar dias letivos no período ${startDate} - ${endDate}`, {
+        startDate,
+        endDate,
+        year: process.env.NEXT_PUBLIC_SCHOOL_YEAR
+      }, err as Error);
       return 0;
     }
   }, []);
@@ -214,7 +203,10 @@ export function useSchoolDays(): UseSchoolDaysReturn {
       const countResult = await countResponse.json();
       return countResult.count || countResult.data?.count || 0;
     } catch (err) {
-      logger.error(`Erro ao contar dias letivos até ${targetDate}`, err as Error);
+      logger.error(`Erro ao contar dias letivos até ${targetDate}`, {
+        targetDate,
+        year: process.env.NEXT_PUBLIC_SCHOOL_YEAR
+      }, err as Error);
       return 0;
     }
   }, []);

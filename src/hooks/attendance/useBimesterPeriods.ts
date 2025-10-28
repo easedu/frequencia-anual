@@ -4,9 +4,8 @@
  * Agora usa useAcademicYearComplete da API REST
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useAcademicYearComplete } from '@/hooks/api';
-import { logger } from '@/utils/logger';
 import type { BimesterDates } from '@/types';
 
 export interface UseBimesterPeriodsReturn {
@@ -34,7 +33,7 @@ export function useBimesterPeriods(): UseBimesterPeriodsReturn {
     const bimesterKeys = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
 
     bimesterKeys.forEach((key, index) => {
-      const bimester = (academicYearComplete as any)[key];
+      const bimester = academicYearComplete[key as keyof typeof academicYearComplete];
       if (bimester?.startDate && bimester?.endDate) {
         dates[index + 1] = {
           start: bimester.startDate,
@@ -49,7 +48,7 @@ export function useBimesterPeriods(): UseBimesterPeriodsReturn {
   const loading = apiLoading;
   const error = apiError ? new Error(apiError) : null;
   const fetchBimesterDates = useCallback(async () => {
-    refetch();
+    await refetch();
   }, [refetch]);
 
   // useCallback previne recriação dessas funções quando bimesterDates não muda

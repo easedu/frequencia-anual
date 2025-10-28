@@ -32,12 +32,27 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 // GET /api/admin/materialized-views - Metadata das MVs
 // ============================================================================
 
-export const GET = withAuth(async (req: NextRequest, userId: string) => {
+export const GET = withAuth(async (_req: NextRequest, _userId: string) => {
   try {
+    // Tipos para o retorno do RPC
+    interface MVMetadata {
+      view_name: string;
+      row_count: number;
+      total_size: string;
+      last_refresh: string | null;
+    }
+
+    interface SupabaseRPCError {
+      message: string;
+      details?: string;
+      hint?: string;
+      code?: string;
+    }
+
     // Chamar função SQL que retorna metadata de todas as MVs
     const { data, error } = (await supabaseAdmin.rpc('get_mv_metadata')) as {
-      data: any;
-      error: any;
+      data: MVMetadata[] | null;
+      error: SupabaseRPCError | null;
     };
 
     if (error) {
@@ -46,7 +61,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // Formatar resposta
-    const views = (data || []).map((view: any) => ({
+    const views = (data || []).map((view: MVMetadata) => ({
       viewName: view.view_name,
       rowCount: view.row_count || 0,
       totalSize: view.total_size || '0 bytes',
@@ -69,14 +84,34 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 
 // Nota: Para evitar conflito de rotas, vamos usar query param ?action=refresh
 // ao invés de criar /api/admin/materialized-views/refresh/route.ts
-export const POST = withAuth(async (req: NextRequest, userId: string) => {
+export const POST = withAuth(async (_req: NextRequest, _userId: string) => {
   try {
     console.info('[POST /api/admin/materialized-views] Iniciando refresh manual de MVs');
 
+    // Tipos para o retorno do RPC
+    interface MVRefreshResult {
+      view_name: string;
+      refresh_time: string;
+      duration_ms: number;
+    }
+
+    interface RefreshResult {
+      viewName: string;
+      refreshTime: string;
+      durationMs: number;
+    }
+
+    interface SupabaseRPCError {
+      message: string;
+      details?: string;
+      hint?: string;
+      code?: string;
+    }
+
     // Chamar função SQL que atualiza todas as MVs e retorna métricas
     const { data, error } = (await supabaseAdmin.rpc('refresh_all_materialized_views')) as {
-      data: any;
-      error: any;
+      data: MVRefreshResult[] | null;
+      error: SupabaseRPCError | null;
     };
 
     if (error) {
@@ -85,13 +120,13 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // Formatar resposta com métricas de performance
-    const results = (data || []).map((result: any) => ({
+    const results: RefreshResult[] = (data || []).map((result: MVRefreshResult) => ({
       viewName: result.view_name,
       refreshTime: result.refresh_time,
       durationMs: result.duration_ms,
     }));
 
-    const totalDuration = results.reduce((sum: number, r: any) => sum + (r.durationMs || 0), 0);
+    const totalDuration = results.reduce((sum: number, r: RefreshResult) => sum + (r.durationMs || 0), 0);
 
     console.info(
       `[POST /api/admin/materialized-views] ✅ Refresh concluído em ${totalDuration}ms`
@@ -112,7 +147,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 // DELETE: Não permitido (MVs são permanentes)
 // ============================================================================
 
-export const DELETE = withAuth(async (req: NextRequest, userId: string) => {
+export const DELETE = withAuth(async (_req: NextRequest, _userId: string) => {
   return errorResponse(
     'METHOD_NOT_ALLOWED',
     'DELETE não é permitido. Materialized Views são permanentes.',
@@ -124,7 +159,7 @@ export const DELETE = withAuth(async (req: NextRequest, userId: string) => {
 // PUT: Não permitido (use POST para refresh)
 // ============================================================================
 
-export const PUT = withAuth(async (req: NextRequest, userId: string) => {
+export const PUT = withAuth(async (_req: NextRequest, _userId: string) => {
   return errorResponse(
     'METHOD_NOT_ALLOWED',
     'PUT não é permitido. Use POST para refresh manual.',

@@ -4,12 +4,13 @@
  * GET - Conta dias letivos em um período específico
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { countSchoolDaysSchema } from '@/app/api/_schemas/academicYearSchemas'
 import { logger } from '@/utils/logger'
+import type { SupabaseRpcCaller } from '@/types/academicYear'
 
 /**
  * Converter data brasileira (DD/MM/YYYY) para ISO (YYYY-MM-DD)
@@ -51,9 +52,9 @@ function convertToISO(dateStr: string): string {
  *
  * Response: { "count": 54 }
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = new URL(_request.url)
 
     // Validar parâmetros
     const params = countSchoolDaysSchema.parse({
@@ -73,11 +74,14 @@ export async function GET(request: NextRequest) {
     const isoEndDate = convertToISO(params.end_date)
 
     // Chamar RPC function do Supabase
-    const { data, error } = await supabaseAdmin.rpc('get_school_days_in_period', {
-      p_start_date: isoStartDate,
-      p_end_date: isoEndDate,
-      p_year: year,
-    } as any)
+    const { data, error } = await (supabaseAdmin as unknown as SupabaseRpcCaller).rpc<number>(
+      'get_school_days_in_period',
+      {
+        p_start_date: isoStartDate,
+        p_end_date: isoEndDate,
+        p_year: year,
+      }
+    )
 
     if (error) {
       logger.error('Erro ao contar dias letivos no período', {

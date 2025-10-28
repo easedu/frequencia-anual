@@ -7,9 +7,6 @@ import { auth } from "@/firebase.config";
 import { UserProfilesService } from "@/services/supabase/userProfilesService";
 import { logger } from "@/utils/logger";
 
-// Páginas que não precisam de autenticação
-const PUBLIC_ROUTES = ['/login', '/'];
-
 // Páginas que precisam de autenticação
 const PROTECTED_ROUTES = [
   '/home',
@@ -63,17 +60,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setTimeout(() => reject(new Error('Profile fetch timeout')), 3000)
       );
 
-      const userProfileData = await Promise.race([profilePromise, timeoutPromise]) as any;
+      interface UserProfileData {
+        fullName?: string;
+        email?: string;
+        role?: string;
+        isActive?: boolean;
+      }
+
+      const userProfileData = await Promise.race([profilePromise, timeoutPromise]) as UserProfileData;
 
       if (userProfileData) {
         const profile: UserProfile = {
           nome: userProfileData.fullName || firebaseUser.displayName || 'Usuário',
           email: userProfileData.email || firebaseUser.email || '',
-          perfil: (userProfileData.role?.toLowerCase() as any) || 'user',
+          perfil: (userProfileData.role?.toLowerCase() as "admin" | "user" | "super-user" | "user-pcd") || 'user',
           status: userProfileData.isActive ? 'ativo' : 'desabilitado'
         };
         setUserProfile(profile);
-        logger.info('👤 Perfil do usuário carregado:', { nome: profile.nome, perfil: profile.perfil });
       } else {
         logger.warn('⚠️ Perfil do usuário não encontrado no Supabase');
         setUserProfile({
@@ -95,26 +98,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   useEffect(() => {
-    logger.info('🔐 Inicializando AuthProvider...');
-    
+    // Função para lidar com redirecionamentos baseados na autenticação
+    const handleAuthRedirect = (firebaseUser: User | null, currentPath: string) => {
+      const isProtectedRoute = PROTECTED_ROUTES.some(route => currentPath.startsWith(route));
+
+      if (!firebaseUser && isProtectedRoute) {
+        // Usuário não autenticado tentando acessar rota protegida
+        router.replace('/login');
+      } else if (firebaseUser && (currentPath === '/login')) {
+        // Usuário autenticado tentando acessar login
+        router.replace('/home');
+      } else if (firebaseUser && currentPath === '/') {
+        // Usuário autenticado na URL base - redirecionar para home
+        router.replace('/home');
+      } else if (!firebaseUser && currentPath === '/') {
+        // Usuário não autenticado na URL base - redirecionar para login
+        router.replace('/login');
+      }
+    };
+
     // Timeout de segurança para evitar loading infinito
     const timeoutId = setTimeout(() => {
       logger.warn('⏰ Timeout na verificação de autenticação, forçando redirecionamento');
       setLoading(false);
       router.replace('/login');
     }, 10000); // 10 segundos máximo
-    
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       clearTimeout(timeoutId); // Cancelar timeout se auth resolver
-      
-      logger.info('👤 Estado de autenticação mudou:', { 
-        hasUser: !!firebaseUser,
-        uid: firebaseUser?.uid,
-        email: firebaseUser?.email 
-      });
-      
+
       setUser(firebaseUser);
-      
+
       if (firebaseUser) {
         try {
           await fetchUserProfile(firebaseUser);
@@ -130,49 +144,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } else {
         setUserProfile(null);
       }
-      
+
       setLoading(false);
-      
+
       // Lógica de redirecionamento após carregar o estado
       handleAuthRedirect(firebaseUser, pathname);
     });
 
     return () => {
       clearTimeout(timeoutId);
-      logger.info('🔐 Limpando listener de autenticação');
       unsubscribe();
     };
   }, [pathname, router]);
 
-  // Função para lidar com redirecionamentos baseados na autenticação
-  const handleAuthRedirect = (firebaseUser: User | null, currentPath: string) => {
-    const isPublicRoute = PUBLIC_ROUTES.includes(currentPath);
-    const isProtectedRoute = PROTECTED_ROUTES.some(route => currentPath.startsWith(route));
-    
-    if (!firebaseUser && isProtectedRoute) {
-      // Usuário não autenticado tentando acessar rota protegida
-      logger.info('🚫 Redirecionando usuário não autenticado para login');
-      router.replace('/login');
-    } else if (firebaseUser && (currentPath === '/login')) {
-      // Usuário autenticado tentando acessar login
-      logger.info('✅ Redirecionando usuário autenticado para home');
-      router.replace('/home');
-    } else if (firebaseUser && currentPath === '/') {
-      // Usuário autenticado na URL base - redirecionar para home
-      logger.info('🏠 Redirecionando usuário autenticado da URL base para home');
-      router.replace('/home');
-    } else if (!firebaseUser && currentPath === '/') {
-      // Usuário não autenticado na URL base - redirecionar para login
-      logger.info('🔑 Redirecionando usuário não autenticado da URL base para login');
-      router.replace('/login');
-    }
-  };
-
   const signOut = async () => {
     try {
-      logger.info('🚪 Fazendo logout...');
       await auth.signOut();
-      logger.info('✅ Logout realizado com sucesso');
       router.replace('/login');
     } catch (error) {
       logger.error('❌ Erro no logout:', { error });

@@ -33,7 +33,7 @@ interface UseSupabaseCollectionOptions {
   cacheTTL?: number;
   enablePagination?: boolean;
   pageSize?: number;
-  filters?: Array<{ column: string; operator: string; value: any }>;
+  filters?: Array<{ column: string; operator: string; value: unknown }>;
   orderBy?: { column: string; ascending?: boolean };
 }
 
@@ -78,7 +78,7 @@ interface UseSupabaseCollectionResult<T> {
  * });
  * ```
  */
-export function useSupabaseCollection<T = any>(
+export function useSupabaseCollection<T = Record<string, unknown>>(
   table: string,
   options: UseSupabaseCollectionOptions = {}
 ): UseSupabaseCollectionResult<T> {
@@ -129,7 +129,8 @@ export function useSupabaseCollection<T = any>(
 
         // Apply filters
         filters.forEach(filter => {
-          query = (query as any)[filter.operator](filter.column, filter.value);
+          type QueryWithFilters = typeof query & Record<string, (column: string, value: unknown) => typeof query>;
+          query = (query as QueryWithFilters)[filter.operator](filter.column, filter.value);
         });
 
         // Apply ordering
@@ -194,7 +195,7 @@ export function useSupabaseCollection<T = any>(
     } catch (err) {
       const error = err as Error;
       setError(error);
-      logger.error('Supabase collection fetch failed', { table, isLoadMore }, error);
+      logger.error('Supabase collection fetch failed', { table, isLoadMore, offset: pagination.offset }, error);
     } finally {
       setLoading(false);
     }
@@ -261,7 +262,7 @@ export function useSupabaseBatch() {
     operations: Array<{
       type: 'insert' | 'update' | 'delete';
       table: string;
-      data?: any;
+      data?: Record<string, unknown>;
       id?: string;
       idColumn?: string;
     }>
@@ -288,9 +289,9 @@ export function useSupabaseBatch() {
         switch (type) {
           case 'insert': {
             const insertData = ops.map(op => op.data);
-            const { error: insertError } = await (supabase as any)
+            const { error: insertError } = await supabase
               .from(table)
-              .insert(insertData);
+              .insert(insertData as never);
             if (insertError) throw insertError;
             break;
           }
@@ -299,10 +300,10 @@ export function useSupabaseBatch() {
             // Updates precisam ser individuais (não há batch update no Supabase)
             await Promise.all(ops.map(async (op) => {
               const idColumn = op.idColumn || 'id';
-              const { error: updateError } = await (supabase as any)
+              const { error: updateError } = await supabase
                 .from(table)
-                .update(op.data)
-                .eq(idColumn, op.id);
+                .update(op.data as never)
+                .eq(idColumn as never, op.id as never);
               if (updateError) throw updateError;
             }));
             break;
@@ -311,7 +312,8 @@ export function useSupabaseBatch() {
           case 'delete': {
             const ids = ops.map(op => op.id);
             const idColumn = ops[0].idColumn || 'id';
-            const { error: deleteError } = await (supabase as any)
+            type SupabaseWithDelete = typeof supabase & { from: (table: string) => { delete: () => { in: (column: string, values: unknown[]) => Promise<{ error: Error | null }> } } };
+            const { error: deleteError } = await (supabase as SupabaseWithDelete)
               .from(table)
               .delete()
               .in(idColumn, ids);
@@ -366,7 +368,7 @@ export function useSupabaseBatch() {
  */
 export function useSupabaseWithRetry<T>(
   fetcher: () => Promise<T>,
-  dependencies: any[] = [],
+  dependencies: unknown[] = [],
   maxRetries = 3,
   retryDelay = 1000
 ) {
@@ -438,9 +440,9 @@ export function useSupabaseWithRetry<T>(
  * // data.students e data.absences estarão disponíveis
  * ```
  */
-export function useParallelSupabaseQueries<T extends Record<string, any>>(
+export function useParallelSupabaseQueries<T extends Record<string, unknown>>(
   queries: Record<keyof T, () => Promise<T[keyof T]>>,
-  dependencies: any[] = []
+  dependencies: unknown[] = []
 ) {
   const [data, setData] = useState<Partial<T>>({});
   const [loading, setLoading] = useState(false);
@@ -484,7 +486,7 @@ export function useParallelSupabaseQueries<T extends Record<string, any>>(
     if (Object.keys(queries).length > 0) {
       executeQueries();
     }
-  }, dependencies);
+  }, [queries, ...dependencies]);
 
   return { data, loading, error, refetch: executeQueries };
 }

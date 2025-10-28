@@ -41,7 +41,11 @@ interface SupabaseUserProfile {
   turmas_assigned: string[] | null;
   is_active: boolean;
   last_login: string | null;
-  notification_preferences: any;
+  notification_preferences: {
+    email?: boolean;
+    whatsapp?: boolean;
+    [key: string]: unknown;
+  } | null;
   theme_preference: string;
   created_by: string | null;
   updated_by: string | null;
@@ -55,7 +59,9 @@ interface SupabaseUserProfile {
 export interface UserMetadata {
   favorites?: string[];
   theme?: 'light' | 'dark' | 'system';
-  [key: string]: any; // Permite outros campos customizados
+  fullRole?: UserRole;
+  isActive?: boolean;
+  [key: string]: unknown; // Permite outros campos customizados
 }
 
 /**
@@ -113,7 +119,7 @@ export class UserProfilesService {
       turmasAssigned: record.turmas_assigned || undefined,
       isActive: record.is_active,
       lastLogin: record.last_login || undefined,
-      notificationPreferences: record.notification_preferences || {
+      notificationPreferences: (record.notification_preferences as NotificationPreferences) || {
         email: true,
         whatsapp: false,
       },
@@ -169,7 +175,7 @@ export class UserProfilesService {
         email: string;
         name: string | null;
         role: 'admin' | 'user' | 'teacher';
-        metadata: Record<string, any> | null;
+        metadata: Record<string, unknown> | null;
         created_at: string;
         updated_at: string;
         last_login_at: string | null;
@@ -189,13 +195,13 @@ export class UserProfilesService {
         role: mappedRole,
         department: undefined, // Campo não existe
         turmasAssigned: undefined, // Campo não existe
-        isActive: user.metadata?.isActive !== undefined ? user.metadata.isActive : true,
+        isActive: user.metadata?.isActive !== undefined ? (user.metadata.isActive as boolean) : true,
         lastLogin: user.last_login_at || undefined,
         notificationPreferences: {
           email: true,
           whatsapp: false,
         },
-        themePreference: user.metadata?.theme || 'light',
+        themePreference: (user.metadata?.theme as string | undefined) || 'light',
         metadata: user.metadata as UserMetadata | undefined,
         createdBy: undefined,
         updatedBy: undefined,
@@ -249,7 +255,7 @@ export class UserProfilesService {
         email: string;
         name: string | null;
         role: 'admin' | 'user' | 'teacher';
-        metadata: Record<string, any> | null;
+        metadata: Record<string, unknown> | null;
         created_at: string;
         updated_at: string;
         last_login_at: string | null;
@@ -269,13 +275,13 @@ export class UserProfilesService {
         role: mappedRole,
         department: undefined,
         turmasAssigned: undefined,
-        isActive: user.metadata?.isActive !== undefined ? user.metadata.isActive : true,
+        isActive: user.metadata?.isActive !== undefined ? (user.metadata.isActive as boolean) : true,
         lastLogin: user.last_login_at || undefined,
         notificationPreferences: {
           email: true,
           whatsapp: false,
         },
-        themePreference: user.metadata?.theme || 'light',
+        themePreference: (user.metadata?.theme as string | undefined) || 'light',
         metadata: user.metadata as UserMetadata | undefined,
         createdBy: undefined,
         updatedBy: undefined,
@@ -352,7 +358,7 @@ export class UserProfilesService {
         updatedAt: result.updated_at,
       };
     } catch (error) {
-      logger.error('Erro ao criar perfil de usuário', data, error as Error);
+      logger.error('Erro ao criar perfil de usuário', { data }, error as Error);
       throw error;
     }
   }
@@ -386,7 +392,12 @@ export class UserProfilesService {
     updates: Partial<CreateUserProfileData>
   ): Promise<boolean> {
     try {
-      const supabaseUpdates: any = {};
+      const supabaseUpdates: {
+        name?: string;
+        email?: string;
+        role?: 'admin' | 'user' | 'teacher';
+        metadata?: Record<string, unknown>;
+      } = {};
 
       // Mapear apenas campos que existem na tabela 'users'
       if (updates.fullName) supabaseUpdates.name = updates.fullName;
@@ -402,7 +413,7 @@ export class UserProfilesService {
         supabaseUpdates.metadata = {
           ...currentMetadata,
           fullRole: updates.role, // Salvar perfil completo (ADMIN, SUPER-USER, USER, USER-PCD)
-          isActive: updates.isActive !== undefined ? updates.isActive : (currentMetadata as any).isActive,
+          isActive: updates.isActive !== undefined ? updates.isActive : currentMetadata?.isActive,
         };
       }
 
@@ -521,7 +532,7 @@ export class UserProfilesService {
    */
   static async updateNotificationPreferences(
     firebaseUid: string,
-    preferences: any
+    preferences: Partial<UserMetadata> & { favorites?: string[] }
   ): Promise<boolean> {
     // Se preferences contém 'favorites', salvar em metadata
     if (preferences.favorites) {
@@ -598,13 +609,13 @@ export class UserProfilesService {
         email: string;
         name: string | null;
         role: 'admin' | 'user' | 'teacher';
-        metadata: Record<string, any> | null;
+        metadata: Record<string, unknown> | null;
         created_at: string;
         updated_at: string;
         last_login_at: string | null;
       };
 
-      return (data as UserRow[] || []).map((user) => {
+      return (data as UserRow[] || []).map((user): UserProfile => {
         // ✅ Usar metadata.fullRole se disponível (perfil completo)
         const fullRole = user.metadata?.fullRole as UserRole | undefined;
         const mappedRole = fullRole || this.mapSimpleRoleToUserRole(user.role);
@@ -618,13 +629,13 @@ export class UserProfilesService {
           role: mappedRole,
           department: undefined,
           turmasAssigned: undefined,
-          isActive: user.metadata?.isActive !== undefined ? user.metadata.isActive : true,
+          isActive: user.metadata?.isActive !== undefined ? (user.metadata.isActive as boolean) : true,
           lastLogin: user.last_login_at || undefined,
           notificationPreferences: {
             email: true,
             whatsapp: false,
           },
-          themePreference: user.metadata?.theme || 'light',
+          themePreference: (user.metadata?.theme as string | undefined) || 'light',
           metadata: user.metadata as UserMetadata | undefined,
           createdBy: undefined,
           updatedBy: undefined,
@@ -661,13 +672,13 @@ export class UserProfilesService {
         email: string;
         name: string | null;
         role: 'admin' | 'user' | 'teacher';
-        metadata: Record<string, any> | null;
+        metadata: Record<string, unknown> | null;
         created_at: string;
         updated_at: string;
         last_login_at: string | null;
       };
 
-      return (data as UserRow[] || []).map((user) => {
+      return (data as UserRow[] || []).map((user): UserProfile => {
         // ✅ Usar metadata.fullRole se disponível (perfil completo)
         const fullRole = user.metadata?.fullRole as UserRole | undefined;
         const mappedRole = fullRole || this.mapSimpleRoleToUserRole(user.role);
@@ -681,13 +692,13 @@ export class UserProfilesService {
           role: mappedRole,
           department: undefined,
           turmasAssigned: undefined,
-          isActive: user.metadata?.isActive !== undefined ? user.metadata.isActive : true,
+          isActive: user.metadata?.isActive !== undefined ? (user.metadata.isActive as boolean) : true,
           lastLogin: user.last_login_at || undefined,
           notificationPreferences: {
             email: true,
             whatsapp: false,
           },
-          themePreference: user.metadata?.theme || 'light',
+          themePreference: (user.metadata?.theme as string | undefined) || 'light',
           metadata: user.metadata as UserMetadata | undefined,
           createdBy: undefined,
           updatedBy: undefined,

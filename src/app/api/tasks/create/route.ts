@@ -83,7 +83,7 @@ function convertISOToSupabaseDate(isoString: string): string {
 
     return `${year}-${month}-${day}`;
   } catch (error) {
-    logger.error('Erro ao converter data ISO para Supabase:', error as Error);
+    logger.error('Erro ao converter data ISO para Supabase', { isoString }, error as Error);
     return new Date().toISOString().split('T')[0]; // Fallback para hoje
   }
 }
@@ -118,7 +118,7 @@ async function getStudentData(estudanteId: string): Promise<Student | null> {
     console.log(`[TASKS-CREATE] ✅ Estudante encontrado: ${student.nome}`);
     return student;
   } catch (error) {
-    logger.error('Erro ao buscar dados do estudante:', error as Error);
+    logger.error('Erro ao buscar dados do estudante', { estudanteId }, error as Error);
     return null;
   }
 }
@@ -314,9 +314,9 @@ export async function POST(request: NextRequest) {
           });
         } catch (commitError) {
           logger.error('[TASKS-CREATE] ❌ ERRO ao salvar interação no Supabase', {
-            error: commitError,
-            estudanteId: taskData.estudante_id
-          });
+            estudanteId: taskData.estudante_id,
+            type: interactionData.type
+          }, commitError as Error);
           throw commitError;
         }
       }
@@ -378,9 +378,9 @@ export async function POST(request: NextRequest) {
 
     } catch (createError) {
       logger.error('[TASKS-CREATE] ❌ ERRO AO CRIAR TAREFA NO SUPABASE', {
-        error: createError,
-        estudanteId: taskData.estudante_id
-      });
+        estudanteId: taskData.estudante_id,
+        status: newTask.status
+      }, createError as Error);
       throw createError;
     }
 
@@ -396,7 +396,9 @@ export async function POST(request: NextRequest) {
     } as CreateTaskResponse);
 
   } catch (error) {
-    logger.error('Erro na API de criação de tarefas:', error as Error);
+    logger.error('Erro na API de criação de tarefas', {
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, error as Error);
 
     return NextResponse.json({
       success: false,

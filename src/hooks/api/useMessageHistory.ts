@@ -15,6 +15,13 @@ import { PaginatedResponse } from './useStudents';
 
 export type MessageStatus = 'SUCCESS' | 'FAILED' | 'NO_CONTACT';
 
+export interface MessageMetadata {
+  executionId?: string;
+  batchId?: string;
+  source?: string;
+  [key: string]: unknown;
+}
+
 export interface WhatsAppMessageHistory {
   id: string;
   estudante_id: string;
@@ -31,7 +38,7 @@ export interface WhatsAppMessageHistory {
   sent_at: number | null;
   retry_count: number;
   is_dry_run: boolean;
-  metadata: Record<string, any> | null;
+  metadata: MessageMetadata | null;
   created_at: string;
   updated_at: string;
 }
@@ -65,7 +72,7 @@ export interface CreateMessageHistoryData {
   sent_at?: number | null;
   retry_count?: number;
   is_dry_run?: boolean;
-  metadata?: Record<string, any> | null;
+  metadata?: MessageMetadata | null;
 }
 
 export interface MessageHistoryStats {

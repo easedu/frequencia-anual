@@ -86,11 +86,6 @@ export async function POST(request: NextRequest) {
 
     // Verificação em lote
     if (isBatch) {
-      logger.info('Processing batch WhatsApp check', {
-        userId: user.id,
-        count: phones.length
-      });
-
       const result = await EvolutionChatService.checkMultipleWhatsApp(phones);
 
       return NextResponse.json({
@@ -107,10 +102,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Verificação única
-    logger.info('Processing single WhatsApp check', {
-      userId: user.id
-    });
-
     const result = await EvolutionChatService.checkWhatsApp(phone);
 
     if (result.error) {
@@ -129,11 +120,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Sucesso!
-    logger.info('WhatsApp check completed', {
-      userId: user.id,
-      hasWhatsApp: result.hasWhatsApp
-    });
-
     return NextResponse.json({
       success: true,
       message: result.hasWhatsApp

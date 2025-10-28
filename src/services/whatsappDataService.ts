@@ -12,7 +12,6 @@ interface WhatsAppVerificationData {
   exists: boolean;
   jid?: string | null;
   name?: string | null;
-  [key: string]: any;
 }
 
 interface SaveResult {
@@ -257,7 +256,22 @@ export async function getStudentContactsWithWhatsApp(
     }
 
     const result = await response.json();
-    const contacts: ContactWithWhatsAppStatus[] = (result.data?.contacts || []).map((contact: any) => ({
+    const contacts: ContactWithWhatsAppStatus[] = (result.data?.contacts || []).map((contact: {
+      id: string;
+      nome?: string;
+      parentesco?: string;
+      telefone?: string;
+      podeReceberMensagem?: boolean;
+      whatsapp?: {
+        verified: boolean;
+        exists: boolean;
+        jid?: string | null;
+        name?: string | null;
+        number?: string;
+        verifiedAt?: string;
+        verificationStatus?: string;
+      };
+    }) => ({
       contactId: contact.id,
       nome: contact.nome || '',
       parentesco: contact.parentesco || '',

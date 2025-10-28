@@ -37,7 +37,7 @@ interface InteractionSectionProps {
   isSendingWhatsApp: boolean;
   whatsAppSendSuccess: boolean;
   verifiedWhatsAppNumbers: Set<string>;
-  contactVerificationData: Map<string, any>;
+  contactVerificationData: Map<string, Record<string, unknown>>;
   isWhatsAppModalOpen: boolean;
   setIsWhatsAppModalOpen: (open: boolean) => void;
   selectedContact: Contato | null;
@@ -47,9 +47,6 @@ interface InteractionSectionProps {
   handleAddInteraction: () => Promise<void>;
   handleEditInteraction: () => Promise<void>;
   handleDeleteInteraction: (id: string) => Promise<void>;
-  handleWhatsAppClick: (contact: Contato) => void;
-  handleRetryVerification: (contact: Contato) => Promise<void>;
-  handleSendWhatsAppMessage: (phone: string, message: string) => Promise<any>;
   handleSaveWhatsAppInteraction: () => Promise<void>;
 
   // Dialog state

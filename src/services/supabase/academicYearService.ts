@@ -95,7 +95,7 @@ export class AcademicYearService {
 
       return data;
     } catch (error) {
-      logger.error(`Erro ao buscar ano letivo ${year}`, error as Error);
+      logger.error(`Erro ao buscar ano letivo ${year}`, { year }, error as Error);
       throw error;
     }
   }
@@ -114,7 +114,7 @@ export class AcademicYearService {
 
       return data || [];
     } catch (error) {
-      logger.error('Erro ao buscar anos letivos', error as Error);
+      logger.error('Erro ao buscar anos letivos', {}, error as Error);
       throw error;
     }
   }
@@ -141,7 +141,7 @@ export class AcademicYearService {
 
       return data || [];
     } catch (error) {
-      logger.error(`Erro ao buscar bimestres do ano ${year}`, error as Error);
+      logger.error(`Erro ao buscar bimestres do ano ${year}`, { year }, error as Error);
       throw error;
     }
   }
@@ -191,7 +191,7 @@ export class AcademicYearService {
 
       return bimesterDates;
     } catch (error) {
-      logger.error(`Erro ao buscar datas dos bimestres ${year}`, error as Error);
+      logger.error(`Erro ao buscar datas dos bimestres ${year}`, { year }, error as Error);
       throw error;
     }
   }
@@ -227,7 +227,7 @@ export class AcademicYearService {
 
       return data;
     } catch (error) {
-      logger.error(`Erro ao buscar bimestre ${bimesterNumber} do ano ${year}`, error as Error);
+      logger.error(`Erro ao buscar bimestre ${bimesterNumber} do ano ${year}`, { year, bimesterNumber }, error as Error);
       throw error;
     }
   }
@@ -257,7 +257,7 @@ export class AcademicYearService {
 
       return data || [];
     } catch (error) {
-      logger.error(`Erro ao buscar dias letivos do bimestre ${bimesterId}`, error as Error);
+      logger.error(`Erro ao buscar dias letivos do bimestre ${bimesterId}`, { bimesterId }, error as Error);
       throw error;
     }
   }
@@ -339,7 +339,7 @@ export class AcademicYearService {
 
       return result.data?.count || 0;
     } catch (error) {
-      logger.error(`Erro ao contar dias letivos no período ${startDate} - ${endDate}`, error as Error);
+      logger.error(`Erro ao contar dias letivos no período ${startDate} - ${endDate}`, { startDate, endDate, year }, error as Error);
       throw error;
     }
   }
@@ -365,7 +365,7 @@ export class AcademicYearService {
 
       return result.data?.count || 0;
     } catch (error) {
-      logger.error(`Erro ao contar dias letivos até hoje (ano ${year})`, error as Error);
+      logger.error(`Erro ao contar dias letivos até hoje (ano ${year})`, { year }, error as Error);
       throw error;
     }
   }
@@ -385,7 +385,7 @@ export class AcademicYearService {
 
       return data || [];
     } catch (error) {
-      logger.error(`Erro ao buscar resumo de bimestres (ano ${year})`, error as Error);
+      logger.error(`Erro ao buscar resumo de bimestres (ano ${year})`, { year }, error as Error);
       throw error;
     }
   }
@@ -419,7 +419,7 @@ export class AcademicYearService {
 
       return data || [];
     } catch (error) {
-      logger.error('Erro ao buscar detalhes de dias letivos', error as Error);
+      logger.error('Erro ao buscar detalhes de dias letivos', { year, bimesterNumber, onlyChecked }, error as Error);
       throw error;
     }
   }
@@ -436,7 +436,7 @@ export class AcademicYearService {
       const academicYear = await this.getAcademicYear(year);
       return academicYear?.total_school_days || 0;
     } catch (error) {
-      logger.error(`Erro ao obter total de dias letivos (ano ${year})`, error as Error);
+      logger.error(`Erro ao obter total de dias letivos (ano ${year})`, { year }, error as Error);
       return 0;
     }
   }
@@ -457,7 +457,7 @@ export class AcademicYearService {
 
       return result;
     } catch (error) {
-      logger.error(`Erro ao obter dias letivos por bimestre (ano ${year})`, error as Error);
+      logger.error(`Erro ao obter dias letivos por bimestre (ano ${year})`, { year }, error as Error);
       return {};
     }
   }
@@ -484,7 +484,7 @@ export class AcademicYearService {
 
       return !!data;
     } catch (error) {
-      logger.error(`Erro ao verificar se ${date} é dia letivo`, error as Error);
+      logger.error(`Erro ao verificar se ${date} é dia letivo`, { date, year }, error as Error);
       return false;
     }
   }
@@ -508,24 +508,39 @@ export class AcademicYearService {
     }
   ): Promise<void> {
     try {
+      interface AcademicYearUpsertData {
+        year: number;
+        start_date: string;
+        end_date: string;
+        total_school_days: number;
+      }
+
+      interface UpsertAcademicYearResult {
+        data: AcademicYear | null;
+        error: Error | null;
+      }
+
       // 1. Criar ou atualizar academic_year
-      const { data: academicYear, error: yearError} = await (supabase
+      const upsertData: AcademicYearUpsertData = {
+        year,
+        start_date: this.convertToISO(Object.values(bimestersData)[0]?.startDate || ''),
+        end_date: this.convertToISO(Object.values(bimestersData)[3]?.endDate || ''),
+        total_school_days: Object.values(bimestersData).reduce(
+          (sum, b) => sum + b.dates.filter(d => d.isChecked).length,
+          0
+        ),
+      };
+
+      const { data: academicYear, error: yearError}: UpsertAcademicYearResult = await supabase
         .from('academic_years')
-        .upsert({
-          year,
-          start_date: this.convertToISO(Object.values(bimestersData)[0]?.startDate || ''),
-          end_date: this.convertToISO(Object.values(bimestersData)[3]?.endDate || ''),
-          total_school_days: Object.values(bimestersData).reduce(
-            (sum, b) => sum + b.dates.filter(d => d.isChecked).length,
-            0
-          ),
-        } as any, {
+        // @ts-expect-error - Supabase generic types são muito restritivos, mas o tipo está correto
+        .upsert(upsertData, {
           onConflict: 'year',
         })
         .select()
-        .single() as any);
+        .single();
 
-      if (yearError) throw yearError;
+      if (yearError || !academicYear) throw yearError || new Error('Falha ao criar ano letivo');
 
       // 2. Para cada bimestre
       const bimesterKeys = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
@@ -538,28 +553,44 @@ export class AcademicYearService {
 
         const bimesterNumber = i + 1;
 
+        interface BimesterUpsertData {
+          academic_year_id: string;
+          bimester_number: number;
+          start_date: string;
+          end_date: string;
+          school_days_count: number;
+        }
+
+        interface UpsertBimesterResult {
+          data: Bimester | null;
+          error: Error | null;
+        }
+
         // 2.1. Criar ou atualizar bimester
-        const { data: bimester, error: bimesterError } = await (supabase
+        const bimesterUpsertData: BimesterUpsertData = {
+          academic_year_id: academicYear.id,
+          bimester_number: bimesterNumber,
+          start_date: this.convertToISO(bimesterData.startDate),
+          end_date: this.convertToISO(bimesterData.endDate),
+          school_days_count: bimesterData.dates.filter(d => d.isChecked).length,
+        };
+
+        const { data: bimester, error: bimesterError }: UpsertBimesterResult = await supabase
           .from('bimesters')
-          .upsert({
-            academic_year_id: academicYear.id,
-            bimester_number: bimesterNumber,
-            start_date: this.convertToISO(bimesterData.startDate),
-            end_date: this.convertToISO(bimesterData.endDate),
-            school_days_count: bimesterData.dates.filter(d => d.isChecked).length,
-          } as any, {
+          // @ts-expect-error - Supabase generic types são muito restritivos, mas o tipo está correto
+          .upsert(bimesterUpsertData, {
             onConflict: 'academic_year_id,bimester_number',
           })
           .select()
-          .single() as any);
+          .single();
 
-        if (bimesterError) throw bimesterError;
+        if (bimesterError || !bimester) throw bimesterError || new Error('Falha ao criar bimestre');
 
         // 2.2. Deletar dias letivos antigos deste bimestre
-        await ((supabase
-          .from('school_days') as any)
+        await supabase
+          .from('school_days')
           .delete()
-          .eq('bimester_id', bimester.id));
+          .eq('bimester_id', bimester.id);
 
         // 2.3. Inserir novos dias letivos
         if (bimesterData.dates && bimesterData.dates.length > 0) {
@@ -569,9 +600,14 @@ export class AcademicYearService {
             is_checked: d.isChecked,
           }));
 
-          const { error: daysError } = await (supabase
+          interface InsertSchoolDaysResult {
+            error: Error | null;
+          }
+
+          const { error: daysError }: InsertSchoolDaysResult = await supabase
             .from('school_days')
-            .insert(schoolDaysToInsert as any) as any);
+            // @ts-expect-error - Supabase generic types são muito restritivos, mas o tipo está correto
+            .insert(schoolDaysToInsert);
 
           if (daysError) throw daysError;
         }
@@ -587,28 +623,49 @@ export class AcademicYearService {
         const bimesterNumber = i + 1;
         const schoolDaysCount = bimesterData.dates.filter(d => d.isChecked).length;
 
+        interface AbsenceControlUpsertData {
+          academic_year: number;
+          bimester: number;
+          school_days: number;
+          start_date: string;
+          end_date: string;
+          notes: string;
+          updated_by: string;
+        }
+
+        interface UpsertAbsenceControlResult {
+          error: Error | null;
+        }
+
         // Upsert em absence_control
-        const { error: absenceControlError } = await (supabase
-          .from('absence_control') as any)
-          .upsert({
-            academic_year: year,
-            bimester: bimesterNumber,
-            school_days: schoolDaysCount,
-            start_date: this.convertToISO(bimesterData.startDate),
-            end_date: this.convertToISO(bimesterData.endDate),
-            notes: bimesterKey,
-            updated_by: 'academic_year_sync',
-          }, {
+        const absenceControlData: AbsenceControlUpsertData = {
+          academic_year: year,
+          bimester: bimesterNumber,
+          school_days: schoolDaysCount,
+          start_date: this.convertToISO(bimesterData.startDate),
+          end_date: this.convertToISO(bimesterData.endDate),
+          notes: bimesterKey,
+          updated_by: 'academic_year_sync',
+        };
+
+        const { error: absenceControlError }: UpsertAbsenceControlResult = await supabase
+          .from('absence_control')
+          // @ts-expect-error - Supabase generic types são muito restritivos, mas o tipo está correto
+          .upsert(absenceControlData, {
             onConflict: 'academic_year,bimester',
           });
 
         if (absenceControlError) {
-          logger.warn(`⚠️  Erro ao sincronizar absence_control bimestre ${bimesterNumber}:`, absenceControlError);
+          logger.warn(
+            `⚠️  Erro ao sincronizar absence_control bimestre ${bimesterNumber}`,
+            { bimesterNumber },
+            absenceControlError as Error
+          );
           // Não lançar erro - absence_control é secundário
         }
       }
     } catch (error) {
-      logger.error(`Erro ao salvar ano letivo ${year}`, error as Error);
+      logger.error(`Erro ao salvar ano letivo ${year}`, { year }, error as Error);
       throw error;
     }
   }
@@ -641,8 +698,6 @@ export class AcademicYearService {
     };
   }> {
     try {
-      logger.info(`Buscando ano letivo ${year} via API REST`, { year });
-
       const response = await fetch(`/api/academic-years/${year}/complete`, {
         method: 'GET',
         headers: {
@@ -661,14 +716,9 @@ export class AcademicYearService {
         throw new Error(result.error || 'Erro ao buscar ano letivo');
       }
 
-      logger.info(`Ano letivo ${year} carregado com sucesso via API`, {
-        year,
-        cached: result.cached,
-      });
-
       return result.data || {};
     } catch (error) {
-      logger.error(`Erro ao buscar ano letivo ${year} via API`, error as Error);
+      logger.error(`Erro ao buscar ano letivo ${year} via API`, { year }, error as Error);
       throw error; // ✅ Lançar erro ao invés de retornar vazio
     }
   }
@@ -696,7 +746,13 @@ export class AcademicYearService {
   }> {
     try {
       const bimesters = await this.getBimesters(year);
-      const result: any = {};
+      const result: {
+        [key: string]: {
+          startDate: string;
+          endDate: string;
+          dates: { date: string; isChecked: boolean }[];
+        };
+      } = {};
 
       const bimesterKeys = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
 
@@ -704,33 +760,37 @@ export class AcademicYearService {
         const bimesterKey = bimesterKeys[bimester.bimester_number - 1];
 
         // Buscar dias letivos deste bimestre
-        const { data: schoolDays, error } = await supabase
+        interface SchoolDayData {
+          date: string;
+          is_checked: boolean;
+        }
+
+        interface SchoolDaysResult {
+          data: SchoolDayData[] | null;
+          error: Error | null;
+        }
+
+        const { data: schoolDays, error } = (await supabase
           .from('school_days')
           .select('*')
           .eq('bimester_id', bimester.id)
-          .order('date', { ascending: true });
+          .order('date', { ascending: true })) as unknown as SchoolDaysResult;
 
         if (error) throw error;
-
-        const checkedDays = (schoolDays || []).filter((d: any) => d.is_checked);
 
         result[bimesterKey] = {
           startDate: this.convertFromISO(bimester.start_date),
           endDate: this.convertFromISO(bimester.end_date),
-          dates: (schoolDays || []).map((d: any) => ({
+          dates: (schoolDays || []).map((d) => ({
             date: this.convertFromISO(d.date),
             isChecked: d.is_checked,
           })),
         };
       }
 
-      const totalSchoolDays = Object.values(result).reduce((sum: number, bim: any) => {
-        return sum + bim.dates.filter((d: any) => d.isChecked).length;
-      }, 0);
-
       return result;
     } catch (error) {
-      logger.error(`Erro ao buscar ano letivo completo ${year}`, error as Error);
+      logger.error(`Erro ao buscar ano letivo completo ${year}`, { year }, error as Error);
       return {};
     }
   }

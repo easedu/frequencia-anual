@@ -5,13 +5,18 @@
  * POST - Registra envio de mensagem
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { logger } from '@/utils/logger'
 import { z } from 'zod'
 import { getCountStrategy } from '@/app/api/_utils/countStrategy'
+import type {
+  WhatsAppMessageHistory,
+  WhatsAppMessageHistoryInsert,
+  UserTask
+} from '@/lib/supabaseClient'
 
 // ============================================================================
 // SCHEMAS
@@ -129,7 +134,11 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1)
       .order('sent_at', { ascending: false })
 
-    const { data, error, count } = await query
+    const { data, error, count } = await query as {
+      data: WhatsAppMessageHistory[] | null
+      error: { message: string } | null
+      count: number | null
+    }
 
     if (error) {
       logger.error('Erro ao buscar histórico de mensagens', error)
@@ -200,7 +209,10 @@ export async function POST(request: NextRequest) {
       .eq('reference_year', validated.ano_referencia)
       .eq('reference_month', validated.mes_referencia)
       .eq('absence_count', validated.quantidade_faltas)
-      .maybeSingle()
+      .maybeSingle() as {
+        data: { id: string } | null
+        error: { message: string } | null
+      }
 
     if (searchError) {
       logger.error('Erro ao verificar histórico existente', searchError)
@@ -219,35 +231,44 @@ export async function POST(request: NextRequest) {
     }
 
     // ✅ Criar registro no Supabase (schema real da tabela)
-    const { data, error } = await supabaseAdmin
+    const insertData: WhatsAppMessageHistoryInsert = {
+      student_id: validated.estudante_id,
+      contact_name: validated.contato_nome,
+      contact_phone: validated.contato_telefone,
+      absence_count: validated.quantidade_faltas,
+      reference_year: validated.ano_referencia,
+      reference_month: validated.mes_referencia,
+      task_id: validated.task_id || null,
+      message_id: validated.message_id || null,
+      status: validated.status,
+      sent_at: validated.sent_at ? new Date(validated.sent_at).toISOString() : null,
+      dry_run: validated.is_dry_run || false,
+    }
+
+    // Type assertion to work around Supabase type inference issues
+    const result = await supabaseAdmin
       .from('whatsapp_message_history')
-      .insert({
-        student_id: validated.estudante_id,
-        contact_name: validated.contato_nome,
-        contact_phone: validated.contato_telefone,
-        absence_count: validated.quantidade_faltas,
-        reference_year: validated.ano_referencia,
-        reference_month: validated.mes_referencia,
-        message_id: validated.message_id || null,
-        status: validated.status,
-        sent_at: validated.sent_at ? new Date(validated.sent_at).toISOString() : null,
-        dry_run: validated.is_dry_run || false,
-      } as any)
+      .insert(insertData as never)
       .select()
       .single()
 
+    const { data, error } = result as {
+      data: WhatsAppMessageHistory | null
+      error: { message: string } | null
+    }
+
     if (error) {
       logger.error('Erro ao registrar histórico de mensagem', error)
-      return errorResponse(error.message, 500)
+      return errorResponse(error.message || 'Erro desconhecido', 500)
     }
 
     logger.info('Histórico de mensagem registrado', {
-      id: (data as any)?.id,
+      id: data?.id,
       estudanteId: validated.estudante_id,
       status: validated.status
     })
 
-    return successResponse(data as any, 201)
+    return successResponse(data, 201)
   } catch (error) {
     return handleError(error)
   }
@@ -262,10 +283,10 @@ export async function POST(request: NextRequest) {
  *   1. Se existem tasks da automação → deleta apenas mensagens vinculadas
  *   2. Se NÃO existem tasks → deleta TODAS as mensagens (não há como diferenciar origem)
  */
-export async function DELETE(request: NextRequest) {
+export async function DELETE(_request: NextRequest) {
   try {
     // Autenticação obrigatória
-    const authHeader = request.headers.get('Authorization')
+    const authHeader = _request.headers.get('Authorization')
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return errorResponse('Não autorizado', 401)
@@ -275,25 +296,29 @@ export async function DELETE(request: NextRequest) {
     const { data: automationTasks, error: tasksError } = await supabaseAdmin
       .from('user_tasks')
       .select('id')
-      .eq('created_by', 'AUTOMAÇÃO')
+      .eq('created_by', 'AUTOMAÇÃO') as {
+        data: Pick<UserTask, 'id'>[] | null
+        error: { message: string } | null
+      }
 
     if (tasksError) {
       logger.error('Erro ao buscar tasks da automação', tasksError)
       return errorResponse(tasksError.message, 500)
     }
 
-    const taskIds = (automationTasks || []).map((task: any) => task.id)
+    const taskIds = (automationTasks || []).map((task) => task.id)
 
     let deletedCount = 0
-    let strategy = ''
 
     // ESTRATÉGIA 1: Se há tasks da automação, deletar apenas mensagens vinculadas
     if (taskIds.length > 0) {
-      strategy = 'SELECTIVE'
       const { error: deleteError, count } = await supabaseAdmin
         .from('whatsapp_message_history')
         .delete()
-        .in('task_id', taskIds)
+        .in('task_id', taskIds) as {
+          error: { message: string } | null
+          count: number | null
+        }
 
       if (deleteError) {
         logger.error('Erro ao limpar histórico de mensagens da automação', deleteError)
@@ -316,11 +341,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     // ESTRATÉGIA 2: Se NÃO há tasks, deletar TODAS as mensagens (fallback)
-    strategy = 'FULL'
     const { error: deleteError, count } = await supabaseAdmin
       .from('whatsapp_message_history')
       .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000') // Truque para deletar todos
+      .neq('id', '00000000-0000-0000-0000-000000000000') as {
+        error: { message: string } | null
+        count: number | null
+      }
 
     if (deleteError) {
       logger.error('Erro ao limpar histórico de mensagens (FULL)', deleteError)

@@ -13,6 +13,35 @@ import { fetchAllPages } from '@/utils/paginationHelper';
 // TYPES
 // ============================================================================
 
+export interface StudentAddress {
+  rua?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  complemento?: string;
+  [key: string]: unknown;
+}
+
+export interface StudentDisability {
+  estudanteComDeficiencia?: boolean;
+  tipoDeficiencia?: string[] | string;
+  possuiBarreiras?: boolean;
+  aee?: 'PAEE' | 'PAAI';
+  observacoes?: string;
+  [key: string]: unknown;
+}
+
+export interface StudentContact {
+  id?: string;
+  name: string;
+  phone?: string;
+  relationship?: string;
+  can_receive_whatsapp?: boolean;
+  [key: string]: unknown;
+}
+
 export interface Student {
   id: string;
   student_id: string;
@@ -24,9 +53,9 @@ export interface Student {
   school_year: string;
   registration_number?: string | null;
   bolsa_familia?: 'SIM' | 'NÃO' | null;
-  address?: Record<string, any>;
-  disabilities?: Array<Record<string, any>>;
-  student_contacts?: Array<any>;
+  address?: StudentAddress;
+  disabilities?: StudentDisability[];
+  student_contacts?: StudentContact[];
   created_at: string;
   updated_at: string;
 }
@@ -104,7 +133,7 @@ export function useStudents(filters?: StudentFilters) {
           resourceName: 'estudantes',
           // 🚀 LOADING PROGRESSIVO: Atualiza UI conforme dados carregam
           onProgress: (currentData, progress) => {
-            setStudents([...currentData]);
+            setStudents([...(currentData as Student[])]);
             setPagination({
               page: 1,
               limit: currentData.length,
@@ -232,12 +261,26 @@ export function useStudent(id: string | null) {
 // MUTATION: useCreateStudent (POST)
 // ============================================================================
 
+export interface CreateStudentData {
+  name: string;
+  class: string;
+  shift: 'MANHÃ' | 'TARDE';
+  status?: 'ATIVO' | 'INATIVO' | 'TRANSFERIDO';
+  birth_date?: string;
+  school_year?: string;
+  registration_number?: string;
+  bolsa_familia?: 'SIM' | 'NÃO';
+  address?: StudentAddress;
+  disabilities?: StudentDisability[];
+  contacts?: Array<{ name: string; phone?: string; relationship?: string }>;
+}
+
 export function useCreateStudent() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createStudent = useCallback(async (studentData: any) => {
+  const createStudent = useCallback(async (studentData: CreateStudentData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
@@ -282,12 +325,24 @@ export function useCreateStudent() {
 // MUTATION: useUpdateStudent (PUT)
 // ============================================================================
 
+export interface UpdateStudentData {
+  name?: string;
+  class?: string;
+  shift?: 'MANHÃ' | 'TARDE';
+  status?: 'ATIVO' | 'INATIVO' | 'TRANSFERIDO';
+  birth_date?: string;
+  registration_number?: string;
+  bolsa_familia?: 'SIM' | 'NÃO';
+  address?: StudentAddress;
+  disabilities?: StudentDisability[];
+}
+
 export function useUpdateStudent() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateStudent = useCallback(async (id: string, studentData: any) => {
+  const updateStudent = useCallback(async (id: string, studentData: UpdateStudentData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {

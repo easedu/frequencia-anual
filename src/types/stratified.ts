@@ -15,7 +15,7 @@
  * - full: ~50KB (baseline)
  */
 
-import { Student, Contato, Deficiencia } from './index';
+import { Contato, Deficiencia } from './index';
 
 // ============================================================================
 // STUDENTS - Tipos Estratificados
@@ -27,7 +27,7 @@ export type DetailLevel = 'minimal' | 'summary' | 'detailed' | 'full';
  * MINIMAL: Apenas identificação (5KB)
  * Uso: Dropdowns, autocomplete, listagens simples
  */
-export interface StudentMinimal {
+interface StudentMinimal {
   id: string;
   student_id: string;
   estudanteId: string; // Legacy compatibility
@@ -39,7 +39,7 @@ export interface StudentMinimal {
  * SUMMARY: Dados básicos de visualização (12KB)
  * Uso: Cards, previews, tabelas principais
  */
-export interface StudentSummary extends StudentMinimal {
+interface StudentSummary extends StudentMinimal {
   shift: 'MANHÃ' | 'TARDE';
   status: 'ATIVO' | 'INATIVO' | 'TRANSFERIDO';
   birth_date?: string;
@@ -50,7 +50,7 @@ export interface StudentSummary extends StudentMinimal {
  * DETAILED: Dados completos sem relações (25KB)
  * Uso: Visualização de perfil, relatórios básicos
  */
-export interface StudentDetailed extends StudentSummary {
+interface StudentDetailed extends StudentSummary {
   // Dados pessoais
   rg?: string;
   ra?: string;
@@ -84,7 +84,7 @@ export interface StudentDetailed extends StudentSummary {
  * FULL: Tudo incluindo relações (50KB+)
  * Uso: Edição completa, exportação, relatórios detalhados
  */
-export interface StudentFull extends StudentDetailed {
+interface StudentFull extends StudentDetailed {
   // Relações (JOINs)
   contacts?: Contato[];
   absences_count?: number;
@@ -97,19 +97,19 @@ export interface StudentFull extends StudentDetailed {
 }
 
 // Type guard para verificar nível de detalhe
-export function isMinimal(student: any): student is StudentMinimal {
-  return student && 'id' in student && 'name' in student && 'class' in student;
+export function isMinimal(student: unknown): student is StudentMinimal {
+  return !!student && typeof student === 'object' && 'id' in student && 'name' in student && 'class' in student;
 }
 
-export function isSummary(student: any): student is StudentSummary {
+export function isSummary(student: unknown): student is StudentSummary {
   return isMinimal(student) && 'shift' in student && 'status' in student;
 }
 
-export function isDetailed(student: any): student is StudentDetailed {
+export function isDetailed(student: unknown): student is StudentDetailed {
   return isSummary(student) && 'created_at' in student;
 }
 
-export function isFull(student: any): student is StudentFull {
+export function isFull(student: unknown): student is StudentFull {
   return isDetailed(student) && 'contacts' in student;
 }
 
@@ -117,26 +117,26 @@ export function isFull(student: any): student is StudentFull {
 // ABSENCES - Tipos Estratificados
 // ============================================================================
 
-export interface AbsenceMinimal {
+interface AbsenceMinimal {
   id: string;
   student_id: string;
   absence_date: string;
   bimester: number;
 }
 
-export interface AbsenceSummary extends AbsenceMinimal {
+interface AbsenceSummary extends AbsenceMinimal {
   is_justified: boolean;
   student_name?: string;
   student_class?: string;
 }
 
-export interface AbsenceDetailed extends AbsenceSummary {
+interface AbsenceDetailed extends AbsenceSummary {
   medical_certificate_id?: string;
   suspension_id?: string;
   created_at: string;
 }
 
-export interface AbsenceFull extends AbsenceDetailed {
+interface AbsenceFull extends AbsenceDetailed {
   student_firebase_id?: string;
   student_shift?: string;
   student_status?: string;
@@ -152,20 +152,20 @@ export interface AbsenceFull extends AbsenceDetailed {
 // INTERACTIONS - Tipos Estratificados
 // ============================================================================
 
-export interface InteractionMinimal {
+interface InteractionMinimal {
   id: string;
   student_id: string;
   interaction_date: string;
   type: string;
 }
 
-export interface InteractionSummary extends InteractionMinimal {
+interface InteractionSummary extends InteractionMinimal {
   description: string;
   student_name?: string;
   student_class?: string;
 }
 
-export interface InteractionDetailed extends InteractionSummary {
+interface InteractionDetailed extends InteractionSummary {
   contact_name?: string;
   contact_phone?: string;
   outcome?: string;
@@ -174,7 +174,7 @@ export interface InteractionDetailed extends InteractionSummary {
   created_at: string;
 }
 
-export interface InteractionFull extends InteractionDetailed {
+interface InteractionFull extends InteractionDetailed {
   student_firebase_id?: string;
   student_shift?: string;
   student_status?: string;
@@ -184,21 +184,21 @@ export interface InteractionFull extends InteractionDetailed {
 // TASKS - Tipos Estratificados
 // ============================================================================
 
-export interface TaskMinimal {
+interface TaskMinimal {
   id: string;
   student_id: string;
   title: string;
   due_date?: string;
 }
 
-export interface TaskSummary extends TaskMinimal {
+interface TaskSummary extends TaskMinimal {
   is_resolved: boolean;
   priority: 'BAIXA' | 'MÉDIA' | 'ALTA';
   student_name?: string;
   student_class?: string;
 }
 
-export interface TaskDetailed extends TaskSummary {
+interface TaskDetailed extends TaskSummary {
   description?: string;
   action_taken?: string;
   recommended_action?: string;
@@ -207,7 +207,7 @@ export interface TaskDetailed extends TaskSummary {
   resolved_at?: string;
 }
 
-export interface TaskFull extends TaskDetailed {
+interface TaskFull extends TaskDetailed {
   student_firebase_id?: string;
   student_shift?: string;
   student_status?: string;
@@ -218,21 +218,21 @@ export interface TaskFull extends TaskDetailed {
 // CERTIFICATES - Tipos Estratificados
 // ============================================================================
 
-export interface CertificateMinimal {
+interface CertificateMinimal {
   id: string;
   student_id: string;
   start_date: string;
   end_date: string;
 }
 
-export interface CertificateSummary extends CertificateMinimal {
+interface CertificateSummary extends CertificateMinimal {
   total_days: number;
   status: 'PENDENTE' | 'APROVADO' | 'REJEITADO';
   student_name?: string;
   student_class?: string;
 }
 
-export interface CertificateDetailed extends CertificateSummary {
+interface CertificateDetailed extends CertificateSummary {
   cid_code?: string;
   doctor_name?: string;
   hospital?: string;
@@ -241,7 +241,7 @@ export interface CertificateDetailed extends CertificateSummary {
   created_at: string;
 }
 
-export interface CertificateFull extends CertificateDetailed {
+interface CertificateFull extends CertificateDetailed {
   student_firebase_id?: string;
   student_shift?: string;
   student_status?: string;
@@ -256,21 +256,21 @@ export interface CertificateFull extends CertificateDetailed {
 // SUSPENSIONS - Tipos Estratificados
 // ============================================================================
 
-export interface SuspensionMinimal {
+interface SuspensionMinimal {
   id: string;
   student_id: string;
   start_date: string;
   end_date: string;
 }
 
-export interface SuspensionSummary extends SuspensionMinimal {
+interface SuspensionSummary extends SuspensionMinimal {
   total_days: number;
   severity: 'LEVE' | 'MODERADA' | 'GRAVE';
   student_name?: string;
   student_class?: string;
 }
 
-export interface SuspensionDetailed extends SuspensionSummary {
+interface SuspensionDetailed extends SuspensionSummary {
   reason: string;
   action_taken?: string;
   parent_notified: boolean;
@@ -278,7 +278,7 @@ export interface SuspensionDetailed extends SuspensionSummary {
   created_at: string;
 }
 
-export interface SuspensionFull extends SuspensionDetailed {
+interface SuspensionFull extends SuspensionDetailed {
   student_firebase_id?: string;
   student_shift?: string;
   student_status?: string;

@@ -56,7 +56,18 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
 
     if (checkError || !existing) return notFoundResponse('Interação', id);
 
-    const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+    const updateData: {
+      updated_at: string;
+      interaction_date?: string;
+      interaction_type?: string;
+      contact_person?: string;
+      subject?: string;
+      description?: string;
+      notes?: string | null;
+      next_action?: string | null;
+      next_action_date?: string | null;
+    } = { updated_at: new Date().toISOString() };
+
     if (sanitizedData.data) updateData.interaction_date = sanitizedData.data;
     if (sanitizedData.tipo) updateData.interaction_type = sanitizedData.tipo;
     if (sanitizedData.responsavel) updateData.contact_person = sanitizedData.responsavel;
@@ -66,11 +77,12 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
     if (sanitizedData.proximaAcao !== undefined) updateData.next_action = sanitizedData.proximaAcao;
     if (sanitizedData.dataProximaAcao !== undefined) updateData.next_action_date = sanitizedData.dataProximaAcao;
 
-    const { error: updateError } = await supabaseAdmin
+    // Type assertion necessário devido à complexidade dos tipos do Supabase
+    const { error: updateError } = await (supabaseAdmin
       .from('family_interactions')
-      // @ts-ignore - Supabase types are complex
+      // @ts-expect-error - Supabase types are overly restrictive for dynamic updates
       .update(updateData)
-      .eq('id', id);
+      .eq('id', id) as unknown as Promise<{ error: unknown }>);
 
     if (updateError) {
       console.error('[PUT /api/interactions/[id]] Error:', updateError);

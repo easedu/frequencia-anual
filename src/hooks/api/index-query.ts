@@ -34,6 +34,9 @@ export {
   prefetchStudent,
 } from './useStudentsQuery';
 
+// Import para uso interno
+import { prefetchStudents } from './useStudentsQuery';
+
 export type {
   StudentFilters,
   PaginatedStudentsResponse,
@@ -138,7 +141,7 @@ export type {
 /**
  * Invalidar todos os caches (útil após bulk operations)
  */
-export function invalidateAllCaches(queryClient: any) {
+export function invalidateAllCaches(queryClient: import('@tanstack/react-query').QueryClient) {
   queryClient.invalidateQueries({ queryKey: ['students'] });
   queryClient.invalidateQueries({ queryKey: ['absences'] });
   queryClient.invalidateQueries({ queryKey: ['interactions'] });
@@ -150,10 +153,11 @@ export function invalidateAllCaches(queryClient: any) {
 /**
  * Prefetch dados críticos para dashboard
  */
-export async function prefetchDashboardData(queryClient: any, user: any) {
+export async function prefetchDashboardData(
+  queryClient: import('@tanstack/react-query').QueryClient,
+  user: import('firebase/auth').User
+) {
   if (!user) return;
-
-  const token = await user.getIdToken();
 
   // Prefetch em paralelo
   await Promise.all([

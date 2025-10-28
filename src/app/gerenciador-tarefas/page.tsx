@@ -36,7 +36,7 @@ export default function GerenciadorTarefas() {
                     setRole("user");
                 }
             } catch (error) {
-                logger.error("Erro ao buscar usuário", error as Error);
+                logger.error("Erro ao buscar usuário", {}, error as Error);
                 setRole("user");
             }
         };

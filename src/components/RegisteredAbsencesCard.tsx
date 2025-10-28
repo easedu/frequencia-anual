@@ -9,7 +9,7 @@ import {
     DialogTitle,
     DialogDescription,
 } from "@/components/ui/dialog";
-import { AbsenceRecord, Atestado, BimesterDates } from "../app/types";
+import { AbsenceRecord, Atestado, BimesterDates } from "@/types";
 import { getBimesterByDate } from "../app/utils";
 import { Calendar, FileText, Clock, User, CheckCircle, XCircle, ChevronDown, ChevronRight, Trash2, AlertCircle } from "lucide-react";
 import { useState } from "react";
@@ -51,7 +51,10 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
     const [showDeleteDialog, setShowDeleteDialog] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    const filteredAbsences = absences.filter((absence) => getBimesterByDate(absence.data, bimesterDates) === bimester);
+    const filteredAbsences = absences.filter((absence) => {
+        const dateToCheck = absence.absence_date || absence.data;
+        return dateToCheck && getBimesterByDate(dateToCheck, bimesterDates) === bimester;
+    });
     const justifiedCount = filteredAbsences.filter(absence => absence.justified).length;
     const unjustifiedCount = filteredAbsences.length - justifiedCount;
 
@@ -136,9 +139,10 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
 
             // Buscar faltas no Supabase
             const allAbsences = await AbsenceService.getStudentAbsences(selectedStudentId);
-            const absences = allAbsences.filter((a: any) =>
-                (a.absence_date === formattedDate || a.data === formattedDate)
-            );
+            const absences = allAbsences.filter((a: AbsenceRecord) => {
+                const dateToCompare = a.absence_date || a.data;
+                return dateToCompare === formattedDate;
+            });
 
             if (!absences || absences.length === 0) {
                 toast.error("Falta não encontrada no banco de dados.");
@@ -247,7 +251,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                     }`} />
                                                 <div>
                                                     <p className="font-medium text-gray-900 text-sm">
-                                                        {formatDate(absence.data)}
+                                                        {absence.absence_date || absence.data ? formatDate(absence.absence_date || absence.data!) : '-'}
                                                     </p>
                                                 </div>
                                             </div>
@@ -263,12 +267,12 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                                                 )}
 
                                                 {/* Botão de remoção - apenas para administradores */}
-                                                {userRole === "admin" && (
+                                                {userRole === "admin" && (absence.absence_date || absence.data) && (
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
                                                         className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                        onClick={() => setShowDeleteDialog(absence.data)}
+                                                        onClick={() => setShowDeleteDialog(absence.absence_date || absence.data!)}
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </Button>

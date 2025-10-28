@@ -59,8 +59,11 @@ const justificativaAveOptions = [
     { value: 'outros', label: 'Outros' },
 ];
 
+// Tipos para react-select styles
+import type { CSSObjectWithLabel, OptionProps, GroupBase } from 'react-select';
+
 const customSelectStyles = {
-    control: (provided: any) => ({
+    control: (provided: CSSObjectWithLabel) => ({
         ...provided,
         minHeight: '40px',
         borderColor: '#e2e8f0',
@@ -69,10 +72,10 @@ const customSelectStyles = {
             borderColor: '#cbd5e0',
         },
     }),
-    option: (provided: any, state: any) => ({
+    option: (provided: CSSObjectWithLabel, props: OptionProps<SelectOption, true, GroupBase<SelectOption>>) => ({
         ...provided,
-        backgroundColor: state.isSelected ? '#3b82f6' : state.isFocused ? '#f1f5f9' : 'white',
-        color: state.isSelected ? 'white' : '#374151',
+        backgroundColor: props.isSelected ? '#3b82f6' : props.isFocused ? '#f1f5f9' : 'white',
+        color: props.isSelected ? 'white' : '#374151',
     }),
 };
 
@@ -563,7 +566,7 @@ export const StudentForm = memo(function StudentForm({
         form.setValue("contatos", newContatos);
     }, [form]);
 
-    const onError = (errors: any) => {
+    const onError = (errors: Record<string, unknown>) => {
         console.error('❌ Form validation errors:', errors);
         toast.error("Por favor, corrija os erros no formulário antes de continuar");
     };

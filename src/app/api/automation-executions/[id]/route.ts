@@ -6,7 +6,7 @@
  * DELETE - Deleta execution específica
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
@@ -26,10 +26,10 @@ import { logger } from '@/utils/logger'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
 
     const { data, error } = await supabaseAdmin
       .from('automation_executions')
@@ -47,7 +47,7 @@ export async function GET(
     }
 
     return successResponse(data)
-  } catch (error) {
+  } catch (error: unknown) {
     return handleError(error)
   }
 }
@@ -76,14 +76,14 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
 
     // Detectar tipo de update e validar
-    let updateData: Record<string, any> = {}
+    let updateData: Record<string, string | number | string[] | Record<string, unknown> | null> = {}
 
     // Tipo 1: Update de status
     if ('status' in body && Object.keys(body).length === 1) {
@@ -120,15 +120,18 @@ export async function PUT(
     }
 
     // Executar update no Supabase
-    const { data, error } = await (supabaseAdmin
-      .from('automation_executions') as any)
+    const result = await supabaseAdmin
+      .from('automation_executions')
+      // @ts-expect-error - Supabase typing issue with dynamic update data
       .update(updateData)
       .eq('id', id)
       .select()
       .single()
 
+    const { data, error } = result as { data: Record<string, unknown> | null; error: { message: string } | null }
+
     if (error) {
-      logger.error('Erro ao atualizar automation execution', { id }, error)
+      logger.error('Erro ao atualizar automation execution', { id }, new Error(error.message))
       return errorResponse(error.message, 500)
     }
 
@@ -136,13 +139,8 @@ export async function PUT(
       return errorResponse('Automation execution não encontrada', 404)
     }
 
-    logger.info('Automation execution atualizada com sucesso', {
-      id,
-      updateType: 'status' in body ? 'status' : 'error_message' in body ? 'error' : 'checkpoint'
-    })
-
     return successResponse(data)
-  } catch (error) {
+  } catch (error: unknown) {
     return handleError(error)
   }
 }
@@ -156,10 +154,10 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
 
     const { error } = await supabaseAdmin
       .from('automation_executions')
@@ -171,10 +169,8 @@ export async function DELETE(
       return errorResponse(error.message, 500)
     }
 
-    logger.info('Automation execution deletada com sucesso', { id })
-
     return successResponse({ message: 'Automation execution deletada com sucesso' })
-  } catch (error) {
+  } catch (error: unknown) {
     return handleError(error)
   }
 }

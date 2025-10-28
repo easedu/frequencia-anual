@@ -119,7 +119,7 @@ function parsePath(path: string, defaultIdColumn: string = 'id'): {
  * - Automatic cache invalidation on updates
  * - Type-safe with TypeScript generics
  */
-export function useSupabaseDoc<T = any>(
+export function useSupabaseDoc<T = Record<string, unknown>>(
   path: string,
   options: UseSupabaseDocOptions = {}
 ): UseSupabaseDocReturn<T> {
@@ -179,15 +179,25 @@ export function useSupabaseDoc<T = any>(
     try {
       const { table, idColumn, idValue } = parsePath(path, customIdColumn);
 
-      // Type assertion needed because Supabase doesn't know table types at runtime
-      // Cast supabase client to any to bypass TypeScript's strict table typing
-      const supabaseAny = supabase as any;
-      const { data: result, error: updateError } = await supabaseAny
+      // Dynamic table access - runtime table name requires less strict typing
+      type SupabaseUpdateOperation = {
+        from: (table: string) => {
+          update: (data: Record<string, unknown>) => {
+            eq: (column: string, value: string) => {
+              select: () => {
+                single: () => Promise<{ data: T | null; error: Error | null }>;
+              };
+            };
+          };
+        };
+      };
+
+      const { data: result, error: updateError } = await ((supabase as unknown as SupabaseUpdateOperation)
         .from(table)
-        .update(newData)
+        .update(newData as Record<string, unknown>)
         .eq(idColumn, idValue)
         .select()
-        .single();
+        .single());
 
       if (updateError) throw updateError;
 
@@ -197,7 +207,6 @@ export function useSupabaseDoc<T = any>(
       // Update cache
       cache.set('supabase-doc', { path }, result as T, cacheTime);
 
-      logger.info(`Documento ${path} atualizado com sucesso`, { path });
     } catch (err) {
       const error = err as Error;
       logger.error(`Erro ao atualizar documento ${path}`, { path }, error);
@@ -246,8 +255,6 @@ export function useSupabaseDoc<T = any>(
               filter: `${idColumn}=eq.${idValue}`,
             },
             (payload) => {
-              logger.info(`Real-time update em ${path}`, { payload });
-
               if (payload.eventType === 'DELETE') {
                 setData(null);
                 cache.invalidate('supabase-doc', { path });
@@ -259,9 +266,7 @@ export function useSupabaseDoc<T = any>(
             }
           )
           .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-              logger.info(`Inscrito em real-time: ${path}`);
-            } else if (status === 'CHANNEL_ERROR') {
+            if (status === 'CHANNEL_ERROR') {
               logger.error(`Erro no canal real-time: ${path}`, { path }, new Error('Channel error'));
             }
           });

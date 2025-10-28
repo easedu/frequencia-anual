@@ -11,7 +11,7 @@ export { withAuth, type AuthenticatedHandler } from './auth';
 export { withTimeout, isNearTimeout, type PublicApiHandler } from './withTimeout';
 
 // Validation middleware
-export { validateRequest } from './validation';
+export { withValidation, validateQueryParams, sanitizeString, sanitizeObject } from './validation';
 
 // Response utilities
 export { successResponse, errorResponse, notFoundResponse } from '../_utils/response';

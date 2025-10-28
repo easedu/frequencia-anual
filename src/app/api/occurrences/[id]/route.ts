@@ -6,7 +6,7 @@
  * DELETE - Remove occurrence
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
@@ -77,16 +77,26 @@ export async function PUT(
     const validated = updateOccurrenceSchema.parse(body)
 
     // Montar objeto de atualização (apenas campos fornecidos)
-    const updateData: Record<string, any> = {}
+    const updateData: {
+      occurrence_type?: string;
+      occurrence_date?: string;
+      description?: string;
+      severity?: string;
+      action_taken?: string | null;
+      family_notified?: boolean;
+      notification_method?: string | null;
+      follow_up_notes?: string | null;
+      updated_at?: string;
+    } = {}
 
     if (validated.occurrence_type !== undefined) updateData.occurrence_type = validated.occurrence_type
     if (validated.occurrence_date !== undefined) updateData.occurrence_date = validated.occurrence_date
     if (validated.description !== undefined) updateData.description = validated.description
     if (validated.severity !== undefined) updateData.severity = validated.severity
-    if (validated.action_taken !== undefined) updateData.action_taken = validated.action_taken
+    if (validated.action_taken !== undefined) updateData.action_taken = validated.action_taken ?? null
     if (validated.family_notified !== undefined) updateData.family_notified = validated.family_notified
-    if (validated.notification_method !== undefined) updateData.notification_method = validated.notification_method
-    if (validated.follow_up_notes !== undefined) updateData.follow_up_notes = validated.follow_up_notes
+    if (validated.notification_method !== undefined) updateData.notification_method = validated.notification_method ?? null
+    if (validated.follow_up_notes !== undefined) updateData.follow_up_notes = validated.follow_up_notes ?? null
 
     // Adicionar updated_at automaticamente
     updateData.updated_at = new Date().toISOString()
@@ -94,8 +104,7 @@ export async function PUT(
     // Atualizar no Supabase
     const { data, error } = await supabaseAdmin
       .from('student_occurrences')
-      // @ts-ignore - Supabase type mismatch
-      .update({...updateData} as any)
+      .update(updateData as never)
       .eq('id', await context.params.then(p => p.id))
       .select()
       .single()

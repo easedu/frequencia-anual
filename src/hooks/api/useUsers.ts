@@ -24,6 +24,14 @@ export const ROLE_MAPPING = {
   'user-pcd': 'USER-PCD' as UserRole,
 };
 
+export interface UserMetadataFields {
+  theme?: 'light' | 'dark' | 'system';
+  language?: string;
+  notifications?: boolean;
+  preferences?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export interface UserProfile {
   id: string;
   firebase_uid: string;
@@ -32,7 +40,7 @@ export interface UserProfile {
   role: UserRole;
   is_active: boolean;
   last_login_at: string | null;
-  metadata: Record<string, any> | null;
+  metadata: UserMetadataFields | null;
   created_at: string;
   updated_at: string;
 }
@@ -53,7 +61,7 @@ export interface CreateUserData {
   display_name?: string | null;
   role?: UserRole;
   is_active?: boolean;
-  metadata?: Record<string, any> | null;
+  metadata?: UserMetadataFields | null;
 }
 
 export interface UpdateUserData {
@@ -61,14 +69,14 @@ export interface UpdateUserData {
   role?: UserRole;
   is_active?: boolean;
   last_login_at?: string | null;
-  metadata?: Record<string, any> | null;
+  metadata?: UserMetadataFields | null;
 }
 
 export interface UserMetadata {
   theme?: 'light' | 'dark' | 'system';
   favorites?: string[];
-  preferences?: Record<string, any>;
-  [key: string]: any;
+  preferences?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 // ============================================================================

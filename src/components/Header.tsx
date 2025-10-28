@@ -2,13 +2,11 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Home, LogOut, GraduationCap, Menu, X, User, Settings, Wifi, WifiOff } from "lucide-react";
+import { Home, LogOut, GraduationCap, Menu, X, User, Wifi, WifiOff } from "lucide-react";
 import { useServiceWorkerContext } from "@/components/ServiceWorkerProvider";
 import { useAuth } from "@/components/AuthProvider";
 
 export default function Header() {
-    const router = useRouter();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const { isOnline, offlineStatus } = useServiceWorkerContext();
     const { signOut: authSignOut, user, userProfile } = useAuth();

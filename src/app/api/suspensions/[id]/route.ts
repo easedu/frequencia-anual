@@ -11,8 +11,12 @@ import { successResponse, errorResponse, notFoundResponse, validationErrorRespon
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { getDiasLetivosNoPeriodo, parseDate, getBimesterByDate } from '@/app/utils';
+import type { Database } from '@/lib/supabaseClient';
 
 type RouteParams = { params: Promise<{ id: string }> };
+
+type SuspensionRow = Database['public']['Tables']['student_suspensions']['Row'];
+type SuspensionUpdate = Database['public']['Tables']['student_suspensions']['Update'];
 
 export const GET = withAuth(async (req: NextRequest, userId: string, context?: RouteParams) => {
   try {
@@ -67,21 +71,31 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
       return date; // Já está em YYYY-MM-DD
     };
 
-    const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+    const updateData: SuspensionUpdate = {};
     if (sanitizedData.dataInicio) updateData.start_date = convertToISODate(sanitizedData.dataInicio);
     if (sanitizedData.dataFim) updateData.end_date = convertToISODate(sanitizedData.dataFim);
     if (sanitizedData.motivo !== undefined) updateData.reason = sanitizedData.motivo;
     if (sanitizedData.observacoes !== undefined) updateData.description = sanitizedData.observacoes;
+    updateData.updated_by = userId;
 
-    const { data: updatedData, error: updateError } = (await supabaseAdmin
+    type SuspensionWithStudent = SuspensionRow & {
+      students?: { id: string; student_id: string } | null;
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateResult = await (supabaseAdmin as any)
       .from('student_suspensions')
-      // @ts-ignore - Supabase types are complex
       .update(updateData)
       .eq('id', id)
       .select('*, students(id, student_id)')
-      .single()) as { data: any; error: any };
+      .single();
 
-    if (updateError) {
+    const { data: updatedData, error: updateError } = updateResult as {
+      data: SuspensionWithStudent | null;
+      error: { message: string } | null
+    };
+
+    if (updateError || !updatedData) {
       console.error('[PUT /api/suspensions/[id]] Error:', updateError);
       return errorResponse('DATABASE_ERROR', 'Erro ao atualizar suspensão', 500);
     }
@@ -95,15 +109,21 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
         const endDate = updatedData.end_date;
         const internalId = updatedData.students?.id;
 
+        if (!internalId) {
+          throw new Error('Internal ID not found for student');
+        }
+
         // 1. ✅ DESASSOCIAR faltas antigas (NÃO DELETAR!)
-        const { error: updateOldError } = (await supabaseAdmin
+        const disassociateUpdate = {
+          suspension_id: null,
+          is_justified: false
+        };
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: updateOldError } = await (supabaseAdmin as any)
           .from('student_absences')
-          // @ts-ignore - Supabase types inference issue
-          .update({
-            suspension_id: null,
-            is_justified: false
-          })
-          .eq('suspension_id', id)) as { error: any };
+          .update(disassociateUpdate)
+          .eq('suspension_id', id);
 
         if (updateOldError) {
           console.error('[PUT /api/suspensions/[id]] ❌ Erro ao desassociar faltas antigas:', updateOldError);
@@ -138,9 +158,6 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
               return dateStr;
             };
 
-            let updatedCount = 0;
-            let createdCount = 0;
-
             // Para cada dia letivo, buscar falta existente ou criar nova
             for (const diaLetivo of diasLetivos) {
               const absenceDate = convertToISODate(diaLetivo);
@@ -151,39 +168,40 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
                                  bimester === 4 ? '4º Bimestre' : null;
 
               // Verificar se falta já existe para este estudante e data
-              const { data: existingAbsence, error: checkError } = (await supabaseAdmin
+              const { data: existingAbsence } = await supabaseAdmin
                 .from('student_absences')
                 .select('id')
                 .eq('student_id', internalId)
                 .eq('absence_date', absenceDate)
-                .maybeSingle()) as { data: { id: string } | null; error: any };
+                .maybeSingle() as { data: { id: string } | null; error: { message: string } | null };
 
               if (existingAbsence) {
                 // ✅ Falta existe: ATUALIZAR para associar à suspensão
-                const { error: updateError } = (await supabaseAdmin
-                  .from('student_absences')
-                  // @ts-ignore - Supabase types inference issue
-                  .update({
-                    is_justified: true,
-                    suspension_id: id,
-                  })
-                  .eq('id', existingAbsence.id)) as { error: any };
+                const justifyUpdate = {
+                  is_justified: true,
+                  suspension_id: id,
+                };
 
-                if (!updateError) updatedCount++;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (supabaseAdmin as any)
+                  .from('student_absences')
+                  .update(justifyUpdate)
+                  .eq('id', existingAbsence.id);
               } else {
                 // ✅ Falta não existe: CRIAR nova
-                const { error: insertError } = (await supabaseAdmin
-                  .from('student_absences')
-                  // @ts-ignore - Supabase types inference issue
-                  .insert({
-                    student_id: internalId,
-                    absence_date: absenceDate,
-                    bimester: bimesterStr,
-                    is_justified: true,
-                    suspension_id: id,
-                  })) as { error: any };
+                const newAbsence = {
+                  student_id: internalId,
+                  absence_date: absenceDate,
+                  bimester: bimesterStr,
+                  is_justified: true,
+                  suspension_id: id,
+                  medical_certificate_id: null, // Required field
+                };
 
-                if (!insertError) createdCount++;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (supabaseAdmin as any)
+                  .from('student_absences')
+                  .insert(newAbsence);
               }
             }
           }
@@ -228,15 +246,16 @@ export const DELETE = withAuth(async (req: NextRequest, userId: string, context?
     if (checkError || !existing) return notFoundResponse('Suspensão', id);
 
     // ✅ ANTES de deletar, desassociar faltas e marcar como não justificadas
+    const disassociateUpdate = {
+      suspension_id: null,
+      is_justified: false
+    };
 
-    const { error: updateAbsencesError } = (await supabaseAdmin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: updateAbsencesError } = await (supabaseAdmin as any)
       .from('student_absences')
-      // @ts-ignore - Supabase types inference issue
-      .update({
-        suspension_id: null,
-        is_justified: false
-      })
-      .eq('suspension_id', id)) as { error: any };
+      .update(disassociateUpdate)
+      .eq('suspension_id', id);
 
     if (updateAbsencesError) {
       console.error('[DELETE /api/suspensions/[id]] ❌ Erro ao desassociar faltas:', updateAbsencesError);

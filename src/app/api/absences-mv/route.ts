@@ -5,7 +5,36 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { successResponse, errorResponse } from '@/app/api/_utils/response';
+import { errorResponse } from '@/app/api/_utils/response';
+
+// ════════════════════════════════════════════════════════════════
+// TYPES
+// ════════════════════════════════════════════════════════════════
+
+interface AbsenceWithStudentInfo {
+  id: string;
+  student_id: string;
+  student_name: string;
+  student_class: string;
+  absence_date: string;
+  bimester: number;
+  is_justified: boolean;
+  medical_certificate_id?: string | null;
+  suspension_id?: string | null;
+  school_year: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SupabaseQueryError {
+  message: string;
+  code?: string;
+  details?: string;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ROUTE HANDLER
+// ════════════════════════════════════════════════════════════════
 
 export async function GET(req: NextRequest) {
   try {
@@ -45,7 +74,10 @@ export async function GET(req: NextRequest) {
       query = query.lt('absence_date', cursor);
     }
 
-    const { data, error } = await query;
+    const { data, error } = (await query) as {
+      data: AbsenceWithStudentInfo[];
+      error: SupabaseQueryError | null;
+    };
 
     if (error) {
       console.error('[API absences-mv] Supabase error:', error);
@@ -55,7 +87,9 @@ export async function GET(req: NextRequest) {
     // Detectar se há próxima página
     const hasNextPage = data.length > limit;
     const items = hasNextPage ? data.slice(0, limit) : data;
-    const nextCursor = hasNextPage ? items[items.length - 1].absence_date : null;
+    const nextCursor = hasNextPage && items.length > 0
+      ? items[items.length - 1].absence_date
+      : null;
 
     // ✅ OTIMIZAÇÃO Fase 1: Response com HTTP Cache headers
     return NextResponse.json(

@@ -21,7 +21,7 @@ export interface Contact {
   phone_numeric?: string | null;
   email?: string | null;
   can_receive_whatsapp: boolean;
-  whatsapp_data?: Record<string, any>;
+  whatsapp_data?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -170,7 +170,7 @@ export function useCreateContact() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createContact = useCallback(async (contactData: any) => {
+  const createContact = useCallback(async (contactData: Partial<Omit<Contact, 'id' | 'created_at' | 'updated_at'>>) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
@@ -220,7 +220,7 @@ export function useUpdateContact() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateContact = useCallback(async (id: string, contactData: any) => {
+  const updateContact = useCallback(async (id: string, contactData: Partial<Omit<Contact, 'id' | 'created_at' | 'updated_at'>>) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {

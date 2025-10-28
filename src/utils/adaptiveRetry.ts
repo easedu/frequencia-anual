@@ -29,7 +29,7 @@
  * ```
  */
 
-import pRetry, { AbortError, FailedAttemptError } from 'p-retry';
+import pRetry, { AbortError } from 'p-retry';
 import pTimeout, { TimeoutError } from 'p-timeout';
 
 // ============================================================================
@@ -137,57 +137,60 @@ export async function withAdaptiveRetry<T>(
           );
 
           return result;
-        } catch (error) {
+        } catch (err) {
           // Classificar tipo de erro
-          if (error instanceof TimeoutError) {
+          if (err instanceof TimeoutError) {
             timeouts++;
             console.warn(
               `[${cfg.operationName}] ⏱️ Timeout na tentativa ${attempt}/${cfg.maxRetries}`
             );
-            throw error; // pRetry vai tentar novamente
+            throw err; // pRetry vai tentar novamente
           }
 
           // Erro de rede (fetch failed, connection reset, etc)
           if (
-            error instanceof TypeError &&
-            (error.message.includes('fetch') ||
-              error.message.includes('network') ||
-              error.message.includes('Failed to fetch'))
+            err instanceof TypeError &&
+            (err.message.includes('fetch') ||
+              err.message.includes('network') ||
+              err.message.includes('Failed to fetch'))
           ) {
             networkErrors++;
             console.warn(
               `[${cfg.operationName}] 🌐 Erro de rede na tentativa ${attempt}/${cfg.maxRetries}`
             );
-            throw error;
+            throw err;
           }
 
           // Verificar se erro é retryable (custom logic)
-          if (config.shouldRetry && !config.shouldRetry(error as Error)) {
+          if (config.shouldRetry && !config.shouldRetry(err as Error)) {
             // Erro não retryable (ex: 404, 401, 400) - abortar imediatamente
             console.error(
-              `[${cfg.operationName}] ❌ Erro não retryable: ${(error as Error).message}`
+              `[${cfg.operationName}] ❌ Erro não retryable: ${(err as Error).message}`
             );
-            throw new AbortError(error as Error);
+            throw new AbortError(err as Error);
           }
 
           // Outros erros retryable
           otherErrors++;
           console.warn(
-            `[${cfg.operationName}] ⚠️ Erro retryable na tentativa ${attempt}/${cfg.maxRetries}: ${(error as Error).message}`
+            `[${cfg.operationName}] ⚠️ Erro retryable na tentativa ${attempt}/${cfg.maxRetries}: ${(err as Error).message}`
           );
-          throw error;
+          throw err;
         }
       },
       {
         retries: cfg.maxRetries,
-        onFailedAttempt: (error: FailedAttemptError) => {
+        onFailedAttempt: (context) => {
           // Callback antes de cada retry
+          const attemptNumber = (context as unknown as { attemptNumber: number }).attemptNumber;
+          const retriesLeft = (context as unknown as { retriesLeft: number }).retriesLeft;
+
           console.warn(
-            `[${cfg.operationName}] Falha na tentativa ${error.attemptNumber}/${cfg.maxRetries} (${error.retriesLeft} tentativas restantes)`
+            `[${cfg.operationName}] Falha na tentativa ${attemptNumber}/${cfg.maxRetries} (${retriesLeft} tentativas restantes)`
           );
 
           if (config.onRetry) {
-            config.onRetry(error.attemptNumber, error);
+            config.onRetry(attemptNumber, context as unknown as Error);
           }
         },
         // Exponential backoff delay
@@ -197,8 +200,8 @@ export async function withAdaptiveRetry<T>(
       }
     );
 
-    return result;
-  } catch (error) {
+    return result as T;
+  } catch (err) {
     // Todas as tentativas falharam
     const duration = performance.now() - startTime;
 
@@ -217,7 +220,7 @@ export async function withAdaptiveRetry<T>(
       metrics
     );
 
-    throw error;
+    throw err;
   }
 }
 

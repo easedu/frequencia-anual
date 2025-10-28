@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,19 +34,17 @@ import {
   FileText,
   X
 } from 'lucide-react';
-import { auth } from '@/firebase.config';
 import { useStudents } from '@/hooks/useStudents';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
-import type { FamilyInteraction } from '@/types';
 import {
   useAcademicYearComplete,
   useAbsences,
   useCreateInteraction,
   useResolvedCases,
   useCreateResolvedCase,
-  useDeleteResolvedCase
+  useDeleteResolvedCase,
+  type ResolvedCase
 } from '@/hooks/api';
 
 interface ConsecutiveAbsence {
@@ -71,18 +69,17 @@ interface SchoolDay {
 
 export default function MonitorarFaltasConsecutivasPage() {
   const { students, loading: studentsLoading } = useStudents();
-  const router = useRouter();
 
   // Hooks da API
-  const { academicYearComplete, loading: loadingAcademicYear } = useAcademicYearComplete(2025);
-  const { absences, loading: loadingAbsences } = useAbsences({
+  const { academicYearComplete } = useAcademicYearComplete(2025);
+  const { absences } = useAbsences({
     allowAll: true, // ✅ CRÍTICO: Permitir buscar todas as faltas (análise global)
     limit: 50000 // Carregar todas as faltas para análise
   });
-  const { createInteraction, loading: creatingInteraction } = useCreateInteraction();
-  const { resolvedCases: apiResolvedCases, loading: loadingResolvedCases, refetch: refetchResolvedCases } = useResolvedCases({});
-  const { createResolvedCase, loading: creatingResolvedCase } = useCreateResolvedCase();
-  const { deleteResolvedCase, loading: deletingResolvedCase } = useDeleteResolvedCase();
+  const { createInteraction } = useCreateInteraction();
+  const { resolvedCases: apiResolvedCases, refetch: refetchResolvedCases } = useResolvedCases({});
+  const { createResolvedCase } = useCreateResolvedCase();
+  const { deleteResolvedCase } = useDeleteResolvedCase();
 
   const [consecutiveAbsences, setConsecutiveAbsences] = useState<ConsecutiveAbsence[]>([]);
   const [loading, setLoading] = useState(false);
@@ -127,9 +124,9 @@ export default function MonitorarFaltasConsecutivasPage() {
   }, [students]);
 
   // Função para carregar dados do ano letivo (agora via hook)
-  const loadAcademicYearData = (): any => {
+  const loadAcademicYearData = (): Record<string, { startDate: string; endDate: string; dates: SchoolDay[] }> | null => {
     if (academicYearComplete && Object.keys(academicYearComplete).length > 0) {
-      return academicYearComplete;
+      return academicYearComplete as unknown as Record<string, { startDate: string; endDate: string; dates: SchoolDay[] }>;
     }
     return null;
   };
@@ -258,7 +255,7 @@ export default function MonitorarFaltasConsecutivasPage() {
       const schoolDayDates = new Set(schoolDays.map(day => day.date));
 
       // Filtrar faltas não justificadas do hook
-      const unjustifiedAbsences = absences.filter((absence: any) => !absence.is_justified);
+      const unjustifiedAbsences = absences.filter((absence: { is_justified?: boolean }) => !absence.is_justified);
 
       // Organizar faltas por estudante
       const absencesByStudent: Record<string, string[]> = {};
@@ -269,7 +266,7 @@ export default function MonitorarFaltasConsecutivasPage() {
       });
 
       // Processar faltas
-      unjustifiedAbsences.forEach((absence: any) => {
+      unjustifiedAbsences.forEach((absence: { estudanteId?: string; student_id?: string; absence_date?: string }) => {
         // ✅ PRIORIZAR estudanteId (Firebase UUID) que é usado no array de estudantes
         // student_id é o Internal ID do Supabase (UUID diferente)
         const studentId = absence.estudanteId || absence.student_id;
@@ -675,7 +672,7 @@ export default function MonitorarFaltasConsecutivasPage() {
   // Sincronizar casos resolvidos do hook com estado local
   useEffect(() => {
     if (apiResolvedCases.length > 0) {
-      const studentIds = apiResolvedCases.map((rc: any) => rc.student_id);
+      const studentIds = apiResolvedCases.map((rc: ResolvedCase) => rc.student_id);
       setResolvedCases(new Set(studentIds));
     }
   }, [apiResolvedCases]);
@@ -696,12 +693,12 @@ export default function MonitorarFaltasConsecutivasPage() {
     }
   };
 
-  const removeResolvedCase = async (estudanteId: string) => {
+  const _removeResolvedCase = async (estudanteId: string) => {
     try {
       // Encontrar o caso resolvido para este estudante
-      const caseToDelete = apiResolvedCases.find((rc: any) => rc.student_id === estudanteId);
+      const caseToDelete = apiResolvedCases.find((rc: ResolvedCase) => rc.student_id === estudanteId);
       if (caseToDelete) {
-        await deleteResolvedCase((caseToDelete as any).id);
+        await deleteResolvedCase(caseToDelete.id);
         // Refetch para atualizar lista
         refetchResolvedCases();
       }

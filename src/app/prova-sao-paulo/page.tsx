@@ -16,9 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Toaster, toast } from "sonner";
 import { FileSpreadsheet, Upload, CheckCircle, AlertTriangle, Info } from "lucide-react";
-import { EmptyState, InfoState } from "@/components/shared";
 import { StudentDataService } from "@/services/studentDataService";
-import type { Student } from "@/types";
 import { logger } from "@/utils/logger";
 import Papa from "papaparse";
 
@@ -311,30 +309,25 @@ export default function ProvaSaoPauloPage() {
             resultado.alunosAtualizados = resultado.alunosEncontrados;
 
             // Salvar dados atualizados via Supabase (apenas os modificados)
-            logger.info('Salvando estudantes modificados via Supabase', { total: estudantesModificados.size });
-
-            let salvosComSucesso = 0;
             for (const estudanteId of estudantesModificados) {
                 try {
                     const estudante = estudantesAtualizados.find(e => e.estudanteId === estudanteId);
                     if (!estudante) continue;
 
                     await StudentDataService.updateStudent(estudante);
-                    salvosComSucesso++;
                 } catch (error) {
                     logger.error('Erro ao salvar estudante', { estudanteId }, error as Error);
                     resultado.erros.push(`Erro ao salvar estudante ${estudanteId}`);
                 }
             }
 
-            logger.info('Estudantes salvos no Supabase', { salvos: salvosComSucesso, total: estudantesModificados.size });
             setProgress(100);
             setResultado(resultado);
 
             toast.success(`Processamento concluído! ${resultado.alunosAtualizados} alunos atualizados.`);
 
         } catch (error) {
-            logger.error("Erro durante processamento", error as Error);
+            logger.error("Erro durante processamento", {}, error as Error);
             toast.error(`Erro durante processamento: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
         } finally {
             setIsProcessing(false);

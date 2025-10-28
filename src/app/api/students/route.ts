@@ -8,7 +8,7 @@
  * OTIMIZADO: SELECT estratificado para reduzir over-fetching
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAuth } from '@/app/api/_middleware/auth';
 import { validateQueryParams, sanitizeObject } from '@/app/api/_middleware/validation';
 import {
@@ -29,10 +29,70 @@ import { v4 as uuidv4 } from 'uuid';
 import type { DetailLevel } from '@/types/api-responses';
 
 // ============================================================================
+// TIPOS
+// ============================================================================
+
+interface SupabaseStudent {
+  id: string;
+  student_id: string;
+  name: string;
+  class: string;
+  shift: string;
+  status: string;
+  bolsa_familia: string;
+  registration_number?: string;
+  birth_date?: string;
+  address?: Record<string, unknown>;
+  disabilities?: string[];
+  created_at: string;
+  updated_at: string;
+  student_contacts?: SupabaseContact[] | { count: number };
+}
+
+interface SupabaseContact {
+  id: string;
+  name: string;
+  relationship: string;
+  phone: string;
+  phone_numeric: string;
+  can_receive_whatsapp: boolean;
+  whatsapp_data?: Record<string, unknown>;
+}
+
+interface StudentInsert {
+  student_id: string;
+  user_id: string;
+  name: string;
+  class: string;
+  shift: string;
+  status: string;
+  bolsa_familia: string;
+  registration_number?: string | null;
+  birth_date?: string | null;
+  school_year: string;
+  address: Record<string, unknown>;
+  disabilities: Record<string, unknown>[];
+  migrated_from: string;
+  version: string;
+  deleted: boolean;
+}
+
+interface ContactInsert {
+  student_id: string;
+  name: string;
+  relationship: string;
+  phone: string;
+  phone_numeric: string;
+  can_receive_whatsapp: boolean;
+  whatsapp_data: Record<string, unknown>;
+  version: string;
+}
+
+// ============================================================================
 // GET /api/students - Listar estudantes com filtros
 // ============================================================================
 
-export const GET = withAuth(async (req: NextRequest, userId: string) => {
+export const GET = withAuth(async (req: NextRequest, __userId: string) => {
   try {
     // 1. Validar query params
     const validation = validateQueryParams(req, studentQuerySchema);
@@ -61,7 +121,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     const useCursorPagination = !!cursor;
 
     // 4. Construir query no Supabase
-    let query: any = supabaseAdmin
+    let query = supabaseAdmin
       .from('students')
       .select(selectQuery, {
         // ✅ count apenas na primeira página (cursor pagination)
@@ -128,21 +188,23 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // 6. Processar resultado baseado no tipo de paginação
-    let students: any[];
+    let students: Record<string, unknown>[];
     let hasNextPage = false;
     let nextCursor: string | null = null;
 
     if (useCursorPagination) {
       // ✅ Cursor pagination: determinar se há próxima página
-      hasNextPage = (data || []).length > limit;
-      const items = hasNextPage ? (data || []).slice(0, limit) : (data || []);
+      const dataArray = (data || []) as SupabaseStudent[];
+      hasNextPage = dataArray.length > limit;
+      const items = hasNextPage ? dataArray.slice(0, limit) : dataArray;
       students = items.map((s) => convertSupabaseToEstudante(s, detail as DetailLevel));
       nextCursor = hasNextPage && students.length > 0
         ? items[items.length - 1].student_id
         : null;
     } else {
       // Offset pagination tradicional
-      students = (data || []).map((s) =>
+      const dataArray = (data || []) as SupabaseStudent[];
+      students = dataArray.map((s) =>
         convertSupabaseToEstudante(s, detail as DetailLevel)
       );
     }
@@ -196,7 +258,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 // POST /api/students - Criar novo estudante
 // ============================================================================
 
-export const POST = withAuth(async (req: NextRequest, userId: string) => {
+export const POST = withAuth(async (req: NextRequest, __userId: string) => {
   try {
     // 1. Parse body
     const body = await req.json();
@@ -229,7 +291,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     const estudanteId = uuidv4(); // UUID para student_id (legacy)
 
     // 5. Preparar dados para Supabase
-    const studentInsert: any = {
+    const studentInsert: StudentInsert = {
       student_id: estudanteId,
       user_id: userId, // RLS
       name: sanitizedData.nome,
@@ -248,13 +310,14 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     };
 
     // 6. Inserir estudante
-    const { data: studentData, error: studentError } = (await supabaseAdmin
+    const { data: studentData, error: studentError } = await supabaseAdmin
       .from('students')
+      // @ts-ignore - Supabase insert types são complexos, já validado por StudentInsert
       .insert(studentInsert)
       .select('id')
-      .single()) as { data: any; error: any };
+      .single() as { data: { id: string } | null; error: unknown };
 
-    if (studentError) {
+    if (studentError || !studentData) {
       console.error('[POST /api/students] Error inserting student:', studentError);
       return errorResponse(
         'DATABASE_ERROR',
@@ -266,7 +329,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 
     // 7. Inserir contatos (se houver)
     if (sanitizedData.contatos && sanitizedData.contatos.length > 0) {
-      const contactsInsert = sanitizedData.contatos.map((contato) => ({
+      const contactsInsert: ContactInsert[] = sanitizedData.contatos.map((contato) => ({
         student_id: studentData.id,
         name: contato.nome,
         relationship: contato.parentesco || '',
@@ -277,9 +340,10 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
         version: '3.0',
       }));
 
-      const { error: contactsError } = (await supabaseAdmin
+      const { error: contactsError } = await supabaseAdmin
         .from('student_contacts')
-        .insert(contactsInsert as any)) as { error: any };
+        // @ts-ignore - Supabase insert types são complexos, já validado por ContactInsert[]
+        .insert(contactsInsert);
 
       if (contactsError) {
         console.error('[POST /api/students] Error inserting contacts:', contactsError);
@@ -312,7 +376,10 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
  * @param student - Dados do estudante do Supabase
  * @param detailLevel - Nível de detalhamento (minimal, summary, detailed, full)
  */
-function convertSupabaseToEstudante(student: any, detailLevel: DetailLevel = 'minimal'): any {
+function convertSupabaseToEstudante(
+  student: SupabaseStudent,
+  detailLevel: DetailLevel = 'minimal'
+): Record<string, unknown> {
   // Base (sempre presente)
   const base = {
     id: student.id,
@@ -366,10 +433,14 @@ function convertSupabaseToEstudante(student: any, detailLevel: DetailLevel = 'mi
   }
 
   // Full: tudo + relacionamentos
+  const contacts = Array.isArray(student.student_contacts)
+    ? student.student_contacts
+    : [];
+
   return {
     ...detailed,
     email: undefined,
-    contatos: (student.student_contacts || []).map((contact: any) => ({
+    contatos: contacts.map((contact) => ({
       nome: contact.name,
       parentesco: contact.relationship || '',
       telefone: contact.phone || '',

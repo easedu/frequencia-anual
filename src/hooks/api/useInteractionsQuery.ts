@@ -36,9 +36,24 @@ export interface InteractionFilters {
   cursor?: string;
 }
 
+export interface InteractionData {
+  id: string;
+  studentId: string;
+  type: string;
+  date: string;
+  description: string;
+  createdBy: string;
+  sensitive: boolean;
+  whatsappMessage?: string;
+  whatsappPhones?: string[];
+  whatsappMessageId?: string;
+  whatsappStatus?: string;
+  [key: string]: unknown;
+}
+
 export interface InteractionResponse {
   success: boolean;
-  data: any[];
+  data: InteractionData[];
   pagination: {
     limit: number;
     hasNextPage: boolean;
@@ -124,12 +139,23 @@ export function useStudentInteractions(studentId: string) {
 /**
  * Hook para criar interação
  */
+export interface CreateInteractionData {
+  studentId: string;
+  type: string;
+  date: string;
+  description: string;
+  sensitive?: boolean;
+  whatsappMessage?: string;
+  whatsappPhones?: string[];
+  [key: string]: unknown;
+}
+
 export function useCreateInteraction() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (interactionData: any) => {
+    mutationFn: async (interactionData: CreateInteractionData) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 

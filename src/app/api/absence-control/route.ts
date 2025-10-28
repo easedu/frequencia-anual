@@ -28,7 +28,7 @@ import { getCountStrategy } from '@/app/api/_utils/countStrategy'
  * GET /api/absence-control?academic_year=2025
  * GET /api/absence-control?academic_year=2025&bimester=1
  */
-export const GET = withAuth(async (request: NextRequest, userId: string) => {
+export const GET = withAuth(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url)
 
@@ -72,7 +72,7 @@ export const GET = withAuth(async (request: NextRequest, userId: string) => {
     const { data, error, count } = await query
 
     if (error) {
-      logger.error('Erro ao buscar controles de faltas', error)
+      logger.error('Erro ao buscar controles de faltas', { message: error.message, details: error.details })
       return errorResponse(error.message, 500)
     }
 
@@ -125,19 +125,32 @@ export async function POST(request: NextRequest) {
     // Validar dados
     const validated = createAbsenceControlSchema.parse(body)
 
+    // Interface para o upsert
+    interface AbsenceControlUpsert {
+      academic_year: number;
+      bimester: number;
+      school_days: number;
+      start_date: string | null;
+      end_date: string | null;
+      notes: string | null;
+      created_by: string | null;
+    }
+
+    const upsertData: AbsenceControlUpsert = {
+      academic_year: validated.academic_year,
+      bimester: validated.bimester,
+      school_days: validated.school_days,
+      start_date: validated.start_date || null,
+      end_date: validated.end_date || null,
+      notes: validated.notes || null,
+      created_by: validated.created_by || null,
+    }
+
     // Upsert no Supabase (cria se não existe, atualiza se existe)
-    const { data, error } = await supabaseAdmin
+    const result = await supabaseAdmin
       .from('absence_control')
       .upsert(
-        {
-          academic_year: validated.academic_year,
-          bimester: validated.bimester,
-          school_days: validated.school_days,
-          start_date: validated.start_date || null,
-          end_date: validated.end_date || null,
-          notes: validated.notes || null,
-          created_by: validated.created_by || null,
-        } as any,
+        upsertData as never,
         {
           onConflict: 'academic_year,bimester',
           ignoreDuplicates: false,
@@ -146,8 +159,10 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
+    const { data, error } = result as { data: AbsenceControlUpsert | null; error: { message: string; details?: string } | null };
+
     if (error) {
-      logger.error('Erro ao criar/atualizar controle de faltas', error)
+      logger.error('Erro ao criar/atualizar controle de faltas', { message: error.message, details: error.details })
       return errorResponse(error.message, 500)
     }
 

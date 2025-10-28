@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { BarChart, Bar, CartesianGrid, XAxis, Cell } from "recharts";
 import { AbsenceService } from "@/services/supabase/absenceService";
-import { parseDate, getBimesterByDate, formatFirebaseDate } from "@/utils/attendanceUtils";
+import { parseDate, getBimesterByDate } from "@/utils/attendanceUtils";
 import { logger } from "@/utils/logger";
 import {
     Calendar,
@@ -199,7 +199,7 @@ const DayOfWeekDistributionCard = memo(function DayOfWeekDistributionCard({
                 // Buscar faltas do Supabase
                 const supabaseAbsences = await AbsenceService.getAllAbsences();
                 // getAllAbsences já retorna AbsenceRecord[] no formato correto
-                const absenceRecords: AbsenceRecord[] = supabaseAbsences as any;
+                const absenceRecords: AbsenceRecord[] = supabaseAbsences as AbsenceRecord[];
 
                 const startDateObj = parseDate(startDate);
                 const endDateObj = parseDate(endDate);

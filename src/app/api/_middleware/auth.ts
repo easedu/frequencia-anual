@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
 
-export type AuthenticatedHandler<T = any> = (
+export type AuthenticatedHandler<T = unknown> = (
   req: NextRequest,
   userId: string,
   context?: T
@@ -27,7 +27,7 @@ export type AuthenticatedHandler<T = any> = (
 /**
  * Higher-order function que adiciona autenticação a uma API Route
  */
-export function withAuth<T = any>(handler: AuthenticatedHandler<T>) {
+export function withAuth<T = unknown>(handler: AuthenticatedHandler<T>) {
   return async (req: NextRequest, context?: T): Promise<NextResponse> => {
     try {
       // 1. Obter token de autenticação do header
@@ -90,7 +90,7 @@ export function withAuth<T = any>(handler: AuthenticatedHandler<T>) {
  * });
  * ```
  */
-export function withBearerOrBasicAuth<T = any>(handler: AuthenticatedHandler<T>) {
+export function withBearerOrBasicAuth<T = unknown>(handler: AuthenticatedHandler<T>) {
   return async (req: NextRequest, context?: T): Promise<NextResponse> => {
     try {
       const authHeader = req.headers.get('Authorization');

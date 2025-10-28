@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Download, Wifi, WifiOff } from "lucide-react";
 
 // Função de debounce simples
-function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+function debounce<T extends (...args: unknown[]) => unknown>(func: T, wait: number): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout;
   return (...args: Parameters<T>) => {
     clearTimeout(timeout);
@@ -184,7 +184,7 @@ export function ServiceWorkerProvider({ children }: ServiceWorkerProviderProps) 
       // Processar cada item de falta pendente
       for (const item of attendanceItems) {
         try {
-          const { data: attendanceData } = item;
+          const { data: attendanceData } = item as { data: { absences: Array<{ estudanteId: string; data: string; justificationType: string }>; class: string } };
 
           if (attendanceData && attendanceData.absences) {
             // Adicionar cada ausência via Supabase

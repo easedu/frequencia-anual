@@ -22,7 +22,6 @@
 import { useMemo } from 'react';
 import { useTasks, TaskFilters, UserTask } from '@/hooks/api/useTasks';
 import { useStudents } from '@/hooks/api/useStudents';
-import { logger } from '@/utils/logger';
 
 /**
  * UserTask enriquecido com dados do estudante

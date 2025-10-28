@@ -8,13 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { createClient } from '@supabase/supabase-js';
 import { getCountStrategy } from '@/app/api/_utils/countStrategy';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export async function GET(request: NextRequest) {
   try {

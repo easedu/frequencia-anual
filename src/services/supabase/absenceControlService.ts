@@ -14,25 +14,24 @@
  * Substitui: collection(db, '2025', 'faltas', 'controle')
  */
 
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, Database } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
+import { PostgrestError } from '@supabase/supabase-js';
 
 /**
- * Interface do controle de faltas (Supabase)
+ * Type alias for absence_control table row
  */
-interface SupabaseAbsenceControl {
-  id: string;
-  academic_year: number;
-  bimester: number;
-  school_days: number;
-  start_date: string | null;
-  end_date: string | null;
-  notes: string | null;
-  created_by: string | null;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
+type SupabaseAbsenceControl = Database['public']['Tables']['absence_control']['Row'];
+
+/**
+ * Type alias for absence_control table insert
+ */
+type _SupabaseAbsenceControlInsert = Database['public']['Tables']['absence_control']['Insert'];
+
+/**
+ * Type alias for absence_control table update
+ */
+type _SupabaseAbsenceControlUpdate = Database['public']['Tables']['absence_control']['Update'];
 
 /**
  * Interface do controle de faltas (Aplicação)
@@ -114,7 +113,7 @@ export class AbsenceControlService {
         .select('*')
         .eq('academic_year', year)
         .eq('bimester', bimester)
-        .maybeSingle();
+        .maybeSingle() as { data: SupabaseAbsenceControl | null; error: PostgrestError | null };
 
       if (error) {
         if (error.code === 'PGRST116') return null; // Not found
@@ -137,7 +136,7 @@ export class AbsenceControlService {
         .from('absence_control')
         .select('*')
         .eq('academic_year', year)
-        .order('bimester', { ascending: true });
+        .order('bimester', { ascending: true }) as { data: SupabaseAbsenceControl[] | null; error: PostgrestError | null };
 
       if (error) throw error;
 
@@ -155,13 +154,11 @@ export class AbsenceControlService {
     try {
       const supabaseData = this.mapAbsenceControlToSupabase(data);
 
-      const { data: result, error } = await (supabase
-        .from('absence_control') as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await (supabase as any)
+        .from('absence_control')
         .upsert(
-          {
-            ...supabaseData,
-            // Unique constraint: academic_year + bimester
-          },
+          supabaseData,
           {
             onConflict: 'academic_year,bimester',
             ignoreDuplicates: false,
@@ -170,16 +167,19 @@ export class AbsenceControlService {
         .select()
         .single();
 
-      if (error) throw error;
+      const { data: result, error } = response as { data: SupabaseAbsenceControl | null; error: PostgrestError | null };
 
-      logger.info('Controle de faltas salvo no Supabase', {
-        year: data.academicYear,
-        bimester: data.bimester,
-      });
+      if (error) throw error;
+      if (!result) throw new Error('Upsert returned null data');
 
       return this.mapSupabaseToAbsenceControl(result);
     } catch (error) {
-      logger.error('Erro ao salvar controle de faltas', data, error as Error);
+      const errorRecord: Record<string, unknown> = {
+        academicYear: data.academicYear,
+        bimester: data.bimester,
+        schoolDays: data.schoolDays,
+      };
+      logger.error('Erro ao salvar controle de faltas', errorRecord, error as Error);
       throw error;
     }
   }
@@ -194,14 +194,19 @@ export class AbsenceControlService {
     updatedBy?: string
   ): Promise<boolean> {
     try {
-      const { error } = await (supabase
-        .from('absence_control') as any)
-        .update({
-          school_days: schoolDays,
-          updated_by: updatedBy || null,
-        })
+      const updateData = {
+        school_days: schoolDays,
+        updated_by: updatedBy || null,
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await (supabase as any)
+        .from('absence_control')
+        .update(updateData)
         .eq('academic_year', year)
         .eq('bimester', bimester);
+
+      const { error } = response as { error: PostgrestError | null };
 
       if (error) throw error;
 
@@ -225,7 +230,7 @@ export class AbsenceControlService {
         .from('absence_control')
         .delete()
         .eq('academic_year', year)
-        .eq('bimester', bimester);
+        .eq('bimester', bimester) as { error: PostgrestError | null };
 
       if (error) throw error;
 

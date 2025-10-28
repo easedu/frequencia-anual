@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { z, ZodSchema, ZodTypeAny } from 'zod';
+import { z, ZodSchema } from 'zod';
 import { validationErrorResponse } from '../_utils/response';
 
 export type ValidatedHandler<T> = (
@@ -64,9 +64,9 @@ export function withValidation<T>(
 /**
  * Valida query params com schema Zod
  */
-export function validateQueryParams<T = any>(
+export function validateQueryParams<T = unknown>(
   req: NextRequest,
-  schema: z.ZodType<T, any, any>
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>
 ): { success: true; data: T } | { success: false; response: NextResponse } {
   const { searchParams } = new URL(req.url);
 
@@ -106,20 +106,20 @@ export function sanitizeString(input: string): string {
 /**
  * Sanitiza objeto recursivamente
  */
-export function sanitizeObject<T extends Record<string, any>>(obj: T): T {
-  const result: any = {};
+export function sanitizeObject<T extends Record<string, unknown>>(obj: T): T {
+  const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === 'string') {
       result[key] = sanitizeString(value);
     } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      result[key] = sanitizeObject(value);
+      result[key] = sanitizeObject(value as Record<string, unknown>);
     } else if (Array.isArray(value)) {
       result[key] = value.map((item) =>
         typeof item === 'string'
           ? sanitizeString(item)
           : typeof item === 'object' && item !== null
-          ? sanitizeObject(item)
+          ? sanitizeObject(item as Record<string, unknown>)
           : item
       );
     } else {

@@ -48,7 +48,7 @@ export type CachePolicy = keyof typeof CACHE_POLICIES;
 /**
  * Tipo de resposta de sucesso
  */
-export interface SuccessResponse<T = any> {
+export interface SuccessResponse<T = unknown> {
   success: true;
   data: T;
   message?: string;
@@ -61,7 +61,7 @@ export interface ErrorResponse {
   success: false;
   error: string;
   message?: string;
-  details?: any;
+  details?: unknown;
 }
 
 /**
@@ -116,7 +116,7 @@ export function errorResponse(
   error: string,
   statusOrMessage?: string | number,
   statusParam?: number,
-  details?: any
+  details?: unknown
 ): NextResponse {
   // Se statusOrMessage é number, é o status code
   const isStatusNumber = typeof statusOrMessage === 'number';
@@ -151,7 +151,7 @@ export function errorResponse(
  * }
  * ```
  */
-export function validationErrorResponse(errors: any): NextResponse {
+export function validationErrorResponse(errors: unknown): NextResponse {
   return NextResponse.json(
     {
       success: false,
@@ -209,7 +209,7 @@ export function conflictResponse(
  */
 export function internalErrorResponse(
   message: string = 'Erro interno do servidor. Tente novamente mais tarde.',
-  details?: any
+  details?: unknown
 ): NextResponse {
   return errorResponse('INTERNAL_ERROR', message, 500, details);
 }

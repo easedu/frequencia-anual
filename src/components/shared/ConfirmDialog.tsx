@@ -22,7 +22,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Info, Trash2, AlertCircle } from 'lucide-react';
+import { AlertTriangle, Info, AlertCircle } from 'lucide-react';
 
 // ════════════════════════════════════════════════════════════════
 // TIPOS

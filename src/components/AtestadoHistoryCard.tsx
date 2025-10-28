@@ -65,7 +65,7 @@ export default function AtestadoHistoryCard({
                 year: 'numeric'
             });
         } catch (error) {
-            logger.error("Erro ao formatar a data", error as Error);
+            logger.error("Erro ao formatar a data", {}, error as Error);
             return dateString;
         }
     };

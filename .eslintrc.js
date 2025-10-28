@@ -1,8 +1,12 @@
 module.exports = {
   extends: ['next/core-web-vitals'],
   rules: {
-    // Temporariamente desabilitar durante migração - foco na funcionalidade
-    '@typescript-eslint/no-unused-vars': 'off',
+    // Permitir variáveis não utilizadas que começam com _
+    '@typescript-eslint/no-unused-vars': ['error', {
+      argsIgnorePattern: '^_',
+      varsIgnorePattern: '^_',
+      caughtErrorsIgnorePattern: '^_',
+    }],
     '@typescript-eslint/no-explicit-any': 'off',
     'react-hooks/exhaustive-deps': 'warn',
     'prefer-const': 'warn',

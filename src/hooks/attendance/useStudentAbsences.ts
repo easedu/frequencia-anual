@@ -8,9 +8,8 @@
  * - Performance otimizada
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useAbsences } from '@/hooks/api';
-import { logger } from '@/utils/logger';
 import { useBimesterPeriods } from './useBimesterPeriods';
 
 /**
@@ -155,22 +154,6 @@ export function useStudentAbsences(
     absencesByBimester.b2 = sortDates(absencesByBimester.b2);
     absencesByBimester.b3 = sortDates(absencesByBimester.b3);
     absencesByBimester.b4 = sortDates(absencesByBimester.b4);
-
-    const totalAbsences =
-      absencesByBimester.b1.length +
-      absencesByBimester.b2.length +
-      absencesByBimester.b3.length +
-      absencesByBimester.b4.length;
-
-    logger.info(`Faltas do estudante processadas (API REST)`, {
-      estudanteId,
-      totalAbsences,
-      b1: absencesByBimester.b1.length,
-      b2: absencesByBimester.b2.length,
-      b3: absencesByBimester.b3.length,
-      b4: absencesByBimester.b4.length,
-      excludeJustified,
-    });
 
     return absencesByBimester;
   }, [estudanteId, absenceRecords, excludeJustified, bimesterDates]);

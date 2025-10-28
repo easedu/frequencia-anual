@@ -79,11 +79,12 @@ export async function retryWithBackoff<T>(
     factor: opts.factor,
     minTimeout: opts.minTimeout,
     maxTimeout: opts.maxTimeout,
-    onFailedAttempt: (error) => {
+    onFailedAttempt: (context) => {
+      const errorMessage = (context as unknown as { message?: string }).message || 'Unknown error';
       console.warn(
-        `[Retry] Tentativa ${error.attemptNumber} falhou. ` +
-        `${error.retriesLeft} tentativas restantes. ` +
-        `Erro: ${error.message}`
+        `[Retry] Tentativa ${(context as { attemptNumber: number }).attemptNumber} falhou. ` +
+        `${(context as { retriesLeft: number }).retriesLeft} tentativas restantes. ` +
+        `Erro: ${errorMessage}`
       );
     }
   });
@@ -129,7 +130,7 @@ export async function fetchWithRetry(
  * @example
  * const { data, loading, error, refetch } = useFetchWithRetry('/api/students');
  */
-export function useFetchWithRetry<T = any>(
+export function useFetchWithRetry<T = unknown>(
   url: string,
   options?: {
     fetchOptions?: RequestInit;

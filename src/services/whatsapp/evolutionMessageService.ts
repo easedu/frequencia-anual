@@ -6,7 +6,6 @@
  */
 
 import { EvolutionClient } from './evolutionClient';
-import { evolutionConfig } from '@/lib/whatsapp/evolutionConfig';
 import {
   validatePhoneNumber,
   validateMessage,
@@ -73,22 +72,9 @@ export class EvolutionMessageService {
         ...options,
       };
 
-      logger.info('Sending WhatsApp text message via Evolution API', {
-        phone: maskPhoneNumber(phone),
-        textLength: text.length,
-        hasDelay: !!options?.delay,
-        linkPreview: request.linkPreview
-      });
-
       // Enviar via Evolution API
       const endpoint = `/message/sendText/{instance}`;
       const response = await EvolutionClient.post<SendTextResponse>(endpoint, request);
-
-      logger.info('WhatsApp message sent successfully', {
-        phone: maskPhoneNumber(phone),
-        messageId: response.key?.id,
-        status: response.status
-      });
 
       // Retornar resultado normalizado
       return {
@@ -128,21 +114,11 @@ export class EvolutionMessageService {
         throw new Error(phoneValidation.error);
       }
 
-      logger.info('Sending WhatsApp media via Evolution API', {
-        phone: maskPhoneNumber(request.number),
-        mediaType: request.mediaType
-      });
-
       // Enviar via Evolution API
       const endpoint = `/message/sendMedia/{instance}`;
       const response = await EvolutionClient.post<SendTextResponse>(endpoint, {
         ...request,
         number: phoneValidation.formatted
-      });
-
-      logger.info('WhatsApp media sent successfully', {
-        phone: maskPhoneNumber(request.number),
-        messageId: response.key?.id
       });
 
       return {

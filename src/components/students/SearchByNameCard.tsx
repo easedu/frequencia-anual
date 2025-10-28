@@ -3,8 +3,9 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Student } from "@/types";
-import { Search, User, GraduationCap, Sparkles } from "lucide-react";
+import { Search, User, GraduationCap, Sparkles, X } from "lucide-react";
 
 interface SearchByNameCardProps {
     searchName: string;
@@ -23,7 +24,6 @@ const SearchByNameCard = memo(function SearchByNameCard({
     selectedStudentId,
     isLoading = false,
 }: SearchByNameCardProps) {
-
     return (
         <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50 relative">
             {/* 🔄 Loading Overlay */}
@@ -73,9 +73,21 @@ const SearchByNameCard = memo(function SearchByNameCard({
                                 onChange={(e) => onSearchChange(e.target.value)}
                                 placeholder="Digite o nome do estudante..."
                                 autoComplete="off"
-                                className="pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                                className="pl-10 pr-10 py-2 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                             />
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            {searchName && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => onSearchChange("")}
+                                    className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0 hover:bg-purple-100 rounded-full"
+                                    aria-label="Limpar busca"
+                                >
+                                    <X className="w-4 h-4 text-gray-500" />
+                                </Button>
+                            )}
                         </div>
 
                         {/* Suggestions Dropdown - Agora se estende para fora do card */}

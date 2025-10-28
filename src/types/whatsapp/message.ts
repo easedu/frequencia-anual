@@ -79,3 +79,9 @@ export interface SendMessageResult {
   sentAt?: number;
   error?: string;
 }
+
+/**
+ * Tipos auxiliares para dados genéricos de mensagens
+ */
+export type MessageData = Record<string, unknown>;
+export type MessageMetadata = Record<string, unknown>;

@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Pencil, Trash, X } from "lucide-react";
+import { Pencil, Trash } from "lucide-react";
 import { Estudante } from "@/types";
 import { Ocorrencia } from "@/hooks/useDisabilityProfile";
 

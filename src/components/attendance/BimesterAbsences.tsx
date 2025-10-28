@@ -21,8 +21,8 @@ import {
   Trash2 
 } from 'lucide-react';
 import { AbsenceRecord, Atestado, BimesterDates } from '@/types';
-import { getBimesterByDate, formatFirebaseDate } from '@/app/utils';
-// import { formatDate } from '@/utils/dateUtils'; // TODO: Implement when available
+import { getBimesterByDate } from '@/app/utils';
+// import { _formatDate } from '@/utils/dateUtils'; // TODO: Implement when available
 
 interface BimesterAbsencesProps {
   title: string;
@@ -42,7 +42,6 @@ const BimesterAbsences: React.FC<BimesterAbsencesProps> = ({
   absences,
   atestados,
   bimesterDates,
-  userRole,
   onDeleteAbsence
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);

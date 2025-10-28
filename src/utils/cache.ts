@@ -16,19 +16,19 @@ interface CacheEntry<T> {
 }
 
 class CacheManager {
-  private memoryCache = new Map<string, CacheEntry<any>>();
+  private memoryCache = new Map<string, CacheEntry<unknown>>();
   private maxMemoryEntries = 100;
 
   /**
    * Gera chave de cache a partir de parâmetros
    */
-  private generateKey(namespace: string, params: Record<string, any>): string {
+  private generateKey(namespace: string, params: Record<string, unknown>): string {
     const sortedParams = Object.keys(params)
       .sort()
       .reduce((result, key) => {
         result[key] = params[key];
         return result;
-      }, {} as Record<string, any>);
+      }, {} as Record<string, unknown>);
 
     return `${namespace}:${JSON.stringify(sortedParams)}`;
   }
@@ -64,9 +64,9 @@ class CacheManager {
   /**
    * Obtém dados do cache em memória
    */
-  get<T>(namespace: string, params: Record<string, any>): T | null {
+  get<T>(namespace: string, params: Record<string, unknown>): T | null {
     const key = this.generateKey(namespace, params);
-    const entry = this.memoryCache.get(key);
+    const entry = this.memoryCache.get(key) as CacheEntry<T> | undefined;
 
     if (entry && this.isValid(entry)) {
       entry.hits++;
@@ -86,9 +86,9 @@ class CacheManager {
    * Armazena dados no cache em memória
    */
   set<T>(
-    namespace: string, 
-    params: Record<string, any>, 
-    data: T, 
+    namespace: string,
+    params: Record<string, unknown>,
+    data: T,
     ttl: number = PERFORMANCE_CONFIG.CACHE_TTL_MS
   ): void {
     const key = this.generateKey(namespace, params);
@@ -107,7 +107,7 @@ class CacheManager {
   /**
    * Remove entrada específica do cache
    */
-  invalidate(namespace: string, params: Record<string, any>): void {
+  invalidate(namespace: string, params: Record<string, unknown>): void {
     const key = this.generateKey(namespace, params);
     this.memoryCache.delete(key);
     logger.debug('Cache invalidated', { namespace, key });
@@ -134,7 +134,6 @@ class CacheManager {
    */
   clear(): void {
     this.memoryCache.clear();
-    logger.info('Cache cleared');
   }
 
   /**
@@ -162,7 +161,7 @@ export const cache = new CacheManager();
  */
 export const useCachedData = <T>(
   namespace: string,
-  params: Record<string, any>,
+  params: Record<string, unknown>,
   fetcher: () => Promise<T>,
   ttl?: number
 ) => {
@@ -190,10 +189,10 @@ export const useCachedData = <T>(
           cache.set(namespace, params, result, ttl);
           setData(result);
         }
-      } catch (err) {
+      } catch (error) {
         if (!isCancelled) {
-          setError(err as Error);
-          logger.error('Cached data fetch failed', { namespace, params }, err as Error);
+          setError(error as Error);
+          logger.error('Cached data fetch failed', { namespace, params }, error as Error);
         }
       } finally {
         if (!isCancelled) {
@@ -222,11 +221,11 @@ export const useCachedData = <T>(
 class PersistentCache {
   private prefix = 'app-cache-';
 
-  private generateKey(namespace: string, params: Record<string, any>): string {
+  private generateKey(namespace: string, params: Record<string, unknown>): string {
     return `${this.prefix}${namespace}-${btoa(JSON.stringify(params))}`;
   }
 
-  get<T>(namespace: string, params: Record<string, any>, ttl: number = PERFORMANCE_CONFIG.CACHE_TTL_MS): T | null {
+  get<T>(namespace: string, params: Record<string, unknown>, ttl: number = PERFORMANCE_CONFIG.CACHE_TTL_MS): T | null {
     try {
       const key = this.generateKey(namespace, params);
       const item = localStorage.getItem(key);
@@ -248,7 +247,7 @@ class PersistentCache {
     }
   }
 
-  set<T>(namespace: string, params: Record<string, any>, data: T): void {
+  set<T>(namespace: string, params: Record<string, unknown>, data: T): void {
     try {
       const key = this.generateKey(namespace, params);
       const item = {

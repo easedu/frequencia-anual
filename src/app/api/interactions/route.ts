@@ -12,8 +12,9 @@ import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { resolveFirebaseUUIDToInternal } from '@/app/api/_utils/studentIdResolver';
 import { getCountStrategy } from '@/app/api/_utils/countStrategy';
+import type { FamilyInteraction, FamilyInteractionInsert } from '@/lib/supabaseClient';
 
-export const GET = withAuth(async (req: NextRequest, userId: string) => {
+export const GET = withAuth(async (req: NextRequest, _userId: string) => {
   try {
     const validation = validateQueryParams(req, interactionQuerySchema);
     if (!validation.success) return validation.response;
@@ -40,7 +41,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // ✅ FASE 4.1: Otimizar count (estimated na 1ª página, planned depois)
     const countOption = getCountStrategy(page);
 
-    let query: any = supabaseAdmin
+    let query = supabaseAdmin
       .from('family_interactions')
       .select('*, students(student_id, name, class)', countOption)
       .order('interaction_date', { ascending: false });
@@ -69,12 +70,37 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       return errorResponse('DATABASE_ERROR', 'Erro ao buscar interações', 500);
     }
 
+    // Tipos para dados enriquecidos
+    interface UserProfile {
+      firebase_uid: string;
+      full_name: string;
+    }
+
+    interface InteractionWithUser extends FamilyInteraction {
+      created_by_name?: string;
+    }
+
+    interface MappedInteractionResponse {
+      id: string;
+      studentId: string;
+      type: string;
+      date: string;
+      description: string;
+      createdBy: string;
+      sensitive: boolean;
+      createdAt: string;
+      // ⚠️ Campos WhatsApp removidos - não existem no schema de family_interactions
+    }
+
+    // Cast data para tipo correto
+    const interactions = (data || []) as FamilyInteraction[];
+
     // Buscar nomes dos usuários (created_by) para enriquecer os dados
-    if (data && data.length > 0) {
+    if (interactions && interactions.length > 0) {
       // Coletar IDs únicos de created_by (filtrar apenas valores que parecem ser Firebase UIDs)
       const potentialUIDs = [...new Set(
-        data.map((interaction: any) => interaction.created_by).filter(Boolean)
-      )].filter((id: any) => id.length > 20); // Firebase UIDs têm 28 caracteres
+        interactions.map((interaction) => interaction.created_by).filter(Boolean)
+      )].filter((id): id is string => typeof id === 'string' && id.length > 20); // Firebase UIDs têm 28 caracteres
 
       let userMap = new Map<string, string>();
 
@@ -84,19 +110,20 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
           .select('firebase_uid, full_name')
           .in('firebase_uid', potentialUIDs);
 
-        userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
+        userMap = new Map((users || []).map((u: UserProfile) => [u.firebase_uid, u.full_name]));
       }
 
       // Adicionar nome do usuário aos dados
-      data.forEach((interaction: any) => {
+      (interactions as InteractionWithUser[]).forEach((interaction) => {
+        const createdBy = interaction.created_by || '';
         // Tentar buscar nome do Firebase UID primeiro
-        let userName = userMap.get(interaction.created_by);
+        let userName = userMap.get(createdBy);
 
         // Se não encontrou no userMap, verificar se é um nome direto (dados antigos)
         if (!userName) {
           // Se created_by tem menos de 20 caracteres, provavelmente é um nome direto
-          if (interaction.created_by && interaction.created_by.length < 20) {
-            userName = interaction.created_by;
+          if (createdBy && createdBy.length < 20) {
+            userName = createdBy;
           } else {
             // Firebase UID não encontrado em user_profiles
             userName = 'Usuário não encontrado';
@@ -108,7 +135,9 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // Mapear dados do Supabase para o formato esperado pelo frontend
-    const mappedData = (data || []).map((interaction: any) => {
+    const mappedData: MappedInteractionResponse[] = interactions.map((interaction) => {
+      const interactionWithUser = interaction as InteractionWithUser;
+
       // Converter data ISO (yyyy-mm-dd) para formato brasileiro (dd/mm/aaaa)
       let formattedDate = interaction.interaction_date;
       if (formattedDate && formattedDate.includes('-')) {
@@ -121,20 +150,9 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
         studentId: interaction.student_id,
         type: interaction.interaction_type,
         date: formattedDate,
-        description: interaction.description,
-        createdBy: interaction.created_by_name || interaction.created_by,
+        description: interaction.description || '',
+        createdBy: interactionWithUser.created_by_name || interaction.created_by || '',
         sensitive: interaction.is_sensitive,
-        // Campos WhatsApp
-        whatsappMessage: interaction.whatsapp_message,
-        whatsappPhones: interaction.whatsapp_phones,
-        whatsappMessageId: interaction.whatsapp_message_id,
-        whatsappStatus: interaction.whatsapp_status,
-        whatsappStatusHistory: interaction.whatsapp_status_history,
-        whatsappSentAt: interaction.whatsapp_sent_at,
-        whatsappDeliveredAt: interaction.whatsapp_delivered_at,
-        whatsappReadAt: interaction.whatsapp_read_at,
-        whatsappPlayedAt: interaction.whatsapp_played_at,
-        whatsappUpdatedAt: interaction.whatsapp_updated_at,
         createdAt: interaction.created_at,
       };
     });
@@ -145,7 +163,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
   }
 });
 
-export const POST = withBearerOrBasicAuth(async (req: NextRequest, userId: string) => {
+export const POST = withBearerOrBasicAuth(async (req: NextRequest, _userId: string) => {
   try {
     const body = await req.json();
     const validation = createInteractionSchema.safeParse(body);
@@ -186,7 +204,7 @@ export const POST = withBearerOrBasicAuth(async (req: NextRequest, userId: strin
     };
 
     // Mapear campos do schema de validação para o schema do Supabase
-    const insertData: any = {
+    const insertData: FamilyInteractionInsert = {
       student_id: internalStudentId, // ✅ Usar Internal ID resolvido
       interaction_date: convertToISO(sanitizedData.data),
       interaction_type: sanitizedData.tipo,
@@ -197,46 +215,37 @@ export const POST = withBearerOrBasicAuth(async (req: NextRequest, userId: strin
     
     // Adicionar observações na descrição se existirem
     if (sanitizedData.observacoes) {
-      insertData.description += `\n\nObservações: ${sanitizedData.observacoes}`;
+      insertData.description = (insertData.description || '') + `\n\nObservações: ${sanitizedData.observacoes}`;
     }
 
     // Adicionar próxima ação na descrição se existir
     if (sanitizedData.proximaAcao) {
-      insertData.description += `\n\nPróxima ação: ${sanitizedData.proximaAcao}`;
+      insertData.description = (insertData.description || '') + `\n\nPróxima ação: ${sanitizedData.proximaAcao}`;
       if (sanitizedData.dataProximaAcao) {
         insertData.description += ` (${sanitizedData.dataProximaAcao})`;
       }
     }
 
-    // Adicionar campos WhatsApp se existirem
-    if (sanitizedData.whatsapp_message) {
-      insertData.whatsapp_message = sanitizedData.whatsapp_message;
-    }
-    if (sanitizedData.whatsapp_phones) {
-      insertData.whatsapp_phones = sanitizedData.whatsapp_phones;
-    }
-    if (sanitizedData.whatsapp_message_id) {
-      insertData.whatsapp_message_id = sanitizedData.whatsapp_message_id;
-    }
-    if (sanitizedData.whatsapp_status) {
-      insertData.whatsapp_status = sanitizedData.whatsapp_status;
-    }
-    if (sanitizedData.whatsapp_sent_at) {
-      insertData.whatsapp_sent_at = sanitizedData.whatsapp_sent_at;
-    }
+    // ⚠️ NOTA: Campos WhatsApp não existem no schema atual de family_interactions
+    // Se necessário, adicionar à descrição ou criar campo JSONB separado no futuro
 
-    const { data, error } = (await supabaseAdmin
+    const result = await supabaseAdmin
       .from('family_interactions')
-      .insert(insertData)
+      .insert(insertData as unknown as never)
       .select('id')
-      .single()) as { data: any; error: any };
+      .single();
+
+    const { data, error } = result as {
+      data: { id: string } | null;
+      error: Error | null
+    };
 
     if (error) {
       console.error('[POST /api/interactions] Error:', error);
       return errorResponse('DATABASE_ERROR', 'Erro ao criar interação', 500);
     }
 
-    return successResponse({ id: data.id }, 'Interação criada com sucesso', 201);
+    return successResponse({ id: data?.id || '' }, 'Interação criada com sucesso', 201);
   } catch (error) {
     return handleError(error, 'POST /api/interactions');
   }

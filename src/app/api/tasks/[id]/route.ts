@@ -6,7 +6,7 @@
  * DELETE - Remove task
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
@@ -25,20 +25,40 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { data, error } = await supabaseAdmin
+    const params = await context.params
+    const taskId = params.id
+
+    const { data, error } = (await supabaseAdmin
       .from('user_tasks')
       .select('*')
-      .eq('id', await context.params.then(p => p.id))
-      .single()
+      .eq('id', taskId)
+      .single()) as {
+      data: {
+        id: string
+        student_id: string
+        title: string
+        description?: string
+        recommended_action?: string
+        is_resolved: boolean
+        action_taken?: string
+        assigned_to?: string
+        due_date?: string
+        resolved_at?: string
+        created_by?: string
+        created_at: string
+        updated_at: string
+      } | null
+      error: { message?: string } | null
+    }
 
-    if (error) {
-      logger.error('Erro ao buscar task', { id: await context.params.then(p => p.id), error })
-      return errorResponse(error.message, 404)
+    if (error || !data) {
+      logger.error('Erro ao buscar task', { id: taskId, error })
+      return errorResponse('NOT_FOUND', error?.message || 'Task não encontrada', 404)
     }
 
     return successResponse(data)
   } catch (error) {
-    return handleError(error)
+    return handleError(error, 'GET /api/tasks/[id]')
   }
 }
 
@@ -71,13 +91,26 @@ export async function PUT(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params
+    const taskId = params.id
+
     const body = await request.json()
 
     // Validar dados
     const validated = updateTaskSchema.parse(body)
 
     // Montar objeto de atualização (apenas campos fornecidos)
-    const updateData: Record<string, any> = {}
+    // Supabase aceita null para campos opcionais
+    const updateData: Partial<{
+      title: string
+      description: string | null
+      recommended_action: string | null
+      is_resolved: boolean
+      action_taken: string | null
+      assigned_to: string | null
+      due_date: string | null
+      resolved_at: string | null
+    }> = {}
 
     if (validated.title !== undefined) updateData.title = validated.title
     if (validated.description !== undefined) updateData.description = validated.description
@@ -89,24 +122,41 @@ export async function PUT(
     if (validated.resolved_at !== undefined) updateData.resolved_at = validated.resolved_at
 
     // Atualizar no Supabase
-    const { data, error } = await supabaseAdmin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = (await (supabaseAdmin as any)
       .from('user_tasks')
-      // @ts-ignore - Supabase type mismatch
-      .update({...updateData} as any)
-      .eq('id', await context.params.then(p => p.id))
+      .update(updateData)
+      .eq('id', taskId)
       .select()
-      .single()
-
-    if (error) {
-      logger.error('Erro ao atualizar task', { id: await context.params.then(p => p.id), error })
-      return errorResponse(error.message, 500)
+      .single()) as {
+      data: {
+        id: string
+        student_id: string
+        title: string
+        description?: string
+        recommended_action?: string
+        is_resolved: boolean
+        action_taken?: string
+        assigned_to?: string
+        due_date?: string
+        resolved_at?: string
+        created_by?: string
+        created_at: string
+        updated_at: string
+      } | null
+      error: { message?: string } | null
     }
 
-    logger.info('Task atualizada com sucesso', { taskId: await context.params.then(p => p.id) })
+    if (error || !data) {
+      logger.error('Erro ao atualizar task', { id: taskId, error })
+      return errorResponse('DATABASE_ERROR', error?.message || 'Erro ao atualizar task', 500)
+    }
+
+    logger.info('Task atualizada com sucesso', { taskId })
 
     return successResponse(data)
   } catch (error) {
-    return handleError(error)
+    return handleError(error, 'PUT /api/tasks/[id]')
   }
 }
 
@@ -122,20 +172,25 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await supabaseAdmin
+    const params = await context.params
+    const taskId = params.id
+
+    const { error } = (await supabaseAdmin
       .from('user_tasks')
       .delete()
-      .eq('id', await context.params.then(p => p.id))
-
-    if (error) {
-      logger.error('Erro ao deletar task', { id: await context.params.then(p => p.id), error })
-      return errorResponse(error.message, 500)
+      .eq('id', taskId)) as {
+      error: { message?: string } | null
     }
 
-    logger.info('Task deletada com sucesso', { taskId: await context.params.then(p => p.id) })
+    if (error) {
+      logger.error('Erro ao deletar task', { id: taskId, error })
+      return errorResponse('DATABASE_ERROR', error?.message || 'Erro ao deletar task', 500)
+    }
+
+    logger.info('Task deletada com sucesso', { taskId })
 
     return successResponse({ message: 'Task deletada com sucesso' })
   } catch (error) {
-    return handleError(error)
+    return handleError(error, 'DELETE /api/tasks/[id]')
   }
 }

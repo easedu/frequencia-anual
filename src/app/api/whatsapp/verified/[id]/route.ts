@@ -6,12 +6,26 @@
  * DELETE - Remove número verificado
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { logger } from '@/utils/logger'
 import { z } from 'zod'
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface WhatsAppVerifiedNumberUpdate {
+  is_verified?: boolean;
+  verified_at?: string;
+  whatsapp_jid?: string | null;
+  contact_name?: string | null;
+  account_exists?: boolean;
+  verification_status?: string | null;
+  updated_at: string;
+}
 
 // ============================================================================
 // SCHEMAS
@@ -85,7 +99,7 @@ export async function PUT(
     const validated = updateVerifiedNumberSchema.parse(body)
 
     // Montar objeto de atualização (apenas campos fornecidos)
-    const updateData: Record<string, any> = {
+    const updateData: Partial<WhatsAppVerifiedNumberUpdate> = {
       updated_at: new Date().toISOString()
     }
 
@@ -104,8 +118,7 @@ export async function PUT(
     // Atualizar no Supabase
     const { data, error } = await supabaseAdmin
       .from('whatsapp_verified_numbers')
-      // @ts-ignore - Supabase type mismatch
-      .update({...updateData} as any)
+      .update(updateData as never)
       .eq('id', await context.params.then(p => p.id))
       .select()
       .single()
@@ -114,8 +127,6 @@ export async function PUT(
       logger.error('Erro ao atualizar número verificado', { id: await context.params.then(p => p.id), error })
       return errorResponse(error.message, 500)
     }
-
-    logger.info('Número verificado atualizado', { id: await context.params.then(p => p.id) })
 
     return successResponse(data)
   } catch (error) {
@@ -144,8 +155,6 @@ export async function DELETE(
       logger.error('Erro ao deletar número verificado', { id: await context.params.then(p => p.id), error })
       return errorResponse(error.message, 500)
     }
-
-    logger.info('Número verificado deletado', { id: await context.params.then(p => p.id) })
 
     return successResponse({ message: 'Número verificado deletado com sucesso' })
   } catch (error) {

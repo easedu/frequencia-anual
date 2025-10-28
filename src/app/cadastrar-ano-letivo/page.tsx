@@ -7,7 +7,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useAcademicYearComplete, useSaveAcademicYearComplete } from '@/hooks/api';
 import { logger } from '@/utils/logger';
 import {
-  padTo2Digits,
   formatDateToDDMMYYYY,
   parseDateFromDDMMYYYY
 } from '@/utils/dateUtils';
@@ -60,7 +59,7 @@ export default function CadastrarAnoLetivoPage() {
     const [initialData, setInitialData] = useState<{ [key: number]: BimesterData }>({});
 
     // ✅ Usar hooks da API REST (sem Supabase direto)
-    const { academicYearComplete, loading: loadingData } = useAcademicYearComplete(2025);
+    const { academicYearComplete, loading: _loadingData } = useAcademicYearComplete(2025);
     const { saveComplete, loading: savingData } = useSaveAcademicYearComplete();
 
     // Recebe os dados de cada card
@@ -85,10 +84,12 @@ export default function CadastrarAnoLetivoPage() {
     // Salva os dados usando hook
     async function handleSave() {
         try {
-            const dataToSave: any = {};
-            bimestres.forEach((bim, index) => {
-                dataToSave[bim] = cardData[index] || { startDate: "", endDate: "", dates: [] };
-            });
+            const dataToSave = {
+                '1º Bimestre': cardData[0] || { startDate: "", endDate: "", dates: [] },
+                '2º Bimestre': cardData[1] || { startDate: "", endDate: "", dates: [] },
+                '3º Bimestre': cardData[2] || { startDate: "", endDate: "", dates: [] },
+                '4º Bimestre': cardData[3] || { startDate: "", endDate: "", dates: [] },
+            };
 
             await saveComplete({
                 year: 2025,
@@ -97,7 +98,7 @@ export default function CadastrarAnoLetivoPage() {
 
             toast.success("Dados salvos com sucesso!");
         } catch (error) {
-            logger.error("Erro ao salvar dados", error as Error);
+            logger.error("Erro ao salvar dados", { year: 2025 }, error as Error);
             toast.error("Erro ao salvar dados. Tente novamente.");
         }
     }
@@ -263,7 +264,7 @@ function BimesterCard({
                 tempList.sort((a, b) => a.date.getTime() - b.date.getTime());
                 setDatesList(tempList);
             } catch (error) {
-                logger.error("Erro ao interpretar data", error as Error);
+                logger.error("Erro ao interpretar data", { startDate, endDate }, error as Error);
                 setDatesList([]);
             }
         }
@@ -281,8 +282,7 @@ function BimesterCard({
                 })),
             });
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [startDate, endDate, datesList]);
+    }, [startDate, endDate, datesList, onDataChange]);
 
     // Permite alternar a seleção dos checkboxes
     function handleCheckboxChange(date: Date) {

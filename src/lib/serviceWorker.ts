@@ -1,9 +1,9 @@
-// @ts-nocheck
+// @ts-expect-error - APIs experimentais do browser sem tipos completos (Background Sync, MessagePort.onerror)
 /**
  * Utilitário para gerenciar Service Worker
  * Registra, atualiza e comunica com o SW
  *
- * Note: @ts-nocheck usado devido a APIs experimentais do browser
+ * Note: @ts-expect-error usado devido a APIs experimentais do browser
  * (Background Sync, MessagePort.onerror) que não têm tipos completos
  */
 
@@ -11,7 +11,13 @@ import { logger } from '@/utils/logger';
 
 interface ServiceWorkerMessage {
   type: string;
-  data?: any;
+  data?: unknown;
+}
+
+interface ServiceWorkerResponse {
+  success?: boolean;
+  error?: string;
+  data?: unknown;
 }
 
 interface ServiceWorkerAPI {
@@ -19,7 +25,7 @@ interface ServiceWorkerAPI {
   unregister: () => Promise<boolean>;
   update: () => Promise<void>;
   isSupported: () => boolean;
-  sendMessage: (message: ServiceWorkerMessage) => Promise<any>;
+  sendMessage: (message: ServiceWorkerMessage) => Promise<ServiceWorkerResponse>;
   getCacheStatus: () => Promise<{ cacheSize: number; isOnline: boolean }>;
   clearCache: () => Promise<void>;
   registerSync: (tag: string) => Promise<void>;
@@ -109,18 +115,18 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
   /**
    * Enviar mensagem para o Service Worker
    */
-  async sendMessage(message: ServiceWorkerMessage): Promise<any> {
+  async sendMessage(message: ServiceWorkerMessage): Promise<ServiceWorkerResponse> {
     if (!navigator.serviceWorker.controller) {
       throw new Error('Service Worker não está ativo');
     }
 
-    return new Promise((resolve, reject) => {
-      let timeoutId: NodeJS.Timeout;
+    return new Promise<ServiceWorkerResponse>((resolve, reject) => {
       const messageChannel = new MessageChannel();
-      
-      messageChannel.port1.onmessage = (event) => {
+      let timeoutId: NodeJS.Timeout;
+
+      messageChannel.port1.onmessage = (event: MessageEvent<ServiceWorkerResponse>) => {
         clearTimeout(timeoutId);
-        
+
         if (event.data && event.data.error) {
           reject(new Error(event.data.error));
         } else if (event.data !== undefined) {
@@ -314,7 +320,7 @@ class ServiceWorkerManager implements ServiceWorkerAPI {
   /**
    * Notificar a aplicação sobre eventos do SW
    */
-  private notifyApp(eventType: string, data?: any): void {
+  private notifyApp(eventType: string, data?: unknown): void {
     // Disparar evento customizado para a aplicação
     window.dispatchEvent(new CustomEvent('sw-event', {
       detail: { type: eventType, data }
@@ -393,7 +399,7 @@ export async function updateServiceWorker(): Promise<void> {
 /**
  * Cache dados críticos para uso offline
  */
-export async function cacheAttendanceData(data: any): Promise<void> {
+export async function cacheAttendanceData(data: unknown): Promise<void> {
   try {
     await swManager.sendMessage({
       type: 'CACHE_ATTENDANCE_DATA',
@@ -407,7 +413,7 @@ export async function cacheAttendanceData(data: any): Promise<void> {
 /**
  * Registrar dados para sincronização
  */
-export async function scheduleSync(type: 'attendance' | 'reports', data: any): Promise<void> {
+export async function scheduleSync(type: 'attendance' | 'reports', data: unknown): Promise<void> {
   try {
     // Salvar no localStorage para sincronização posterior
     const key = `pending_${type}`;
@@ -452,7 +458,7 @@ export async function getOfflineStatus(): Promise<{
       
       cacheSize = cacheStatus?.cacheSize || 0;
       isOnline = cacheStatus?.isOnline ?? navigator.onLine;
-    } catch (cacheError) {
+    } catch (_cacheError) {
       // Fallback: tentar verificar cache diretamente
       try {
         if ('caches' in window) {
@@ -460,7 +466,7 @@ export async function getOfflineStatus(): Promise<{
           const keys = await cache.keys();
           cacheSize = keys.length;
         }
-      } catch (directCacheError) {
+      } catch (_directCacheError) {
         cacheSize = 0;
       }
     }
@@ -472,14 +478,14 @@ export async function getOfflineStatus(): Promise<{
       const pendingReports = JSON.parse(localStorage.getItem('pending_reports') || '[]');
       pendingSync = (Array.isArray(pendingAttendance) ? pendingAttendance.length : 0) +
                    (Array.isArray(pendingReports) ? pendingReports.length : 0);
-    } catch (storageError) {
+    } catch (_storageError) {
       pendingSync = 0;
     }
 
     let lastSync: string | undefined;
     try {
       lastSync = localStorage.getItem('lastSync') || undefined;
-    } catch (syncError) {
+    } catch (_syncError) {
       lastSync = undefined;
     }
 
@@ -519,7 +525,7 @@ export async function clearOfflineData(): Promise<void> {
 /**
  * Hook para escutar eventos do Service Worker
  */
-export function useServiceWorker(callback: (event: { type: string; data?: any }) => void): (() => void) {
+export function useServiceWorker(callback: (event: { type: string; data?: unknown }) => void): (() => void) {
   if (typeof window === 'undefined') return () => {};
 
   const handleSWEvent = (event: Event) => {

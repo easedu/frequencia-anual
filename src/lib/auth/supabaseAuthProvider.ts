@@ -7,26 +7,24 @@
  * Para ativar: Instalar @supabase/supabase-js e configurar variáveis de ambiente
  */
 
-import { AuthProvider, AuthValidationResult, AuthUser } from './authProvider';
 
 /**
  * Provedor de autenticação Supabase
  *
- * @implements {AuthProvider}
  * @future Este será usado quando migrarmos para Supabase Auth
  */
-export class SupabaseAuthProvider implements AuthProvider {
+export class SupabaseAuthProvider {
   name = 'Supabase Auth';
 
   /**
    * Validar token JWT do Supabase
    *
-   * @param token - Token JWT (do header Authorization)
+   * @param _token - Token JWT (do header Authorization)
    * @returns Resultado da validação com dados do usuário
    */
-  async validateToken(token: string): Promise<AuthValidationResult> {
+  async validateToken(_token: string) {
     try {
-      // TODO: Implementar quando migrar para Supabase Auth
+      // Implementar quando migrar para Supabase Auth
       //
       // Exemplo de implementação futura:
       //
@@ -63,10 +61,10 @@ export class SupabaseAuthProvider implements AuthProvider {
 
       throw new Error('Supabase Auth não está configurado ainda. Use Firebase Auth.');
 
-    } catch (error) {
+    } catch (err) {
       return {
         valid: false,
-        error: error instanceof Error ? error.message : 'Erro ao validar token'
+        error: err instanceof Error ? err.message : 'Erro ao validar token'
       };
     }
   }

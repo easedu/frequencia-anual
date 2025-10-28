@@ -18,8 +18,6 @@ import { processAbsencesWithCheckpoint } from '@/services/automationOrchestrator
  * - autoResume (opcional): Se true, retoma automaticamente. Se false, apenas lista (padrão: false)
  */
 export async function POST(request: NextRequest) {
-  logger.info('[WATCHDOG] 🐕 Iniciando monitoramento de execuções travadas');
-
   // ==========================================
   // AUTENTICAÇÃO
   // ==========================================
@@ -46,7 +44,7 @@ export async function POST(request: NextRequest) {
         { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="API"' } }
       );
     }
-  } catch (error) {
+  } catch (_error: unknown) {
     return NextResponse.json(
       { success: false, error: 'Invalid authorization format' },
       { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="API"' } }
@@ -63,12 +61,6 @@ export async function POST(request: NextRequest) {
   const timeoutMs = timeoutMinutes * 60 * 1000;
   const cutoffTime = Date.now() - timeoutMs;
 
-  logger.info('[WATCHDOG] 🔍 Buscando execuções travadas', {
-    timeoutMinutes,
-    cutoffTime: new Date(cutoffTime).toISOString(),
-    autoResume
-  });
-
   try {
     // ==========================================
     // BUSCAR EXECUÇÕES TRAVADAS NO SUPABASE
@@ -77,7 +69,7 @@ export async function POST(request: NextRequest) {
     const runningExecution = await AutomationExecutionService.getLastRunningExecution();
     const stuckExecutions: AutomationExecution[] = [];
 
-    if (runningExecution) {
+    if (runningExecution && runningExecution.updatedAt) {
       const lastUpdated = new Date(runningExecution.updatedAt).getTime();
 
       // Verificar se está travado (sem atualização há muito tempo)
@@ -85,16 +77,6 @@ export async function POST(request: NextRequest) {
         stuckExecutions.push(runningExecution);
       }
     }
-
-    logger.info('[WATCHDOG] 📊 Execuções travadas encontradas', {
-      count: stuckExecutions.length,
-      executions: stuckExecutions.map(e => ({
-        executionId: e.id,
-        status: e.status,
-        updatedAt: e.updatedAt,
-        minutesSinceUpdate: Math.round((Date.now() - new Date(e.updatedAt).getTime()) / 1000 / 60)
-      }))
-    });
 
     // ==========================================
     // SE AUTO-RESUME ATIVADO: RETOMAR
@@ -105,12 +87,6 @@ export async function POST(request: NextRequest) {
 
       for (const execution of stuckExecutions) {
         try {
-          logger.info('[WATCHDOG] 🔄 Retomando execução travada', {
-            executionId: execution.id,
-            processedStudents: execution.processedStudents,
-            totalStudents: execution.totalStudents
-          });
-
           // Marcar como RUNNING novamente (Supabase atualiza updated_at automaticamente)
           await AutomationExecutionService.updateStatus(execution.id, 'RUNNING');
 
@@ -119,23 +95,23 @@ export async function POST(request: NextRequest) {
           processAbsencesWithCheckpoint(
             execution.id,
             {
-              dryRun: execution.dryRun,
-              absenceMultiple: execution.absenceMultiple || 3,
-              notificationPhone: execution.notificationPhone || '',
+              dryRun: execution.dryRun ?? false,
+              absenceMultiple: execution.absenceMultiple ?? 3,
+              notificationPhone: execution.notificationPhone ?? '',
               referenceMonth: currentDate.getMonth() + 1,
               referenceYear: currentDate.getFullYear()
             },
             authorization
-          ).catch(error => {
+          ).catch((error: unknown) => {
             logger.error('[WATCHDOG] ❌ Erro ao retomar', {
               executionId: execution.id,
-              error: error.message
+              error: error instanceof Error ? error.message : 'Erro desconhecido'
             });
           });
 
           resumed.push(execution.id);
 
-        } catch (error) {
+        } catch (_error: unknown) {
           failed.push({
             executionId: execution.id,
             error: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -163,18 +139,18 @@ export async function POST(request: NextRequest) {
       executions: stuckExecutions.map(e => ({
         executionId: e.id,
         status: e.status,
-        startedAt: e.startedAt || e.createdAt,
+        startedAt: e.startedAt ?? e.createdAt ?? '',
         updatedAt: e.updatedAt,
-        minutesSinceUpdate: Math.round((Date.now() - new Date(e.updatedAt).getTime()) / 1000 / 60),
-        processedStudents: e.processedStudents,
-        totalStudents: e.totalStudents
+        minutesSinceUpdate: e.updatedAt ? Math.round((Date.now() - new Date(e.updatedAt).getTime()) / 1000 / 60) : 0,
+        processedStudents: e.processedStudents ?? 0,
+        totalStudents: e.totalStudents ?? 0
       })),
       message: stuckExecutions.length > 0
         ? `${stuckExecutions.length} execução(ões) travada(s). Use autoResume=true para retomar.`
         : 'Nenhuma execução travada encontrada.'
     });
 
-  } catch (error) {
+  } catch (_error: unknown) {
     logger.error('[WATCHDOG] ❌ Erro no watchdog', {
       error: error instanceof Error ? error.message : 'Erro desconhecido'
     });

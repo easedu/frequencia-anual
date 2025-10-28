@@ -28,7 +28,6 @@ export class WhatsAppRetryService {
 
     // Modo Dry-Run: simular envio sem chamar API real
     if (isDryRun) {
-      logger.info('[WhatsAppRetry] DRY-RUN: Simulando envio', { phone });
       await sleep(100); // Simular latência
       return {
         success: true,
@@ -44,8 +43,6 @@ export class WhatsAppRetryService {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        logger.info(`[WhatsAppRetry] Tentativa ${attempt}/${MAX_RETRIES}`, { phone });
-
         const response = await fetch(`${WHATSAPP_API_URL}/api/evolution/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -56,12 +53,6 @@ export class WhatsAppRetryService {
 
         // ✅ Sucesso: API retornou success=true
         if (data.success && data.data?.messageId) {
-          logger.info(`[WhatsAppRetry] ✅ Sucesso na tentativa ${attempt}`, {
-            phone,
-            messageId: data.data.messageId,
-            status: data.data.status
-          });
-
           return {
             success: true,
             messageId: data.data.messageId,
@@ -82,14 +73,17 @@ export class WhatsAppRetryService {
           break;
         }
 
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : 'Erro de rede';
-        logger.error(`[WhatsAppRetry] ❌ Erro na tentativa ${attempt}`, error as Error);
+      } catch {
+        lastError = lastError || 'Erro de rede';
+        logger.error(`[WhatsAppRetry] ❌ Erro na tentativa ${attempt}`, {
+          phone,
+          attempt,
+          error: lastError
+        }, new Error(lastError));
       }
 
       // Se não foi a última tentativa, aguardar delay
       if (attempt < MAX_RETRIES) {
-        logger.info(`[WhatsAppRetry] Aguardando ${RETRY_DELAY_MS}ms antes da próxima tentativa...`);
         await sleep(RETRY_DELAY_MS);
       }
     }
@@ -113,7 +107,6 @@ export class WhatsAppRetryService {
    * Delay entre envios para evitar rate limiting (5s fixo)
    */
   static async delayBetweenMessages(): Promise<void> {
-    logger.info('[WhatsAppRetry] Aguardando 5s antes do próximo envio...');
     await sleep(5000);
   }
 }

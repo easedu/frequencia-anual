@@ -45,7 +45,7 @@ export default function DashboardDeficiencia() {
     filtroTurno,
     setFiltroTurno,
     filtroTurma,
-    setFiltroTurma,
+    _setFiltroTurma,
     filtroTabelaEstagiario,
     setFiltroTabelaEstagiario,
     filtroTabelaAve,

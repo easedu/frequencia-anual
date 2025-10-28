@@ -69,7 +69,7 @@ export async function resolveFirebaseUUIDToInternal(
       .from('students')
       .select('id, student_id')
       .eq('student_id', firebaseUUID)
-      .maybeSingle()) as { data: { id: string; student_id: string } | null; error: any };
+      .maybeSingle()) as { data: { id: string; student_id: string } | null; error: Error | null };
 
     if (error) {
       logger.error('[Backend] Erro ao resolver Firebase UUID', { firebaseUUID }, error);
@@ -88,7 +88,7 @@ export async function resolveFirebaseUUIDToInternal(
       .from('students')
       .select('id, student_id')
       .eq('id', firebaseUUID)
-      .maybeSingle()) as { data: { id: string; student_id: string } | null; error: any };
+      .maybeSingle()) as { data: { id: string; student_id: string } | null; error: Error | null };
 
     if (!errorById && dataById) {
       logger.warn('[Backend] UUID fornecido era Internal ID, não Firebase UUID', {
@@ -129,7 +129,7 @@ export async function resolveInternalToFirebaseUUID(
       .from('students')
       .select('student_id')
       .eq('id', internalId)
-      .maybeSingle()) as { data: { student_id: string } | null; error: any };
+      .maybeSingle()) as { data: { student_id: string } | null; error: Error | null };
 
     if (error) {
       logger.error('[Backend] Erro ao resolver Internal ID', { internalId }, error);

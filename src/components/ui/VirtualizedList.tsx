@@ -281,28 +281,28 @@ export const VirtualizedListEmpty: React.FC<{
 export function withVirtualization<T, P extends { items: T[] }>(
   Component: React.ComponentType<P>
 ) {
-  return function VirtualizedComponent({
-    items,
-    ...props
-  }: P & {
-    virtualize?: boolean;
-    virtualHeight?: number;
-    virtualItemHeight?: number;
-  }) {
+  return function VirtualizedComponent(
+    props: P & {
+      virtualize?: boolean;
+      virtualHeight?: number;
+      virtualItemHeight?: number;
+    }
+  ) {
     const {
-      virtualize = items.length > 100,
+      items,
+      virtualize = (items as T[]).length > 100,
       virtualHeight = 400,
       virtualItemHeight = UI_CONFIG.VIRTUAL_ITEM_HEIGHT,
       ...componentProps
-    } = props as any;
+    } = props;
 
     if (!virtualize) {
-      return <Component items={items} {...componentProps} />;
+      return <Component {...(props as P)} />;
     }
 
-    const renderItem = ({ index, style, data }: any) => (
+    const renderItem = ({ index, style, data }: { index: number; style: React.CSSProperties; data: T[] }) => (
       <div style={style}>
-        <Component items={[data[index]]} {...componentProps} />
+        <Component {...({ ...componentProps, items: [data[index]] } as P)} />
       </div>
     );
 

@@ -5,14 +5,14 @@
  * para garantir que não excedam o limite do Vercel Free Plan (10s)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
 /**
  * Handler type para API routes
  */
 type ApiHandler = (
   req: NextRequest,
-  ...args: any[]
+  ...args: unknown[]
 ) => Promise<NextResponse | Response>;
 
 /**
@@ -32,7 +32,7 @@ export function withApiTimeout<T extends ApiHandler>(
   handler: T,
   timeoutMs: number = 8000
 ): T {
-  return (async (req: NextRequest, ...args: any[]) => {
+  return (async (req: NextRequest, ...args: unknown[]) => {
     const startTime = Date.now();
 
     // Promise do handler original
@@ -114,21 +114,21 @@ export function withApiTimeout<T extends ApiHandler>(
  *
  * @example
  * export const GET = withAuthAndTimeout(
- *   async (req: NextRequest, userId: string) => {
+ *   async (req: NextRequest, _userId: string) => {
  *     const data = await fetchData(userId);
  *     return successResponse(data);
  *   }
  * );
  */
 export function withAuthAndTimeout<
-  T extends (req: NextRequest, userId: string, ...args: any[]) => Promise<NextResponse | Response>
+  T extends (req: NextRequest, userId: string, ...args: unknown[]) => Promise<NextResponse | Response>
 >(handler: T, timeoutMs: number = 8000): T {
   // Importar withAuth dinamicamente para evitar circular dependency
-  const { withAuth } = require('./auth');
+  const { withAuth } = require('./auth') as { withAuth: (h: T) => T };
 
   // Aplicar timeout primeiro, depois auth
-  const timeoutHandler = withApiTimeout(handler as any, timeoutMs);
-  return withAuth(timeoutHandler) as T;
+  const timeoutHandler = withApiTimeout(handler as ApiHandler, timeoutMs) as T;
+  return withAuth(timeoutHandler);
 }
 
 /**

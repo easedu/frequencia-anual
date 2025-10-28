@@ -139,10 +139,15 @@ export async function GET(req: NextRequest, context: RouteParams) {
       .from('academic_years')
       .select('id, year')
       .eq('year', year)
-      .single()) as { data: { id: string; year: number } | null; error: any };
+      .single()) as { data: { id: string; year: number } | null; error: unknown };
 
     if (yearError || !academicYear) {
-      if (yearError?.code === 'PGRST116') {
+      // Type guard para erro do Supabase
+      const isSupabaseError = (err: unknown): err is { code: string; message: string } => {
+        return typeof err === 'object' && err !== null && 'code' in err;
+      };
+
+      if (isSupabaseError(yearError) && yearError.code === 'PGRST116') {
         // Registro não encontrado
         logger.warn(`Ano letivo ${year} não cadastrado no sistema`, { year });
 
@@ -173,7 +178,7 @@ export async function GET(req: NextRequest, context: RouteParams) {
             school_days_count: number;
           }>
         | null;
-      error: any;
+      error: unknown;
     };
 
     if (bimestersError) {
@@ -203,7 +208,7 @@ export async function GET(req: NextRequest, context: RouteParams) {
         .eq('bimester_id', bimester.id)
         .order('date', { ascending: true })) as {
         data: Array<{ date: string; is_checked: boolean }> | null;
-        error: any;
+        error: unknown;
       };
 
       if (error) {
@@ -250,12 +255,6 @@ export async function GET(req: NextRequest, context: RouteParams) {
     // ✅ PASSO 6: Salvar no cache
     serverCache.set(cacheKey, result, CACHE_TTL);
 
-    logger.info(`Cache ARMAZENADO para ano letivo ${year}`, {
-      year,
-      cacheKey,
-      cacheTTL: `${CACHE_TTL / 1000 / 60} minutos`,
-    });
-
     // ✅ PASSO 7: Retornar resposta
     return NextResponse.json({
       success: true,
@@ -263,7 +262,7 @@ export async function GET(req: NextRequest, context: RouteParams) {
       cached: false,
     } as ApiResponse);
   } catch (error) {
-    logger.error('Erro ao buscar ano letivo completo', error as Error);
+    logger.error('Erro ao buscar ano letivo completo', { error: error instanceof Error ? error.message : 'Unknown error' });
 
     return NextResponse.json(
       {

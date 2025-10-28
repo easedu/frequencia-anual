@@ -40,15 +40,21 @@ import {
  * Validar webhook da Evolution API
  * OPCIONAL: Adicionar validação de API key se necessário
  */
-function validateWebhook(webhook: any): webhook is MessageStatusWebhook {
+function _validateWebhook(webhook: unknown): webhook is MessageStatusWebhook {
+  if (typeof webhook !== 'object' || webhook === null) return false;
+
+  const w = webhook as Record<string, unknown>;
+
   return (
-    webhook &&
-    webhook.event === 'MESSAGES_UPDATE' &&
-    webhook.data &&
-    webhook.data.key &&
-    webhook.data.key.id &&
-    webhook.data.update &&
-    typeof webhook.data.update.status === 'number'
+    w.event === 'MESSAGES_UPDATE' &&
+    typeof w.data === 'object' &&
+    w.data !== null &&
+    typeof (w.data as Record<string, unknown>).key === 'object' &&
+    (w.data as Record<string, unknown>).key !== null &&
+    typeof ((w.data as Record<string, unknown>).key as Record<string, unknown>).id === 'string' &&
+    typeof (w.data as Record<string, unknown>).update === 'object' &&
+    (w.data as Record<string, unknown>).update !== null &&
+    typeof ((w.data as Record<string, unknown>).update as Record<string, unknown>).status === 'number'
   );
 }
 
@@ -83,7 +89,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // 1. Parse do body
-    const webhook: any = await request.json();
+    const webhook: unknown = await request.json();
 
     // 🚨🚨🚨 LOG CHAMATIVO - WEBHOOK RECEBIDO 🚨🚨🚨
     console.log('\n' + '='.repeat(80));
@@ -96,36 +102,14 @@ export async function POST(request: NextRequest) {
     console.log('='.repeat(80) + '\n');
 
     // 📊 LOG INFO ESTRUTURADO (Para monitoramento de frequência)
-    logger.info('📨 [Webhook] Novo evento recebido', {
-      webhookNumber: webhookCounter,
-      timeSinceLastWebhookMs: timeSinceLastWebhook,
-      timeSinceLastWebhookSeconds: (timeSinceLastWebhook / 1000).toFixed(2),
-      event: webhook.event,
-      instance: webhook.instance,
-      timestamp: new Date().toISOString(),
-      requestHeaders: {
-        userAgent: request.headers.get('user-agent'),
-        contentType: request.headers.get('content-type'),
-        origin: request.headers.get('origin')
-      },
-      webhookData: {
-        hasData: !!webhook.data,
-        hasKey: !!webhook.data?.key,
-        hasUpdate: !!webhook.data?.update,
-        messageId: webhook.data?.key?.id || webhook.data?.keyId,
-        remoteJid: webhook.data?.key?.remoteJid || webhook.data?.remoteJid,
-        fromMe: webhook.data?.key?.fromMe ?? webhook.data?.fromMe,
-        statusCode: webhook.data?.update?.status,
-        statusString: webhook.data?.status
-      }
-    });
+    const webhookObj = webhook as Record<string, unknown>;
+    const webhookData = webhookObj.data as Record<string, unknown> | undefined;
+    const _webhookKey = webhookData?.key as Record<string, unknown> | undefined;
+    const _webhookUpdate = webhookData?.update as Record<string, unknown> | undefined;
 
     // 2. Verificar se é evento de atualização de mensagem
-    if (webhook.event !== 'messages.update' && webhook.event !== 'MESSAGES_UPDATE') {
-      logger.info('[Webhook] Evento não suportado, ignorando', {
-        event: webhook.event
-      });
-
+    const webhookTypedForEvent = webhook as Record<string, unknown>;
+    if (webhookTypedForEvent.event !== 'messages.update' && webhookTypedForEvent.event !== 'MESSAGES_UPDATE') {
       return NextResponse.json({
         success: true,
         message: 'Evento ignorado'
@@ -133,23 +117,28 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Extrair dados (suporta ambos os formatos: Evolution API real e formato antigo)
-    const data = webhook.data;
+    const webhookTyped = webhook as Record<string, unknown>;
+    const data = webhookTyped.data as Record<string, unknown>;
 
     // Formato Evolution API real (priority)
-    let messageId = data.keyId;
-    let evolutionStatus = data.status;
-    let fromMe = data.fromMe;
-    let phoneNumber = data.remoteJid?.replace('@s.whatsapp.net', '') || '';
+    let messageId = data.keyId as string | undefined;
+    let evolutionStatus = data.status as string | undefined;
+    let fromMe = data.fromMe as boolean | undefined;
+    let phoneNumber = typeof data.remoteJid === 'string'
+      ? data.remoteJid.replace('@s.whatsapp.net', '')
+      : '';
 
     // Fallback para formato antigo (se não encontrar no formato novo)
-    if (!messageId && data.key?.id) {
-      messageId = data.key.id;
-      fromMe = data.key.fromMe;
-      phoneNumber = extractPhoneFromJid(data.key.remoteJid);
+    const key = data.key as Record<string, unknown> | undefined;
+    if (!messageId && key?.id) {
+      messageId = key.id as string;
+      fromMe = key.fromMe as boolean;
+      phoneNumber = extractPhoneFromJid(key.remoteJid as string);
 
       // Status numérico do formato antigo
-      if (data.update?.status !== undefined) {
-        const statusCode = data.update.status;
+      const update = data.update as Record<string, unknown> | undefined;
+      if (update?.status !== undefined) {
+        const statusCode = update.status as number;
         evolutionStatus = mapStatusCode(statusCode);
       }
     }
@@ -165,10 +154,6 @@ export async function POST(request: NextRequest) {
 
     // 4. Verificar se mensagem é nossa (fromMe = true)
     if (!fromMe) {
-      logger.info('[Webhook] Mensagem recebida (não enviada por nós), ignorando', {
-        messageId
-      });
-
       return NextResponse.json({
         success: true,
         message: 'Mensagem recebida (não rastreada)'
@@ -180,12 +165,21 @@ export async function POST(request: NextRequest) {
       ? mapEvolutionStringStatus(evolutionStatus)
       : evolutionStatus;
 
+    // Validar que newStatus não é undefined
+    if (!newStatus) {
+      logger.warn('[Webhook] Status não pôde ser determinado', { messageId, evolutionStatus });
+      return NextResponse.json({
+        success: false,
+        error: 'Status não pôde ser determinado'
+      }, { status: 400 });
+    }
+
     // 5.5. Buscar status atual e validar progressão
     const currentStatusData = await InteractionStatusService.getStatus(messageId);
     const currentStatus = currentStatusData?.currentStatus;
 
     // 5.6. Validar progressão de status
-    const isValidProgression = isValidStatusProgression(currentStatus, newStatus);
+    const isValidProgression = isValidStatusProgression(currentStatus || '', newStatus);
 
     if (!isValidProgression) {
       logger.warn('[Webhook] Regressão de status bloqueada', {
@@ -214,7 +208,7 @@ export async function POST(request: NextRequest) {
       newStatus,
       Date.now()
     );
-    const updateDuration = Date.now() - updateStartTime;
+    const _updateDuration = Date.now() - updateStartTime;
 
     // 7. Atualizar status em whatsapp_message_history (opcional)
     const historyResult = await MessageStatusService.updateStatus(
@@ -240,11 +234,12 @@ export async function POST(request: NextRequest) {
     const webhookTotalDuration = Date.now() - webhookStartTime;
 
     // 📝 Adicionar ao histórico
+    const webhookForHistory = webhook as Record<string, unknown>;
     const historyEntry: WebhookLogEntry = {
       number: webhookCounter,
       timestamp: new Date().toISOString(),
       messageId: messageId || 'unknown',
-      event: webhook.event,
+      event: webhookForHistory.event as string,
       status: `${interactionResult.oldStatus} → ${interactionResult.newStatus}`,
       timeSinceLastMs: timeSinceLastWebhook,
       processingTimeMs: webhookTotalDuration
@@ -375,7 +370,24 @@ export async function GET(request: NextRequest) {
   const includeHistory = searchParams.get('history') === 'true';
   const limit = parseInt(searchParams.get('limit') || '10');
 
-  const response: any = {
+  interface HealthResponse {
+    status: string;
+    endpoint: string;
+    description: string;
+    supportedEvents: string[];
+    statistics: {
+      totalWebhooksReceived: number;
+      lastWebhookAt: string | null;
+      timeSinceLastWebhookMs: number | null;
+      timeSinceLastWebhookSeconds: string | null;
+      averageIntervalSeconds: string | null;
+      webhooksPerMinute: string;
+    };
+    timestamp: string;
+    history?: WebhookLogEntry[];
+  }
+
+  const response: HealthResponse = {
     status: 'online',
     endpoint: '/api/evolution/webhooks/message-status',
     description: 'Webhook receptor de status de mensagens WhatsApp (Evolution API)',

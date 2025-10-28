@@ -48,12 +48,6 @@ export class MessageStatusService {
         };
       }
 
-      logger.info('[MessageStatus] Atualizando status', {
-        messageId,
-        newStatus,
-        timestamp
-      });
-
       // 1. Buscar registro existente
       const { data: existing, error: fetchError } = await (supabase
         .from('whatsapp_message_history')
@@ -63,14 +57,14 @@ export class MessageStatusService {
           data: {
             id: string;
             current_status?: string;
-            status_history?: any;
+            status_history?: StatusHistoryEntry[];
             estudante_nome?: string;
             contato_telefone?: string;
             delivered_at?: string;
             read_at?: string;
             played_at?: string;
           } | null;
-          error: any;
+          error: unknown;
         }>);
 
       if (fetchError) {
@@ -93,10 +87,6 @@ export class MessageStatusService {
 
       // 2. Verificar se status já foi atualizado (idempotência)
       if (oldStatus === newStatus) {
-        logger.info('[MessageStatus] Status já atualizado (idempotente)', {
-          messageId,
-          status: newStatus
-        });
         return {
           success: true,
           messageId,
@@ -114,7 +104,7 @@ export class MessageStatusService {
       });
 
       // 4. Preparar campos a atualizar
-      const updateFields: Record<string, any> = {
+      const updateFields: Record<string, unknown> = {
         current_status: newStatus,
         status_history: statusHistory,
         updated_at: new Date(timestamp).toISOString()
@@ -132,23 +122,15 @@ export class MessageStatusService {
       }
 
       // 6. Executar atualização
-      const updateResult = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updateResult = await (supabase as any)
         .from('whatsapp_message_history')
-        // @ts-ignore - Supabase types issue with dynamic update fields
         .update(updateFields)
         .eq('message_id', messageId);
 
       if (updateResult.error) {
         throw updateResult.error;
       }
-
-      logger.info('[MessageStatus] Status atualizado com sucesso', {
-        messageId,
-        oldStatus,
-        newStatus,
-        estudanteNome: existing.estudante_nome,
-        contatoTelefone: existing.contato_telefone
-      });
 
       return {
         success: true,
@@ -192,12 +174,12 @@ export class MessageStatusService {
         .maybeSingle() as unknown as Promise<{
           data: {
             current_status?: string;
-            status_history?: any;
+            status_history?: StatusHistoryEntry[];
             delivered_at?: string;
             read_at?: string;
             played_at?: string;
           } | null;
-          error: any;
+          error: unknown;
         }>);
 
       if (error) throw error;
@@ -252,7 +234,11 @@ export class MessageStatusService {
         FAILED: 0
       };
 
-      (data || []).forEach((record: any) => {
+      interface MessageStatusRecord {
+        current_status?: string;
+      }
+
+      (data || []).forEach((record: MessageStatusRecord) => {
         const status = record.current_status || 'PENDING';
         stats[status] = (stats[status] || 0) + 1;
       });

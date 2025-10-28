@@ -9,11 +9,10 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
-import { logger } from "@/utils/logger";
 import { Estudante } from "@/types";
 import { toast } from "sonner";
 import { getAuth } from "firebase/auth";
-import { formatDateInput, parseDateToFirebase, formatFirebaseDate } from "../app/utils";
+import { _formatDateInput, parseDateToFirebase, _formatFirebaseDate } from "../app/utils";
 import { UserProfilesService } from "@/services/supabase/userProfilesService";
 import { StudentOccurrencesService } from "@/services/supabase/studentOccurrencesService";
 
@@ -172,7 +171,7 @@ export function useDisabilityProfile({ students }: UseDisabilityProfileProps) {
           setUserRole("user");
         }
       } catch (error) {
-        logger.error("Erro ao carregar perfil do usuário", error as Error);
+        logger.error("Erro ao carregar perfil do usuário", {}, error as Error);
         setUserRole("user");
       }
     };
@@ -232,7 +231,7 @@ export function useDisabilityProfile({ students }: UseDisabilityProfileProps) {
 
       setOccurrences(occurrencesData);
     } catch (error) {
-      logger.error("Erro ao buscar ocorrências", error as Error);
+      logger.error("Erro ao buscar ocorrências", {}, error as Error);
       toast.error("Erro ao carregar ocorrências");
     }
   };
@@ -272,7 +271,7 @@ export function useDisabilityProfile({ students }: UseDisabilityProfileProps) {
 
       document.getElementById("occurrence-card")?.scrollIntoView({ behavior: "smooth" });
     } catch (error) {
-      logger.error("Erro ao adicionar ocorrência", error as Error);
+      logger.error("Erro ao adicionar ocorrência", {}, error as Error);
       toast.error("Erro ao cadastrar ocorrência");
     }
   }, [selectedStudent, occurrenceDate, occurrenceDescription, occurrenceSensitive, auth]);
@@ -305,7 +304,7 @@ export function useDisabilityProfile({ students }: UseDisabilityProfileProps) {
       await fetchOccurrencesForStudent(selectedStudent.estudanteId);
       toast.success("Ocorrência atualizada com sucesso!");
     } catch (error) {
-      logger.error("Erro ao atualizar ocorrência", error as Error);
+      logger.error("Erro ao atualizar ocorrência", {}, error as Error);
       toast.error("Erro ao atualizar ocorrência");
     }
   }, [selectedStudent, editingOccurrence, occurrenceDate, occurrenceDescription, occurrenceSensitive]);
@@ -320,7 +319,7 @@ export function useDisabilityProfile({ students }: UseDisabilityProfileProps) {
         await fetchOccurrencesForStudent(selectedStudent.estudanteId);
         toast.success("Ocorrência excluída com sucesso!");
       } catch (error) {
-        logger.error("Erro ao excluir ocorrência", error as Error);
+        logger.error("Erro ao excluir ocorrência", {}, error as Error);
         toast.error("Erro ao excluir ocorrência");
       } finally {
         setShowDeleteOccurrenceDialog(null);

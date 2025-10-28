@@ -7,26 +7,18 @@ import { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { successResponse, errorResponse } from '@/app/api/_utils/response';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(_req.url);
 
     const exact = searchParams.get('exact') === 'true';
-    const filter = searchParams.get('filter'); // status, class, etc
-    const filterValue = searchParams.get('filterValue');
 
     if (exact) {
       // Count exato (mais lento mas preciso)
-      let query = supabaseAdmin
+      const { count, error } = await supabaseAdmin
         .from('students')
         .select('id', { count: 'exact', head: true })
         .eq('deleted', false);
-
-      if (filter && filterValue) {
-        query = query.eq(filter, filterValue);
-      }
-
-      const { count, error } = await query;
 
       if (error) {
         return errorResponse('DATABASE_ERROR', error.message, 500);
@@ -39,25 +31,23 @@ export async function GET(req: NextRequest) {
 
     } else {
       // Count estimado (5-10x mais rápido)
-      const { data, error } = filter && filterValue
-        ? await supabaseAdmin.rpc('get_filtered_count_estimate', {
-            table_name: 'students',
-            filter_column: filter,
-            filter_value: filterValue
-          })
-        : await supabaseAdmin.rpc('get_estimated_count', {
-            table_name: 'students'
-          });
+      try {
+        const { count, error } = await supabaseAdmin
+          .from('students')
+          .select('id', { count: 'estimated', head: true });
 
-      if (error) {
-        return errorResponse('DATABASE_ERROR', error.message, 500);
+        if (error) {
+          return errorResponse('DATABASE_ERROR', error.message, 500);
+        }
+
+        return successResponse({
+          count,
+          type: 'estimated',
+          accuracy: '90-95%'
+        });
+      } catch {
+        return errorResponse('DATABASE_ERROR', 'Failed to get estimated count', 500);
       }
-
-      return successResponse({
-        count: data,
-        type: 'estimated',
-        accuracy: '90-95%'
-      });
     }
 
   } catch (error) {
@@ -69,11 +59,5 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Metadata
-export const metadata = {
-  description: 'Students count com opção de estimated (5-10x mais rápido)',
-  performance: {
-    exact: '50-100ms',
-    estimated: '5-10ms'
-  }
-};
+// Export dynamic config to prevent static optimization
+export const dynamic = 'force-dynamic';

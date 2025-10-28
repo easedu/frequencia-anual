@@ -27,7 +27,7 @@ import {
 import { useTasks, useUpdateTask, useInteractions, useCreateInteraction } from '@/hooks/api';
 import { toast } from 'sonner';
 import { logger } from '@/utils/logger';
-import type { UserTask } from '@/types/tasks';
+import type { UserTask as APIUserTask } from '@/hooks/api/useTasks';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import { auth } from '@/firebase.config';
 
@@ -37,10 +37,10 @@ interface TaskManagerProps {
 }
 
 export default function TaskManager({ userId, userRole }: TaskManagerProps) {
-  const [tasks, setTasks] = useState<UserTask[]>([]);
+  const [tasks, setTasks] = useState<APIUserTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingGenerate, setLoadingGenerate] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<UserTask | null>(null);
+  const [selectedTask, setSelectedTask] = useState<APIUserTask | null>(null);
   const [showInteractionCard, setShowInteractionCard] = useState(false);
 
   // Estados para filtros e paginação
@@ -56,7 +56,7 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
 
   // Estados para o modal de confirmação PCD
   const [showPCDConfirmation, setShowPCDConfirmation] = useState(false);
-  const [selectedPCDTask, setSelectedPCDTask] = useState<UserTask | null>(null);
+  const [selectedPCDTask, setSelectedPCDTask] = useState<APIUserTask | null>(null);
 
   // Estados para o modal de relatório
   const [showReportModal, setShowReportModal] = useState(false);
@@ -75,7 +75,7 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
   // Carregar tarefas pendentes (hook já busca automaticamente)
   useEffect(() => {
     if (!tasksLoading) {
-      setTasks(apiTasks as any);
+      setTasks(apiTasks);
       setLoading(false);
     } else {
       setLoading(true);
@@ -89,7 +89,8 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
       await refetchTasks();
       toast.info('Tarefas atualizadas');
     } catch (error) {
-      logger.error('Erro ao atualizar tarefas:', error as Error);
+      const errorObj = error instanceof Error ? error : new Error('Erro desconhecido');
+      logger.error('Erro ao atualizar tarefas:', { error: errorObj.message, stack: errorObj.stack });
       toast.error('Erro ao atualizar tarefas');
     } finally {
       setLoadingGenerate(false);
@@ -98,8 +99,13 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
 
 
   // Resolver tarefa (verificar se é PCD primeiro)
-  const handleResolveTask = (task: UserTask) => {
-    if (task.isPCD) {
+  const handleResolveTask = (task: APIUserTask) => {
+    // Check if task has metadata with isPCD flag
+    const isPCD = task.metadata && typeof task.metadata === 'object' && 'isPCD' in task.metadata
+      ? Boolean(task.metadata.isPCD)
+      : false;
+
+    if (isPCD) {
       // Se é PCD, mostrar modal de confirmação primeiro
       setSelectedPCDTask(task);
       setShowPCDConfirmation(true);
@@ -110,7 +116,7 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
   };
 
   // Abrir modal de interação
-  const openInteractionModal = (task: UserTask) => {
+  const openInteractionModal = (task: APIUserTask) => {
     setSelectedTask(task);
     setShowInteractionCard(true);
     // Reset form
@@ -136,17 +142,18 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
   };
 
   // Completar tarefa sem registrar interação (usando hook API REST)
-  const handleCompleteTaskWithoutInteraction = async (task: UserTask) => {
+  const handleCompleteTaskWithoutInteraction = async (task: APIUserTask) => {
     try {
       await updateTask(task.id, {
         status: 'COMPLETED',
-        completedAt: new Date().toISOString()
-      } as any);
+        is_resolved: true
+      });
 
       toast.success('Tarefa marcada como resolvida!');
       await refetchTasks(); // Recarregar lista
     } catch (error) {
-      logger.error('Erro ao completar tarefa sem interação:', error as Error);
+      const errorObj = error instanceof Error ? error : new Error('Erro desconhecido');
+      logger.error('Erro ao completar tarefa sem interação:', { error: errorObj.message, stack: errorObj.stack });
       toast.error('Erro ao completar tarefa');
     }
   };
@@ -178,32 +185,34 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
 
       // Salvar interação usando hook (API REST - snake_case)
       const createdInteraction = await createInteraction({
-        student_id: selectedTask.estudanteId,
-        interaction_type: interactionType,
-        interaction_date: formattedDate,
+        studentId: selectedTask.student_id,
+        type: interactionType,
+        date: formattedDate,
         description: interactionDescription,
-        is_sensitive: interactionSensitive,
-        created_by: currentUser
+        sensitive: interactionSensitive,
+        createdBy: currentUser
       });
 
       logger.info('[TASK-MANAGER] Interação salva via API', {
-        interactionId: createdInteraction.interaction_id,
-        estudanteId: selectedTask.estudanteId
+        interactionId: createdInteraction.id,
+        studentId: selectedTask.student_id
       });
 
       // 2. Marcar tarefa como completada
       await updateTask(selectedTask.id, {
         status: 'COMPLETED',
-        completedAt: new Date().toISOString(),
-        interactionId: createdInteraction.interaction_id
-      } as any);
+        is_resolved: true,
+        action_taken: `Interação registrada: ${interactionType}`,
+        notes: createdInteraction.id
+      });
 
       toast.success('Tarefa concluída e interação registrada com sucesso!');
       setShowInteractionCard(false);
       setSelectedTask(null);
       await refetchTasks(); // Recarregar lista
     } catch (error) {
-      logger.error('Erro ao registrar interação:', error as Error);
+      const errorObj = error instanceof Error ? error : new Error('Erro desconhecido');
+      logger.error('Erro ao registrar interação:', { error: errorObj.message, stack: errorObj.stack });
       toast.error('Erro ao registrar interação');
     }
   };
@@ -249,7 +258,8 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
       setShowReportModal(false);
       toast.success('Relatório gerado com sucesso!');
     } catch (error) {
-      logger.error('Erro ao gerar relatório:', error as Error);
+      const errorObj = error instanceof Error ? error : new Error('Erro desconhecido');
+      logger.error('Erro ao gerar relatório:', { error: errorObj.message, stack: errorObj.stack });
       toast.error('Erro ao gerar relatório');
     } finally {
       setGeneratingReport(false);
@@ -270,17 +280,26 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
 
     // Buscar tarefas concluídas do usuário filtradas por bimestre
     // Nota: Como não temos endpoint específico, usamos apiTasks filtrado
-    const completedTasks = (apiTasks as any).filter(
-      (task: any) => task.status === 'COMPLETED' && task.bimestre && bimestres.includes(task.bimestre)
+    const completedTasks = apiTasks.filter(
+      (task) => {
+        if (task.status !== 'COMPLETED') return false;
+        // Check if bimestre is in metadata
+        const bimestre = task.metadata && typeof task.metadata === 'object' && 'bimestre' in task.metadata
+          ? String(task.metadata.bimestre)
+          : null;
+        return bimestre && bimestres.includes(bimestre);
+      }
     );
 
     // Para cada tarefa concluída, buscar a interação associada
     for (const task of completedTasks) {
-      if ((task as any).interactionId) {
+      // Get interaction ID from notes field (where we stored it)
+      const interactionId = task.notes;
+      if (interactionId) {
         try {
           // Buscar interação específica usando hook
           const interaction = interactions.find(
-            (i: any) => i.interaction_id === (task as any).interactionId && i.student_id === (task as any).estudanteId
+            i => i.id === interactionId && i.studentId === task.student_id
           );
 
           if (interaction) {
@@ -293,26 +312,33 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
 
             reportData.push({
               data: dataFormatada,
-              nome: task.studentName,
-              turma: task.studentClass || 'N/A',
+              nome: task.student_name || 'N/A',
+              turma: (task.metadata && typeof task.metadata === 'object' && 'studentClass' in task.metadata
+                ? String(task.metadata.studentClass)
+                : 'N/A'),
               tipoInteracao: interaction.type
             });
           } else {
             // Se não encontrar a interação, adicionar com dados básicos
             reportData.push({
-              data: task.completedAt ? new Date(task.completedAt).toLocaleDateString('pt-BR') : 'N/A',
-              nome: task.studentName,
-              turma: task.studentClass || 'N/A',
+              data: task.resolved_at ? new Date(task.resolved_at).toLocaleDateString('pt-BR') : 'N/A',
+              nome: task.student_name || 'N/A',
+              turma: (task.metadata && typeof task.metadata === 'object' && 'studentClass' in task.metadata
+                ? String(task.metadata.studentClass)
+                : 'N/A'),
               tipoInteracao: 'Dados não encontrados'
             });
           }
         } catch (error) {
-          logger.error(`Erro ao buscar interação para tarefa ${task.id}:`, error as Error);
+          const errorObj = error instanceof Error ? error : new Error('Erro desconhecido');
+          logger.error(`Erro ao buscar interação para tarefa ${task.id}:`, { error: errorObj.message, stack: errorObj.stack });
           // Adicionar entrada com erro
           reportData.push({
-            data: task.completedAt ? new Date(task.completedAt).toLocaleDateString('pt-BR') : 'N/A',
-            nome: task.studentName,
-            turma: task.studentClass || 'N/A',
+            data: task.resolved_at ? new Date(task.resolved_at).toLocaleDateString('pt-BR') : 'N/A',
+            nome: task.student_name || 'N/A',
+            turma: (task.metadata && typeof task.metadata === 'object' && 'studentClass' in task.metadata
+              ? String(task.metadata.studentClass)
+              : 'N/A'),
             tipoInteracao: 'Erro ao carregar dados'
           });
         }
@@ -434,7 +460,12 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
   const availableClasses = useMemo(() => {
     if (!tasks || tasks.length === 0) return [];
 
-    const classes = Array.from(new Set(tasks.map(task => task.studentClass).filter(Boolean)));
+    const classes = Array.from(new Set(tasks.map(task => {
+      if (task.metadata && typeof task.metadata === 'object' && 'studentClass' in task.metadata) {
+        return String(task.metadata.studentClass);
+      }
+      return null;
+    }).filter((cls): cls is string => cls !== null)));
 
     // Ordenação customizada para turmas (1A, 1B, 2A, 2B, ..., 7A, 7B, etc.)
     return classes.sort((a, b) => {
@@ -483,9 +514,12 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
     if (selectedClasses.length > 0) {
       // Se não selecionou todas as turmas disponíveis, aplicar filtro
       if (selectedClasses.length < availableClasses.length) {
-        filtered = filtered.filter(task =>
-          task.studentClass && selectedClasses.includes(task.studentClass)
-        );
+        filtered = filtered.filter(task => {
+          const studentClass = task.metadata && typeof task.metadata === 'object' && 'studentClass' in task.metadata
+            ? String(task.metadata.studentClass)
+            : null;
+          return studentClass && selectedClasses.includes(studentClass);
+        });
       }
     } else {
       // Se não selecionou nenhuma turma, não mostrar nada
@@ -494,8 +528,12 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
 
     // Ordenar por frequência (pior para melhor)
     filtered = filtered.sort((a, b) => {
-      const freqA = a.frequencyPercentage || 0;
-      const freqB = b.frequencyPercentage || 0;
+      const freqA = (a.metadata && typeof a.metadata === 'object' && 'frequencyPercentage' in a.metadata
+        ? Number(a.metadata.frequencyPercentage)
+        : 0);
+      const freqB = (b.metadata && typeof b.metadata === 'object' && 'frequencyPercentage' in b.metadata
+        ? Number(b.metadata.frequencyPercentage)
+        : 0);
       return freqA - freqB;
     });
 
@@ -605,10 +643,14 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-4">
                   <div className="flex items-center justify-center gap-2 text-purple-800">
                     <User className="w-4 h-4" />
-                    <span className="font-medium">{selectedPCDTask.studentName}</span>
+                    <span className="font-medium">{selectedPCDTask.student_name || 'N/A'}</span>
                   </div>
                   <div className="text-sm text-purple-700 mt-1">
-                    {selectedPCDTask.studentClass} • {selectedPCDTask.frequencyPercentage.toFixed(1)}% de frequência
+                    {selectedPCDTask.metadata && typeof selectedPCDTask.metadata === 'object' && 'studentClass' in selectedPCDTask.metadata
+                      ? String(selectedPCDTask.metadata.studentClass)
+                      : 'N/A'} • {selectedPCDTask.metadata && typeof selectedPCDTask.metadata === 'object' && 'frequencyPercentage' in selectedPCDTask.metadata
+                      ? Number(selectedPCDTask.metadata.frequencyPercentage).toFixed(1)
+                      : '0.0'}% de frequência
                   </div>
                 </div>
                 <p className="text-gray-600 text-sm">
@@ -736,20 +778,26 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 text-orange-800">
                     <User className="w-4 h-4" />
-                    <span className="font-medium">{selectedTask.studentName}</span>
+                    <span className="font-medium">{selectedTask.student_name || 'N/A'}</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-orange-700 mt-1">
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      {selectedTask.bimestre}
+                      {selectedTask.metadata && typeof selectedTask.metadata === 'object' && 'bimestre' in selectedTask.metadata
+                        ? String(selectedTask.metadata.bimestre)
+                        : 'N/A'}
                     </span>
                     <span className="flex items-center gap-1">
                       <TrendingDown className="w-3 h-3" />
-                      {selectedTask.frequencyPercentage.toFixed(1)}% de frequência
+                      {selectedTask.metadata && typeof selectedTask.metadata === 'object' && 'frequencyPercentage' in selectedTask.metadata
+                        ? Number(selectedTask.metadata.frequencyPercentage).toFixed(1)
+                        : '0.0'}% de frequência
                     </span>
                     <span className="flex items-center gap-1">
                       <School className="w-3 h-3" />
-                      {selectedTask.studentClass}
+                      {selectedTask.metadata && typeof selectedTask.metadata === 'object' && 'studentClass' in selectedTask.metadata
+                        ? String(selectedTask.metadata.studentClass)
+                        : 'N/A'}
                     </span>
                   </div>
                 </div>
@@ -890,88 +938,107 @@ export default function TaskManager({ userId, userRole }: TaskManagerProps) {
             )}
           </div>
 
-          {paginatedTasks.map((task) => (
-            <Card key={`task-${task.id}`} className="border-0 shadow-lg border-l-4 border-l-red-500">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-red-100 rounded-lg">
-                      <User className="w-5 h-5 text-red-600" />
+          {paginatedTasks.map((task) => {
+            const studentName = task.student_name || 'N/A';
+            const studentClass = task.metadata && typeof task.metadata === 'object' && 'studentClass' in task.metadata
+              ? String(task.metadata.studentClass)
+              : 'N/A';
+            const frequencyPercentage = task.metadata && typeof task.metadata === 'object' && 'frequencyPercentage' in task.metadata
+              ? Number(task.metadata.frequencyPercentage)
+              : 0;
+            const absencesCount = task.metadata && typeof task.metadata === 'object' && 'absenceCount' in task.metadata
+              ? Number(task.metadata.absenceCount)
+              : 0;
+            const bimestre = task.metadata && typeof task.metadata === 'object' && 'bimestre' in task.metadata
+              ? String(task.metadata.bimestre)
+              : 'N/A';
+            const isPCD = task.metadata && typeof task.metadata === 'object' && 'isPCD' in task.metadata
+              ? Boolean(task.metadata.isPCD)
+              : false;
+
+            return (
+              <Card key={`task-${task.id}`} className="border-0 shadow-lg border-l-4 border-l-red-500">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-red-100 rounded-lg">
+                        <User className="w-5 h-5 text-red-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{studentName}</h4>
+                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <span className="flex items-center gap-1">
+                            <School className="w-3 h-3" />
+                            {studentClass}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <TrendingDown className="w-3 h-3" />
+                            {frequencyPercentage.toFixed(1)}% frequência
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {absencesCount} faltas
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{task.studentName}</h4>
-                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <span className="flex items-center gap-1">
-                          <School className="w-3 h-3" />
-                          {task.studentClass || 'N/A'}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <TrendingDown className="w-3 h-3" />
-                          {(task.frequencyPercentage || 0).toFixed(1)}% frequência
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {task.absencesCount || 0} faltas
-                        </span>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-red-100 text-red-800 border-red-200">
+                          Intervenção Necessária
+                        </Badge>
+                        {isPCD && (
+                          <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+                            PCD
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        onClick={() => handleResolveTask(task)}
+                        className="bg-red-600 hover:bg-red-700 flex items-center gap-2"
+                      >
+                        <FileText className="w-4 h-4" />
+                        Resolver
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                    <div className="bg-gray-50 p-3 rounded border">
+                      <span className="text-gray-600">Turma:</span>
+                      <div className="font-medium">{studentClass}</div>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded border">
+                      <span className="text-gray-600">Bimestre:</span>
+                      <div className="font-medium">{bimestre}</div>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded border">
+                      <span className="text-gray-600">Faltas:</span>
+                      <div className="font-medium text-red-600">
+                        {absencesCount} dias
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded border">
+                      <span className="text-gray-600">Frequência:</span>
+                      <div className="font-medium text-red-600">
+                        {frequencyPercentage.toFixed(1)}%
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-red-100 text-red-800 border-red-200">
-                        Intervenção Necessária
-                      </Badge>
-                      {task.isPCD && (
-                        <Badge className="bg-purple-100 text-purple-800 border-purple-200">
-                          PCD
-                        </Badge>
-                      )}
-                    </div>
-                    <Button
-                      onClick={() => handleResolveTask(task)}
-                      className="bg-red-600 hover:bg-red-700 flex items-center gap-2"
-                    >
-                      <FileText className="w-4 h-4" />
-                      Resolver
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                  <div className="bg-gray-50 p-3 rounded border">
-                    <span className="text-gray-600">Turma:</span>
-                    <div className="font-medium">{task.studentClass || 'N/A'}</div>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded border">
-                    <span className="text-gray-600">Bimestre:</span>
-                    <div className="font-medium">{task.bimestre || 'N/A'}</div>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded border">
-                    <span className="text-gray-600">Faltas:</span>
-                    <div className="font-medium text-red-600">
-                      {task.absencesCount || 0} dias
-                    </div>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded border">
-                    <span className="text-gray-600">Frequência:</span>
-                    <div className="font-medium text-red-600">
-                      {(task.frequencyPercentage || 0).toFixed(1)}%
-                    </div>
-                  </div>
-                </div>
-
-                <Alert className="mt-4 border-orange-200 bg-orange-50">
-                  <AlertTriangle className="h-4 w-4 text-orange-600" />
-                  <AlertDescription className="text-orange-800">
-                    <strong>Ação Necessária:</strong> {task.studentName} da turma {task.studentClass || 'N/A'} apresenta
-                    frequência de {(task.frequencyPercentage || 0).toFixed(1)}% com {task.absencesCount || 0} faltas no {task.bimestre || 'N/A'}
-                    (abaixo de 76%), necessitando intervenção pedagógica urgente.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-          ))}
+                  <Alert className="mt-4 border-orange-200 bg-orange-50">
+                    <AlertTriangle className="h-4 w-4 text-orange-600" />
+                    <AlertDescription className="text-orange-800">
+                      <strong>Ação Necessária:</strong> {studentName} da turma {studentClass} apresenta
+                      frequência de {frequencyPercentage.toFixed(1)}% com {absencesCount} faltas no {bimestre}
+                      (abaixo de 76%), necessitando intervenção pedagógica urgente.
+                    </AlertDescription>
+                  </Alert>
+                </CardContent>
+              </Card>
+            );
+          })}
 
           {/* Paginação */}
           {totalPages > 1 && (

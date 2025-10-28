@@ -76,14 +76,18 @@ export function getAdminAuth() {
 
 // Exportar instâncias (lazy) - mantém compatibilidade com código existente
 export const adminDb = new Proxy({} as admin.firestore.Firestore, {
-  get(_target, prop) {
-    return (getAdminDb() as any)[prop];
+  get(_target, prop: string | symbol) {
+    const db = getAdminDb();
+    const value = db[prop as keyof admin.firestore.Firestore];
+    return typeof value === 'function' ? value.bind(db) : value;
   }
 });
 
 export const adminAuth = new Proxy({} as admin.auth.Auth, {
-  get(_target, prop) {
-    return (getAdminAuth() as any)[prop];
+  get(_target, prop: string | symbol) {
+    const auth = getAdminAuth();
+    const value = auth[prop as keyof admin.auth.Auth];
+    return typeof value === 'function' ? value.bind(auth) : value;
   }
 });
 

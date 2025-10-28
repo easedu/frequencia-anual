@@ -58,7 +58,7 @@ export class EvolutionClient {
         clearTimeout(timeoutId);
 
         // Tentar parsear resposta
-        let data: any;
+        let data: unknown;
         const contentType = response.headers.get('content-type');
 
         if (contentType?.includes('application/json')) {

@@ -22,8 +22,8 @@ export interface AutomationExecution {
   processed_students: number;
   current_student_index: number;
   processed_student_ids: string[];
-  students_data: any; // JSONB
-  results: any; // JSONB
+  students_data: Record<string, unknown>; // JSONB
+  results: Record<string, unknown>; // JSONB
   error_message: string | null;
   dry_run: boolean;
   absence_multiple: number | null;
@@ -44,7 +44,7 @@ export interface AutomationExecutionFilters {
 
 export interface CreateAutomationExecutionData {
   total_students: number;
-  students_data: any;
+  students_data: Record<string, unknown>;
   dry_run?: boolean;
   absence_multiple?: number;
   notification_phone?: string;
@@ -58,7 +58,7 @@ export interface UpdateCheckpointData {
   processed_students: number;
   current_student_index: number;
   processed_student_ids: string[];
-  results: any;
+  results: Record<string, unknown>;
 }
 
 export interface UpdateErrorData {

@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export type PublicApiHandler = (
   req: NextRequest,
-  ...args: any[]
+  ...args: unknown[]
 ) => Promise<NextResponse | Response>;
 
 /**
@@ -33,7 +33,7 @@ export function withTimeout<T extends PublicApiHandler>(
   handler: T,
   timeoutMs: number = 8000
 ): T {
-  return (async (req: NextRequest, ...args: any[]) => {
+  return (async (req: NextRequest, ...args: unknown[]) => {
     const startTime = Date.now();
 
     // Promise de timeout

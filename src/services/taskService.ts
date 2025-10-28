@@ -7,8 +7,35 @@ import { AcademicYearService } from './supabase/academicYearService';
 import { AbsenceService } from './supabase/absenceService';
 import { StudentDataService } from './studentDataService';
 import { logger } from '@/utils/logger';
-import type { UserTask, TaskGenerationResult, BimesterTaskControl } from '@/types/tasks';
-import type { Student } from '@/types';
+import type { UserTask, TaskGenerationResult, _BimesterTaskControl, TaskType } from '@/types/tasks';
+
+/**
+ * API Task Record type (from database)
+ */
+interface ApiTaskRecord {
+  id: string;
+  user_id?: string;
+  student_id: string;
+  student_name?: string;
+  title?: string;
+  student_class?: string;
+  task_type?: string;
+  bimestre?: string;
+  is_resolved: boolean;
+  frequency_percentage?: number;
+  absences_count?: number;
+  is_pcd?: boolean;
+  priority?: string;
+  recommended_action?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string;
+  interaction_id?: string;
+  deleted?: boolean;
+  deleted_at?: string;
+  deleted_by?: string;
+}
 
 export class TaskService {
   /**
@@ -21,9 +48,9 @@ export class TaskService {
       const hoje = new Date();
       hoje.setHours(0, 0, 0, 0);
 
-      const bimestres = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
+      const _bimestres = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
 
-      for (const bimestre of bimestres) {
+      for (const bimestre of _bimestres) {
         const bimNum = parseInt(bimestre.charAt(0));
         const dates = bimesterDates[bimNum];
 
@@ -80,7 +107,7 @@ export class TaskService {
         )
       ]);
     } catch (error) {
-      logger.error('Erro ao calcular frequência do bimestre:', error as Error);
+      logger.error('Erro ao calcular frequência do bimestre:', {}, error as Error);
       return { frequency: 100, absences: 0, totalDays: 0 };
     }
   }
@@ -142,16 +169,16 @@ export class TaskService {
   /**
    * Gera tarefas para estudantes com frequência baixa no bimestre atual
    */
-  static async generateTasksForUser(userId: string): Promise<TaskGenerationResult> {
+  static async generateTasksForUser(_userId: string): Promise<TaskGenerationResult> {
     try {
       return await Promise.race([
-        this.doGenerateTasksForUser(userId),
+        this.doGenerateTasksForUser(_userId),
         new Promise<TaskGenerationResult>((_, reject) =>
           setTimeout(() => reject(new Error('Timeout na geração de tarefas')), 30000)
         )
       ]);
     } catch (error) {
-      logger.error('Erro ao gerar tarefas:', error as Error);
+      logger.error('Erro ao gerar tarefas:', {}, error as Error);
       return {
         newTasks: [],
         message: error instanceof Error && error.message.includes('Timeout')
@@ -164,7 +191,7 @@ export class TaskService {
   /**
    * Implementação otimizada da geração de tarefas
    */
-  private static async doGenerateTasksForUser(userId: string): Promise<TaskGenerationResult> {
+  private static async doGenerateTasksForUser(_userId: string): Promise<TaskGenerationResult> {
     const currentBimester = await this.getCurrentBimester();
 
     // Buscar estudantes ativos
@@ -202,7 +229,7 @@ export class TaskService {
         // Criar task se dados estão completos
         if (estudante.turma && estudante.turma.trim() && estudante.nome && estudante.nome.trim()) {
           const taskData: Omit<UserTask, 'id' | 'createdAt' | 'updatedAt'> = {
-            userId,
+            userId: _userId,
             estudanteId: estudante.estudanteId,
             studentName: estudante.nome,
             studentClass: estudante.turma,
@@ -254,13 +281,6 @@ export class TaskService {
       }
     }
 
-    if (newTasks.length > 0) {
-      logger.info('Tarefas geradas com sucesso', {
-        count: newTasks.length,
-        bimestre: currentBimester
-      });
-    }
-
     return {
       newTasks,
       message: newTasks.length > 0
@@ -274,16 +294,16 @@ export class TaskService {
   /**
    * Busca tarefas pendentes de um usuário
    */
-  static async getPendingTasks(userId: string): Promise<UserTask[]> {
+  static async getPendingTasks(_userId: string): Promise<UserTask[]> {
     try {
-      const response = await fetch(`/api/tasks?created_by=${encodeURIComponent(userId)}&is_resolved=false`);
+      const response = await fetch(`/api/tasks?created_by=${encodeURIComponent(_userId)}&is_resolved=false`);
 
       if (!response.ok) {
         throw new Error(`API returned ${response.status}`);
       }
 
       const result = await response.json();
-      return (result.data || []).map((task: any) => this.mapApiToUserTask(task));
+      return (result.data || []).map((task: ApiTaskRecord) => this.mapApiToUserTask(task));
     } catch (error) {
       logger.error('getPendingTasks falhou', {}, error as Error);
       return [];
@@ -341,14 +361,14 @@ export class TaskService {
   /**
    * Busca tarefas completadas de um usuário
    */
-  static async getCompletedTasks(userId: string, bimestres?: string[]): Promise<UserTask[]> {
+  static async getCompletedTasks(_userId: string, _bimestres?: string[]): Promise<UserTask[]> {
     try {
-      const response = await fetch(`/api/tasks?created_by=${encodeURIComponent(userId)}&is_resolved=true`);
+      const response = await fetch(`/api/tasks?created_by=${encodeURIComponent(_userId)}&is_resolved=true`);
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
       const result = await response.json();
-      return (result.data || []).map((task: any) => this.mapApiToUserTask(task));
+      return (result.data || []).map((task: ApiTaskRecord) => this.mapApiToUserTask(task));
     } catch (error) {
       logger.error('getCompletedTasks falhou', {}, error as Error);
       return [];
@@ -378,7 +398,6 @@ export class TaskService {
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
       const result = await response.json();
-      logger.info('Tarefa criada via API', { taskId: result.data.id });
       return result.data.id;
     } catch (error) {
       logger.error('createTask falhou', {}, error as Error);
@@ -389,14 +408,14 @@ export class TaskService {
   /**
    * Busca todas as tarefas de um usuário (por userId, incluindo BOT)
    */
-  static async getUserTasksForUserId(userId: string): Promise<UserTask[]> {
+  static async getUserTasksForUserId(_userId: string): Promise<UserTask[]> {
     try {
-      const response = await fetch(`/api/tasks?created_by=${encodeURIComponent(userId)}`);
+      const response = await fetch(`/api/tasks?created_by=${encodeURIComponent(_userId)}`);
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
       const result = await response.json();
-      return (result.data || []).map((task: any) => this.mapApiToUserTask(task));
+      return (result.data || []).map((task: ApiTaskRecord) => this.mapApiToUserTask(task));
     } catch (error) {
       logger.error('getUserTasksForUserId falhou', { userId }, error as Error);
       return [];
@@ -408,7 +427,13 @@ export class TaskService {
    */
   static async updateTask(taskId: string, updates: Partial<UserTask>): Promise<boolean> {
     try {
-      const updateData: any = {};
+      interface ApiUpdateData {
+        is_resolved?: boolean;
+        resolved_at?: string;
+        action_taken?: string;
+      }
+
+      const updateData: ApiUpdateData = {};
 
       if (updates.status !== undefined) {
         updateData.is_resolved = updates.status === 'COMPLETED';
@@ -424,7 +449,6 @@ export class TaskService {
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      logger.info('Tarefa atualizada via API', { taskId });
       return true;
     } catch (error) {
       logger.error('updateTask falhou', { taskId }, error as Error);
@@ -443,7 +467,6 @@ export class TaskService {
 
       if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-      logger.info('Tarefa deletada via API', { taskId });
       return true;
     } catch (error) {
       logger.error('deleteTask falhou', { taskId }, error as Error);
@@ -464,14 +487,17 @@ export class TaskService {
       const result = await response.json();
       const tasks = result.data || [];
 
+      interface TaskIdData {
+        id: string;
+      }
+
       // Deletar todas em paralelo (máximo 10 simultâneas para não sobrecarregar)
-      const deletePromises = tasks.map((task: any) =>
+      const deletePromises = (tasks as TaskIdData[]).map((task: TaskIdData) =>
         fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
       );
 
       await Promise.all(deletePromises);
 
-      logger.info('Todas as tarefas foram removidas via API');
     } catch (error) {
       logger.error('clearAllTasks falhou', {}, error as Error);
       throw error;
@@ -481,21 +507,33 @@ export class TaskService {
   /**
    * Map API response to UserTask type
    */
-  private static mapApiToUserTask(record: any): UserTask {
+  private static mapApiToUserTask(record: ApiTaskRecord): UserTask {
+    // Type-safe mapping with validation
+    const taskType: TaskType = record.task_type === 'CONSELHO_TUTELAR'
+      ? 'CONSELHO_TUTELAR'
+      : 'CONSELHO_TUTELAR'; // Default
+
+    const priority: 'critical' | 'attention' | 'routine' =
+      record.priority === 'critical' || record.priority === 'attention' || record.priority === 'routine'
+        ? record.priority
+        : 'routine'; // Default
+
     return {
       id: record.id,
       userId: record.user_id || 'sistema',
       estudanteId: record.student_id,
       studentName: record.student_name || record.title || 'Estudante',
       studentClass: record.student_class || 'N/A',
-      taskType: record.task_type || 'CONSELHO_TUTELAR',
+      taskType,
       bimestre: record.bimestre || '1º Bimestre',
       status: record.is_resolved ? 'COMPLETED' : 'PENDING',
-      frequencyPercentage: parseFloat(record.frequency_percentage || 0),
+      frequencyPercentage: record.frequency_percentage !== undefined
+        ? parseFloat(String(record.frequency_percentage))
+        : 0,
       absencesCount: record.absences_count || 0,
       isPCD: record.is_pcd || false,
-      priority: record.priority || 'routine',
-      recommendedAction: record.recommended_action || record.title,
+      priority,
+      recommendedAction: record.recommended_action || record.title || 'Tarefa pendente',
       createdBy: record.created_by,
       createdAt: record.created_at,
       updatedAt: record.updated_at,

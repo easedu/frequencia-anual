@@ -30,14 +30,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Atualizar metadata do usuário
-    // @ts-ignore - Supabase type inference issue with users table
-    const result = await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from('users')
-      // @ts-ignore - Type inference issue
-      .update({ metadata })
+      .update({ metadata } as never)
       .eq('firebase_uid', firebase_uid);
-
-    const { error } = result as { error: any };
 
     if (error) throw error;
 

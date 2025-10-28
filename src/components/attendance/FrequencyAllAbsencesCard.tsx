@@ -17,7 +17,7 @@ interface FrequencyAllAbsencesCardProps {
     student?: Student; // Opcional para compatibilidade
 }
 
-const FrequencyAllAbsencesCard = memo(function FrequencyAllAbsencesCard({ studentRecord, student }: FrequencyAllAbsencesCardProps) {
+const FrequencyAllAbsencesCard = memo(function FrequencyAllAbsencesCard({ studentRecord, _student }: FrequencyAllAbsencesCardProps) {
     return (
         <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50/50">
             <CardHeader className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-t-lg py-3">

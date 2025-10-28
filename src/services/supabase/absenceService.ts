@@ -21,9 +21,9 @@
 
 import { supabase } from '@/lib/supabaseClient'; // ⚠️ Usado apenas em métodos legados (não refatorados)
 import type {
-  StudentAbsence,
+  _StudentAbsence,
   StudentAbsenceInsert,
-  StudentAbsenceUpdate,
+  _StudentAbsenceUpdate,
 } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
 import type { AbsenceRecord } from '@/types';
@@ -63,8 +63,16 @@ export class AbsenceService {
         throw new Error(result.message || 'Erro ao buscar faltas');
       }
 
+      interface ApiAbsence {
+        id: string;
+        estudanteId: string;
+        data: string;
+        justificada: boolean;
+        atestadoId?: string;
+      }
+
       // Converter do formato API para formato legado
-      return (result.data || []).map((absence: any) => ({
+      return (result.data || []).map((absence: ApiAbsence) => ({
         id: absence.id,
         estudanteId: absence.estudanteId,
         data: absence.data,
@@ -73,9 +81,9 @@ export class AbsenceService {
         suspensaoId: undefined,
         absenceDate: absence.data,
       }));
-    } catch (error) {
-      logger.error('Erro ao buscar faltas do estudante', { firebaseStudentId }, error as Error);
-      throw error;
+    } catch (err) {
+      logger.error('Erro ao buscar faltas do estudante', { firebaseStudentId }, err as Error);
+      throw err;
     }
   }
 
@@ -112,16 +120,26 @@ export class AbsenceService {
 
       // 🔧 FIX: Supabase .limit() não está funcionando!
       // Nova estratégia: Paginação manual para buscar TODOS os registros
+
+      interface StudentAbsenceWithStudent {
+        absence_date: string;
+        is_justified: boolean;
+        medical_certificate_id: string | null;
+        students: {
+          student_id: string;
+        };
+      }
+
       const results = await Promise.all(
         chunks.map(async (chunk) => {
-          const allData: any[] = [];
+          const allData: StudentAbsenceWithStudent[] = [];
           let from = 0;
           const pageSize = 1000;
           let hasMore = true;
 
           // Buscar em páginas até não ter mais dados
           while (hasMore) {
-            const { data, error, count } = await supabase
+            const { data, error } = await supabase
               .from('student_absences')
               .select(`
                 *,
@@ -139,7 +157,7 @@ export class AbsenceService {
             }
 
             if (data && data.length > 0) {
-              allData.push(...data);
+              allData.push(...(data as StudentAbsenceWithStudent[]));
               from += pageSize;
 
               // Se retornou menos que pageSize, não há mais dados
@@ -149,14 +167,14 @@ export class AbsenceService {
             }
           }
 
-          return allData;
+          return allData as StudentAbsenceWithStudent[];
         })
       );
 
       const allResults = results.flat();
 
       // Agrupar todos os resultados
-      allResults.forEach((absence: any) => {
+      allResults.forEach((absence: StudentAbsenceWithStudent) => {
         const firebaseId = absence.students?.student_id;
 
         if (!firebaseId) {
@@ -170,10 +188,10 @@ export class AbsenceService {
         // 🔧 FIX: Retornar campos do Supabase (não converter para formato legado!)
         absencesByStudent.get(firebaseId)!.push({
           estudanteId: firebaseId,
-          absence_date: absence.absence_date, // ✅ Campo Supabase
-          is_justified: absence.is_justified, // ✅ Campo Supabase
+          absence_date: absence.absence_date,
+          is_justified: absence.is_justified,
           atestadoId: absence.medical_certificate_id || undefined,
-        } as any);
+        } as AbsenceRecord);
       });
 
       return absencesByStudent;
@@ -203,11 +221,17 @@ export class AbsenceService {
         query = query.eq('is_justified', justifiedOnly);
       }
 
-      const { data, error } = await (query.order('absence_date', { ascending: false }) as any);
+      interface AbsenceData {
+        student_id: string;
+        absence_date: string;
+        is_justified: boolean;
+      }
+
+      const { data, error } = await query.order('absence_date', { ascending: false });
 
       if (error) throw error;
 
-      return (data || []).map((absence: any) => ({
+      return (data || []).map((absence: AbsenceData) => ({
         estudante_id: absence.student_id,
         data: absence.absence_date,
         justified: absence.is_justified,
@@ -225,16 +249,23 @@ export class AbsenceService {
    */
   static async getAbsencesByDateRange(startDate: string, endDate: string): Promise<AbsenceRecord[]> {
     try {
-      const { data, error } = await (supabase
+      interface AbsenceDateRangeData {
+        student_id: string;
+        absence_date: string;
+        is_justified: boolean;
+        medical_certificate_id: string | null;
+      }
+
+      const { data, error } = await supabase
         .from('student_absences')
         .select('*')
         .gte('absence_date', startDate)
         .lte('absence_date', endDate)
-        .order('absence_date', { ascending: false }) as any);
+        .order('absence_date', { ascending: false });
 
       if (error) throw error;
 
-      return (data || []).map((absence: any) => ({
+      return (data || []).map((absence: AbsenceDateRangeData) => ({
         estudanteId: absence.student_id,
         data: absence.absence_date,
         justified: absence.is_justified,
@@ -291,8 +322,16 @@ export class AbsenceService {
         throw new Error('Resposta inválida da API');
       }
 
+      interface ApiAbsenceResponse {
+        id: string;
+        estudanteId: string;
+        data: string;
+        justificada: boolean;
+        atestadoId?: string;
+      }
+
       // Converter formato API para formato esperado
-      return result.data.map((absence: any) => ({
+      return result.data.map((absence: ApiAbsenceResponse) => ({
         id: absence.id,
         estudanteId: absence.estudanteId,
         data: absence.data, // DDMMYYYY
@@ -311,15 +350,22 @@ export class AbsenceService {
    */
   static async getAllAbsences(): Promise<AbsenceRecord[]> {
     try {
-      const { data, error } = await (supabase
+      interface AllAbsencesData {
+        student_id: string;
+        absence_date: string;
+        is_justified: boolean;
+        medical_certificate_id: string | null;
+      }
+
+      const { data, error } = await supabase
         .from('student_absences')
         .select('*')
         .order('absence_date', { ascending: false })
-        .limit(10000) as any); // Safety limit
+        .limit(10000); // Safety limit
 
       if (error) throw error;
 
-      return (data || []).map((absence: any) => ({
+      return (data || []).map((absence: AllAbsencesData) => ({
         estudanteId: absence.student_id,
         data: absence.absence_date,
         justified: absence.is_justified,
@@ -402,19 +448,24 @@ export class AbsenceService {
    */
   static async addAbsences(records: Omit<AbsenceRecord, 'id'>[]): Promise<void> {
     try {
+      interface StudentIdMapping {
+        id: string;
+        student_id: string;
+      }
+
       // 🔧 FIX: Buscar IDs internos do Supabase para todos os estudantes
       const firebaseStudentIds = [...new Set(records.map(r => r.estudanteId))];
 
-      const { data: students, error: studentsError } = await (supabase
+      const { data: students, error: studentsError } = await supabase
         .from('students')
         .select('id, student_id')
-        .in('student_id', firebaseStudentIds) as any);
+        .in('student_id', firebaseStudentIds);
 
       if (studentsError) throw studentsError;
 
       // Criar mapa de Firebase UUID → Supabase ID
       const idMap = new Map<string, string>();
-      (students as any[])?.forEach((s: any) => idMap.set(s.student_id, s.id));
+      (students as StudentIdMapping[])?.forEach((s: StudentIdMapping) => idMap.set(s.student_id, s.id));
 
       const absencesInsert: StudentAbsenceInsert[] = records.map(record => {
         const supabaseId = idMap.get(record.estudanteId);
@@ -432,9 +483,20 @@ export class AbsenceService {
         };
       });
 
-      const { error } = await (supabase
+      interface InsertAbsencesResult {
+        error: Error | null;
+      }
+
+      // Type assertion for Supabase insert operation
+      type SupabaseInsertOperation = {
+        from: (table: string) => {
+          insert: (data: StudentAbsenceInsert[]) => Promise<InsertAbsencesResult>;
+        };
+      };
+
+      const { error } = await ((supabase as unknown as SupabaseInsertOperation)
         .from('student_absences')
-        .insert(absencesInsert as any) as any);
+        .insert(absencesInsert));
 
       if (error) throw error;
 
@@ -480,9 +542,14 @@ export class AbsenceService {
         throw new Error('Erro ao buscar faltas');
       }
 
+      interface SearchAbsenceData {
+        id: string;
+        data: string;
+      }
+
       // 2. Encontrar a falta com a data específica
       const absences = searchResult.data || [];
-      const targetAbsence = absences.find((a: any) => a.data === absenceDate);
+      const targetAbsence = (absences as SearchAbsenceData[]).find((a: SearchAbsenceData) => a.data === absenceDate);
 
       if (!targetAbsence) {
         logger.warn('Falta não encontrada para deletar', { studentId, absenceDate });

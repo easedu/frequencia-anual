@@ -35,14 +35,22 @@ interface ApiResponse {
   };
 }
 
+interface BimesterDataDef {
+  dates?: Array<{ date: string; isChecked: boolean }>;
+}
+
+interface AcademicYearData {
+  [bimester: string]: BimesterDataDef;
+}
+
 /**
  * MIGRADO PARA SUPABASE
  * Cache para dados do ano letivo usando AcademicYearService
  */
-async function loadAcademicYearData(): Promise<any> {
+async function loadAcademicYearData(): Promise<AcademicYearData | null> {
   const cacheKey = 'academic-year-2025-supabase';
 
-  const cached = apiCache.get(cacheKey);
+  const cached = apiCache.get(cacheKey) as AcademicYearData | undefined;
   if (cached) {
     return cached;
   }
@@ -57,11 +65,11 @@ async function loadAcademicYearData(): Promise<any> {
 
     if (data) {
       apiCache.set(cacheKey, data, 60); // Cache por 60 minutos
-      return data;
+      return data as AcademicYearData;
     }
 
     return null;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[SUPABASE] Erro ao carregar ano letivo:', error);
 
     // Fallback: retornar dados mockados de outubro
@@ -92,7 +100,7 @@ async function loadStudentSuspensions(firebaseStudentIds: string[]): Promise<Map
     const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
 
     // 🔧 PASSO 1: Resolver Firebase UUIDs → Internal IDs (com batch processing)
-    const allStudents: any[] = [];
+    const allStudents: Array<{ id: string; student_id: string }> = [];
     const BATCH_SIZE = 100; // Supabase .in() limit
 
     for (let i = 0; i < firebaseStudentIds.length; i += BATCH_SIZE) {
@@ -101,7 +109,7 @@ async function loadStudentSuspensions(firebaseStudentIds: string[]): Promise<Map
       const { data: students, error: studentsError } = await supabaseAdmin
         .from('students')
         .select('id, student_id')
-        .in('student_id', batch) as { data: any[] | null; error: any };
+        .in('student_id', batch) as { data: Array<{ id: string; student_id: string }> | null; error: unknown };
 
       if (studentsError) {
         console.error(`[SUPABASE] Erro no batch ${Math.floor(i / BATCH_SIZE) + 1} de suspensões:`, studentsError);
@@ -127,7 +135,7 @@ async function loadStudentSuspensions(firebaseStudentIds: string[]): Promise<Map
     });
 
     // 🔧 PASSO 2: Buscar suspensões usando Internal IDs (com batch processing)
-    const allSuspensionsData: any[] = [];
+    const allSuspensionsData: Array<{ student_id: string; start_date: string; end_date: string }> = [];
     const SUSPENSION_BATCH_SIZE = 100;
 
     for (let i = 0; i < internalIds.length; i += SUSPENSION_BATCH_SIZE) {
@@ -136,7 +144,7 @@ async function loadStudentSuspensions(firebaseStudentIds: string[]): Promise<Map
       const { data: batchSuspensions, error } = await supabaseAdmin
         .from('student_suspensions')
         .select('student_id, start_date, end_date')
-        .in('student_id', batch) as { data: any[] | null; error: any };
+        .in('student_id', batch) as { data: Array<{ student_id: string; start_date: string; end_date: string }> | null; error: unknown };
 
       if (error) {
         console.error(`[SUPABASE] Erro no batch ${Math.floor(i / SUSPENSION_BATCH_SIZE) + 1} de suspensões:`, error);
@@ -155,7 +163,7 @@ async function loadStudentSuspensions(firebaseStudentIds: string[]): Promise<Map
     const allSuspensions = allSuspensionsData;
 
     // Processar suspensões e gerar datas
-    allSuspensions.forEach((suspension: any) => {
+    allSuspensions.forEach((suspension) => {
       const internalId = suspension.student_id;
       const firebaseStudentId = internalToFirebaseMap.get(internalId);
 
@@ -188,7 +196,7 @@ async function loadStudentSuspensions(firebaseStudentIds: string[]): Promise<Map
       }
     });
 
-    const elapsed = Date.now() - startTime;
+    const _elapsed = Date.now() - startTime;
     return suspensionsByStudent;
 
   } catch (error) {
@@ -217,14 +225,14 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
       if (data[bimestre]?.dates) {
 
         const bimesterDays = data[bimestre].dates
-          .filter((day: any) => day.isChecked) // Apenas dias letivos
-          .map((day: any) => {
+          .filter((day: { date: string; isChecked: boolean }) => day.isChecked) // Apenas dias letivos
+          .map((day: { date: string; isChecked: boolean }) => {
             const dateStr = day.date;
 
             // 🔧 FIX: Converter dd/mm/yyyy → yyyy-mm-dd (se necessário)
             if (dateStr.includes('/')) {
-              const [dayPart, monthPart, yearPart] = dateStr.split('/');
-              return `${yearPart}-${monthPart.padStart(2, '0')}-${dayPart.padStart(2, '0')}`;
+              const [_dayPart, _monthPart, _yearPart] = dateStr.split('/');
+              return `${_yearPart}-${_monthPart.padStart(2, '0')}-${_dayPart.padStart(2, '0')}`;
             }
 
             return dateStr; // Já está em yyyy-mm-dd
@@ -234,7 +242,7 @@ async function getSchoolDaysForMonth(month: string): Promise<string[]> {
             const parts = date.split('-');
             if (parts.length !== 3) return false;
 
-            const [yearPart, monthPart, dayPart] = parts;
+            const [_yearPart, _monthPart, _dayPart] = parts;
             return monthPart === monthNumber;
           });
 
@@ -284,7 +292,7 @@ async function loadStudentAbsencesForMonth(
 
     // 🔧 PASSO 1: Resolver Firebase UUIDs → Internal IDs
     // ⚠️ Supabase .in() tem limite de ~100 elementos - processar em batches
-    const allStudents: any[] = [];
+    const allStudents: Array<{ id: string; student_id: string }> = [];
     const BATCH_SIZE = 100;
 
     for (let i = 0; i < firebaseStudentIds.length; i += BATCH_SIZE) {
@@ -293,7 +301,7 @@ async function loadStudentAbsencesForMonth(
       const { data: students, error: studentsError } = await supabaseAdmin
         .from('students')
         .select('id, student_id')
-        .in('student_id', batch) as { data: any[] | null; error: any };
+        .in('student_id', batch) as { data: Array<{ id: string; student_id: string }> | null; error: unknown };
 
       if (studentsError) {
         console.error(`[SUPABASE] Erro no batch ${Math.floor(i / BATCH_SIZE) + 1}:`, studentsError);
@@ -320,7 +328,7 @@ async function loadStudentAbsencesForMonth(
 
     // 🔧 PASSO 2: Buscar faltas do mês de referência para esses estudantes
     // ⚠️ Supabase .in() tem limite de ~100 elementos - processar em batches
-    const allAbsencesData: any[] = [];
+    const allAbsencesData: Array<{ student_id: string; absence_date: string; is_justified: boolean }> = [];
     const ABSENCE_BATCH_SIZE = 100;
 
     // 🎯 FIX: Filtrar faltas apenas do mês de referência (não o ano inteiro!)
@@ -336,7 +344,7 @@ async function loadStudentAbsencesForMonth(
         .select('student_id, absence_date, is_justified')
         .in('student_id', batch)
         .gte('absence_date', startDate)
-        .lte('absence_date', endDate) as { data: any[] | null; error: any };
+        .lte('absence_date', endDate) as { data: Array<{ student_id: string; absence_date: string; is_justified: boolean }> | null; error: unknown };
 
       if (error) {
         console.error(`[SUPABASE] Erro no batch de faltas ${Math.floor(i / ABSENCE_BATCH_SIZE) + 1}:`, error);
@@ -355,20 +363,12 @@ async function loadStudentAbsencesForMonth(
     const allAbsences = allAbsencesData;
 
     // Processar faltas
-    let skippedNoFirebaseUUID = 0;
-    let skippedSuspended = 0;
-    let skippedNotSchoolDay = 0;
-    let counted = 0;
-    const skippedInternalIds = new Set<string>();
-
-    allAbsences.forEach((absence: any) => {
+    allAbsences.forEach((absence) => {
       if (!absence.is_justified && absence.student_id && absence.absence_date) {
         const internalId = absence.student_id;
         const firebaseStudentId = internalToFirebaseMap.get(internalId);
 
         if (!firebaseStudentId) {
-          skippedNoFirebaseUUID++;
-          skippedInternalIds.add(internalId);
           return; // Skip se não encontrar o Firebase UUID
         }
 
@@ -379,37 +379,22 @@ async function loadStudentAbsencesForMonth(
         const isSuspended = studentSuspensions?.has(dateStr) || false;
 
         if (isSuspended) {
-          skippedSuspended++;
           return;
         }
 
         // Verificar se é dia letivo
         if (!monthDatesSet.has(dateStr)) {
-          skippedNotSchoolDay++;
           return;
         }
 
         // Contar falta
         absencesByStudent[firebaseStudentId] = (absencesByStudent[firebaseStudentId] || 0) + 1;
-        counted++;
       }
     });
 
-    // Estatísticas de faltas por estudante
-    const absenceCounts = Object.values(absencesByStudent);
-    const distribution: Record<number, number> = {};
-    absenceCounts.forEach(count => {
-      distribution[count] = (distribution[count] || 0) + 1;
-    });
-
-    // DEBUG: Mostrar estudantes com 3 faltas
-    const studentsWith3 = Object.entries(absencesByStudent)
-      .filter(([_, count]) => count === 3)
-      .map(([firebaseId, count]) => ({ firebaseId, count }));
 
     // Cache por 30 minutos
     apiCache.set(cacheKey, absencesByStudent, 30);
-    const studentsWithAbsences = Object.keys(absencesByStudent).filter(k => absencesByStudent[k] > 0).length;
     return absencesByStudent;
   } catch (error) {
     console.error('[SUPABASE ERROR] Erro ao carregar faltas dos estudantes:', error);
@@ -441,7 +426,16 @@ async function loadVerifiedWhatsAppContacts(activeStudents: Student[]): Promise<
 
       const verifiedContacts: VerifiedContact[] = [];
 
-      student.contatos.forEach((contact: any) => {
+      student.contatos.forEach((contact: {
+        whatsappData?: { verified?: boolean; exists?: boolean; [key: string]: unknown };
+        whatsapp_data?: { verified?: boolean; exists?: boolean; [key: string]: unknown };
+        podeReceberMensagem?: boolean;
+        nome?: string;
+        telefoneNumerico?: string;
+        phone_numeric?: string;
+        telefone?: string;
+        phone?: string;
+      }) => {
         // Aplicar filtros: WhatsApp verificado + pode receber mensagem
         // whatsapp_data é JSONB do Supabase: {verified, exists, verified_at, ...}
         const whatsappData = contact.whatsappData || contact.whatsapp_data;
@@ -453,7 +447,7 @@ async function loadVerifiedWhatsAppContacts(activeStudents: Student[]): Promise<
         ) {
           verifiedContacts.push({
             nome: contact.nome || 'Contato não identificado',
-            telefone: contact.telefoneNumerico || contact.phone_numeric || contact.telefone || contact.phone,
+            telefone: contact.telefoneNumerico || contact.phone_numeric || contact.telefone || contact.phone || '',
           });
         }
       });
@@ -463,7 +457,7 @@ async function loadVerifiedWhatsAppContacts(activeStudents: Student[]): Promise<
       }
     });
 
-    const elapsed = Date.now() - startTime;
+    const _elapsed = Date.now() - startTime;
 
     apiCache.set(cacheKey, contactsByStudent, 30);
     return contactsByStudent;
@@ -583,9 +577,10 @@ export async function GET(request: NextRequest) {
       );
 
       activeStudents = allStudents.filter(student => student.status === 'ATIVO');
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Fallback: Quota excedida - retornar dados mockados
-      if (error?.code === 8 || error?.message?.includes('Quota exceeded')) {
+      const errorWithCode = error as { code?: number; message?: string };
+      if (errorWithCode?.code === 8 || errorWithCode?.message?.includes('Quota exceeded')) {
         console.warn('[QUOTA] Quota excedida ao buscar estudantes. Usando dados mockados.');
 
         // Retornar resposta mockada diretamente

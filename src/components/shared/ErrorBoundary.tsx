@@ -149,9 +149,9 @@ export class ErrorBoundary extends Component<Props, State> {
  * Hook para capturar erros assíncronos que não são capturados pelo Error Boundary
  */
 export const useErrorHandler = () => {
-  const handleError = React.useCallback((error: Error, context?: Record<string, any>) => {
+  const handleError = React.useCallback((error: Error, context?: Record<string, unknown>) => {
     logger.error('Unhandled async error', context, error);
-    
+
     // Em desenvolvimento, também mostrar no console
     if (process.env.NODE_ENV === 'development') {
       console.error('Unhandled async error:', error, context);

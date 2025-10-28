@@ -54,7 +54,7 @@ function getSupabaseClient(): SupabaseClient<Database> {
       autoRefreshToken: false,
     },
     global: {
-      fetch: async (url, options = {}) => {
+      fetch: async (url, options) => {
         // Timeout de 8 segundos (antes do limit de 10s do Vercel)
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 8000)
@@ -64,11 +64,12 @@ function getSupabaseClient(): SupabaseClient<Database> {
           // em redes que bloqueiam ou têm problemas com QUIC
           //
           // IMPORTANTE: Adiciona apikey manualmente para garantir que sempre seja enviado
+          const fetchOptions = options || {}
           const response = await fetch(url, {
-            ...options,
+            ...fetchOptions,
             signal: controller.signal,
             headers: {
-              ...(options.headers || {}),
+              ...((fetchOptions as RequestInit).headers || {}),
               'Alt-Svc': 'clear', // Desabilita QUIC
               'apikey': supabaseAnonKey, // Garante que apikey seja sempre enviado
             }
@@ -91,8 +92,10 @@ function getSupabaseClient(): SupabaseClient<Database> {
 
 // Export as a getter to maintain backwards compatibility
 export const supabase = new Proxy({} as SupabaseClient<Database>, {
-  get(_, prop) {
-    return (getSupabaseClient() as any)[prop]
+  get(_, prop: string | symbol) {
+    const client = getSupabaseClient();
+    const value = client[prop as keyof SupabaseClient<Database>];
+    return typeof value === 'function' ? value.bind(client) : value;
   }
 })
 
@@ -118,8 +121,8 @@ export type Database = {
           school_year: string
           registration_number: string | null
           bolsa_familia: 'SIM' | 'NÃO' | null
-          address: Record<string, any> // JSONB: {street, number, neighborhood, city, state, zip_code, complement}
-          disabilities: Array<Record<string, any>> // JSONB array: [{type, description, cid, aee_type, needs_ave}]
+          address: Record<string, unknown> // JSONB: {street, number, neighborhood, city, state, zip_code, complement}
+          disabilities: Array<Record<string, unknown>> // JSONB array: [{type, description, cid, aee_type, needs_ave}]
           migrated_from: string | null
           version: string | null
           deleted: boolean
@@ -144,7 +147,7 @@ export type Database = {
           phone_numeric: string | null
           email: string | null
           can_receive_whatsapp: boolean
-          whatsapp_data: Record<string, any> // JSONB: {number, verified, verified_at, exists, verification_status}
+          whatsapp_data: Record<string, unknown> // JSONB: {number, verified, verified_at, exists, verification_status}
           migrated_from: string | null
           synced_from_old_structure: boolean
           version: string | null
@@ -274,7 +277,7 @@ export type Database = {
           email: string
           name: string | null
           role: 'admin' | 'user' | 'teacher'
-          metadata: Record<string, any> | null // JSONB: {favorites: string[], theme: string, ...}
+          metadata: Record<string, unknown> | null // JSONB: {favorites: string[], theme: string, ...}
           created_at: string
           updated_at: string
           last_login_at: string | null
@@ -312,7 +315,7 @@ export type Database = {
           automation_type: string
           execution_status: string
           message: string | null
-          metadata: Record<string, any> // JSONB
+          metadata: Record<string, unknown> // JSONB
           executed_at: string
         }
         Insert: Omit<Database['public']['Tables']['automation_executions']['Row'], 'id' | 'executed_at'>
@@ -349,6 +352,50 @@ export type Database = {
         }
         Insert: Omit<Database['public']['Tables']['student_suspensions']['Row'], 'id' | 'days_suspended' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['student_suspensions']['Insert']>
+      }
+
+      // ──────────────────────────────────────────────────────
+      // whatsapp_message_history (WhatsApp automation message log)
+      // ──────────────────────────────────────────────────────
+      whatsapp_message_history: {
+        Row: {
+          id: string
+          student_id: string
+          contact_name: string
+          contact_phone: string
+          absence_count: number
+          reference_year: number
+          reference_month: number
+          task_id: string | null
+          message_id: string | null
+          status: 'SUCCESS' | 'FAILED' | 'NO_CONTACT'
+          sent_at: string | null
+          dry_run: boolean
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['whatsapp_message_history']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['whatsapp_message_history']['Insert']>
+      }
+
+      // ──────────────────────────────────────────────────────
+      // absence_control (controle de dias letivos por bimestre)
+      // ──────────────────────────────────────────────────────
+      absence_control: {
+        Row: {
+          id: string
+          academic_year: number
+          bimester: number
+          school_days: number
+          start_date: string | null
+          end_date: string | null
+          notes: string | null
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['absence_control']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['absence_control']['Insert']>
       }
     }
 
@@ -477,6 +524,14 @@ export type WhatsAppVerifiedNumberUpdate = TablesUpdate<'whatsapp_verified_numbe
 export type AutomationExecution = Tables<'automation_executions'>
 export type AutomationExecutionInsert = TablesInsert<'automation_executions'>
 export type AutomationExecutionUpdate = TablesUpdate<'automation_executions'>
+
+export type WhatsAppMessageHistory = Tables<'whatsapp_message_history'>
+export type WhatsAppMessageHistoryInsert = TablesInsert<'whatsapp_message_history'>
+export type WhatsAppMessageHistoryUpdate = TablesUpdate<'whatsapp_message_history'>
+
+export type AbsenceControlRow = Tables<'absence_control'>
+export type AbsenceControlInsert = TablesInsert<'absence_control'>
+export type AbsenceControlUpdate = TablesUpdate<'absence_control'>
 
 // View types
 export type StudentWithAbsences = Views<'students_with_absences'>

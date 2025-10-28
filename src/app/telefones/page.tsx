@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import Papa from 'papaparse';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,6 @@ import {
   Users,
   XCircle,
 } from 'lucide-react';
-import { getAuth } from 'firebase/auth';
 
 // ════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -31,8 +30,6 @@ import { getAuth } from 'firebase/auth';
 
 export default function TelefonesPage() {
   const { students, loading: studentsLoading } = useStudents(false, true);
-  const auth = getAuth();
-  const [userRole, setUserRole] = useState<string | null>(null);
 
   // Hook centralizado com toda lógica
   const {
@@ -151,10 +148,6 @@ export default function TelefonesPage() {
       URL.revokeObjectURL(url);
 
       toast.success(`Arquivo ${fileName} exportado com sucesso!`);
-      logger.info('Lista de telefones exportada para CSV', {
-        total: filteredPhones.length,
-        fileName
-      });
     } catch (error) {
       logger.error('Erro ao exportar lista de telefones para CSV', {}, error as Error);
       toast.error('Erro ao exportar arquivo CSV');
@@ -220,7 +213,7 @@ export default function TelefonesPage() {
 
           processedCount++;
 
-        } catch (error) {
+        } catch (_error) {
           errorCount++;
         }
       }

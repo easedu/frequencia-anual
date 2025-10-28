@@ -68,13 +68,6 @@ export class WhatsAppService {
                 Authorization: WHATSAPP_API_TOKEN
             };
 
-            logger.info("Sending WhatsApp message", {
-                phone: `${phone.substring(0, 4)}****${phone.substring(phone.length - 4)}`,
-                messageLength: message.length,
-                checkWhatsApp,
-                apiUrl: WHATSAPP_API_URL.replace(/\/\/.*@/, '//*****@') // Hide credentials in logs
-            });
-
             // Make API request with timeout
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
@@ -100,14 +93,6 @@ export class WhatsAppService {
 
                 // Parse response
                 const result: WhatsAppSendResponse = await response.json();
-
-                // Log result (without sensitive data)
-                logger.info("WhatsApp message result", {
-                    success: result.success,
-                    phone: `${phone.substring(0, 4)}****${phone.substring(phone.length - 4)}`,
-                    hasWhatsApp: result.data?.hasWhatsApp,
-                    status: result.data?.status
-                });
 
                 return result;
 

@@ -25,7 +25,6 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { useInteractions } from '@/hooks/api';
 import type { FamilyInteraction } from '@/types';
 
 interface PollingOptions {

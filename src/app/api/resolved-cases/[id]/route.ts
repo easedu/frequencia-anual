@@ -6,12 +6,34 @@
  * DELETE - Deleta resolved case específico
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { updateResolvedCaseSchema } from '@/app/api/_schemas/resolvedCaseSchemas'
 import { logger } from '@/utils/logger'
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface _ResolvedConsecutiveAbsenceCase {
+  id: string;
+  student_id: string;
+  interaction_id: string | null;
+  resolved_at: string;
+  resolved_by: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ResolvedCaseUpdate {
+  interaction_id?: string | null;
+  resolved_at?: string;
+  resolved_by?: string;
+  notes?: string | null;
+}
 
 /**
  * GET /api/resolved-cases/[id]
@@ -21,7 +43,7 @@ import { logger } from '@/utils/logger'
  * GET /api/resolved-cases/550e8400-e29b-41d4-a716-446655440000
  */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -67,18 +89,18 @@ export async function GET(
  * }
  */
 export async function PUT(
-  request: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const { id } = params
-    const body = await request.json()
+    const body = await req.json()
 
     // Validar dados
     const validated = updateResolvedCaseSchema.parse(body)
 
     // Preparar dados para update (apenas campos fornecidos)
-    const updateData: Record<string, any> = {}
+    const updateData: Partial<ResolvedCaseUpdate> = {}
 
     if (validated.interaction_id !== undefined) {
       updateData.interaction_id = validated.interaction_id
@@ -99,9 +121,9 @@ export async function PUT(
     }
 
     // Atualizar no Supabase
-    const { data, error } = await (supabaseAdmin
-      .from('resolved_consecutive_absence_cases') as any)
-      .update(updateData)
+    const { data, error } = await supabaseAdmin
+      .from('resolved_consecutive_absence_cases')
+      .update(updateData as never)
       .eq('id', id)
       .select()
       .single()
@@ -114,11 +136,6 @@ export async function PUT(
     if (!data) {
       return errorResponse('Caso resolvido não encontrado', 404)
     }
-
-    logger.info('Resolved case atualizado com sucesso', {
-      id,
-      fieldsUpdated: Object.keys(updateData)
-    })
 
     return successResponse(data)
   } catch (error) {
@@ -134,11 +151,11 @@ export async function PUT(
  * DELETE /api/resolved-cases/550e8400-e29b-41d4-a716-446655440000
  */
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params
+    const { id } = params; void _request;
 
     const { error } = await supabaseAdmin
       .from('resolved_consecutive_absence_cases')
@@ -149,8 +166,6 @@ export async function DELETE(
       logger.error('Erro ao deletar resolved case', { id }, error)
       return errorResponse(error.message, 500)
     }
-
-    logger.info('Resolved case deletado com sucesso', { id })
 
     return successResponse({ message: 'Caso resolvido deletado com sucesso' })
   } catch (error) {

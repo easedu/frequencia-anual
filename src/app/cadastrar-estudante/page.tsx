@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo, lazy, Suspense } from "react";
-import { Users, Plus, RefreshCw } from "lucide-react";
+import { useState, useMemo, lazy, Suspense } from "react";
+import { Users, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,7 +29,7 @@ const StudentDialog = lazy(() =>
 
 export default function CadastrarEstudantePage() {
     // ✅ OTIMIZAÇÃO FASE 1: React Query hook com cache automático
-    const { data: studentsResponse, isLoading: loading, error, refetch: fetchStudents } = useStudents({
+    const { data: studentsResponse, isLoading: loading, error } = useStudents({
         status: 'ATIVO', // Filtro padrão
         detail: 'summary', // ✅ SELECT estratificado (apenas campos necessários)
     });
@@ -262,12 +262,12 @@ export default function CadastrarEstudantePage() {
         setOpenModal(true);
     };
     
-    const handleFormSubmit = async (data: any) => {
+    const handleFormSubmit = async (data: Partial<Estudante>) => {
         if (isSaving) return; // Prevenir múltiplos cliques
 
         setIsSaving(true);
 
-        let processedData: any = null;
+        let processedData: Partial<Estudante> | null = null;
 
         try {
             // Validação manual mínima para garantir campos obrigatórios
@@ -289,9 +289,9 @@ export default function CadastrarEstudantePage() {
                     ...data.endereco,
                     cep: data.endereco.cep?.replace(/\D/g, '') || '',
                 } : undefined,
-                contatos: data.contatos?.filter((contato: any) =>
-                    contato.nome.trim() || contato.telefone.trim() || contato.parentesco.trim()
-                ).map((contato: any) => ({
+                contatos: data.contatos?.filter((contato) =>
+                    contato.nome.trim() || contato.telefone.trim() || (contato.parentesco && contato.parentesco.trim())
+                ).map((contato) => ({
                     nome: contato.nome || '',
                     telefone: contato.telefone ? contato.telefone.replace(/\D/g, '') : '',
                     parentesco: contato.parentesco || '',
@@ -299,23 +299,23 @@ export default function CadastrarEstudantePage() {
                 })) || [],
                 deficiencia: data.deficiencia ? {
                     estudanteComDeficiencia: data.deficiencia.estudanteComDeficiencia || false,
-                    tipoDeficiencia: Array.isArray(data.deficiencia.tipoDeficiencia) 
-                        ? data.deficiencia.tipoDeficiencia 
+                    tipoDeficiencia: Array.isArray(data.deficiencia.tipoDeficiencia)
+                        ? data.deficiencia.tipoDeficiencia
                         : [],
                     possuiBarreiras: data.deficiencia.possuiBarreiras ?? true,
                     aee: data.deficiencia.aee || undefined,
                     instituicao: data.deficiencia.instituicao || undefined,
                     horarioAtendimento: data.deficiencia.horarioAtendimento || 'NENHUM',
-                    atendimentoSaude: Array.isArray(data.deficiencia.atendimentoSaude) 
-                        ? data.deficiencia.atendimentoSaude 
+                    atendimentoSaude: Array.isArray(data.deficiencia.atendimentoSaude)
+                        ? data.deficiencia.atendimentoSaude
                         : [],
                     possuiEstagiario: data.deficiencia.possuiEstagiario || false,
                     nomeEstagiario: data.deficiencia.nomeEstagiario || 'NÃO NECESSITA',
                     justificativaEstagiario: data.deficiencia.justificativaEstagiario || 'SEM BARREIRAS',
                     ave: data.deficiencia.ave || false,
                     nomeAve: data.deficiencia.nomeAve || '',
-                    justificativaAve: Array.isArray(data.deficiencia.justificativaAve) 
-                        ? data.deficiencia.justificativaAve 
+                    justificativaAve: Array.isArray(data.deficiencia.justificativaAve)
+                        ? data.deficiencia.justificativaAve
                         : [],
                     observacoes: data.deficiencia.observacoes || '',
                 } : {
@@ -333,29 +333,27 @@ export default function CadastrarEstudantePage() {
                     observacoes: '',
                 }
             };
-            
+
             if (editingEstudante) {
-                // ✅ Atualizar estudante usando nova API REST
-                await updateStudent(editingEstudante.estudanteId, {
+                // ✅ Atualizar estudante usando mutation
+                await updateStudentMutation.mutateAsync({
+                    id: editingEstudante.estudanteId,
                     nome: processedData.nome,
                     turma: processedData.turma,
                     turno: processedData.turno,
                     status: processedData.status,
                     dataNascimento: processedData.dataNascimento,
-                    numeroMatricula: processedData.numeroMatricula,
+                    matricula: processedData.matricula,
                     bolsaFamilia: processedData.bolsaFamilia,
                     endereco: processedData.endereco,
                     contatos: processedData.contatos,
-                    deficiencias: processedData.deficiencia ? [processedData.deficiencia] : [],
+                    deficiencia: processedData.deficiencia,
                 });
-
-                // Refetch para obter dados atualizados
-                await fetchStudents();
             } else {
                 // Verificar se já existe um estudante com o mesmo nome e turma
                 const exists = students.some(student =>
-                    student.nome.toUpperCase() === processedData.nome.toUpperCase() &&
-                    student.turma.toUpperCase() === processedData.turma.toUpperCase()
+                    student.nome.toUpperCase() === (processedData?.nome || '').toUpperCase() &&
+                    student.turma.toUpperCase() === (processedData?.turma || '').toUpperCase()
                 );
 
                 if (exists) {
@@ -363,34 +361,30 @@ export default function CadastrarEstudantePage() {
                     return;
                 }
 
-                // ✅ Adicionar novo estudante usando nova API REST
-                await createStudent({
+                // ✅ Adicionar novo estudante usando mutation
+                await createStudentMutation.mutateAsync({
                     estudanteId: processedData.estudanteId,
                     nome: processedData.nome,
                     turma: processedData.turma,
                     turno: processedData.turno,
                     status: processedData.status || 'ATIVO',
-                    anoLetivo: new Date().getFullYear().toString(),
                     dataNascimento: processedData.dataNascimento,
-                    numeroMatricula: processedData.numeroMatricula,
+                    matricula: processedData.matricula,
                     bolsaFamilia: processedData.bolsaFamilia,
                     endereco: processedData.endereco,
                     contatos: processedData.contatos,
-                    deficiencias: processedData.deficiencia ? [processedData.deficiencia] : [],
+                    deficiencia: processedData.deficiencia,
                 });
-
-                // Refetch para obter dados atualizados
-                await fetchStudents();
             }
 
             setOpenModal(false);
-            
+
             toast.success(
-                editingEstudante 
-                    ? `Estudante ${processedData.nome} atualizado com sucesso!` 
+                editingEstudante
+                    ? `Estudante ${processedData.nome} atualizado com sucesso!`
                     : `Estudante ${processedData.nome} cadastrado com sucesso!`
             );
-            
+
         } catch (error) {
             logger.studentOperation(
                 editingEstudante ? 'update' : 'create',

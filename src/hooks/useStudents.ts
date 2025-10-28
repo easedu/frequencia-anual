@@ -36,7 +36,7 @@ export const useStudents = (includeDeleted: boolean = false, includeContacts: bo
         try {
             // ✅ Feedback progressivo para conexões lentas (após 5s)
             slowConnectionTimeout = setTimeout(() => {
-                logger.info("[useStudents] ⏳ Conexão lenta detectada, aguardando resposta...");
+                // Feedback silencioso - apenas aguardar
             }, 5000);
 
             // ✅ USA NOVA API (cache server-side, queries paralelas)
@@ -47,17 +47,12 @@ export const useStudents = (includeDeleted: boolean = false, includeContacts: bo
             }
 
             setStudents(fetchedStudents);
-
-            logger.info("[useStudents] ✅ Estudantes carregados com sucesso", {
-                count: fetchedStudents.length,
-            });
         } catch (err) {
             if (slowConnectionTimeout) {
                 clearTimeout(slowConnectionTimeout);
             }
 
-            const errorMsg = err instanceof Error ? err.message : 'Erro desconhecido';
-            logger.error("[useStudents] ❌ Erro ao buscar estudantes", err as Error);
+            logger.error("[useStudents] ❌ Erro ao buscar estudantes", {}, err as Error);
 
             setError(err as Error);
 
@@ -66,11 +61,8 @@ export const useStudents = (includeDeleted: boolean = false, includeContacts: bo
             try {
                 const fallbackStudents = await StudentDataService.getStudents(includeDeleted, includeContacts);
                 setStudents(fallbackStudents);
-                logger.info("[useStudents] ✅ Fallback bem-sucedido", {
-                    count: fallbackStudents.length,
-                });
             } catch (fallbackErr) {
-                logger.error("[useStudents] ❌ Fallback também falhou", fallbackErr as Error);
+                logger.error("[useStudents] ❌ Fallback também falhou", {}, fallbackErr as Error);
                 // Mantém erro original
             }
         } finally {

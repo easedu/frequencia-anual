@@ -9,97 +9,130 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { logger } from '@/utils/logger';
 
 /**
+ * Row type for automation_executions table
+ */
+interface AutomationExecutionRow {
+  id: string;
+  automation_type: string;
+  execution_status: string;
+  message: string | null;
+  metadata: Record<string, unknown>;
+  executed_at: string;
+}
+
+/**
+ * Insert type for automation_executions table
+ */
+interface AutomationExecutionInsert {
+  automation_type: string;
+  execution_status: string;
+  message: string | null;
+  metadata: Record<string, unknown>;
+}
+
+/**
+ * Update type for automation_executions table
+ */
+interface AutomationExecutionUpdate {
+  automation_type?: string;
+  execution_status?: string;
+  message?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+/**
  * Status possíveis de execução
  */
 export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
 /**
- * Interface da execução (Supabase)
+ * Metadata structure for automation executions
  */
-interface SupabaseAutomationExecution {
-  id: string;
-  status: ExecutionStatus;
-  total_students: number;
-  processed_students: number;
-  current_student_index: number;
-  processed_student_ids: string[];
-  students_data: any; // JSONB
-  results: any; // JSONB
-  error_message: string | null;
-  dry_run: boolean;
-  absence_multiple: number | null;
-  notification_phone: string | null;
-  started_at: string | null;
-  completed_at: string | null;
-  created_at: string;
-  updated_at: string;
+interface AutomationMetadata extends Record<string, unknown> {
+  startedAt?: number;
+  finishedAt?: number;
+  lastCheckpointAt?: number;
+  dryRun?: boolean;
+  absenceMultiple?: number;
+  notificationPhone?: string;
+  referenceMonth?: number;
+  referenceYear?: number;
+  totalStudents?: number;
+  processedStudents?: number;
+  currentStudentIndex?: number;
+  processedStudentIds?: string[];
+  messagesSucceeded?: number;
+  messagesFailed?: number;
+  tasksCreated?: number;
+  errors?: Array<{
+    estudanteId: string;
+    estudanteNome: string;
+    error: string;
+  }>;
 }
 
 /**
  * Interface da execução (Aplicação)
+ *
+ * Mapeada da tabela automation_executions do Supabase
  */
 export interface AutomationExecution {
   id: string;
-  status: ExecutionStatus;
-  totalStudents: number;
-  processedStudents: number;
-  currentStudentIndex: number;
-  processedStudentIds: string[];
-  studentsData: any;
-  results: any;
-  errorMessage?: string;
-  dryRun: boolean;
+  automationType: string;
+  executionStatus: string;
+  message: string | null;
+  metadata: AutomationMetadata;
+  executedAt: string;
+
+  // Computed properties for convenience (accessed from metadata)
+  status?: string;
+  updatedAt?: string;
+  createdAt?: string;
+  startedAt?: number;
+  dryRun?: boolean;
   absenceMultiple?: number;
   notificationPhone?: string;
-  startedAt?: string;
-  completedAt?: string;
-  createdAt: string;
-  updatedAt: string;
+  totalStudents?: number;
+  processedStudents?: number;
+  processedStudentIds?: string[];
 }
 
 /**
  * Dados para criar nova execução
  */
 export interface CreateExecutionData {
-  totalStudents: number;
-  studentsData: any;
-  dryRun: boolean;
-  absenceMultiple?: number;
-  notificationPhone?: string;
-}
-
-/**
- * Dados para atualizar checkpoint
- */
-export interface UpdateCheckpointData {
-  processedStudents: number;
-  currentStudentIndex: number;
-  processedStudentIds: string[];
-  results: any;
+  automationType: string;
+  executionStatus?: string;
+  message?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export class AutomationExecutionService {
   /**
    * Converter registro do Supabase para AutomationExecution
    */
-  private static mapSupabaseToExecution(record: SupabaseAutomationExecution): AutomationExecution {
+  private static mapRowToExecution(row: AutomationExecutionRow): AutomationExecution {
+    const metadata = row.metadata as AutomationMetadata;
+
     return {
-      id: record.id,
-      status: record.status,
-      totalStudents: record.total_students,
-      processedStudents: record.processed_students,
-      currentStudentIndex: record.current_student_index,
-      processedStudentIds: record.processed_student_ids,
-      studentsData: record.students_data,
-      results: record.results,
-      errorMessage: record.error_message || undefined,
-      dryRun: record.dry_run,
-      absenceMultiple: record.absence_multiple || undefined,
-      notificationPhone: record.notification_phone || undefined,
-      startedAt: record.started_at || undefined,
-      completedAt: record.completed_at || undefined,
-      createdAt: record.created_at,
-      updatedAt: record.updated_at,
+      id: row.id,
+      automationType: row.automation_type,
+      executionStatus: row.execution_status,
+      message: row.message,
+      metadata,
+      executedAt: row.executed_at,
+
+      // Map convenience properties from metadata and table fields
+      status: row.execution_status,
+      updatedAt: row.executed_at, // Supabase uses executed_at as the timestamp
+      createdAt: row.executed_at,
+      startedAt: metadata.startedAt,
+      dryRun: metadata.dryRun,
+      absenceMultiple: metadata.absenceMultiple,
+      notificationPhone: metadata.notificationPhone,
+      totalStudents: metadata.totalStudents,
+      processedStudents: metadata.processedStudents,
+      processedStudentIds: metadata.processedStudentIds,
     };
   }
 
@@ -108,34 +141,25 @@ export class AutomationExecutionService {
    */
   static async createExecution(data: CreateExecutionData): Promise<AutomationExecution> {
     try {
-      const insertData = {
-        status: 'PENDING' as ExecutionStatus,
-        total_students: data.totalStudents,
-        processed_students: 0,
-        current_student_index: 0,
-        processed_student_ids: [],
-        students_data: data.studentsData,
-        results: {},
-        dry_run: data.dryRun,
-        absence_multiple: data.absenceMultiple || null,
-        notification_phone: data.notificationPhone || null,
+      const insertData: AutomationExecutionInsert = {
+        automation_type: data.automationType,
+        execution_status: data.executionStatus || 'PENDING',
+        message: data.message || null,
+        metadata: data.metadata || {},
       };
 
-      const { data: execution, error } = await ((supabaseAdmin
-        .from('automation_executions') as any)
-        .insert(insertData)
+      const result = await supabaseAdmin
+        .from('automation_executions')
+        .insert(insertData as never)
         .select()
-        .single());
+        .single();
+
+      const { data: execution, error } = result as { data: AutomationExecutionRow | null; error: unknown };
 
       if (error) throw error;
+      if (!execution) throw new Error('Failed to create execution');
 
-      logger.info('Execução de automação criada no Supabase', {
-        executionId: execution.id,
-        dryRun: data.dryRun,
-        totalStudents: data.totalStudents
-      });
-
-      return this.mapSupabaseToExecution(execution);
+      return this.mapRowToExecution(execution);
     } catch (error) {
       logger.error('Erro ao criar execução de automação', {}, error as Error);
       throw error;
@@ -147,18 +171,20 @@ export class AutomationExecutionService {
    */
   static async getExecutionById(executionId: string): Promise<AutomationExecution | null> {
     try {
-      const { data, error } = await supabaseAdmin
+      const result = await supabaseAdmin
         .from('automation_executions')
         .select('*')
         .eq('id', executionId)
         .maybeSingle();
+
+      const { data, error } = result as { data: AutomationExecutionRow | null; error: { code?: string } | null };
 
       if (error) {
         if (error.code === 'PGRST116') return null; // Not found
         throw error;
       }
 
-      return data ? this.mapSupabaseToExecution(data) : null;
+      return data ? this.mapRowToExecution(data) : null;
     } catch (error) {
       logger.error('Erro ao buscar execução por ID', { executionId }, error as Error);
       return null;
@@ -168,27 +194,20 @@ export class AutomationExecutionService {
   /**
    * Atualizar status da execução
    */
-  static async updateStatus(executionId: string, status: ExecutionStatus): Promise<boolean> {
+  static async updateStatus(executionId: string, status: string): Promise<boolean> {
     try {
-      const updateData: any = { status };
+      const updateData: AutomationExecutionUpdate = {
+        execution_status: status,
+      };
 
-      if (status === 'RUNNING') {
-        updateData.started_at = new Date().toISOString();
-      } else if (status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED') {
-        updateData.completed_at = new Date().toISOString();
-      }
-
-      const { error } = await (supabaseAdmin
-        .from('automation_executions') as any)
-        .update(updateData)
+      const result = await supabaseAdmin
+        .from('automation_executions')
+        .update(updateData as never)
         .eq('id', executionId);
 
-      if (error) throw error;
+      const { error } = result as { error: unknown };
 
-      logger.info('Status da execução atualizado no Supabase', {
-        executionId,
-        status
-      });
+      if (error) throw error;
 
       return true;
     } catch (error) {
@@ -198,56 +217,59 @@ export class AutomationExecutionService {
   }
 
   /**
-   * Atualizar checkpoint (progresso)
+   * Atualizar metadata da execução
    */
-  static async updateCheckpoint(
+  static async updateMetadata(
     executionId: string,
-    checkpoint: UpdateCheckpointData
+    metadata: Record<string, unknown>
   ): Promise<boolean> {
     try {
-      const { error } = await (supabaseAdmin
-        .from('automation_executions') as any)
-        .update({
-          processed_students: checkpoint.processedStudents,
-          current_student_index: checkpoint.currentStudentIndex,
-          processed_student_ids: checkpoint.processedStudentIds,
-          results: checkpoint.results,
-        })
+      const updateData: AutomationExecutionUpdate = {
+        metadata,
+      };
+
+      const result = await supabaseAdmin
+        .from('automation_executions')
+        .update(updateData as never)
         .eq('id', executionId);
+
+      const { error } = result as { error: unknown };
 
       if (error) throw error;
 
-      logger.debug('Checkpoint atualizado no Supabase', {
+      logger.debug('Metadata atualizado no Supabase', {
         executionId,
-        processedStudents: checkpoint.processedStudents
       });
 
       return true;
     } catch (error) {
-      logger.error('Erro ao atualizar checkpoint', { executionId }, error as Error);
+      logger.error('Erro ao atualizar metadata', { executionId }, error as Error);
       return false;
     }
   }
 
   /**
-   * Atualizar mensagem de erro
+   * Atualizar mensagem e status para erro
    */
   static async updateError(executionId: string, errorMessage: string): Promise<boolean> {
     try {
-      const { error } = await (supabaseAdmin
-        .from('automation_executions') as any)
-        .update({
-          status: 'FAILED' as ExecutionStatus,
-          error_message: errorMessage,
-          completed_at: new Date().toISOString(),
-        })
+      const updateData: AutomationExecutionUpdate = {
+        execution_status: 'FAILED',
+        message: errorMessage,
+      };
+
+      const result = await supabaseAdmin
+        .from('automation_executions')
+        .update(updateData as never)
         .eq('id', executionId);
+
+      const { error } = result as { error: unknown };
 
       if (error) throw error;
 
       logger.error('Execução marcada como FAILED no Supabase', {
         executionId,
-        errorMessage
+        errorMessage,
       });
 
       return true;
@@ -262,15 +284,17 @@ export class AutomationExecutionService {
    */
   static async getRecentExecutions(limit: number = 10): Promise<AutomationExecution[]> {
     try {
-      const { data, error } = await supabaseAdmin
+      const result = await supabaseAdmin
         .from('automation_executions')
         .select('*')
-        .order('created_at', { ascending: false })
+        .order('executed_at', { ascending: false })
         .limit(limit);
+
+      const { data, error } = result as { data: AutomationExecutionRow[] | null; error: unknown };
 
       if (error) throw error;
 
-      return (data || []).map(this.mapSupabaseToExecution);
+      return (data || []).map((item) => this.mapRowToExecution(item));
     } catch (error) {
       logger.error('Erro ao buscar execuções recentes', {}, error as Error);
       return [];
@@ -280,17 +304,19 @@ export class AutomationExecutionService {
   /**
    * Buscar execuções por status
    */
-  static async getExecutionsByStatus(status: ExecutionStatus): Promise<AutomationExecution[]> {
+  static async getExecutionsByStatus(status: string): Promise<AutomationExecution[]> {
     try {
-      const { data, error } = await supabaseAdmin
+      const result = await supabaseAdmin
         .from('automation_executions')
         .select('*')
-        .eq('status', status)
-        .order('created_at', { ascending: false });
+        .eq('execution_status', status)
+        .order('executed_at', { ascending: false });
+
+      const { data, error } = result as { data: AutomationExecutionRow[] | null; error: unknown };
 
       if (error) throw error;
 
-      return (data || []).map(this.mapSupabaseToExecution);
+      return (data || []).map((item) => this.mapRowToExecution(item));
     } catch (error) {
       logger.error('Erro ao buscar execuções por status', { status }, error as Error);
       return [];
@@ -298,27 +324,24 @@ export class AutomationExecutionService {
   }
 
   /**
-   * Buscar última execução RUNNING (para watchdog)
+   * Buscar execuções por tipo de automação
    */
-  static async getLastRunningExecution(): Promise<AutomationExecution | null> {
+  static async getExecutionsByType(automationType: string): Promise<AutomationExecution[]> {
     try {
-      const { data, error } = await supabaseAdmin
+      const result = await supabaseAdmin
         .from('automation_executions')
         .select('*')
-        .eq('status', 'RUNNING')
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .eq('automation_type', automationType)
+        .order('executed_at', { ascending: false });
 
-      if (error) {
-        if (error.code === 'PGRST116') return null; // Not found
-        throw error;
-      }
+      const { data, error } = result as { data: AutomationExecutionRow[] | null; error: unknown };
 
-      return data ? this.mapSupabaseToExecution(data) : null;
+      if (error) throw error;
+
+      return (data || []).map((item) => this.mapRowToExecution(item));
     } catch (error) {
-      logger.error('Erro ao buscar última execução RUNNING', {}, error as Error);
-      return null;
+      logger.error('Erro ao buscar execuções por tipo', { automationType }, error as Error);
+      return [];
     }
   }
 
@@ -330,11 +353,13 @@ export class AutomationExecutionService {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-      const { data, error } = await ((supabaseAdmin
-        .from('automation_executions') as any)
+      const result = await supabaseAdmin
+        .from('automation_executions')
         .delete()
-        .lt('created_at', cutoffDate.toISOString())
-        .select('id'));
+        .lt('executed_at', cutoffDate.toISOString())
+        .select('id');
+
+      const { data, error } = result as { data: Array<{ id: string }> | null; error: unknown };
 
       if (error) throw error;
 
@@ -342,13 +367,99 @@ export class AutomationExecutionService {
 
       logger.info('Execuções antigas deletadas do Supabase', {
         daysOld,
-        deletedCount
+        deletedCount,
       });
 
       return deletedCount;
     } catch (error) {
       logger.error('Erro ao deletar execuções antigas', { daysOld }, error as Error);
       return 0;
+    }
+  }
+
+  /**
+   * Buscar última execução com status RUNNING
+   */
+  static async getLastRunningExecution(): Promise<AutomationExecution | null> {
+    try {
+      const result = await supabaseAdmin
+        .from('automation_executions')
+        .select('*')
+        .eq('execution_status', 'RUNNING')
+        .order('executed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const { data, error } = result as { data: AutomationExecutionRow | null; error: { code?: string } | null };
+
+      if (error) {
+        if (error.code === 'PGRST116') return null; // Not found
+        throw error;
+      }
+
+      return data ? this.mapRowToExecution(data) : null;
+    } catch (error) {
+      logger.error('Erro ao buscar última execução RUNNING', {}, error as Error);
+      return null;
+    }
+  }
+
+  /**
+   * Atualizar checkpoint da execução (progresso incremental)
+   * Usado para permitir retomada após falhas
+   */
+  static async updateCheckpoint(
+    executionId: string,
+    checkpoint: {
+      processedStudents: number;
+      currentStudentIndex: number;
+      processedStudentIds: string[];
+      results?: Record<string, unknown>;
+    }
+  ): Promise<boolean> {
+    try {
+      // Buscar metadata atual
+      const execution = await this.getExecutionById(executionId);
+
+      if (!execution) {
+        logger.error('Execução não encontrada para atualizar checkpoint', { executionId });
+        return false;
+      }
+
+      // Mesclar checkpoint com metadata existente
+      const updatedMetadata = {
+        ...execution.metadata,
+        checkpoint: {
+          processedStudents: checkpoint.processedStudents,
+          currentStudentIndex: checkpoint.currentStudentIndex,
+          processedStudentIds: checkpoint.processedStudentIds,
+          lastUpdated: new Date().toISOString(),
+        },
+        ...(checkpoint.results && { results: checkpoint.results }),
+      };
+
+      const updateData: AutomationExecutionUpdate = {
+        metadata: updatedMetadata,
+      };
+
+      const result = await supabaseAdmin
+        .from('automation_executions')
+        .update(updateData as never)
+        .eq('id', executionId);
+
+      const { error } = result as { error: unknown };
+
+      if (error) throw error;
+
+      logger.debug('Checkpoint atualizado no Supabase', {
+        executionId,
+        processedStudents: checkpoint.processedStudents,
+      });
+
+      return true;
+    } catch (error) {
+      logger.error('Erro ao atualizar checkpoint', { executionId }, error as Error);
+      return false;
     }
   }
 }

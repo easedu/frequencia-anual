@@ -5,7 +5,7 @@
  * POST - Cria nova execução de automação
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query
 
     if (error) {
-      logger.error('Erro ao buscar automation executions', error)
+      logger.error('Erro ao buscar automation executions', { error: error.message })
       return errorResponse(error.message, 500)
     }
 
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
         hasMore: (count || 0) > offset + limit
       }
     })
-  } catch (error) {
+  } catch (error: unknown) {
     return handleError(error)
   }
 }
@@ -124,36 +124,35 @@ export async function POST(request: NextRequest) {
     const validated = createAutomationExecutionSchema.parse(body)
 
     // Criar execution no Supabase
-    const { data, error } = await supabaseAdmin
+    const insertData = {
+      status: 'PENDING' as const,
+      total_students: validated.total_students,
+      processed_students: 0,
+      current_student_index: 0,
+      processed_student_ids: [] as string[],
+      students_data: validated.students_data,
+      results: {} as Record<string, unknown>,
+      dry_run: validated.dry_run || false,
+      absence_multiple: validated.absence_multiple || null,
+      notification_phone: validated.notification_phone || null,
+    }
+
+    const result = await supabaseAdmin
       .from('automation_executions')
-      .insert({
-        status: 'PENDING',
-        total_students: validated.total_students,
-        processed_students: 0,
-        current_student_index: 0,
-        processed_student_ids: [],
-        students_data: validated.students_data,
-        results: {},
-        dry_run: validated.dry_run || false,
-        absence_multiple: validated.absence_multiple || null,
-        notification_phone: validated.notification_phone || null,
-      } as any)
+      // @ts-expect-error - Supabase typing issue with dynamic insert data
+      .insert(insertData)
       .select()
       .single()
 
+    const { data, error } = result as { data: Record<string, unknown> | null; error: { message: string } | null }
+
     if (error) {
-      logger.error('Erro ao criar automation execution', error)
+      logger.error('Erro ao criar automation execution', { error: error.message })
       return errorResponse(error.message, 500)
     }
 
-    logger.info('Automation execution criada com sucesso', {
-      executionId: (data as any)?.id,
-      totalStudents: validated.total_students,
-      dryRun: validated.dry_run
-    })
-
-    return successResponse(data as any, 201)
-  } catch (error) {
+    return successResponse(data, 201)
+  } catch (error: unknown) {
     return handleError(error)
   }
 }

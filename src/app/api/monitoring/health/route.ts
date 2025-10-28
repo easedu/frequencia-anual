@@ -18,7 +18,7 @@
 import { NextRequest } from 'next/server';
 import { successResponse } from '@/app/api/_utils/response';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const startTime = Date.now();
 
   try {

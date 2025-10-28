@@ -6,7 +6,6 @@
  */
 
 import { EvolutionClient } from './evolutionClient';
-import { evolutionConfig } from '@/lib/whatsapp/evolutionConfig';
 import {
   validatePhoneNumber,
   validateMultiplePhones,
@@ -44,10 +43,6 @@ export class EvolutionChatService {
         throw new Error(phoneValidation.error);
       }
 
-      logger.info('Checking WhatsApp number via Evolution API', {
-        phone: maskPhoneNumber(phone)
-      });
-
       // Preparar request
       const request: CheckWhatsAppRequest = {
         numbers: [phoneValidation.formatted!]
@@ -62,11 +57,6 @@ export class EvolutionChatService {
 
       // Evolution API retorna array, pegar primeiro item
       const result = response[0];
-
-      logger.info('WhatsApp check completed', {
-        phone: maskPhoneNumber(phone),
-        hasWhatsApp: result.exists
-      });
 
       // Retornar resultado normalizado
       return {
@@ -128,12 +118,6 @@ export class EvolutionChatService {
         };
       }
 
-      logger.info('Checking multiple WhatsApp numbers via Evolution API', {
-        total: phones.length,
-        valid: validPhones.length,
-        invalid: invalidPhones.length
-      });
-
       // Preparar request
       const request: CheckWhatsAppRequest = {
         numbers: validPhones
@@ -162,12 +146,6 @@ export class EvolutionChatService {
           error: invalid.error,
           verifiedAt: Date.now()
         });
-      });
-
-      logger.info('Multiple WhatsApp checks completed', {
-        total: phones.length,
-        verified: results.length,
-        withWhatsApp: results.filter(r => r.hasWhatsApp).length
       });
 
       return {

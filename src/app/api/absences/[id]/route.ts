@@ -7,7 +7,7 @@
  * - DELETE: Deletar falta
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAuth } from '@/app/api/_middleware/auth';
 import { sanitizeObject } from '@/app/api/_middleware/validation';
 import {
@@ -59,11 +59,11 @@ export const GET = withAuth(
       }
 
       // Buscar falta no Supabase com verificação de permissão
-      const { data, error } = await supabaseAdmin
+      const { data, error } = (await supabaseAdmin
         .from('student_absences')
         .select('*, students(name, class, student_id)')
         .eq('id', id)
-        .single();
+        .single()) as { data: SupabaseAbsenceRow | null; error: { code?: string } | null };
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -130,23 +130,23 @@ export const PUT = withAuth(
       const sanitizedData = sanitizeObject(data);
 
       // 4. Verificar se falta existe e pertence ao usuário
-      const { data: existingAbsence, error: checkError } = await supabaseAdmin
+      const { data: existingAbsence, error: checkError } = (await supabaseAdmin
         .from('student_absences')
         .select('id, students(student_id)')
         .eq('id', id)
-        .single();
+        .single()) as { data: { id: string; students?: { student_id?: string } } | null; error: unknown };
 
       if (checkError || !existingAbsence) {
         return notFoundResponse('Falta', id);
       }
 
       // 5. Preparar dados para atualização
-      const updateData: Record<string, any> = {
+      const updateData: SupabaseUpdateData = {
         updated_at: new Date().toISOString(),
       };
 
       if (sanitizedData.data) updateData.date = sanitizedData.data;
-      if (sanitizedData.bimestre) updateData.bimester = sanitizedData.bimestre;
+      if (sanitizedData.bimestre) updateData.bimester = convertBimesterToNumber(sanitizedData.bimestre);
       if (sanitizedData.justificada !== undefined)
         updateData.justified = sanitizedData.justificada;
       if (sanitizedData.motivoJustificativa !== undefined)
@@ -157,9 +157,9 @@ export const PUT = withAuth(
         updateData.notes = sanitizedData.observacoes;
 
       // 6. Atualizar falta
-      const { error: updateError } = await supabaseAdmin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: updateError } = await (supabaseAdmin as any)
         .from('student_absences')
-        // @ts-ignore - Supabase types are complex, updateData is validated
         .update(updateData)
         .eq('id', id);
 
@@ -209,21 +209,21 @@ export const DELETE = withAuth(
       }
 
       // 1. Verificar se falta existe e pertence ao usuário
-      const { data: existingAbsence, error: checkError } = await supabaseAdmin
+      const { data: existingAbsence, error: checkError } = (await supabaseAdmin
         .from('student_absences')
         .select('id, students(student_id)')
         .eq('id', id)
-        .single();
+        .single()) as { data: { id: string; students?: { student_id?: string } } | null; error: unknown };
 
       if (checkError || !existingAbsence) {
         return notFoundResponse('Falta', id);
       }
 
       // 2. Deletar falta (hard delete)
-      const { error: deleteError } = await supabaseAdmin
+      const { error: deleteError } = (await supabaseAdmin
         .from('student_absences')
         .delete()
-        .eq('id', id);
+        .eq('id', id)) as { error: unknown };
 
       if (deleteError) {
         console.error('[DELETE /api/absences/[id]] Error deleting absence:', deleteError);
@@ -250,13 +250,73 @@ export const DELETE = withAuth(
 );
 
 // ============================================================================
+// TYPES
+// ============================================================================
+
+interface SupabaseStudentInfo {
+  name?: string;
+  class?: string;
+  student_id?: string;
+}
+
+interface SupabaseAbsenceRow {
+  id: string;
+  student_id: string;
+  absence_date: string;
+  bimester: number;
+  is_justified: boolean;
+  medical_certificate_id?: string | null;
+  suspension_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  students?: SupabaseStudentInfo;
+}
+
+interface AbsenceLegacyFormat {
+  id: string;
+  estudanteId: string;
+  estudanteNome: string;
+  turma: string;
+  data: string;
+  bimestre: number;
+  justificada: boolean;
+  justified: boolean;
+  motivoJustificativa?: string;
+  atestadoId?: string;
+  suspensaoId?: string;
+  observacoes?: string;
+  anoLetivo: string;
+  criadoPor: string;
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
+interface SupabaseUpdateData {
+  date?: string;
+  bimester?: number;
+  justified?: boolean;
+  justification_reason?: string | null;
+  medical_certificate_id?: string | null;
+  notes?: string | null;
+  updated_at: string;
+}
+
+// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
 /**
+ * Converte bimestre de string ('B1', 'B2', etc.) para number (1, 2, etc.)
+ */
+function convertBimesterToNumber(bimestre: 'B1' | 'B2' | 'B3' | 'B4'): number {
+  const map: Record<string, number> = { B1: 1, B2: 2, B3: 3, B4: 4 };
+  return map[bimestre];
+}
+
+/**
  * Converte StudentAbsence do Supabase para formato legacy
  */
-function convertSupabaseToAbsence(absence: any): any {
+function convertSupabaseToAbsence(absence: SupabaseAbsenceRow): AbsenceLegacyFormat {
   return {
     id: absence.id,
     estudanteId: absence.students?.student_id || absence.student_id, // ✅ Firebase UUID, não Internal ID

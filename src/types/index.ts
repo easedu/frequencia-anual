@@ -7,6 +7,18 @@
 // INTERFACES BÁSICAS
 // ============================================================================
 
+// WhatsApp Data Type (JSONB flexível mas tipado)
+export interface WhatsAppData {
+  verified?: boolean;
+  exists?: boolean;
+  verifiedAt?: string | null;
+  name?: string | null;
+  number?: string | null;
+  status?: string;
+  lastChecked?: string;
+  [key: string]: unknown; // Permite campos adicionais JSONB
+}
+
 export interface Contato {
   id?: string; // Supabase contact ID (UUID)
   nome: string;
@@ -21,8 +33,8 @@ export interface Contato {
     name: string | null;
     number: string | null;
   };
-  whatsappData?: any; // WhatsApp data JSONB (campo direto)
-  whatsapp_data?: any; // WhatsApp data JSONB (snake_case)
+  whatsappData?: WhatsAppData; // WhatsApp data JSONB (campo direto)
+  whatsapp_data?: WhatsAppData; // WhatsApp data JSONB (snake_case)
 }
 
 export interface Endereco {
@@ -454,4 +466,70 @@ export interface AutomationExecutionLog {
   status: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED';
   summary: AutomationExecutionSummary;
   notificationSent: boolean;
+}
+
+// ============================================================================
+// TIPOS GENÉRICOS PARA JSONB E METADATA
+// ============================================================================
+
+/**
+ * Tipo para campos JSONB flexíveis (permite estrutura dinâmica)
+ */
+export type JSONBField = Record<string, unknown>;
+
+/**
+ * Tipo para metadata flexível mas tipado
+ */
+export interface MetadataField {
+  [key: string]: string | number | boolean | null | undefined;
+}
+
+/**
+ * Tipo para preferências de usuário
+ */
+export interface UserPreferences {
+  theme?: 'light' | 'dark';
+  language?: string;
+  notifications?: boolean;
+  [key: string]: unknown;
+}
+
+/**
+ * Tipo genérico para respostas de API com paginação
+ */
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+/**
+ * Tipo genérico para filtros de query
+ */
+export interface QueryFilter {
+  column: string;
+  operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'ilike' | 'in';
+  value: string | number | boolean | string[] | number[];
+}
+
+/**
+ * Tipo genérico para criar dados (sem id)
+ */
+export type CreateInput<T> = Omit<T, 'id'> & { studentId?: string };
+
+/**
+ * Tipo genérico para atualizar dados (id requerido)
+ */
+export type UpdateInput<T> = { id: string } & Partial<Omit<T, 'id'>>;
+
+/**
+ * Tipo para dados do Firebase/Auth User
+ */
+export interface FirebaseUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  getIdToken: () => Promise<string>;
 }

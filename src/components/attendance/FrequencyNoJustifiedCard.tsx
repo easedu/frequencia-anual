@@ -18,7 +18,7 @@ interface FrequencyNoJustifiedCardProps {
     student?: Student; // Opcional para compatibilidade
 }
 
-const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studentRecordWithoutJustified, studentRecord, student }: FrequencyNoJustifiedCardProps) {
+const FrequencyNoJustifiedCard = memo(function FrequencyNoJustifiedCard({ studentRecordWithoutJustified, studentRecord, _student }: FrequencyNoJustifiedCardProps) {
     // Aceita tanto studentRecordWithoutJustified quanto studentRecord
     const record = studentRecordWithoutJustified || studentRecord;
     return (

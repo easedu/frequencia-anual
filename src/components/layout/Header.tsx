@@ -8,7 +8,7 @@ import { useServiceWorkerContext } from "@/components/shared/ServiceWorkerProvid
 import { useAuth } from "@/components/layout/AuthProvider";
 
 export default function Header() {
-    const router = useRouter();
+    const _router = useRouter();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const { isOnline, offlineStatus } = useServiceWorkerContext();
     const { signOut: authSignOut, user, userProfile } = useAuth();

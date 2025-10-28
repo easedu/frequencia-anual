@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AutomationExecutionService } from '@/services/supabase/automationExecutionService';
+import { AutomationExecutionService, AutomationExecution } from '@/services/supabase/automationExecutionService';
 import { logger } from '@/utils/logger';
+
+/**
+ * Metadata structure stored in automation executions
+ */
+interface ExecutionMetadata {
+  startedAt?: string;
+  completedAt?: string;
+  updatedAt?: string;
+  dryRun?: boolean;
+  absenceMultiple?: number;
+  totalStudents?: number;
+  processedStudents?: number;
+  results?: Record<string, unknown>;
+  [key: string]: unknown;
+}
 
 /**
  * API DE CONSULTA DE STATUS
@@ -14,8 +29,6 @@ import { logger } from '@/utils/logger';
  * Auth: Basic Auth
  */
 export async function GET(request: NextRequest) {
-  logger.info('[AUTOMATION] 📊 Consulta de status');
-
   // ==========================================
   // AUTENTICAÇÃO
   // ==========================================
@@ -42,7 +55,7 @@ export async function GET(request: NextRequest) {
         { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="API"' } }
       );
     }
-  } catch (error) {
+  } catch (_error: unknown) {
     return NextResponse.json(
       { success: false, error: 'Invalid authorization format' },
       { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="API"' } }
@@ -70,33 +83,38 @@ export async function GET(request: NextRequest) {
         );
       }
 
+      // Extract metadata with type safety
+      const metadata = execution.metadata as ExecutionMetadata;
+      const totalStudents = metadata.totalStudents ?? 0;
+      const processedStudents = metadata.processedStudents ?? 0;
+
       // Calcular progresso
-      const progressPercentage = execution.totalStudents > 0
-        ? Math.round((execution.processedStudents / execution.totalStudents) * 100)
+      const progressPercentage = totalStudents > 0
+        ? Math.round((processedStudents / totalStudents) * 100)
         : 0;
 
-      const startedMs = execution.startedAt ? new Date(execution.startedAt).getTime() : new Date(execution.createdAt).getTime();
-      const finishedMs = execution.completedAt ? new Date(execution.completedAt).getTime() : Date.now();
+      const startedMs = metadata.startedAt ? new Date(metadata.startedAt).getTime() : new Date(execution.executedAt).getTime();
+      const finishedMs = metadata.completedAt ? new Date(metadata.completedAt).getTime() : Date.now();
       const elapsedMinutes = Math.round((finishedMs - startedMs) / 1000 / 60);
 
       return NextResponse.json({
         success: true,
         execution: {
           executionId: execution.id,
-          status: execution.status,
-          startedAt: execution.startedAt || execution.createdAt,
-          finishedAt: execution.completedAt || null,
-          updatedAt: execution.updatedAt,
+          status: execution.executionStatus,
+          startedAt: metadata.startedAt ?? execution.executedAt,
+          finishedAt: metadata.completedAt ?? null,
+          updatedAt: metadata.updatedAt ?? execution.executedAt,
           elapsedMinutes,
-          dryRun: execution.dryRun,
-          absenceMultiple: execution.absenceMultiple,
+          dryRun: metadata.dryRun ?? false,
+          absenceMultiple: metadata.absenceMultiple ?? 0,
           progress: {
-            totalStudents: execution.totalStudents,
-            processedStudents: execution.processedStudents,
-            remainingStudents: execution.totalStudents - execution.processedStudents,
+            totalStudents,
+            processedStudents,
+            remainingStudents: totalStudents - processedStudents,
             percentage: progressPercentage
           },
-          results: execution.results || {}
+          results: (metadata.results as Record<string, unknown>) ?? {}
         }
       });
     }
@@ -106,22 +124,27 @@ export async function GET(request: NextRequest) {
     // ==========================================
     const executions = await AutomationExecutionService.getRecentExecutions(limitParam);
 
-    const formattedExecutions = executions.map(data => {
-      const progressPercentage = data.totalStudents > 0
-        ? Math.round((data.processedStudents / data.totalStudents) * 100)
+    const formattedExecutions = executions.map((execution: AutomationExecution) => {
+      // Extract metadata with type safety
+      const metadata = execution.metadata as ExecutionMetadata;
+      const totalStudents = metadata.totalStudents ?? 0;
+      const processedStudents = metadata.processedStudents ?? 0;
+
+      const progressPercentage = totalStudents > 0
+        ? Math.round((processedStudents / totalStudents) * 100)
         : 0;
 
-      const results = data.results || {};
+      const results = (metadata.results as Record<string, unknown>) ?? {};
 
       return {
-        executionId: data.id,
-        status: data.status,
-        startedAt: data.startedAt || data.createdAt,
-        finishedAt: data.completedAt || null,
-        dryRun: data.dryRun,
-        absenceMultiple: data.absenceMultiple,
-        processedStudents: data.processedStudents,
-        totalStudents: data.totalStudents,
+        executionId: execution.id,
+        status: execution.executionStatus,
+        startedAt: metadata.startedAt ?? execution.executedAt,
+        finishedAt: metadata.completedAt ?? null,
+        dryRun: metadata.dryRun ?? false,
+        absenceMultiple: metadata.absenceMultiple ?? 0,
+        processedStudents,
+        totalStudents,
         progressPercentage,
         results
       };
@@ -133,7 +156,7 @@ export async function GET(request: NextRequest) {
       executions: formattedExecutions
     });
 
-  } catch (error) {
+  } catch (_error: unknown) {
     logger.error('[AUTOMATION] ❌ Erro ao consultar status', {
       executionId,
       error: error instanceof Error ? error.message : 'Erro desconhecido'

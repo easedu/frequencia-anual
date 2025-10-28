@@ -5,7 +5,7 @@
  * - POST: Criar várias faltas para um estudante
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAuth } from '@/app/api/_middleware/auth';
 import { sanitizeObject } from '@/app/api/_middleware/validation';
 import {
@@ -27,11 +27,47 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 export const runtime = 'nodejs'; // Não usar 'edge' (limite de 10s)
 export const maxDuration = 60; // 60 segundos para redes muito lentas
 
+// ════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Converte bimestre de string ('B1', 'B2', etc.) para number (1, 2, etc.)
+ */
+function convertBimesterToNumber(bimestre: 'B1' | 'B2' | 'B3' | 'B4'): number {
+  const map: Record<string, number> = { B1: 1, B2: 2, B3: 3, B4: 4 };
+  return map[bimestre];
+}
+
+// ════════════════════════════════════════════════════════════════
+// TYPES
+// ════════════════════════════════════════════════════════════════
+
+interface ExistingAbsenceRow {
+  date: string;
+}
+
+interface SupabaseAbsenceInsert {
+  student_id: string;
+  date: string;
+  bimester: number;
+  justified: boolean;
+  justification_reason: string | null;
+  medical_certificate_id: string | null;
+  notes: string | null;
+  school_year: string;
+  created_by: string;
+}
+
+interface InsertedAbsenceRow {
+  id: string;
+}
+
 // ============================================================================
 // POST /api/absences/bulk - Criar múltiplas faltas
 // ============================================================================
 
-export const POST = withAuth(async (req: NextRequest, userId: string) => {
+export const POST = withAuth(async (_req: NextRequest, __userId: string) => {
   try {
     // 1. Parse body
     const body = await req.json();
@@ -49,12 +85,12 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     const sanitizedData = sanitizeObject(data);
 
     // 4. Verificar se estudante existe e pertence ao usuário
-    const { data: student, error: studentError } = await supabaseAdmin
+    const { data: student, error: studentError } = (await supabaseAdmin
       .from('students')
       .select('id')
       .eq('id', sanitizedData.estudanteId)
       .eq('deleted', false)
-      .single();
+      .single()) as { data: { id: string } | null; error: unknown };
 
     if (studentError || !student) {
       return errorResponse(
@@ -65,13 +101,13 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // 5. Verificar duplicatas existentes
-    const { data: existingAbsences } = await supabaseAdmin
+    const { data: existingAbsences } = (await supabaseAdmin
       .from('student_absences')
       .select('date')
       .eq('student_id', sanitizedData.estudanteId)
-      .in('date', sanitizedData.datas);
+      .in('date', sanitizedData.datas)) as { data: ExistingAbsenceRow[] | null };
 
-    const existingDates = (existingAbsences || []).map((a: any) => a.date);
+    const existingDates = (existingAbsences || []).map((a) => a.date);
     const newDates = sanitizedData.datas.filter(
       (date) => !existingDates.includes(date)
     );
@@ -86,10 +122,10 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // 6. Preparar dados para Supabase (múltiplas inserções)
-    const absencesInsert = newDates.map((date) => ({
+    const absencesInsert: SupabaseAbsenceInsert[] = newDates.map((date) => ({
       student_id: sanitizedData.estudanteId,
       date,
-      bimester: sanitizedData.bimestre,
+      bimester: convertBimesterToNumber(sanitizedData.bimestre),
       justified: sanitizedData.justificada ?? false,
       justification_reason: sanitizedData.motivoJustificativa || null,
       medical_certificate_id: sanitizedData.atestadoId || null,
@@ -99,10 +135,11 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     }));
 
     // 7. Inserir faltas em lote
-    const { data: insertedData, error: insertError } = (await supabaseAdmin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: insertedData, error: insertError } = (await (supabaseAdmin as any)
       .from('student_absences')
-      .insert(absencesInsert as any)
-      .select('id')) as { data: any; error: any };
+      .insert(absencesInsert)
+      .select('id')) as { data: InsertedAbsenceRow[] | null; error: unknown };
 
     if (insertError) {
       console.error('[POST /api/absences/bulk] Error inserting absences:', insertError);
@@ -115,14 +152,15 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // 8. Retornar sucesso
+    const insertedCount = insertedData?.length || 0;
     return successResponse(
       {
-        created: insertedData.length,
+        created: insertedCount,
         skipped: sanitizedData.datas.length - newDates.length,
-        ids: insertedData.map((item: any) => item.id),
+        ids: insertedData?.map((item: InsertedAbsenceRow) => item.id) || [],
         skippedDates: existingDates,
       },
-      `${insertedData.length} falta(s) registrada(s) com sucesso`,
+      `${insertedCount} falta(s) registrada(s) com sucesso`,
       201
     );
   } catch (error) {

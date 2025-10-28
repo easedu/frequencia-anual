@@ -66,11 +66,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Enviar mensagem via Evolution API
-    logger.info('Processing WhatsApp send request', {
-      hasDelay: !!delay,
-      linkPreview
-    });
-
     const result = await EvolutionMessageService.sendText(phone, message, {
       delay,
       linkPreview
@@ -91,10 +86,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Sucesso!
-    logger.info('WhatsApp message sent successfully via Evolution API', {
-      messageId: result.messageId
-    });
-
     return NextResponse.json({
       success: true,
       message: 'Mensagem enviada com sucesso',

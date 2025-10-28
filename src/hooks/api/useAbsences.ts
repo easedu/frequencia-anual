@@ -105,9 +105,9 @@ export function useAbsences(filters?: AbsenceFilters) {
           },
           pageLimit: 1000, // ⚠️ Supabase tem limite HARD de 1000 registros por query
           resourceName: 'faltas',
-          onProgress: (data, progress) => {
+          onProgress: (data, _progress) => {
             // ✅ PROGRESSIVE RENDERING: Atualizar absences conforme carrega
-            setAbsences([...data]);
+            setAbsences([...(data as Absence[])]);
           }
         });
 
@@ -231,12 +231,21 @@ export function useAbsence(id: string | null) {
 // MUTATION: useCreateAbsence (POST)
 // ============================================================================
 
+export interface CreateAbsenceData {
+  student_id: string;
+  absence_date: string;
+  bimester?: string;
+  is_justified?: boolean;
+  medical_certificate_id?: string;
+  suspension_id?: string;
+}
+
 export function useCreateAbsence() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createAbsence = useCallback(async (absenceData: any) => {
+  const createAbsence = useCallback(async (absenceData: CreateAbsenceData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
@@ -331,12 +340,20 @@ export function useCreateBulkAbsences() {
 // MUTATION: useUpdateAbsence (PUT)
 // ============================================================================
 
+export interface UpdateAbsenceData {
+  absence_date?: string;
+  bimester?: string;
+  is_justified?: boolean;
+  medical_certificate_id?: string;
+  suspension_id?: string;
+}
+
 export function useUpdateAbsence() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateAbsence = useCallback(async (id: string, absenceData: any) => {
+  const updateAbsence = useCallback(async (id: string, absenceData: UpdateAbsenceData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {

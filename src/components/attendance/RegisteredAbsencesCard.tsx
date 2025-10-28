@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,6 @@ import {
 import { AbsenceRecord, Atestado, Suspensao, BimesterDates } from "@/types";
 import { getBimesterByDate } from "@/app/utils";
 import { Calendar, FileText, Clock, User, CheckCircle, XCircle, ChevronDown, ChevronRight, Trash2, AlertCircle } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
 import { AbsenceService } from "@/services/supabase/absenceService";
 import { logger } from "@/utils/logger";
@@ -158,7 +157,11 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                 return;
             }
 
-            if (absence?.suspensaoId || (absence as any)?.suspension_id) {
+            // Verificar se a falta tem suspensão associada (campo do Supabase ou campo legado)
+            const hasSuspension = absence?.suspensaoId ||
+                (absence && 'suspension_id' in absence && (absence as AbsenceRecord & { suspension_id?: string }).suspension_id);
+
+            if (hasSuspension) {
                 toast.error("Não é possível deletar faltas justificadas por suspensão. Delete a suspensão ao invés disso.");
                 setIsDeleting(false);
                 setShowDeleteDialog(null);
@@ -273,7 +276,7 @@ const BimestreAbsences: React.FC<BimestreAbsencesProps> = ({
                             // Determinar cor baseado no tipo de justificativa
                             const isJustifiedByAtestado = absence.justified && absence.atestadoId;
                             const isJustifiedBySuspensao = absence.suspensaoId;
-                            const isUnjustified = !absence.justified && !absence.suspensaoId;
+                            const _isUnjustified = !absence.justified && !absence.suspensaoId;
 
                             let borderColor = 'border-red-200 hover:border-red-300';
                             let bgColor = 'bg-red-50';

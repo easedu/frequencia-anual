@@ -6,7 +6,7 @@
  * - POST: Criar novo contato
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAuth } from '@/app/api/_middleware/auth';
 import { validateQueryParams, sanitizeObject } from '@/app/api/_middleware/validation';
 import {
@@ -23,12 +23,14 @@ import {
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCountStrategy } from '@/app/api/_utils/countStrategy';
+import type { StudentContact, StudentContactInsert } from '@/lib/supabaseClient';
+import type { WhatsAppData } from '@/types';
 
 // ============================================================================
 // GET /api/contacts - Listar contatos com filtros
 // ============================================================================
 
-export const GET = withAuth(async (req: NextRequest, userId: string) => {
+export const GET = withAuth(async (_req: NextRequest, __userId: string) => {
   try {
     // 1. Validar query params
     const validation = validateQueryParams(req, contactQuerySchema);
@@ -49,7 +51,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     const countOption = getCountStrategy(page);
 
     // Construir query no Supabase
-    let query: any = supabaseAdmin
+    let query = supabaseAdmin
       .from('student_contacts')
       .select('*, students(student_id)', countOption)
       .order('name', { ascending: true });
@@ -100,7 +102,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 // POST /api/contacts - Criar novo contato
 // ============================================================================
 
-export const POST = withAuth(async (req: NextRequest, userId: string) => {
+export const POST = withAuth(async (_req: NextRequest, __userId: string) => {
   try {
     // 1. Parse body
     const body = await req.json();
@@ -134,7 +136,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     // 5. Preparar dados para Supabase
-    const contactInsert: any = {
+    const contactInsert: StudentContactInsert = {
       student_id: sanitizedData.estudanteId,
       name: sanitizedData.nome,
       phone: sanitizedData.telefone,
@@ -143,14 +145,24 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       can_receive_whatsapp: sanitizedData.podeReceberMensagem ?? true,
       whatsapp_data: sanitizedData.whatsappData || {},
       version: '3.0',
+      email: null,
+      migrated_from: null,
+      synced_from_old_structure: false,
+      is_placeholder: false,
+      synced_at: null,
     };
 
     // 6. Inserir contato
-    const { data: contactData, error: contactError } = (await supabaseAdmin
+    const result = await supabaseAdmin
       .from('student_contacts')
-      .insert(contactInsert)
+      .insert(contactInsert as unknown as never)
       .select('id')
-      .single()) as { data: any; error: any };
+      .single();
+
+    const { data: contactData, error: contactError } = result as {
+      data: { id: string } | null;
+      error: Error | null
+    };
 
     if (contactError) {
       console.error('[POST /api/contacts] Error inserting contact:', contactError);
@@ -165,7 +177,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     // 7. Retornar sucesso
     return successResponse(
       {
-        id: contactData.id,
+        id: contactData?.id || '',
       },
       'Contato criado com sucesso',
       201
@@ -180,10 +192,29 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 // ============================================================================
 
 /**
+ * Formato legacy do contato para resposta da API
+ */
+interface LegacyContactResponse {
+  id: string;
+  estudanteId: string;
+  nome: string;
+  parentesco: string;
+  telefone: string;
+  podeReceberMensagem: boolean;
+  whatsapp?: {
+    verified: boolean;
+    exists: boolean;
+    verifiedAt: string | null;
+    name: string | null;
+    number: string | null;
+  };
+}
+
+/**
  * Converte StudentContact do Supabase para formato legacy
  */
-function convertSupabaseToContact(contact: any): any {
-  const whatsappData = (contact.whatsapp_data as any) || {};
+function convertSupabaseToContact(contact: StudentContact & { students?: { student_id: string } }): LegacyContactResponse {
+  const whatsappData = (contact.whatsapp_data as WhatsAppData) || {};
 
   return {
     id: contact.id,
@@ -195,7 +226,7 @@ function convertSupabaseToContact(contact: any): any {
     whatsapp: whatsappData.verified ? {
       verified: whatsappData.verified || false,
       exists: whatsappData.exists || false,
-      verifiedAt: whatsappData.verified_at || null,
+      verifiedAt: whatsappData.verifiedAt || null,
       name: whatsappData.name || null,
       number: whatsappData.number || null,
     } : undefined,

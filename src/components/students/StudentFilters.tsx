@@ -1,12 +1,12 @@
 import React, { useState, memo } from 'react';
-import { Search, Filter, X, ChevronDown, Settings, Sliders } from 'lucide-react';
+import { Search, Filter, X, Settings, Sliders } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Estudante } from '@/types';
-import { formatDate } from '@/utils/formatters';
+import { _formatDate } from '@/utils/formatters';
 
 // Helper functions for date formatting
 const formatDataNascimento = (dateStr: string): string => {

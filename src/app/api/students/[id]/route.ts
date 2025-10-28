@@ -7,7 +7,7 @@
  * - DELETE: Soft delete de estudante
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAuth } from '@/app/api/_middleware/auth';
 import { sanitizeObject } from '@/app/api/_middleware/validation';
 import {
@@ -23,6 +23,10 @@ import {
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
+// ============================================================================
+// TIPOS
+// ============================================================================
+
 // Tipo para os parâmetros da rota
 type RouteParams = {
   params: Promise<{
@@ -30,12 +34,64 @@ type RouteParams = {
   }>;
 };
 
+// Tipos para respostas do Supabase
+interface SupabaseStudent {
+  id: string;
+  student_id: string;
+  name: string;
+  class: string;
+  shift: string;
+  status: string;
+  bolsa_familia: string;
+  registration_number?: string;
+  birth_date?: string;
+  address?: Record<string, unknown>;
+  disabilities?: string[];
+  created_at: string;
+  updated_at: string;
+  student_contacts?: SupabaseContact[];
+}
+
+interface SupabaseContact {
+  id: string;
+  name: string;
+  relationship: string;
+  phone: string;
+  phone_numeric: string;
+  can_receive_whatsapp: boolean;
+  whatsapp_data?: Record<string, unknown>;
+}
+
+interface WhatsAppVerificationData {
+  phone_number: string;
+  is_verified: boolean;
+  account_exists: boolean;
+  verified_at?: string;
+}
+
+interface WhatsAppVerificationResult {
+  verified: boolean;
+  exists: boolean;
+  verifiedAt?: string;
+}
+
+interface ContactInsert {
+  student_id: string;
+  name: string;
+  relationship: string;
+  phone: string;
+  phone_numeric: string;
+  can_receive_whatsapp: boolean;
+  whatsapp_data: Record<string, unknown>;
+  version: string;
+}
+
 // ============================================================================
 // GET /api/students/[id] - Buscar estudante por ID
 // ============================================================================
 
 export const GET = withAuth(
-  async (req: NextRequest, userId: string, context?: RouteParams) => {
+  async (req: NextRequest, _userId: string, context?: RouteParams) => {
     try {
       // Next.js 15 - params é Promise e precisa de await
       const params = await context?.params;
@@ -54,7 +110,7 @@ export const GET = withAuth(
 
       // Buscar estudante no Supabase com dados de verificação WhatsApp
       // ✅ Query by student_id (Firebase UUID) not internal id
-      const { data, error } = (await supabaseAdmin
+      const { data, error } = await supabaseAdmin
         .from('students')
         .select(`
           *,
@@ -69,7 +125,7 @@ export const GET = withAuth(
         `)
         .eq('student_id', id)
         .eq('deleted', false)
-        .single()) as { data: any; error: any };
+        .single() as { data: SupabaseStudent | null; error: { code?: string } | null };
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -91,20 +147,20 @@ export const GET = withAuth(
       }
 
       // Buscar dados de verificação WhatsApp para os contatos
-      const contactPhones = ((data as any).student_contacts || [])
-        .map((c: any) => c.phone)
+      const contactPhones = (data.student_contacts || [])
+        .map((c) => c.phone)
         .filter(Boolean);
 
-      let verifiedWhatsAppMap = new Map<string, any>();
+      let verifiedWhatsAppMap = new Map<string, WhatsAppVerificationResult>();
 
       if (contactPhones.length > 0) {
-        const { data: verifiedData } = (await supabaseAdmin
+        const { data: verifiedData } = await supabaseAdmin
           .from('whatsapp_verified_numbers')
           .select('*')
-          .in('phone_number', contactPhones)) as { data: any[] | null; error: any };
+          .in('phone_number', contactPhones) as { data: WhatsAppVerificationData[] | null; error: unknown };
 
         if (verifiedData) {
-          verifiedData.forEach((v: any) => {
+          verifiedData.forEach((v) => {
             verifiedWhatsAppMap.set(v.phone_number, {
               verified: v.is_verified,
               exists: v.account_exists,
@@ -129,7 +185,7 @@ export const GET = withAuth(
 // ============================================================================
 
 export const PUT = withAuth(
-  async (req: NextRequest, userId: string, context?: RouteParams) => {
+  async (req: NextRequest, _userId: string, context?: RouteParams) => {
     try {
       const params = await context?.params;
       const id = params?.id;
@@ -166,12 +222,12 @@ export const PUT = withAuth(
 
       // 4. Verificar se estudante existe e pertence ao usuário
       // ✅ Query by student_id (Firebase UUID)
-      const { data: existingStudent, error: checkError } = (await supabaseAdmin
+      const { data: existingStudent, error: checkError } = await supabaseAdmin
         .from('students')
         .select('id, student_id')
         .eq('student_id', id)
         .eq('deleted', false)
-        .single()) as { data: { id: string; student_id: string } | null; error: any };
+        .single() as { data: { id: string; student_id: string } | null; error: unknown };
 
       if (checkError || !existingStudent) {
         return notFoundResponse('Estudante', id);
@@ -181,7 +237,7 @@ export const PUT = withAuth(
       const internalId = existingStudent.id;
 
       // 5. Preparar dados para atualização
-      const updateData: Record<string, any> = {
+      const updateData: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
 
@@ -201,7 +257,7 @@ export const PUT = withAuth(
       // 6. Atualizar estudante (using Internal ID for update)
       const { error: updateError } = await supabaseAdmin
         .from('students')
-        // @ts-ignore - Supabase types are complex, updateData is validated
+        // @ts-expect-error - Supabase types are complex, updateData is validated
         .update(updateData)
         .eq('id', internalId);
 
@@ -218,15 +274,15 @@ export const PUT = withAuth(
       // 7. Atualizar contatos (se fornecidos)
       if (sanitizedData.contatos !== undefined) {
         // ✅ PRESERVAR whatsappData: Buscar contatos existentes antes de deletar
-        const { data: existingContacts } = (await supabaseAdmin
+        const { data: existingContacts } = await supabaseAdmin
           .from('student_contacts')
           .select('phone, whatsapp_data')
-          .eq('student_id', internalId)) as { data: any[] | null };
+          .eq('student_id', internalId) as { data: { phone: string; whatsapp_data?: Record<string, unknown> }[] | null };
 
         // Criar mapa de whatsappData por telefone
-        const whatsappDataMap = new Map<string, any>();
+        const whatsappDataMap = new Map<string, Record<string, unknown>>();
         if (existingContacts) {
-          existingContacts.forEach((contact: any) => {
+          existingContacts.forEach((contact) => {
             if (contact.phone && contact.whatsapp_data) {
               whatsappDataMap.set(contact.phone, contact.whatsapp_data);
             }
@@ -238,7 +294,7 @@ export const PUT = withAuth(
 
         // Inserir novos contatos (using Internal ID)
         if (sanitizedData.contatos.length > 0) {
-          const contactsInsert = sanitizedData.contatos.map((contato: any) => {
+          const contactsInsert: ContactInsert[] = sanitizedData.contatos.map((contato) => {
             // ✅ PADRONIZADO: Usar apenas podeReceberMensagem (campo padrão do formulário)
             const canReceiveWhatsapp = contato.podeReceberMensagem ?? true;
 
@@ -257,9 +313,10 @@ export const PUT = withAuth(
             };
           });
 
-          const { error: contactsError } = (await supabaseAdmin
+          const { error: contactsError } = await supabaseAdmin
             .from('student_contacts')
-            .insert(contactsInsert as any)) as { error: any };
+            // @ts-expect-error - Supabase insert types são complexos, já validado por ContactInsert[]
+            .insert(contactsInsert);
 
           if (contactsError) {
             console.error('[PUT /api/students/[id]] Error updating contacts:', contactsError);
@@ -287,7 +344,7 @@ export const PUT = withAuth(
 // ============================================================================
 
 export const DELETE = withAuth(
-  async (req: NextRequest, userId: string, context?: RouteParams) => {
+  async (req: NextRequest, _userId: string, context?: RouteParams) => {
     try {
       const params = await context?.params;
       const id = params?.id;
@@ -305,12 +362,12 @@ export const DELETE = withAuth(
 
       // 1. Verificar se estudante existe e pertence ao usuário
       // ✅ Query by student_id (Firebase UUID)
-      const { data: existingStudent, error: checkError } = (await supabaseAdmin
+      const { data: existingStudent, error: checkError } = await supabaseAdmin
         .from('students')
         .select('id, student_id')
         .eq('student_id', id)
         .eq('deleted', false)
-        .single()) as { data: { id: string; student_id: string } | null; error: any };
+        .single() as { data: { id: string; student_id: string } | null; error: unknown };
 
       if (checkError || !existingStudent) {
         return notFoundResponse('Estudante', id);
@@ -322,7 +379,7 @@ export const DELETE = withAuth(
       // 2. Soft delete (marcar como deletado, using Internal ID)
       const { error: deleteError } = await supabaseAdmin
         .from('students')
-        // @ts-ignore - Supabase types are complex
+        // @ts-expect-error - Supabase types are complex
         .update({
           deleted: true,
           deleted_at: new Date().toISOString(),
@@ -361,7 +418,10 @@ export const DELETE = withAuth(
 /**
  * Converte Student do Supabase para formato legacy Estudante
  */
-function convertSupabaseToEstudante(student: any, verifiedWhatsAppMap?: Map<string, any>): any {
+function convertSupabaseToEstudante(
+  student: SupabaseStudent,
+  verifiedWhatsAppMap?: Map<string, WhatsAppVerificationResult>
+): Record<string, unknown> {
   return {
     id: student.id,
     estudanteId: student.student_id,
@@ -373,7 +433,7 @@ function convertSupabaseToEstudante(student: any, verifiedWhatsAppMap?: Map<stri
     matricula: student.registration_number || undefined,
     dataNascimento: student.birth_date || undefined,
     email: undefined,
-    contatos: (student.student_contacts || []).map((contact: any) => {
+    contatos: (student.student_contacts || []).map((contact) => {
       // Buscar dados de verificação WhatsApp
       const verificationData = verifiedWhatsAppMap?.get(contact.phone);
 

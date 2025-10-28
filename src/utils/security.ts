@@ -145,23 +145,23 @@ export const validateFile = (file: File): { isValid: boolean; error?: string } =
 /**
  * Sanitiza objeto recursivamente
  */
-export const sanitizeObject = <T extends Record<string, any>>(obj: T): T => {
+export const sanitizeObject = <T extends Record<string, unknown>>(obj: T): T => {
   const sanitized = {} as T;
-  
+
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === 'string') {
       sanitized[key as keyof T] = sanitizeString(value) as T[keyof T];
     } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      sanitized[key as keyof T] = sanitizeObject(value) as T[keyof T];
+      sanitized[key as keyof T] = sanitizeObject(value as Record<string, unknown>) as T[keyof T];
     } else if (Array.isArray(value)) {
-      sanitized[key as keyof T] = value.map(item => 
-        typeof item === 'string' ? sanitizeString(item) : 
-        typeof item === 'object' ? sanitizeObject(item) : item
+      sanitized[key as keyof T] = value.map(item =>
+        typeof item === 'string' ? sanitizeString(item) :
+        typeof item === 'object' && item !== null ? sanitizeObject(item as Record<string, unknown>) : item
       ) as T[keyof T];
     } else {
-      sanitized[key as keyof T] = value;
+      sanitized[key as keyof T] = value as T[keyof T];
     }
   }
-  
+
   return sanitized;
 };

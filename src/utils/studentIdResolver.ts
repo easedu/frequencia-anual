@@ -147,7 +147,7 @@ export async function resolveToInternalId(firebaseUUID: string): Promise<string 
       return null;
     }
 
-    const internalId = (data as any).id;
+    const internalId = (data as { id: string }).id;
 
     // 3. Adicionar ao cache
     idCache.set(firebaseUUID, internalId);
@@ -194,7 +194,7 @@ export async function resolveToFirebaseUUID(internalId: string): Promise<string 
       return null;
     }
 
-    const firebaseUUID = (data as any).student_id;
+    const firebaseUUID = (data as { student_id: string }).student_id;
 
     // 3. Adicionar ao cache
     idCache.set(firebaseUUID, internalId);
@@ -250,7 +250,7 @@ export async function resolveBatch(firebaseUUIDs: string[]): Promise<Map<string,
     }
 
     // 4. Mapear resultados
-    const mappings = (data || []).map((row: any) => ({
+    const mappings = (data || []).map((row: { id: string; student_id: string }) => ({
       firebaseUUID: row.student_id,
       internalId: row.id,
     }));

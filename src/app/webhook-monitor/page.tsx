@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Activity, Clock, TrendingUp } from 'lucide-react';
+import { RefreshCw, Activity, Clock } from 'lucide-react';
 
 interface WebhookStats {
   status: string;
@@ -40,8 +40,8 @@ export default function WebhookMonitorPage() {
       const data = await response.json();
       setStats(data);
       setLoading(false);
-    } catch (error) {
-      console.error('Erro ao buscar estatísticas:', error);
+    } catch (_error) {
+      console.error('Erro ao buscar estatísticas:', _error);
       setLoading(false);
     }
   };

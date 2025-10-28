@@ -71,8 +71,10 @@ function getSupabaseAdminClient(): SupabaseClient<Database> {
  * Use with caution!
  */
 export const supabaseAdmin = new Proxy({} as SupabaseClient<Database>, {
-  get(_, prop) {
-    return (getSupabaseAdminClient() as any)[prop]
+  get(_, prop: string | symbol) {
+    const client = getSupabaseAdminClient();
+    const value = client[prop as keyof SupabaseClient<Database>];
+    return typeof value === 'function' ? value.bind(client) : value;
   }
 })
 
@@ -90,17 +92,17 @@ export const supabaseAdmin = new Proxy({} as SupabaseClient<Database>, {
  */
 export async function batchInsert<T extends keyof Database['public']['Tables']>(
   table: T,
-  data: Database['public']['Tables'][T]['Insert'][],
+  data: Array<Database['public']['Tables'][T]['Insert']>,
   batchSize = 100
-) {
-  const results = []
+): Promise<Array<Database['public']['Tables'][T]['Row']>> {
+  const results: Array<Database['public']['Tables'][T]['Row']> = []
 
   for (let i = 0; i < data.length; i += batchSize) {
     const batch = data.slice(i, i + batchSize)
 
     const { data: inserted, error } = await supabaseAdmin
       .from(table)
-      .insert(batch as any)
+      .insert(batch as never)
       .select()
 
     if (error) {
@@ -108,7 +110,9 @@ export async function batchInsert<T extends keyof Database['public']['Tables']>(
       throw error
     }
 
-    results.push(...(inserted || []))
+    if (inserted) {
+      results.push(...(inserted as unknown as Array<Database['public']['Tables'][T]['Row']>))
+    }
     console.log(`✅ Batch ${i / batchSize + 1}: ${batch.length} registros inseridos`)
   }
 
@@ -127,8 +131,8 @@ export async function batchUpdate<T extends keyof Database['public']['Tables']>(
   table: T,
   updates: Array<{ id: string } & Partial<Database['public']['Tables'][T]['Update']>>,
   batchSize = 100
-) {
-  const results = []
+): Promise<Array<Database['public']['Tables'][T]['Row']>> {
+  const results: Array<Database['public']['Tables'][T]['Row']> = []
 
   for (let i = 0; i < updates.length; i += batchSize) {
     const batch = updates.slice(i, i + batchSize)
@@ -136,18 +140,20 @@ export async function batchUpdate<T extends keyof Database['public']['Tables']>(
     for (const update of batch) {
       const { id, ...data } = update
 
-      const { data: updated, error } = await (supabaseAdmin
+      const { data: updated, error } = await supabaseAdmin
         .from(table)
-        .update(data as any)
-        .eq('id', id as any)
-        .select() as any)
+        .update(data as never)
+        .eq('id', id as never)
+        .select()
 
       if (error) {
         console.error(`Erro ao atualizar ${id}:`, error)
         throw error
       }
 
-      results.push(...(updated || []))
+      if (updated) {
+        results.push(...(updated as unknown as Array<Database['public']['Tables'][T]['Row']>))
+      }
     }
 
     console.log(`✅ Batch ${i / batchSize + 1}: ${batch.length} registros atualizados`)
@@ -168,16 +174,16 @@ export async function batchDelete<T extends keyof Database['public']['Tables']>(
   table: T,
   ids: string[],
   batchSize = 100
-) {
+): Promise<number> {
   let deletedCount = 0
 
   for (let i = 0; i < ids.length; i += batchSize) {
     const batch = ids.slice(i, i + batchSize)
 
-    const { error, count } = await (supabaseAdmin
+    const { error, count } = await supabaseAdmin
       .from(table)
       .delete()
-      .in('id', batch as any) as any)
+      .in('id', batch as never)
 
     if (error) {
       console.error(`Erro no batch ${i / batchSize + 1}:`, error)
@@ -208,13 +214,13 @@ export async function findOrphans(
   childTable: keyof Database['public']['Tables'],
   foreignKey: string,
   parentTable: keyof Database['public']['Tables']
-) {
+): Promise<Record<string, unknown>[]> {
   // Buscar todos os IDs da tabela pai
   const { data: parents } = await supabaseAdmin
     .from(parentTable)
     .select('id')
 
-  const parentIds = new Set(parents?.map((p: any) => p.id) || [])
+  const parentIds = new Set(parents?.map((p) => (p as Record<string, string>).id) || [])
 
   // Buscar todos os registros da tabela filha
   const { data: children } = await supabaseAdmin
@@ -223,10 +229,13 @@ export async function findOrphans(
 
   // Filtrar órfãos (foreign key não existe na tabela pai)
   const orphans = (children || []).filter(
-    child => !parentIds.has((child as any)[foreignKey])
+    (child) => {
+      const record = child as Record<string, unknown>;
+      return !parentIds.has(record[foreignKey] as string);
+    }
   )
 
-  return orphans
+  return orphans as Record<string, unknown>[]
 }
 
 /**

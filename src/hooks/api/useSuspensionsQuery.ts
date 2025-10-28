@@ -37,9 +37,21 @@ export interface SuspensionFilters {
   cursor?: string;
 }
 
+export interface SuspensionData {
+  id: string;
+  studentId: string;
+  startDate: string;
+  endDate: string;
+  daysSuspended: number;
+  reason: string;
+  description?: string;
+  severity?: 'LEVE' | 'MODERADA' | 'GRAVE';
+  [key: string]: unknown;
+}
+
 export interface SuspensionResponse {
   success: boolean;
-  data: any[];
+  data: SuspensionData[];
   pagination: {
     limit: number;
     hasNextPage: boolean;
@@ -143,12 +155,22 @@ export function useSuspensionsBySeverity(severity: 'LEVE' | 'MODERADA' | 'GRAVE'
 /**
  * Hook para criar suspensão
  */
+export interface CreateSuspensionInput {
+  studentId: string;
+  startDate: string;
+  endDate: string;
+  daysSuspended: number;
+  reason: string;
+  description?: string;
+  severity?: 'LEVE' | 'MODERADA' | 'GRAVE';
+}
+
 export function useCreateSuspension() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (suspensionData: any) => {
+    mutationFn: async (suspensionData: CreateSuspensionInput) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 
@@ -180,12 +202,16 @@ export function useCreateSuspension() {
 /**
  * Hook para atualizar suspensão
  */
+export interface UpdateSuspensionInput extends Partial<CreateSuspensionInput> {
+  id: string;
+}
+
 export function useUpdateSuspension() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...suspensionData }: any) => {
+    mutationFn: async ({ id, ...suspensionData }: UpdateSuspensionInput) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 

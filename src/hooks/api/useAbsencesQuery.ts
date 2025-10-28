@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchWithRetry } from '@/utils/retry';
 import { apiCircuitBreaker } from '@/utils/circuitBreaker';
+import type { AbsenceRecord } from '@/types';
 
 // ============================================================================
 // QUERY KEYS
@@ -40,7 +41,7 @@ export interface AbsenceFilters {
 
 export interface AbsenceResponse {
   success: boolean;
-  data: any[];
+  data: AbsenceRecord[];
   pagination: {
     limit: number;
     hasNextPage: boolean;
@@ -151,7 +152,7 @@ export function useCreateAbsence() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (absenceData: any) => {
+    mutationFn: async (absenceData: Partial<AbsenceRecord> & { studentId: string; date: string; bimester: number }) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 

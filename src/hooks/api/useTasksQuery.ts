@@ -38,9 +38,22 @@ export interface TaskFilters {
   cursor?: string;
 }
 
+export interface TaskData {
+  id: string;
+  studentId: string;
+  title: string;
+  description: string;
+  taskType: string;
+  priority: string;
+  status: string;
+  dueDate?: string;
+  isResolved: boolean;
+  [key: string]: unknown;
+}
+
 export interface TaskResponse {
   success: boolean;
-  data: any[];
+  data: TaskData[];
   pagination: {
     limit: number;
     hasNextPage: boolean;
@@ -145,12 +158,23 @@ export function useTasksByStatus(isResolved: boolean) {
 /**
  * Hook para criar tarefa
  */
+export interface CreateTaskInput {
+  studentId: string;
+  title: string;
+  description: string;
+  taskType: string;
+  priority?: string;
+  status?: string;
+  dueDate?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export function useCreateTask() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (taskData: any) => {
+    mutationFn: async (taskData: CreateTaskInput) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 
@@ -182,12 +206,18 @@ export function useCreateTask() {
 /**
  * Hook para atualizar tarefa (resolver/reabrir)
  */
+export interface UpdateTaskInput extends Partial<CreateTaskInput> {
+  id: string;
+  isResolved?: boolean;
+  actionTaken?: string;
+}
+
 export function useUpdateTask() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...taskData }: any) => {
+    mutationFn: async ({ id, ...taskData }: UpdateTaskInput) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 

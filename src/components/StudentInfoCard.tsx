@@ -1,6 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Student, StudentRecord, Contato } from "../app/types";
 import { 
     formatAddress, 
@@ -36,10 +35,10 @@ interface StudentInfoCardProps {
     verifiedWhatsAppNumbers?: Set<string>;
 }
 
-export default function StudentInfoCard({ 
-    student, 
-    studentRecord, 
-    studentRecordWithoutJustified, 
+export default function StudentInfoCard({
+    student,
+    _studentRecord,
+    studentRecordWithoutJustified,
     onWhatsAppClick,
     verifiedWhatsAppNumbers = new Set()
 }: StudentInfoCardProps) {

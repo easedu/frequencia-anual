@@ -16,8 +16,8 @@ import {
 interface VerifiedWhatsAppNumber {
     phone: string;
     hasWhatsApp: boolean;
-    verifiedAt: any;
-    lastMessageAt?: any;
+    verifiedAt: string | null;
+    lastMessageAt?: string | null;
     messageCount: number;
     studentId?: string;
     contactName?: string;
@@ -52,7 +52,7 @@ export class WhatsAppTrackingService {
                 const legacyData: VerifiedWhatsAppNumber = {
                     phone: cleanPhone,
                     hasWhatsApp: data.exists,
-                    verifiedAt: data.verifiedAt ? new Date(data.verifiedAt) : new Date(),
+                    verifiedAt: data.verifiedAt || new Date().toISOString(),
                     messageCount: 0,
                     verificationStatus: data.exists ? 'verified' : 'unavailable'
                 };
@@ -132,8 +132,8 @@ export class WhatsAppTrackingService {
             const verifiedNumber: VerifiedWhatsAppNumber = {
                 phone: cleanPhone,
                 hasWhatsApp,
-                verifiedAt: new Date(),
-                lastMessageAt: new Date(),
+                verifiedAt: new Date().toISOString(),
+                lastMessageAt: new Date().toISOString(),
                 messageCount: 1,
                 verificationStatus,
                 studentId,
@@ -165,7 +165,7 @@ export class WhatsAppTrackingService {
             // Atualizar apenas o cache (Supabase não tem messageCount)
             const cached = this.cache.get(cleanPhone);
             if (cached) {
-                cached.lastMessageAt = new Date();
+                cached.lastMessageAt = new Date().toISOString();
                 cached.messageCount = (cached.messageCount || 0) + 1;
                 this.cache.set(cleanPhone, cached);
             }
@@ -188,7 +188,7 @@ export class WhatsAppTrackingService {
             return contacts.map(contact => ({
                 phone: contact.telefoneNumerico || contact.telefone || '',
                 hasWhatsApp: contact.whatsapp?.verified || false,
-                verifiedAt: contact.whatsapp?.verifiedAt ? new Date(contact.whatsapp.verifiedAt) : new Date(),
+                verifiedAt: contact.whatsapp?.verifiedAt || new Date().toISOString(),
                 messageCount: 0,
                 studentId,
                 contactName: contact.nome,
@@ -241,7 +241,7 @@ export class WhatsAppTrackingService {
                 const data = result.data || [];
 
                 // Adicionar registros ao Set e cache
-                data.forEach((record: any) => {
+                data.forEach((record: { phone_number?: string }) => {
                     if (record.phone_number) {
                         verifiedNumbers.add(record.phone_number);
 
@@ -249,7 +249,7 @@ export class WhatsAppTrackingService {
                         this.cache.set(record.phone_number, {
                             phone: record.phone_number,
                             hasWhatsApp: true,
-                            verifiedAt: new Date(),
+                            verifiedAt: new Date().toISOString(),
                             messageCount: 0,
                             verificationStatus: 'verified'
                         });

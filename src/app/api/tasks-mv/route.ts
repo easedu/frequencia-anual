@@ -2,7 +2,7 @@
  * API Route: Tasks usando Materialized View
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { errorResponse } from '@/app/api/_utils/response';
 import { responseWithCache, mvCacheHeaders, MV_CACHE_STRATEGY } from '@/app/api/_utils/cacheHeaders';

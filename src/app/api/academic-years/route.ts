@@ -5,13 +5,14 @@
  * POST - Cria ou atualiza academic year
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { createAcademicYearSchema, academicYearFiltersSchema } from '@/app/api/_schemas/academicYearSchemas'
 import { logger } from '@/utils/logger'
 import { getCountStrategy } from '@/app/api/_utils/countStrategy'
+import type { AcademicYear, SupabaseResult } from '@/types/academicYear'
 
 /**
  * GET /api/academic-years
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query
 
     if (error) {
-      logger.error('Erro ao buscar academic years', error)
+      logger.error('Erro ao buscar academic years', {}, error as Error)
       return errorResponse(error.message, 500)
     }
 
@@ -112,25 +113,27 @@ export async function POST(request: NextRequest) {
     const validated = createAcademicYearSchema.parse(body)
 
     // Upsert no Supabase
-    const { data, error } = await supabaseAdmin
+    const insertData = {
+      year: validated.year,
+      start_date: validated.start_date,
+      end_date: validated.end_date,
+      total_school_days: validated.total_school_days,
+    };
+
+    const upsertResult = (await supabaseAdmin
       .from('academic_years')
-      .upsert(
-        {
-          year: validated.year,
-          start_date: validated.start_date,
-          end_date: validated.end_date,
-          total_school_days: validated.total_school_days,
-        } as any,
-        {
-          onConflict: 'year',
-          ignoreDuplicates: false,
-        }
-      )
+      // @ts-expect-error - Supabase typing issue with dynamic table schemas
+      .upsert(insertData, {
+        onConflict: 'year',
+        ignoreDuplicates: false,
+      })
       .select()
-      .single()
+      .single()) as SupabaseResult<AcademicYear>
+
+    const { data, error } = upsertResult
 
     if (error) {
-      logger.error('Erro ao criar/atualizar academic year', error)
+      logger.error('Erro ao criar/atualizar academic year', {}, error as Error)
       return errorResponse(error.message, 500)
     }
 
@@ -139,7 +142,7 @@ export async function POST(request: NextRequest) {
       totalSchoolDays: validated.total_school_days
     })
 
-    return successResponse(data as any, 201)
+    return successResponse(data, 201)
   } catch (error) {
     return handleError(error)
   }

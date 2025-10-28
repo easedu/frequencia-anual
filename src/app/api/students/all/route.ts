@@ -52,7 +52,7 @@ export const maxDuration = 60; // 60 segundos para redes muito lentas
 
 interface ApiResponse {
   success: boolean;
-  data?: any[];
+  data?: unknown[];
   error?: string;
   cached?: boolean;
   count?: number;
@@ -69,57 +69,14 @@ const CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 // HELPERS
 // ════════════════════════════════════════════════════════════════
 
-/**
- * Converter data ISO (yyyy-mm-dd) para formato brasileiro (dd/mm/yyyy)
- */
-function convertISOToBrazilian(isoDate: string | null): string {
-  if (!isoDate) return '';
-
-  // Se já está em formato brasileiro (dd/mm/yyyy), retorna
-  if (isoDate.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-    return isoDate;
-  }
-
-  // Se está em ISO format (yyyy-mm-dd)
-  if (isoDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    const [year, month, day] = isoDate.split('-');
-    return `${day}/${month}/${year}`;
-  }
-
-  // Se está em formato DDMMYYYY (sem separadores)
-  if (isoDate.match(/^\d{8}$/)) {
-    const day = isoDate.substring(0, 2);
-    const month = isoDate.substring(2, 4);
-    const year = isoDate.substring(4, 8);
-    return `${day}/${month}/${year}`;
-  }
-
-  // Fallback: retornar original
-  return isoDate;
-}
-
-/**
- * Converter formato brasileiro (dd/mm/yyyy) para DDMMYYYY (sem separadores)
- */
-function brazilianToCompact(brDate: string): string {
-  if (!brDate) return '';
-
-  // Se está em formato dd/mm/yyyy, remover separadores
-  if (brDate.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-    return brDate.replace(/\//g, '');
-  }
-
-  // Se já está sem separadores, retornar
-  return brDate;
-}
 
 /**
  * Converter dados do Supabase para formato frontend (compatível com Firebase legacy)
  * Baseado em: studentDataService.ts (conversão que funciona)
  */
-function convertSupabaseToFrontend(student: any): any {
+function convertSupabaseToFrontend(student: Record<string, unknown>): Record<string, unknown> {
   // Parse address JSONB que pode conter dados legados
-  const addressData = (student.address as any) || {};
+  const addressData = (student.address as Record<string, unknown>) || {};
 
   return {
     // IDs
@@ -144,12 +101,12 @@ function convertSupabaseToFrontend(student: any): any {
     endereco: addressData,
 
     // Deficiências (JSONB array)
-    deficiencia: parseDisabilities(student.disabilities || [], addressData),
+    deficiencia: parseDisabilities(Array.isArray(student.disabilities) ? student.disabilities : [], addressData),
 
     // Contatos (se incluídos)
     contatos: Array.isArray(student.student_contacts)
-      ? student.student_contacts.map((contact: any) => {
-          const whatsappData = (contact.whatsapp_data as any) || {};
+      ? student.student_contacts.map((contact: Record<string, unknown>) => {
+          const whatsappData = (contact.whatsapp_data as Record<string, unknown>) || {};
 
           return {
             id: contact.id,
@@ -179,9 +136,9 @@ function convertSupabaseToFrontend(student: any): any {
     provaSaoPaulo: [],
 
     // Metadados
-    createdAt: student.created_at ? new Date(student.created_at).toISOString() : '',
-    updatedAt: student.updated_at ? new Date(student.updated_at).toISOString() : '',
-    deletedAt: student.deleted_at ? new Date(student.deleted_at).toISOString() : null,
+    createdAt: student.created_at && typeof student.created_at === 'string' ? new Date(student.created_at).toISOString() : '',
+    updatedAt: student.updated_at && typeof student.updated_at === 'string' ? new Date(student.updated_at).toISOString() : '',
+    deletedAt: student.deleted_at && typeof student.deleted_at === 'string' ? new Date(student.deleted_at).toISOString() : null,
     deleted: student.deleted || false,
   };
 }
@@ -190,13 +147,13 @@ function convertSupabaseToFrontend(student: any): any {
  * Helper: Parse disabilities from Supabase JSONB array + legacy data in address
  * Baseado em: studentDataService.ts
  */
-function parseDisabilities(disabilities: any[], addressData: any = {}): any {
+function parseDisabilities(disabilities: unknown[], addressData: Record<string, unknown> = {}): Record<string, unknown> {
   // Extrair dados legados de deficiência do address JSONB
-  const legacyDeficiencia = addressData.deficiencia || addressData;
+  const legacyDeficiencia = (addressData.deficiencia || addressData) as Record<string, unknown>;
 
   // Se não há disabilities no Supabase MAS há dados legados, usar dados legados
   if ((!disabilities || disabilities.length === 0) && legacyDeficiencia) {
-    if (legacyDeficiencia.estudanteComDeficiencia !== undefined) {
+    if (typeof legacyDeficiencia === 'object' && legacyDeficiencia !== null && 'estudanteComDeficiencia' in legacyDeficiencia) {
       return legacyDeficiencia;
     }
   }
@@ -220,9 +177,9 @@ function parseDisabilities(disabilities: any[], addressData: any = {}): any {
 // API ROUTE HANDLER
 // ════════════════════════════════════════════════════════════════
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(_req.url);
 
     // Parâmetros opcionais
     const includeDeleted = searchParams.get('includeDeleted') === 'true';
@@ -237,7 +194,7 @@ export async function GET(req: NextRequest) {
       logger.info('[API /students/all] Cache limpo manualmente', { cacheKey });
     }
 
-    const cached = serverCache.get<any[]>(cacheKey);
+    const cached = serverCache.get<unknown[]>(cacheKey);
 
     if (cached && !clearCache) {
       logger.info('[API /students/all] Cache HIT', {
@@ -276,12 +233,12 @@ export async function GET(req: NextRequest) {
     }
 
     const { data: students, error } = (await query) as {
-      data: any[] | null;
-      error: any;
+      data: Array<Record<string, unknown>> | null;
+      error: unknown;
     };
 
     if (error) {
-      logger.error('[API /students/all] Erro ao buscar estudantes', error);
+      logger.error('[API /students/all] Erro ao buscar estudantes', error as Record<string, unknown>);
       throw error;
     }
 
@@ -326,7 +283,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     // Serializar erro corretamente (pode ser Error, objeto do Supabase, ou string)
     let errorMessage = 'Erro desconhecido ao buscar estudantes';
-    let errorDetails: any = undefined;
+    let errorDetails: unknown = undefined;
 
     if (error instanceof Error) {
       errorMessage = error.message;

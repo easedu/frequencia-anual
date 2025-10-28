@@ -28,7 +28,7 @@ import { getCountStrategy } from '@/app/api/_utils/countStrategy';
  * - page (default: 1)
  * - limit (default: 50)
  */
-export const GET = withAuth(async (req: NextRequest, userId: string) => {
+export const GET = withAuth(async (req: NextRequest) => {
   try {
     const { searchParams } = new URL(req.url);
 
@@ -42,7 +42,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // ✅ FASE 4.1: Otimizar count
     const countOption = getCountStrategy(page);
 
-    let query: any = supabaseAdmin
+    let query = supabaseAdmin
       .from('medical_certificates')
       .select(`
         *,
@@ -74,12 +74,30 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       return errorResponse('DATABASE_ERROR', 'Erro ao buscar atestados', 500);
     }
 
+    // Tipos para dados enriquecidos
+    interface UserProfile {
+      firebase_uid: string;
+      full_name: string;
+    }
+
+    interface MedicalCertificateResponse {
+      id: string;
+      student_id: string;
+      start_date: string;
+      end_date: string;
+      submitted_by: string | null;
+      created_by: string | null;
+      submitter?: { name: string };
+      [key: string]: unknown;
+    }
+
     // Buscar nomes dos usuários (submitted_by e created_by) para enriquecer os dados
     if (data && data.length > 0) {
       // Coletar IDs de ambos os campos (filtrar apenas valores que parecem ser Firebase UIDs)
+      const certificates = data as MedicalCertificateResponse[];
       const potentialUIDs = [...new Set(
-        data.flatMap((cert: any) => [cert.submitted_by, cert.created_by].filter(Boolean))
-      )].filter((id: any) => id.length > 20); // Firebase UIDs têm 28 caracteres
+        certificates.flatMap((cert) => [cert.submitted_by, cert.created_by].filter(Boolean))
+      )].filter((id): id is string => typeof id === 'string' && id.length > 20); // Firebase UIDs têm 28 caracteres
 
       let userMap = new Map<string, string>();
 
@@ -89,13 +107,13 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
           .select('firebase_uid, full_name')
           .in('firebase_uid', potentialUIDs);
 
-        userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
+        userMap = new Map((users || []).map((u: UserProfile) => [u.firebase_uid, u.full_name]));
       }
 
       // Adicionar nome do usuário aos dados
-      data.forEach((cert: any) => {
+      certificates.forEach((cert) => {
         // Tentar buscar nome do Firebase UID primeiro
-        let submitterName = userMap.get(cert.submitted_by) || userMap.get(cert.created_by);
+        let submitterName = userMap.get(cert.submitted_by || '') || userMap.get(cert.created_by || '');
 
         // Se não encontrou no userMap, verificar se é um nome direto (dados antigos)
         if (!submitterName) {
@@ -204,13 +222,23 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       created_by: body.createdBy || body.criadoPor || userId,
     };
 
-    const { data, error } = (await (supabaseAdmin
-      .from('medical_certificates') as any)
-      .insert(insertData)
-      .select('*')
-      .single()) as { data: any; error: any };
+    interface MedicalCertificateInsertResponse {
+      id: string;
+      student_id: string;
+      start_date: string;
+      end_date: string;
+      [key: string]: unknown;
+    }
 
-    if (error) {
+    const result = await supabaseAdmin
+      .from('medical_certificates')
+      .insert(insertData as never)
+      .select('*')
+      .single();
+
+    const { data, error } = result as { data: MedicalCertificateInsertResponse | null; error: Error | null };
+
+    if (error || !data) {
       console.error('[POST /api/medical-certificates] Error:', error);
       return errorResponse('DATABASE_ERROR', 'Erro ao criar atestado', 500);
     }
@@ -268,7 +296,7 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
           absence_date: absenceDate,
           bimester: bimesterStr,
           is_justified: true,
-          medical_certificate_id: data.id,
+          medical_certificate_id: data!.id,
         };
       });
 
@@ -278,17 +306,22 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       // b) Inserir apenas as que não existem
       // c) Atualizar as que já existem
 
-      let createdCount = 0;
-      let updatedCount = 0;
-
       for (const absenceData of absencesToUpsert) {
         // Verificar se já existe
-        const { data: existing, error: existingError } = (await supabaseAdmin
+        interface ExistingAbsence {
+          id: string;
+          is_justified: boolean;
+          medical_certificate_id: string | null;
+        }
+
+        const existingResult = await supabaseAdmin
           .from('student_absences')
           .select('id, is_justified, medical_certificate_id')
           .eq('student_id', absenceData.student_id)
           .eq('absence_date', absenceData.absence_date)
-          .maybeSingle()) as { data: { id: string; is_justified: boolean; medical_certificate_id: string | null } | null; error: any };
+          .maybeSingle();
+
+        const { data: existing, error: existingError } = existingResult as { data: ExistingAbsence | null; error: Error | null };
 
         if (existingError) {
           console.error('[POST /api/medical-certificates] ❌ Erro ao verificar falta existente:', existingError);
@@ -297,32 +330,30 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
 
         if (existing) {
           // Atualizar existente
-          const { error: updateError } = (await supabaseAdmin
+          const updateResult = await supabaseAdmin
             .from('student_absences')
-            // @ts-ignore - Supabase types inference issue
             .update({
               is_justified: true,
-              medical_certificate_id: data.id,
-            })
-            .eq('id', existing.id)) as { error: any };
+              medical_certificate_id: data!.id,
+            } as never)
+            .eq('id', existing.id);
+
+          const { error: updateError } = updateResult as { error: Error | null };
 
           if (updateError) {
             console.error('[POST /api/medical-certificates] ❌ Erro ao atualizar falta:', updateError);
-          } else {
-            updatedCount++;
           }
         } else {
           // Inserir novo
-          const { error: insertError } = (await supabaseAdmin
+          const insertResult = await supabaseAdmin
             .from('student_absences')
-            // @ts-ignore - Supabase types inference issue
-            .insert(absenceData)) as { error: any };
+            .insert(absenceData as never);
+
+          const { error: insertError } = insertResult as { error: Error | null };
 
           if (insertError) {
             console.error('[POST /api/medical-certificates] ❌ Erro ao inserir falta:', insertError);
             console.error('[POST /api/medical-certificates] Dados tentados:', absenceData);
-          } else {
-            createdCount++;
           }
         }
       }

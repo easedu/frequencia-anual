@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Estudante } from '@/types';
-import { formatDate } from '@/utils/formatters';
+import { _formatDate } from '@/utils/formatters';
 
 // Helper functions for date formatting
 const formatDataNascimento = (dateStr: string): string => {

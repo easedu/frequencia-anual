@@ -7,9 +7,6 @@ import { auth } from "@/firebase.config";
 import { UserProfilesService } from "@/services/supabase/userProfilesService";
 import { logger } from "@/utils/logger";
 
-// Páginas que não precisam de autenticação
-const PUBLIC_ROUTES = ['/login', '/'];
-
 // Páginas que precisam de autenticação
 const PROTECTED_ROUTES = [
   '/home',
@@ -66,17 +63,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
       );
 
-      const userProfileData = await Promise.race([profilePromise, timeoutPromise]) as any;
+      interface UserProfileData {
+        fullName?: string;
+        email?: string;
+        role?: string;
+        isActive?: boolean;
+      }
+
+      const userProfileData = await Promise.race([profilePromise, timeoutPromise]) as UserProfileData;
 
       if (userProfileData) {
         const profile: UserProfile = {
           nome: userProfileData.fullName || firebaseUser.displayName || 'Usuário',
           email: userProfileData.email || firebaseUser.email || '',
-          perfil: (userProfileData.role?.toLowerCase() as any) || 'user',
+          perfil: (userProfileData.role?.toLowerCase() as "admin" | "user" | "super-user" | "user-pcd") || 'user',
           status: userProfileData.isActive ? 'ativo' : 'desabilitado'
         };
         setUserProfile(profile);
-        logger.info('✅ Perfil do usuário carregado com sucesso', { userId: firebaseUser.uid });
       } else {
         // Fallback: perfil padrão
         const fallbackProfile = {
@@ -109,6 +112,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     let authStep = 0;
     let profileStep = 0;
+
+    // Função para lidar com redirecionamentos baseados na autenticação
+    const handleAuthRedirect = (firebaseUser: User | null, currentPath: string) => {
+      const isProtectedRoute = PROTECTED_ROUTES.some(route => currentPath.startsWith(route));
+
+      if (!firebaseUser && isProtectedRoute) {
+        router.replace('/login');
+      } else if (firebaseUser && (currentPath === '/login')) {
+        router.replace('/home');
+      } else if (firebaseUser && currentPath === '/') {
+        router.replace('/home');
+      } else if (!firebaseUser && currentPath === '/') {
+        router.replace('/login');
+      }
+    };
 
     // Simular progresso da autenticação com incrementos deterministas
     const authProgressInterval = setInterval(() => {
@@ -189,22 +207,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       unsubscribe();
     };
   }, [pathname, router]);
-
-  // Função para lidar com redirecionamentos baseados na autenticação
-  const handleAuthRedirect = (firebaseUser: User | null, currentPath: string) => {
-    const isPublicRoute = PUBLIC_ROUTES.includes(currentPath);
-    const isProtectedRoute = PROTECTED_ROUTES.some(route => currentPath.startsWith(route));
-    
-    if (!firebaseUser && isProtectedRoute) {
-      router.replace('/login');
-    } else if (firebaseUser && (currentPath === '/login')) {
-      router.replace('/home');
-    } else if (firebaseUser && currentPath === '/') {
-      router.replace('/home');
-    } else if (!firebaseUser && currentPath === '/') {
-      router.replace('/login');
-    }
-  };
 
   const signOut = async () => {
     try {

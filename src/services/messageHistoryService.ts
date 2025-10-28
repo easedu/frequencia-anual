@@ -44,20 +44,9 @@ export class MessageHistoryService {
       const records = result.data?.data || [];
       const wasAlreadySent = records.length > 0;
 
-      if (wasAlreadySent) {
-        logger.info('[MessageHistory] Mensagem já enviada anteriormente', {
-          estudanteId,
-          contatoTelefone,
-          anoReferencia,
-          mesReferencia,
-          quantidadeFaltas,
-          existingRecords: records.length
-        });
-      }
-
       return wasAlreadySent;
     } catch (error) {
-      logger.error('[MessageHistory] Erro ao verificar histórico', error as Error);
+      logger.error('[MessageHistory] Erro ao verificar histórico', {}, error as Error);
       // Em caso de erro, assumir que NÃO foi enviado (fail-safe para enviar)
       return false;
     }
@@ -102,17 +91,9 @@ export class MessageHistoryService {
 
       const result = await response.json();
 
-      logger.info('[MessageHistory] Registro criado com sucesso via API', {
-        docId: result.data?.id,
-        estudanteId: data.estudanteId,
-        contatoTelefone: data.contatoTelefone,
-        status: data.status,
-        messageId: data.messageId
-      });
-
       return result.data?.id || null;
     } catch (error) {
-      logger.error('[MessageHistory] Erro ao criar registro via API', error as Error);
+      logger.error('[MessageHistory] Erro ao criar registro via API', {}, error as Error);
       return null;
     }
   }
@@ -140,8 +121,25 @@ export class MessageHistoryService {
 
       const result = await response.json();
 
+      interface MessageHistoryRecord {
+        estudante_id: string;
+        contato_telefone: string;
+        ano_referencia: number;
+        mes_referencia: number;
+        quantidade_faltas: number;
+        estudante_nome: string;
+        contato_nome: string;
+        task_id: string | null;
+        data_primeiro_envio: string;
+        status: string;
+        message_id?: string;
+        sent_at?: number;
+        retry_count?: number;
+        is_dry_run?: boolean;
+      }
+
       // Map API response to interface
-      return (result.data || []).map((record: any) => ({
+      return (result.data || []).map((record: MessageHistoryRecord) => ({
         estudanteId: record.estudante_id,
         contatoTelefone: record.contato_telefone,
         anoReferencia: record.ano_referencia,
@@ -158,7 +156,7 @@ export class MessageHistoryService {
         isDryRun: record.is_dry_run
       })) as WhatsAppMessageHistory[];
     } catch (error) {
-      logger.error('[MessageHistory] Erro ao buscar histórico do estudante', error as Error);
+      logger.error('[MessageHistory] Erro ao buscar histórico do estudante', {}, error as Error);
       return [];
     }
   }
@@ -206,7 +204,7 @@ export class MessageHistoryService {
 
       return stats;
     } catch (error) {
-      logger.error('[MessageHistory] Erro ao calcular estatísticas', error as Error);
+      logger.error('[MessageHistory] Erro ao calcular estatísticas', {}, error as Error);
       return { total: 0, success: 0, failed: 0, noContact: 0 };
     }
   }

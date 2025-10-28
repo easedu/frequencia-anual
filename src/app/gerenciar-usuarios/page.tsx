@@ -92,7 +92,7 @@ export default function UserManagementPage() {
             setUsers(sortedUsers);
             setError("");
         } catch (err) {
-            logger.error("Erro ao carregar usuários", err as Error);
+            logger.error("Erro ao carregar usuários", {}, err as Error);
             setError("Erro ao carregar usuários.");
         } finally {
             setLoadingUsers(false);
@@ -165,7 +165,7 @@ export default function UserManagementPage() {
                 if (userProfile && userProfile.firebaseUid) {
                     await UserProfilesService.update(userProfile.firebaseUid, {
                         fullName: nome,
-                        role: perfil.toUpperCase() as any,
+                        role: perfil.toUpperCase() as 'ADMIN' | 'SUPER-USER' | 'USER' | 'USER-PCD',
                         isActive: status === "ativo",
                         updatedBy: auth.currentUser?.email || 'SYSTEM'
                     });
@@ -184,7 +184,7 @@ export default function UserManagementPage() {
                     firebaseUid: newUser.uid,
                     fullName: nome,
                     email: email,
-                    role: perfil.toUpperCase() as any,
+                    role: perfil.toUpperCase() as 'ADMIN' | 'SUPER-USER' | 'USER' | 'USER-PCD',
                     isActive: status === "ativo",
                     createdBy: auth.currentUser?.email || 'SYSTEM'
                 });
@@ -193,7 +193,7 @@ export default function UserManagementPage() {
             await fetchUsers();
             setOpenDialog(false);
         } catch (err) {
-            logger.error("Erro ao salvar usuário", err as Error);
+            logger.error("Erro ao salvar usuário", {}, err as Error);
             toast.error("Erro ao salvar usuário.");
         } finally {
             setSaving(false);
@@ -207,7 +207,7 @@ export default function UserManagementPage() {
             await sendPasswordResetEmail(auth, editingUser.email);
             toast.success("Email de redefinição de senha enviado com sucesso!");
         } catch (err) {
-            logger.error("Erro ao enviar email de redefinição", err as Error);
+            logger.error("Erro ao enviar email de redefinição", {}, err as Error);
             toast.error("Erro ao enviar email de redefinição.");
         } finally {
             setResettingPassword(false);
@@ -232,7 +232,7 @@ export default function UserManagementPage() {
                 toast.error("Erro ao desabilitar usuário no Supabase.");
             }
         } catch (err) {
-            logger.error("Erro ao desabilitar usuário", err as Error);
+            logger.error("Erro ao desabilitar usuário", {}, err as Error);
             toast.error("Erro ao desabilitar usuário.");
         }
     };

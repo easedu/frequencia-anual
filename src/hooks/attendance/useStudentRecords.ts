@@ -4,8 +4,8 @@
  * Agora usa hooks da API em vez de services diretos
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useStudents, useAbsences } from '@/hooks/api';
+import { useState, useEffect, useMemo } from 'react';
+import { useStudents } from '@/hooks/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useBimesterPeriods } from './useBimesterPeriods';
 import { useSchoolDays } from './useSchoolDays';
@@ -65,7 +65,7 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
   });
 
   // 🔄 PAGINAÇÃO: Carregar TODAS as faltas recursivamente
-  const [allAbsences, setAllAbsences] = useState<any[]>([]);
+  const [allAbsences, setAllAbsences] = useState<Absence[]>([]);
   const [absencesLoading, setAbsencesLoading] = useState(true);
 
   const { bimesterDates, loading: periodsLoading } = useBimesterPeriods();
@@ -94,13 +94,8 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
           filters: {},
           resourceName: 'faltas',
           // 🚀 PROGRESSIVE RENDERING: Atualizar UI conforme carrega
-          onProgress: (data, progress) => {
-            setAllAbsences(data); // Atualiza imediatamente
-            logger.info('📊 Renderização progressiva', {
-              loaded: progress.loaded,
-              total: progress.total,
-              percent: Math.round((progress.loaded / progress.total) * 100)
-            });
+          onProgress: (data) => {
+            setAllAbsences(data as Absence[]); // Atualiza imediatamente
           }
         });
 
@@ -127,10 +122,11 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
     if (loading || !filteredStudents.length) return [];
 
     // Criar mapa de faltas por estudante (otimização)
-    const absencesByStudentMap = new Map<string, typeof allAbsences>();
+    const absencesByStudentMap = new Map<string, Absence[]>();
     allAbsences.forEach(absence => {
       // ✅ API retorna 'estudanteId' (camelCase), não 'student_id'
-      const studentId = absence.estudanteId || absence.student_id;
+      const absenceRecord = absence as Absence & { estudanteId?: string; student_id?: string };
+      const studentId = absenceRecord.estudanteId || absenceRecord.student_id;
       if (!studentId) {
         logger.warn('⚠️ Falta sem estudanteId', { absence });
         return;
@@ -151,13 +147,17 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       // 🎯 FILTRO: Aplicar excludeJustified
       // ✅ API retorna 'justificada' ou 'justified', não 'is_justified'
       const absences = excludeJustified
-        ? studentAbsences.filter(abs => !abs.justificada && !abs.justified && !abs.is_justified)
+        ? studentAbsences.filter(abs => {
+            const absence = abs as Absence & { justificada?: boolean; justified?: boolean; is_justified?: boolean };
+            return !absence.justificada && !absence.justified && !absence.is_justified;
+          })
         : studentAbsences;
 
       // Calculate absences by bimester
       // ✅ API retorna 'data', não 'absence_date'
       const faltasB1 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data || abs.absence_date);
+        const absenceRecord = abs as Absence & { data?: string; absence_date?: string };
+        const date = parseFlexibleDate(absenceRecord.data || absenceRecord.absence_date || '');
         const b1 = periods[1];
         if (!date || !b1) return false;
         const startDate = parseFlexibleDate(b1.start);
@@ -166,7 +166,8 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       }).length;
 
       const faltasB2 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data || abs.absence_date);
+        const absenceRecord = abs as Absence & { data?: string; absence_date?: string };
+        const date = parseFlexibleDate(absenceRecord.data || absenceRecord.absence_date || '');
         const b2 = periods[2];
         if (!date || !b2) return false;
         const startDate = parseFlexibleDate(b2.start);
@@ -175,7 +176,8 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       }).length;
 
       const faltasB3 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data || abs.absence_date);
+        const absenceRecord = abs as Absence & { data?: string; absence_date?: string };
+        const date = parseFlexibleDate(absenceRecord.data || absenceRecord.absence_date || '');
         const b3 = periods[3];
         if (!date || !b3) return false;
         const startDate = parseFlexibleDate(b3.start);
@@ -184,7 +186,8 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       }).length;
 
       const faltasB4 = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data || abs.absence_date);
+        const absenceRecord = abs as Absence & { data?: string; absence_date?: string };
+        const date = parseFlexibleDate(absenceRecord.data || absenceRecord.absence_date || '');
         const b4 = periods[4];
         if (!date || !b4) return false;
         const startDate = parseFlexibleDate(b4.start);
@@ -199,7 +202,8 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const faltasAteHoje = absences.filter(abs => {
-        const date = parseFlexibleDate(abs.data || abs.absence_date);
+        const absenceRecord = abs as Absence & { data?: string; absence_date?: string };
+        const date = parseFlexibleDate(absenceRecord.data || absenceRecord.absence_date || '');
         return date && date <= today;
       }).length;
 
@@ -242,11 +246,6 @@ export function useStudentRecords(options: UseStudentRecordsOptions = {}) {
         diasLetivosB4,
         diasLetivosAnual,
       };
-    });
-
-    logger.info(`Registros de estudantes processados (API REST)`, {
-      totalRecords: records.length,
-      excludeJustified,
     });
 
     return records;

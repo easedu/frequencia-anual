@@ -28,7 +28,7 @@ interface WhatsAppModalProps {
     onSendMessage: (phone: string, message: string, checkWhatsApp: boolean) => Promise<{
         success: boolean;
         message: string;
-        data?: any;
+        data?: Record<string, unknown>;
         error?: string;
     }>;
     verifiedNumbers: Set<string>;
@@ -111,7 +111,7 @@ export default function WhatsAppModal({
 
     if (!selectedContact || !student) return null;
 
-    const cleanPhone = getCleanPhoneNumber(selectedContact.telefone);
+    const _cleanPhone = getCleanPhoneNumber(selectedContact.telefone);
     const isEligible = isWhatsAppEligible(selectedContact.telefone);
     const isVerified = isNumberVerified(selectedContact.telefone);
 

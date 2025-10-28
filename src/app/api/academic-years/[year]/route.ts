@@ -6,12 +6,13 @@
  * DELETE - Deleta academic year específico
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { updateAcademicYearSchema } from '@/app/api/_schemas/academicYearSchemas'
 import { logger } from '@/utils/logger'
+import type { AcademicYear, AcademicYearUpdateData, SupabaseResult } from '@/types/academicYear'
 
 /**
  * GET /api/academic-years/[year]
@@ -22,20 +23,21 @@ import { logger } from '@/utils/logger'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { year: string } }
+  context: { params: Promise<{ year: string }> }
 ) {
   try {
+    const params = await context.params
     const year = parseInt(params.year)
 
     if (isNaN(year)) {
       return errorResponse('Ano inválido', 400)
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = (await supabaseAdmin
       .from('academic_years')
       .select('*')
       .eq('year', year)
-      .maybeSingle()
+      .maybeSingle()) as SupabaseResult<AcademicYear>
 
     if (error) {
       logger.error('Erro ao buscar academic year', { year }, error)
@@ -71,9 +73,10 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { year: string } }
+  context: { params: Promise<{ year: string }> }
 ) {
   try {
+    const params = await context.params
     const year = parseInt(params.year)
 
     if (isNaN(year)) {
@@ -86,7 +89,7 @@ export async function PUT(
     const validated = updateAcademicYearSchema.parse(body)
 
     // Preparar dados para update (apenas campos fornecidos)
-    const updateData: Record<string, any> = {}
+    const updateData: AcademicYearUpdateData = {}
 
     if (validated.start_date !== undefined) {
       updateData.start_date = validated.start_date
@@ -104,12 +107,15 @@ export async function PUT(
     }
 
     // Atualizar no Supabase
-    const { data, error } = await (supabaseAdmin
-      .from('academic_years') as any)
-      .update(updateData)
+    // Usando type assertion para contornar limitações do Supabase types
+    const result = await supabaseAdmin
+      .from('academic_years')
+      .update(updateData as never)
       .eq('year', year)
       .select()
       .single()
+
+    const { data, error } = result as unknown as SupabaseResult<AcademicYear>
 
     if (error) {
       logger.error('Erro ao atualizar academic year', { year }, error)
@@ -142,9 +148,10 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { year: string } }
+  context: { params: Promise<{ year: string }> }
 ) {
   try {
+    const params = await context.params
     const year = parseInt(params.year)
 
     if (isNaN(year)) {

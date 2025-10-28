@@ -13,14 +13,14 @@
  * Sprint 2: Componentização e reutilização
  */
 
-import { useRef, memo, ReactNode } from "react";
+import { useRef } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatDateInput } from "@/app/utils";
+import { _formatDateInput } from "@/app/utils";
 import { Calendar, Clock, Edit3, Plus, X, Save, Loader2, LucideIcon } from "lucide-react";
 
 interface RegisterDateRangeFormCardProps<T> {

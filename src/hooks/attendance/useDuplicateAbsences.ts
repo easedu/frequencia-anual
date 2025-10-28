@@ -63,7 +63,17 @@ export function useDuplicateAbsences(): UseDuplicateAbsencesReturn {
 
       if (fetchError) throw fetchError;
 
-      const absenceRecords: AbsenceRecord[] = (absences || []).map((absence: any) => ({
+      interface SupabaseAbsenceWithStudent {
+        id: string;
+        absence_date: string;
+        is_justified: boolean;
+        students: {
+          student_id: string;
+          class: string;
+        };
+      }
+
+      const absenceRecords: AbsenceRecord[] = (absences || []).map((absence: SupabaseAbsenceWithStudent) => ({
         estudanteId: absence.students.student_id,
         turma: absence.students.class,
         data: absence.absence_date,
@@ -96,7 +106,7 @@ export function useDuplicateAbsences(): UseDuplicateAbsencesReturn {
       }
     } catch (err) {
       const error = err as Error;
-      logger.error('Erro ao buscar duplicatas de faltas', error);
+      logger.error('Erro ao buscar duplicatas de faltas', {}, error);
       setError(error);
       setDuplicates([]);
     } finally {
@@ -143,15 +153,11 @@ export function useDuplicateAbsences(): UseDuplicateAbsencesReturn {
 
       if (deleteError) throw deleteError;
 
-      logger.info(`Removidos ${duplicatesToRemove.length} registros duplicados`, {
-        count: duplicatesToRemove.length,
-      });
-
       // Atualizar lista de duplicatas
       await fetchDuplicates();
     } catch (err) {
       const error = err as Error;
-      logger.error('Erro ao remover duplicatas de faltas', error);
+      logger.error('Erro ao remover duplicatas de faltas', {}, error);
       setError(error);
     } finally {
       setLoading(false);

@@ -5,13 +5,36 @@
  * POST - Cria novo caso resolvido
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { createResolvedCaseSchema, resolvedCaseFiltersSchema } from '@/app/api/_schemas/resolvedCaseSchemas'
 import { logger } from '@/utils/logger'
 import { getCountStrategy } from '@/app/api/_utils/countStrategy'
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface ResolvedConsecutiveAbsenceCase {
+  id: string;
+  student_id: string;
+  interaction_id: string | null;
+  resolved_at: string;
+  resolved_by: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ResolvedCaseInsert {
+  student_id: string;
+  interaction_id: string | null;
+  resolved_at: string;
+  resolved_by: string;
+  notes: string | null;
+}
 
 /**
  * GET /api/resolved-cases
@@ -81,7 +104,7 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query
 
     if (error) {
-      logger.error('Erro ao buscar resolved cases', error)
+      logger.error('Erro ao buscar resolved cases', { filters }, error)
       return errorResponse(error.message, 500)
     }
 
@@ -128,29 +151,34 @@ export async function POST(request: NextRequest) {
     const validated = createResolvedCaseSchema.parse(body)
 
     // Criar resolved case no Supabase
+    const insertData: ResolvedCaseInsert = {
+      student_id: validated.student_id,
+      interaction_id: validated.interaction_id || null,
+      resolved_at: validated.resolved_at,
+      resolved_by: validated.resolved_by,
+      notes: validated.notes || null,
+    }
+
+    // Type assertion needed due to Supabase generic inference limitations
     const { data, error } = await supabaseAdmin
       .from('resolved_consecutive_absence_cases')
-      .insert({
-        student_id: validated.student_id,
-        interaction_id: validated.interaction_id || null,
-        resolved_at: validated.resolved_at,
-        resolved_by: validated.resolved_by,
-        notes: validated.notes || null,
-      } as any)
+      .insert(insertData as never)
       .select()
       .single()
 
     if (error) {
-      logger.error('Erro ao criar resolved case', error)
+      logger.error('Erro ao criar resolved case', { studentId: validated.student_id }, error as Error)
       return errorResponse(error.message, 500)
     }
 
-    logger.info('Resolved case criado com sucesso', {
-      caseId: (data as any)?.id,
-      studentId: validated.student_id
-    })
+    if (!data) {
+      logger.error('Erro ao criar resolved case - sem dados', { studentId: validated.student_id }, new Error('No data returned'));
+      return errorResponse('Nenhum dado retornado após inserção', 500);
+    }
 
-    return successResponse(data as any, 201)
+    const createdCase = data as unknown as ResolvedConsecutiveAbsenceCase
+
+    return successResponse(createdCase, 201)
   } catch (error) {
     return handleError(error)
   }

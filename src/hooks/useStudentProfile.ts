@@ -24,30 +24,24 @@ import WhatsAppTrackingService from "@/services/whatsappTrackingService";
 // ✅ SPRINT 4 - FASE 8: Migração COMPLETA para API REST
 // TODOS os dados agora vêm via hooks API (sem fetch direto)
 import {
-  useStudents,
-  useStudent,
+  useStudents as useStudentsAPI,
+  useStudent as useStudentAPI,
   useInteractions,
   useCreateInteraction,
   useUpdateInteraction,
   useDeleteInteraction,
   useAbsences,
   useMedicalCertificates,
-  useCreateMedicalCertificate,
-  useUpdateMedicalCertificate,
-  useDeleteMedicalCertificate,
   useSuspensions,
-  useCreateSuspension,
-  useUpdateSuspension,
-  useDeleteSuspension,
   useAbsenceControls,
   useCurrentUserProfile,
 } from "@/hooks/api";
+import type { Student as APIStudent } from "@/hooks/api/useStudents";
 
 // Services mantidos APENAS para lógica complexa (absences com atestados/suspensões)
 import { AbsenceService } from "@/services/supabase/absenceService";
 import { MedicalCertificatesService } from "@/services/supabase/medicalCertificatesService";
 import { StudentSuspensionsService } from "@/services/supabase/studentSuspensionsService";
-import { logger } from "@/utils/logger";
 import type {
   Student,
   StudentRecord,
@@ -57,16 +51,26 @@ import type {
   AbsenceRecord,
   BimesterDates,
   Contato,
+  WhatsAppData,
 } from "@/types";
 import {
-  calculateDiasLetivos,
   parseDate,
   parseDateToFirebase,
-  formatFirebaseDate,
   getBimesterByDate,
-  getDiasLetivosNoPeriodo,
+  calculateDiasLetivos,
 } from "@/app/utils";
-import { formatDate } from "@/utils/dateUtils";
+import { formatDate as _formatDate } from "@/utils/dateUtils";
+import { logger } from "@/utils/logger";
+
+// Interface para dados de verificação de contatos WhatsApp
+interface ContactVerificationData extends Record<string, unknown> {
+  isVerified: boolean;
+  verifiedAt?: string;
+  whatsapp: {
+    verified: boolean;
+    exists: boolean;
+  };
+}
 
 export function useStudentProfile() {
   const searchParams = useSearchParams();
@@ -74,11 +78,11 @@ export function useStudentProfile() {
 
   // ✅ SPRINT 4 - FASE 8: Usar hooks API
   // IMPORTANTE: Buscar TODOS os estudantes ativos (limit alto) para dropdown de turmas
-  const { students: allStudentsData, loading: loadingStudents, refetch: refetchStudents } = useStudents({
+  const { students: allStudentsData, loading: loadingStudents } = useStudentsAPI({
     status: 'ATIVO',
     limit: 10000 // Buscar todos os estudantes para dropdown de turmas
   });
-  const { userProfile: currentUser, loading: loadingUser } = useCurrentUserProfile();
+  const { userProfile: currentUser } = useCurrentUserProfile();
   const { controls: absenceControls, loading: loadingAbsenceControls } = useAbsenceControls({
     academic_year: parseInt(process.env.NEXT_PUBLIC_SCHOOL_YEAR || "2025"),
   });
@@ -87,12 +91,6 @@ export function useStudentProfile() {
   const { createInteraction } = useCreateInteraction();
   const { updateInteraction } = useUpdateInteraction();
   const { deleteInteraction } = useDeleteInteraction();
-  const { createCertificate: createMedicalCertificate } = useCreateMedicalCertificate();
-  const { updateCertificate: updateMedicalCertificate } = useUpdateMedicalCertificate();
-  const { deleteCertificate: deleteMedicalCertificate } = useDeleteMedicalCertificate();
-  const { createSuspension } = useCreateSuspension();
-  const { updateSuspension } = useUpdateSuspension();
-  const { deleteSuspension } = useDeleteSuspension();
 
   // ═══════════════════════════════════════════════════════════
   // 1. STUDENT SELECTION (busca, turma, estudante selecionado)
@@ -108,16 +106,49 @@ export function useStudentProfile() {
 
   // Map API students para formato esperado
   const allStudents = useMemo(() => {
-    return (allStudentsData as any[]).map((student: any) => ({
-      ...student,
+    if (!allStudentsData) return [];
+
+    return (allStudentsData as APIStudent[]).map((apiStudent): Student => ({
       // IMPORTANTE: id (UUID do banco) é usado para buscar estudante individual
-      id: student.id, // UUID do banco Supabase (Internal ID)
-      estudanteId: student.student_id || student.estudanteId, // Firebase UUID
-      nome: student.name || student.nome,
-      turma: student.class || student.turma,
-      contatos: (student as any).student_contacts || (student as any).contacts || (student as any).contatos || [],
-      provaSaoPaulo: student.provaSaoPaulo || [],
-    })).sort((a: any, b: any) => a.nome.localeCompare(b.nome));
+      id: apiStudent.id, // UUID do banco Supabase (Internal ID)
+      estudanteId: apiStudent.student_id, // Firebase UUID
+      nome: apiStudent.name,
+      turma: apiStudent.class,
+      status: apiStudent.status,
+      turno: apiStudent.shift,
+      bolsaFamilia: apiStudent.bolsa_familia || 'NÃO',
+      matricula: apiStudent.registration_number || undefined,
+      dataNascimento: apiStudent.birth_date || undefined,
+      // Mapear contatos (se existirem)
+      contatos: apiStudent.student_contacts?.map(contact => ({
+        id: contact.id,
+        nome: contact.name,
+        telefone: contact.phone || '',
+        parentesco: contact.relationship,
+        podeReceberMensagem: contact.can_receive_whatsapp,
+        whatsappData: (contact.whatsapp_data as WhatsAppData) || undefined,
+      })) || [],
+      // Mapear endereço (se existir)
+      endereco: apiStudent.address ? {
+        rua: apiStudent.address.rua || '',
+        numero: apiStudent.address.numero || '',
+        bairro: apiStudent.address.bairro || '',
+        cidade: apiStudent.address.cidade || '',
+        estado: apiStudent.address.estado || '',
+        cep: apiStudent.address.cep || '',
+        complemento: apiStudent.address.complemento || '',
+      } : undefined,
+      // Mapear deficiência (se existir) - API usa disabilities (plural)
+      deficiencia: apiStudent.disabilities && apiStudent.disabilities.length > 0 ? {
+        estudanteComDeficiencia: apiStudent.disabilities[0].estudanteComDeficiencia || false,
+        tipoDeficiencia: apiStudent.disabilities[0].tipoDeficiencia,
+        possuiBarreiras: apiStudent.disabilities[0].possuiBarreiras,
+        aee: apiStudent.disabilities[0].aee,
+        observacoes: apiStudent.disabilities[0].observacoes,
+      } : undefined,
+      // Prova São Paulo vazio por padrão
+      provaSaoPaulo: [],
+    })).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [allStudentsData]);
 
   // Validar selectedStudentId antes de usar
@@ -135,7 +166,7 @@ export function useStudentProfile() {
     }
 
     // ✅ Verificar se existe na lista
-    const exists = allStudents.some((s: any) => s.estudanteId === selectedStudentId);
+    const exists = allStudents.some((s: Student) => s.estudanteId === selectedStudentId);
     if (!exists) {
       console.warn('[useStudentProfile] ⚠️ ID não encontrado na lista de ATIVOS, mas usando mesmo assim (pode ser estudante INATIVO):', selectedStudentId);
       // ✅ MUDANÇA: Não retornar '', usar o ID fornecido
@@ -147,28 +178,43 @@ export function useStudentProfile() {
   }, [selectedStudentId, allStudents]);
 
   // ⚡ PERFORMANCE FIX: Memoizar filtros para evitar re-criação desnecessária e múltiplos fetches
-  const interactionFilters = useMemo(() => ({
-    estudanteId: validatedStudentId || undefined,
-  }), [validatedStudentId]);
+  const interactionFilters = useMemo(() => {
+    // Only create filters object if we have a valid student ID
+    if (!validatedStudentId) return undefined;
+    return {
+      estudanteId: validatedStudentId,
+    };
+  }, [validatedStudentId]);
 
   const absenceFilters = useMemo(() => {
+    // Only create filters object if we have a valid student ID
+    if (!validatedStudentId) return undefined;
     return {
-      estudanteId: validatedStudentId || undefined,
+      estudanteId: validatedStudentId,
     };
   }, [validatedStudentId]);
 
   const certificateFilters = useMemo(() => {
+    // Only create filters object if we have a valid student ID
+    if (!validatedStudentId) return undefined;
     return {
-      estudanteId: validatedStudentId || undefined,
+      estudanteId: validatedStudentId,
     };
-  }, [validatedStudentId, selectedStudentId]);
+  }, [validatedStudentId]);
 
-  const suspensionFilters = useMemo(() => ({
-    estudanteId: validatedStudentId || undefined,
-  }), [validatedStudentId]);
+  const suspensionFilters = useMemo(() => {
+    // Only create filters object if we have a valid student ID
+    if (!validatedStudentId) return undefined;
+    return {
+      estudanteId: validatedStudentId,
+    };
+  }, [validatedStudentId]);
 
   // Hooks condicionais para dados do estudante selecionado (usar validatedStudentId)
-  const { student: studentData, loading: loadingStudent, refetch: refetchStudent } = useStudent(validatedStudentId);
+  // Only fetch if we have a valid student ID
+  const { student: studentData, loading: loadingStudent, refetch: refetchStudent } = useStudentAPI(
+    validatedStudentId || '' // Pass empty string if undefined to prevent unnecessary fetch
+  );
   const { interactions: interactionsData, loading: loadingInteractions, refetch: refetchInteractions } = useInteractions(interactionFilters);
   const { absences: absencesData, loading: loadingAbsences, refetch: refetchAbsences } = useAbsences(absenceFilters);
   const { certificates: atestadosData, loading: loadingAtestados, refetch: refetchAtestados } = useMedicalCertificates(certificateFilters);
@@ -179,18 +225,55 @@ export function useStudentProfile() {
   // ═══════════════════════════════════════════════════════════
 
   // Map hook data para formato esperado pelos componentes
-  const student = useMemo(() => {
+  const student = useMemo((): Student | null => {
     if (!studentData) return null;
-    const data = studentData as any;
 
+    // Type guard: check if it's API student or already converted
+    const apiStudent = studentData as APIStudent;
+
+    // If it already has Portuguese field names, return as is (safe cast through unknown)
+    if ('nome' in studentData && 'turma' in studentData) {
+      return studentData as unknown as Student;
+    }
+
+    // Convert from API format to Student format
     return {
-      ...studentData,
-      estudanteId: data.student_id || data.estudanteId,
-      nome: data.name || data.nome,
-      turma: data.class || data.turma,
-      // API já retorna 'contatos' correto via convertSupabaseToEstudante
-      contatos: data.contatos || [],
-    } as any;
+      id: apiStudent.id,
+      estudanteId: apiStudent.student_id,
+      nome: apiStudent.name,
+      turma: apiStudent.class,
+      status: apiStudent.status,
+      turno: apiStudent.shift,
+      bolsaFamilia: apiStudent.bolsa_familia || 'NÃO',
+      matricula: apiStudent.registration_number || undefined,
+      dataNascimento: apiStudent.birth_date || undefined,
+      contatos: apiStudent.student_contacts?.map(contact => ({
+        id: contact.id,
+        nome: contact.name,
+        telefone: contact.phone || '',
+        parentesco: contact.relationship,
+        podeReceberMensagem: contact.can_receive_whatsapp,
+        whatsappData: (contact.whatsapp_data as WhatsAppData) || undefined,
+      })) || [],
+      endereco: apiStudent.address ? {
+        rua: apiStudent.address.rua || '',
+        numero: apiStudent.address.numero || '',
+        bairro: apiStudent.address.bairro || '',
+        cidade: apiStudent.address.cidade || '',
+        estado: apiStudent.address.estado || '',
+        cep: apiStudent.address.cep || '',
+        complemento: apiStudent.address.complemento || '',
+      } : undefined,
+      // Mapear deficiência (se existir) - API usa disabilities (plural)
+      deficiencia: apiStudent.disabilities && apiStudent.disabilities.length > 0 ? {
+        estudanteComDeficiencia: apiStudent.disabilities[0].estudanteComDeficiencia || false,
+        tipoDeficiencia: apiStudent.disabilities[0].tipoDeficiencia,
+        possuiBarreiras: apiStudent.disabilities[0].possuiBarreiras,
+        aee: apiStudent.disabilities[0].aee,
+        observacoes: apiStudent.disabilities[0].observacoes,
+      } : undefined,
+      provaSaoPaulo: [],
+    };
   }, [studentData]);
 
   // ✅ SIMPLIFICADO: API agora retorna tudo no formato correto (camelCase com todos os campos)
@@ -199,68 +282,76 @@ export function useStudentProfile() {
   }, [interactionsData]);
 
   const absences = useMemo(() => {
-    const mapped = (absencesData || []).map((abs: any) => ({
-      ...abs,
-      data: abs.absence_date || abs.data,
-      estudanteId: abs.student_id || abs.estudanteId,
-      justified: abs.is_justified || abs.justified,
-    }));
+    const mapped = (absencesData || []).map((abs) => {
+      const absenceRecord = abs as { absence_date?: string; data?: string; student_id?: string; estudanteId?: string; is_justified?: boolean; justified?: boolean };
+      return {
+        ...abs,
+        data: absenceRecord.absence_date || absenceRecord.data || '',
+        estudanteId: absenceRecord.student_id || absenceRecord.estudanteId || '',
+        justified: absenceRecord.is_justified ?? absenceRecord.justified ?? false,
+      } as AbsenceRecord;
+    });
     return mapped;
   }, [absencesData]);
 
   const atestados = useMemo(() => {
-    return (atestadosData || []).map((cert: any) => {
+    return (atestadosData || []).map((cert) => {
+      const certificate = cert as { id: string; start_date?: string; end_date?: string; startDate?: string; endDate?: string; reason?: string; notes?: string; diagnosis?: string; doctor_name?: string; submitter?: { name?: string }; submitted_by?: string; createdBy?: string };
+
       // ✅ CALCULAR quantidade de dias entre start_date e end_date
       let days = 1;
-      if (cert.start_date && cert.end_date) {
-        const start = new Date(cert.start_date);
-        const end = new Date(cert.end_date);
+      if (certificate.start_date && certificate.end_date) {
+        const start = new Date(certificate.start_date);
+        const end = new Date(certificate.end_date);
         const diffTime = Math.abs(end.getTime() - start.getTime());
         days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 porque inclui o dia inicial
       }
 
       return {
-        id: cert.id,
-        startDate: cert.start_date || cert.startDate,
-        endDate: cert.end_date || cert.endDate,
+        id: certificate.id,
+        startDate: certificate.start_date || certificate.startDate || '',
+        endDate: certificate.end_date || certificate.endDate || '',
         days,
-        description: cert.reason || cert.notes || cert.diagnosis || cert.doctor_name || 'Sem descrição',
+        description: certificate.reason || certificate.notes || certificate.diagnosis || certificate.doctor_name || 'Sem descrição',
         // Buscar nome do usuário via JOIN (submitter.name)
-        createdBy: cert.submitter?.name || cert.submitted_by || cert.createdBy || 'Desconhecido'
+        createdBy: certificate.submitter?.name || certificate.submitted_by || certificate.createdBy || 'Desconhecido'
       };
     });
   }, [atestadosData]);
 
   const suspensoes = useMemo(() => {
-    return (suspensoesData || []).map((susp: any) => {
+    return (suspensoesData || []).map((susp) => {
+      const suspension = susp as { id: string; start_date?: string; end_date?: string; startDate?: string; endDate?: string; reason?: string; description?: string; decision_by_name?: string; decision_by?: string; createdBy?: string };
+
       // ✅ CALCULAR quantidade de dias entre start_date e end_date
       let days = 1;
-      if (susp.start_date && susp.end_date) {
-        const start = new Date(susp.start_date);
-        const end = new Date(susp.end_date);
+      if (suspension.start_date && suspension.end_date) {
+        const start = new Date(suspension.start_date);
+        const end = new Date(suspension.end_date);
         const diffTime = Math.abs(end.getTime() - start.getTime());
         days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 porque inclui o dia inicial
       }
 
       return {
-        id: susp.id,
-        startDate: susp.start_date || susp.startDate,
-        endDate: susp.end_date || susp.endDate,
+        id: suspension.id,
+        startDate: suspension.start_date || suspension.startDate || '',
+        endDate: suspension.end_date || suspension.endDate || '',
         days, // ✅ Calculado dinamicamente
-        description: susp.reason || susp.description || 'Sem descrição',
+        description: suspension.reason || suspension.description || 'Sem descrição',
         // Buscar nome do usuário via JOIN (decision_by_name)
-        createdBy: susp.decision_by_name || susp.decision_by || susp.createdBy || 'Desconhecido'
+        createdBy: suspension.decision_by_name || suspension.decision_by || suspension.createdBy || 'Desconhecido'
       };
     });
   }, [suspensoesData]);
 
   const bimesterDates = useMemo(() => {
     const dates: BimesterDates = {};
-    (absenceControls || []).forEach((bimester: any) => {
-      if (bimester.start_date && bimester.end_date) {
-        dates[bimester.bimester] = {
-          start: bimester.start_date,
-          end: bimester.end_date,
+    (absenceControls || []).forEach((bimester) => {
+      const control = bimester as { start_date?: string; end_date?: string; bimester: number };
+      if (control.start_date && control.end_date) {
+        dates[control.bimester] = {
+          start: control.start_date,
+          end: control.end_date,
         };
       }
     });
@@ -317,13 +408,15 @@ export function useStudentProfile() {
     // ============================================
     // 1. studentRecord (COM faltas justificadas)
     // ============================================
-    const faltasB1 = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 1).length;
-    const faltasB2 = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 2).length;
-    const faltasB3 = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 3).length;
-    const faltasB4 = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 4).length;
+    const faltasB1 = absences.filter((d) => d.data && getBimesterByDate(d.data, bimesterDates) === 1).length;
+    const faltasB2 = absences.filter((d) => d.data && getBimesterByDate(d.data, bimesterDates) === 2).length;
+    const faltasB3 = absences.filter((d) => d.data && getBimesterByDate(d.data, bimesterDates) === 3).length;
+    const faltasB4 = absences.filter((d) => d.data && getBimesterByDate(d.data, bimesterDates) === 4).length;
     const totalFaltas = faltasB1 + faltasB2 + faltasB3 + faltasB4;
 
     const totalFaltasAteHoje = absences.filter((record) => {
+      // Type guard: ensure data is defined
+      if (!record.data) return false;
       const date = parseDate(record.data);
       return date !== null && date >= startDate && date <= today;
     }).length;
@@ -354,13 +447,15 @@ export function useStudentProfile() {
     // ============================================
     // 2. studentRecordWithoutJustified (SEM faltas justificadas)
     // ============================================
-    const faltasB1NoJustified = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 1 && !d.justified).length;
-    const faltasB2NoJustified = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 2 && !d.justified).length;
-    const faltasB3NoJustified = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 3 && !d.justified).length;
-    const faltasB4NoJustified = absences.filter((d) => getBimesterByDate(d.data, bimesterDates) === 4 && !d.justified).length;
+    const faltasB1NoJustified = absences.filter((d) => d.data && getBimesterByDate(d.data, bimesterDates) === 1 && !d.justified).length;
+    const faltasB2NoJustified = absences.filter((d) => d.data && getBimesterByDate(d.data, bimesterDates) === 2 && !d.justified).length;
+    const faltasB3NoJustified = absences.filter((d) => d.data && getBimesterByDate(d.data, bimesterDates) === 3 && !d.justified).length;
+    const faltasB4NoJustified = absences.filter((d) => d.data && getBimesterByDate(d.data, bimesterDates) === 4 && !d.justified).length;
     const totalFaltasNoJustified = faltasB1NoJustified + faltasB2NoJustified + faltasB3NoJustified + faltasB4NoJustified;
 
     const totalFaltasAteHojeNoJustified = absences.filter((record) => {
+      // Type guard: ensure data is defined
+      if (!record.data) return false;
       const date = parseDate(record.data);
       return date !== null && date >= startDate && date <= today && !record.justified;
     }).length;
@@ -439,7 +534,7 @@ export function useStudentProfile() {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contato | null>(null);
   const [verifiedWhatsAppNumbers, setVerifiedWhatsAppNumbers] = useState<Set<string>>(new Set());
-  const [contactVerificationData, setContactVerificationData] = useState<Map<string, any>>(new Map());
+  const [contactVerificationData, setContactVerificationData] = useState<Map<string, ContactVerificationData>>(new Map());
   const [selectedWhatsAppPhones, setSelectedWhatsAppPhones] = useState<Set<string>>(new Set());
   const [whatsAppMessage, setWhatsAppMessage] = useState<string>("");
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState<boolean>(false);
@@ -451,6 +546,7 @@ export function useStudentProfile() {
 
   const loadingProfile = loadingStudents || loadingStudent || loadingInteractions || loadingAbsences || loadingAtestados || loadingSuspensoes;
   const userRole = currentUser?.role?.toLowerCase() || "user";
+  const currentUserName = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
   // ═══════════════════════════════════════════════════════════
   // EFFECTS: Initialization & URL Params
@@ -468,7 +564,7 @@ export function useStudentProfile() {
 
       // Verificar se o estudante existe na lista carregada
       // ✅ Suportar tanto Internal ID (id) quanto Firebase UUID (estudanteId)
-      const student = allStudents.find((s: any) =>
+      const student = allStudents.find((s) =>
         s.id === studentId || s.estudanteId === studentId
       );
 
@@ -516,7 +612,7 @@ export function useStudentProfile() {
         const cleanPhone = contato.telefone.replace(/\D/g, "");
 
         if (contato.whatsapp) {
-          const { verified, exists, verifiedAt } = contato.whatsapp;
+          const { verified, exists, verifiedAt } = contato.whatsapp as { verified: boolean; exists: boolean; verifiedAt?: string };
 
           verificationMap.set(cleanPhone, {
             hasWhatsApp: exists || false,
@@ -552,7 +648,7 @@ export function useStudentProfile() {
   useEffect(() => {
     if (editingAtestado) {
       // Converter data ISO (yyyy-mm-dd) para formato brasileiro (dd/mm/yyyy)
-      setAtestadoStartDate(formatDate(editingAtestado.startDate));
+      setAtestadoStartDate(_formatDate(editingAtestado.startDate));
       setAtestadoDays(editingAtestado.days.toString());
       setAtestadoDescription(editingAtestado.description);
     } else {
@@ -566,7 +662,7 @@ export function useStudentProfile() {
   useEffect(() => {
     if (editingSuspensao) {
       // Converter data ISO (yyyy-mm-dd) para formato brasileiro (dd/mm/yyyy)
-      setSuspensaoStartDate(formatDate(editingSuspensao.startDate));
+      setSuspensaoStartDate(_formatDate(editingSuspensao.startDate));
       setSuspensaoDays(editingSuspensao.days.toString());
       setSuspensaoDescription(editingSuspensao.description);
     } else {
@@ -610,8 +706,9 @@ export function useStudentProfile() {
   // ✅ NOVA - fetchStudentData simplificada (FASE 8)
   // Apenas refetch dos hooks, autenticação automática
   const fetchStudentData = useCallback(
-    async (studentId: string): Promise<void> => {
-      if (!studentId) return;
+    async (studentId?: string): Promise<void> => {
+      // Type guard: ensure studentId is defined and not empty
+      if (!studentId || studentId.trim() === '') return;
 
       await Promise.all([
         refetchStudent(),
@@ -631,7 +728,7 @@ export function useStudentProfile() {
   const handleSelectStudent = useCallback(
     (studentId: string) => {
       // ✅ NORMALIZAR PRIMEIRO: Se recebeu Internal ID, converter para Firebase UUID
-      const student = allStudents.find((s: any) =>
+      const student = allStudents.find((s) =>
         s.id === studentId || s.estudanteId === studentId
       );
 
@@ -728,7 +825,7 @@ export function useStudentProfile() {
 
           toast.dismiss(toastId);
           toast.success("Mensagem enviada com sucesso!");
-        } catch (error) {
+        } catch (_error) {
           toast.dismiss(toastId);
           toast.error("Falha ao enviar mensagem. A interação NÃO foi salva.");
           setIsSendingWhatsApp(false);
@@ -756,27 +853,15 @@ export function useStudentProfile() {
         };
       }
 
-      const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
-
-      // Determinar responsável (contato ou genérico)
-      let responsavel = "Responsável";
-      if (interactionType === "Contato digital" && selectedWhatsAppPhones.size === 1 && student?.contatos) {
-        const phoneNumber = Array.from(selectedWhatsAppPhones)[0];
-        const contact = student.contatos.find((c: Contato) => c.telefone.replace(/\D/g, '') === phoneNumber);
-        if (contact) {
-          responsavel = contact.nome;
-        }
-      }
-
-      // ✅ SPRINT 4 - FASE 8: Usar hook de criação com campos no formato correto (português)
+      // ✅ SPRINT 4 - FASE 8: Usar hook de criação com campos no formato esperado pela API
       await createInteraction({
         estudanteId: selectedStudentId,
         tipo: interactionType,
-        data: formattedDate,
-        responsavel: responsavel,
-        assunto: interactionType, // Usar o tipo como assunto padrão
+        data: formattedDate.replace(/\//g, ''), // Converter DD/MM/YYYY para DDMMYYYY
         descricao: finalDescription,
-        criadoPor: currentUser, // Nome do usuário autenticado
+        criadoPor: currentUserName, // Nome do usuário autenticado
+        responsavel: currentUserName, // Nome do responsável pela interação
+        assunto: interactionType, // Assunto da interação (mesmo que o tipo)
         ...(whatsappData && {
           whatsapp_message: whatsappData.whatsappMessage,
           whatsapp_phones: whatsappData.whatsappPhones,
@@ -817,12 +902,12 @@ export function useStudentProfile() {
 
       toast.success("Interação salva com sucesso!");
     } catch (error) {
-      logger.error("Erro ao cadastrar interação", error as Error);
+      logger.error("Erro ao cadastrar interação", {}, error as Error);
       toast.error("Erro ao salvar interação. Os campos foram mantidos para você tentar novamente.");
       setIsSendingWhatsApp(false);
       setWhatsAppSendSuccess(false);
     }
-  }, [selectedStudentId, student, interactionType, interactionDate, interactionDescription, interactionSensitive, selectedWhatsAppPhones, whatsAppMessage, auth, fetchStudentData]);
+  }, [selectedStudentId, student, interactionType, interactionDate, interactionDescription, interactionSensitive, selectedWhatsAppPhones, whatsAppMessage, auth, fetchStudentData, createInteraction]);
 
   const handleEditInteraction = useCallback(async (): Promise<void> => {
     if (!editingInteraction || !selectedStudentId || !interactionType || !interactionDate || !interactionDescription) {
@@ -839,12 +924,13 @@ export function useStudentProfile() {
     const formattedDate = dateParts.join(''); // Remove as barras: "18/10/2025" → "18102025"
 
     try {
-      // ✅ SPRINT 4 - FASE 8: Usar hook de update com campos no formato correto (português)
+      // ✅ SPRINT 4 - FASE 8: Usar hook de update com campos no formato correto (camelCase English)
       await updateInteraction(editingInteraction.id, {
-        tipo: interactionType,
-        data: formattedDate,
-        descricao: interactionDescription,
-        // Nota: responsavel e assunto não podem ser alterados na edição
+        type: interactionType,
+        date: formattedDate,
+        description: interactionDescription,
+        sensitive: interactionSensitive,
+        // Nota: createdBy não pode ser alterado na edição
       });
 
       logger.interactionOperation('update', selectedStudentId, editingInteraction.type, { supabase: true });
@@ -863,11 +949,11 @@ export function useStudentProfile() {
       setInteractionSensitive(false);
 
       toast.success("Interação atualizada com sucesso!");
-    } catch (error) {
-      logger.error("Erro ao atualizar interação", error as Error);
+    } catch (err) {
+      logger.error("Erro ao atualizar interação", {}, err as Error);
       toast.error("Erro ao atualizar interação. Tente novamente.");
     }
-  }, [editingInteraction, selectedStudentId, interactionType, interactionDate, interactionDescription, interactionSensitive, fetchStudentData]);
+  }, [editingInteraction, selectedStudentId, interactionType, interactionDate, interactionDescription, interactionSensitive, fetchStudentData, updateInteraction]);
 
   const handleDeleteInteraction = useCallback(async (interactionId: string): Promise<void> => {
     if (!selectedStudentId) return;
@@ -875,7 +961,7 @@ export function useStudentProfile() {
     // ✅ Validar se ID é válido antes de deletar
     if (!interactionId || typeof interactionId !== 'string') {
       toast.error("ID da interação inválido. Recarregue a página e tente novamente.");
-      logger.error("ID da interação inválido", new Error(`Invalid ID: ${interactionId}`));
+      logger.error("ID da interação inválido", {}, new Error(`Invalid ID: ${interactionId}`));
       setShowDeleteDialog(null);
       return;
     }
@@ -897,7 +983,7 @@ export function useStudentProfile() {
       toast.success("Interação excluída com sucesso!");
     } catch (error) {
       const errorMessage = (error as Error).message || '';
-      logger.error("Erro ao excluir interação", error as Error);
+      logger.error("Erro ao excluir interação", {}, error as Error);
 
       // ✅ Feedback mais específico baseado no erro
       if (errorMessage.includes('NOT_FOUND') || errorMessage.includes('404')) {
@@ -966,14 +1052,12 @@ export function useStudentProfile() {
         return;
       }
 
-      const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
-
       const newCertificate = await MedicalCertificatesService.create({
         studentId: selectedStudentId,
         startDate: formattedDate,
         endDate: endDate.toISOString().split('T')[0],
         diagnosis: atestadoDescription,
-        createdBy: currentUser,
+        createdBy: currentUserName,
       });
 
       if (!newCertificate) {
@@ -999,7 +1083,7 @@ export function useStudentProfile() {
 
       toast.success("Atestado salvo com sucesso!");
     } catch (error) {
-      logger.error("Erro ao cadastrar atestado", error as Error);
+      logger.error("Erro ao cadastrar atestado", {}, error as Error);
       toast.error("Erro ao salvar atestado. Tente novamente.");
     } finally {
       setIsSubmittingAtestado(false);
@@ -1033,8 +1117,6 @@ export function useStudentProfile() {
         startDate.getUTCDate() + days - 1
       ));
 
-      const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
-
       // ✅ API agora recria faltas automaticamente ao editar atestado
       await MedicalCertificatesService.update(editingAtestado.id, {
         startDate: formattedDate,
@@ -1058,14 +1140,19 @@ export function useStudentProfile() {
       setAtestadoDescription("");
 
       toast.success("Atestado atualizado com sucesso!");
-    } catch (error) {
-      logger.error("Erro ao atualizar atestado", error as Error);
+    } catch (err) {
+      logger.error("Erro ao atualizar atestado", {}, err as Error);
       toast.error("Erro ao atualizar atestado. Tente novamente.");
     }
-  }, [editingAtestado, selectedStudentId, atestadoStartDate, atestadoDays, atestadoDescription, auth, fetchStudentData]);
+  }, [editingAtestado, selectedStudentId, atestadoStartDate, atestadoDays, atestadoDescription, fetchStudentData]);
 
   const handleDeleteAtestado = useCallback(async (atestadoId: string): Promise<void> => {
-    if (!selectedStudentId) return;
+    // Type guard: ensure selectedStudentId is defined
+    if (!selectedStudentId || selectedStudentId.trim() === '') {
+      toast.error("Nenhum estudante selecionado.");
+      return;
+    }
+
     try {
       await MedicalCertificatesService.delete(atestadoId);
 
@@ -1089,7 +1176,7 @@ export function useStudentProfile() {
       await fetchStudentData(selectedStudentId);
       toast.success("Atestado excluído com sucesso!");
     } catch (error) {
-      logger.error("Erro ao excluir atestado", error as Error);
+      logger.error("Erro ao excluir atestado", {}, error as Error);
       toast.error("Erro ao excluir atestado. Tente novamente.");
     } finally {
       setShowDeleteAtestadoDialog(null);
@@ -1127,7 +1214,6 @@ export function useStudentProfile() {
         startDate.getUTCDate() + days - 1
       ));
 
-      const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
       const newSuspension = await StudentSuspensionsService.create({
         studentId: selectedStudentId,
         startDate: formattedDate,
@@ -1135,9 +1221,9 @@ export function useStudentProfile() {
         reason: suspensaoDescription,
         description: suspensaoDescription,
         severity: 'MODERADA',
-        decisionBy: currentUser,
+        decisionBy: currentUserName,
         decisionDate: formattedDate,
-        createdBy: currentUser,
+        createdBy: currentUserName,
       });
 
       if (!newSuspension) {
@@ -1164,11 +1250,11 @@ export function useStudentProfile() {
       document.getElementById("suspensao-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
 
       toast.success("Suspensão salva com sucesso!");
-    } catch (error) {
-      logger.error("Erro ao cadastrar suspensão", error as Error);
+    } catch (err) {
+      logger.error("Erro ao cadastrar suspensão", {}, err as Error);
       toast.error("Erro ao salvar suspensão. Tente novamente.");
     }
-  }, [selectedStudentId, suspensaoStartDate, suspensaoDays, suspensaoDescription, auth, fetchStudentData]);
+  }, [selectedStudentId, suspensaoStartDate, suspensaoDays, suspensaoDescription, fetchStudentData]);
 
   const handleEditSuspensao = useCallback(async (): Promise<void> => {
     if (!editingSuspensao || !selectedStudentId || !suspensaoStartDate || !suspensaoDays || !suspensaoDescription) {
@@ -1197,8 +1283,6 @@ export function useStudentProfile() {
         startDate.getUTCDate() + days - 1
       ));
 
-      const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
-
       await StudentSuspensionsService.update(editingSuspensao.id, {
         startDate: formattedDate,
         endDate: endDate.toISOString().split('T')[0],
@@ -1224,14 +1308,19 @@ export function useStudentProfile() {
       setSuspensaoDays("");
       setSuspensaoDescription("");
       toast.success("Suspensão atualizada com sucesso!");
-    } catch (error) {
-      logger.error("Erro ao atualizar suspensão", error as Error);
+    } catch (err) {
+      logger.error("Erro ao atualizar suspensão", {}, err as Error);
       toast.error("Erro ao atualizar suspensão. Tente novamente.");
     }
-  }, [editingSuspensao, selectedStudentId, suspensaoStartDate, suspensaoDays, suspensaoDescription, auth, fetchStudentData]);
+  }, [editingSuspensao, selectedStudentId, suspensaoStartDate, suspensaoDays, suspensaoDescription, fetchStudentData]);
 
   const handleDeleteSuspensao = useCallback(async (suspensaoId: string): Promise<void> => {
-    if (!selectedStudentId) return;
+    // Type guard: ensure selectedStudentId is defined
+    if (!selectedStudentId || selectedStudentId.trim() === '') {
+      toast.error("Nenhum estudante selecionado.");
+      return;
+    }
+
     try {
       await StudentSuspensionsService.delete(suspensaoId);
 
@@ -1248,13 +1337,13 @@ export function useStudentProfile() {
       ]);
 
       toast.success("Suspensão excluída com sucesso!");
-    } catch (error) {
-      logger.error("Erro ao excluir suspensão", error as Error);
+    } catch (err) {
+      logger.error("Erro ao excluir suspensão", {}, err as Error);
       toast.error("Erro ao excluir suspensão. Tente novamente.");
     } finally {
       setShowDeleteSuspensaoDialog(null);
     }
-  }, [selectedStudentId, refetchSuspensoes, refetchAbsences]);
+  }, [selectedStudentId, fetchStudentData]);
 
   // ═══════════════════════════════════════════════════════════
   // HANDLERS - WHATSAPP
@@ -1305,8 +1394,8 @@ export function useStudentProfile() {
           toast.error(errorMessage);
         }
       }
-    } catch (error) {
-      logger.error("Erro ao reverificar WhatsApp", { phone: contact.telefone }, error as Error);
+    } catch (err) {
+      logger.error("Erro ao reverificar WhatsApp", { phone: contact.telefone }, err as Error);
       toast.error("Erro interno. Tente novamente.");
     }
   }, [auth, selectedStudentId, fetchStudentData]);
@@ -1366,12 +1455,12 @@ export function useStudentProfile() {
           message: result.error || "Falha ao enviar mensagem"
         };
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Erro desconhecido";
       logger.error("Erro ao enviar mensagem WhatsApp", {
         phone: `${phone.substring(0, 4)}****${phone.substring(phone.length - 4)}`,
         studentId: selectedStudentId
-      }, error as Error);
+      }, err as Error);
 
       toast.error("Erro interno ao enviar mensagem");
       return {
@@ -1420,39 +1509,38 @@ export function useStudentProfile() {
 
           toast.dismiss(toastId);
           toast.success("Mensagem enviada com sucesso!");
-        } catch (error) {
+        } catch (err) {
           toast.dismiss(toastId);
           toast.error("Falha ao enviar mensagem. A interação NÃO foi salva.");
           setIsSendingWhatsApp(false);
           setWhatsAppSendSuccess(false);
+          console.error('Erro ao enviar WhatsApp:', err);
           return;
         }
       }
 
       // Salvar interação
       const phoneNumber = whatsappPhones[0];
-      const contact = student.contatos?.find((c: Contato) => c.telefone.replace(/\D/g, '') === phoneNumber);
+      const contact = student?.contatos?.find((c: Contato) => c.telefone.replace(/\D/g, '') === phoneNumber);
       const contactName = contact ? `${contact.nome}${contact.parentesco ? ` (${contact.parentesco})` : ''}` : phoneNumber;
       const finalDescription = `Mensagem enviada via WhatsApp para: ${contactName} - ${phoneNumber}\n\n${interactionDescription}`;
 
-      const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
-
-      // ✅ SPRINT 4 - FASE 8: Usar hook de criação
+      // ✅ SPRINT 4 - FASE 8: Usar hook de criação com campos no formato correto (camelCase English)
       await createInteraction({
-        student_id: selectedStudentId,
-        interaction_type: 'Contato digital',
-        interaction_date: new Date().toISOString().split('T')[0],
+        studentId: selectedStudentId,
+        type: 'Contato digital',
+        date: new Date().toLocaleDateString('pt-BR').split('/').reverse().join(''), // DDMMYYYY format
         description: finalDescription,
-        created_by: currentUser,
-        is_sensitive: interactionSensitive,
-        whatsapp_message: whatsappMessageText,
-        whatsapp_phones: whatsappPhones,
-        whatsapp_message_id: whatsappMessageId,
-        whatsapp_status: 'SENT',
-        whatsapp_sent_at: new Date().toISOString(),
+        createdBy: currentUserName,
+        sensitive: interactionSensitive,
+        whatsappMessage: whatsappMessageText,
+        whatsappPhones: whatsappPhones,
+        whatsappMessageId: whatsappMessageId,
+        whatsappStatus: 'SENT',
+        whatsappSentAt: new Date().toISOString(),
       });
 
-      logger.interactionOperation('create', selectedStudentId, 'Contato digital', { supabase: true });
+      logger.interactionOperation('create', selectedStudentId, 'Contato digital', { apiRest: true });
 
       await fetchStudentData(selectedStudentId);
 
@@ -1470,26 +1558,26 @@ export function useStudentProfile() {
       }, 2000);
 
       toast.success("Interação salva com sucesso!");
-    } catch (error) {
-      logger.error("Erro ao cadastrar interação", error as Error);
+    } catch (err) {
+      logger.error("Erro ao cadastrar interação", {}, err as Error);
       toast.error("Erro ao salvar interação. Tente novamente.");
       setIsSendingWhatsApp(false);
       setWhatsAppSendSuccess(false);
     }
-  }, [selectedStudentId, student, auth.currentUser, selectedWhatsAppPhones, whatsAppMessage, interactionDescription, interactionSensitive, fetchStudentData]);
+  }, [selectedStudentId, student, selectedWhatsAppPhones, whatsAppMessage, interactionDescription, interactionSensitive, fetchStudentData, createInteraction]);
 
   // ═══════════════════════════════════════════════════════════
   // HANDLERS - SEARCH
   // ═══════════════════════════════════════════════════════════
 
   const handleSearchName = useCallback((value: string) => {
-    setSearchName(value);
-
+    // ✅ CRITICAL: Verificar ANTES de atualizar o estado
     if (isSelectingStudent.current) {
       isSelectingStudent.current = false;
       return;
     }
 
+    setSearchName(value);
     setSelectedTurma("");
 
     if (selectedStudentId) {
@@ -1510,20 +1598,24 @@ export function useStudentProfile() {
     isSelectingStudent.current = true;
 
     // ✅ NORMALIZAR: Se recebeu Internal ID, converter para Firebase UUID
-    const student = allStudents.find((s: any) =>
+    const student = allStudents.find((s: Student) =>
       s.id === studentId || s.estudanteId === studentId
     );
 
     const normalizedId = student?.estudanteId || studentId;
 
     setSelectedStudentId(normalizedId);
-    setSearchName("");
-    setSuggestions([]);
 
-    // ✅ Limpar campos de seleção por turma após selecionar por nome
+    // ✅ CRITICAL: Usar setTimeout para garantir que setSearchName execute após o clique
+    // Isso previne race condition com eventos onChange do Input
     setTimeout(() => {
-      setSelectedTurma("");
-    }, 500); // Delay para permitir visualização do loading
+      setSearchName(""); // Limpa campo para reabilitar busca por turma
+      setSuggestions([]);
+      isSelectingStudent.current = false;
+    }, 0);
+
+    // ✅ NÃO limpar selectedTurma - permite voltar à busca por turma facilmente
+    // Usuário pode querer selecionar outro estudante da mesma turma
   }, [allStudents]);
 
   // ═══════════════════════════════════════════════════════════

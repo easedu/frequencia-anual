@@ -42,7 +42,7 @@ interface UseContactsManagementProps {
 // HOOK PRINCIPAL
 // ════════════════════════════════════════════════════════════════
 
-export function useContactsManagement({ students, studentsLoading }: UseContactsManagementProps) {
+export function useContactsManagement({ students }: UseContactsManagementProps) {
   const auth = getAuth();
 
   // ✅ MIGRADO: Hook da API REST
@@ -57,8 +57,6 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [verifyingPhone, setVerifyingPhone] = useState<string | null>(null);
   const [loadingWhatsAppData, setLoadingWhatsAppData] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [processingFile, setProcessingFile] = useState(false);
 
   // Filtros
   const [selectedTurma, setSelectedTurma] = useState<string>('all');
@@ -97,7 +95,7 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
 
     students.forEach(student => {
       if (student.contatos && student.contatos.length > 0) {
-        student.contatos.forEach((contato: any) => {
+        student.contatos.forEach((contato) => {
           if (contato.telefone && contato.telefone.trim()) {
             const cleanPhone = contato.telefone.replace(/\D/g, '');
             if (cleanPhone.length >= 10) {
@@ -350,8 +348,8 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
       }
 
       return undefined;
-    } catch (error) {
-      console.error('[TELEFONES] Erro ao buscar contactId:', error);
+    } catch (err) {
+      console.error('[TELEFONES] Erro ao buscar contactId:', err);
       return undefined;
     }
   };
@@ -435,9 +433,9 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
         toast.error(`Erro: ${result.error || 'Erro desconhecido'}`);
       }
 
-    } catch (error) {
-      console.error('[TELEFONES-VERIFY] Erro ao verificar WhatsApp:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    } catch (err) {
+      console.error('[TELEFONES-VERIFY] Erro ao verificar WhatsApp:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       toast.error(`Falha na verificação: ${errorMessage}`);
     } finally {
       setVerifyingPhone(null);
@@ -448,7 +446,8 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
     try {
       await navigator.clipboard.writeText(phone);
       toast.success('Telefone copiado!');
-    } catch (error) {
+    } catch (err) {
+      console.error('Erro ao copiar telefone:', err);
       toast.error('Erro ao copiar telefone');
     }
   };
@@ -497,11 +496,12 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
 
           toast.dismiss(toastId);
           toast.success("Mensagem enviada com sucesso!");
-        } catch (error) {
+        } catch (err) {
           toast.dismiss(toastId);
           toast.error("Falha ao enviar mensagem. A interação NÃO foi salva.");
           setIsSendingWhatsApp(false);
           setWhatsAppSendSuccess(false);
+          console.error('Erro ao enviar WhatsApp:', err);
           return;
         }
       }
@@ -516,17 +516,17 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
 
       // ✅ MIGRADO: Usar hook da API REST
       await createInteraction({
-        student_id: selectedContact.estudanteId,
-        interaction_type: 'Contato digital',
-        interaction_date: new Date().toISOString().split('T')[0],
+        studentId: selectedContact.estudanteId,
+        type: 'Contato digital',
+        date: new Date().toISOString().split('T')[0],
         description: finalDescription,
-        created_by: currentUser,
-        is_sensitive: interactionSensitive,
-        whatsapp_message: whatsappMessageText,
-        whatsapp_phones: whatsappPhones,
-        whatsapp_message_id: whatsappMessageId,
-        whatsapp_status: 'SENT' as const,
-        whatsapp_sent_at: new Date().toISOString(),
+        createdBy: currentUser,
+        sensitive: interactionSensitive,
+        whatsappMessage: whatsappMessageText,
+        whatsappPhones: whatsappPhones,
+        whatsappMessageId: whatsappMessageId,
+        whatsappStatus: 'SENT' as const,
+        whatsappSentAt: new Date().toISOString(),
       });
 
       logger.interactionOperation('create', selectedContact.estudanteId, 'Contato digital', { apiRest: true });
@@ -545,8 +545,11 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
       }, 2000);
 
       toast.success("Interação salva com sucesso!");
-    } catch (error) {
-      logger.error("Erro ao cadastrar interação", error as Error);
+    } catch (err) {
+      logger.error("Erro ao cadastrar interação", {
+        studentId: selectedContact?.estudanteId,
+        phoneCount: selectedWhatsAppPhones.size
+      }, err as Error);
       toast.error("Erro ao salvar interação. Tente novamente.");
       setIsSendingWhatsApp(false);
       setWhatsAppSendSuccess(false);
@@ -564,8 +567,6 @@ export function useContactsManagement({ students, studentsLoading }: UseContacts
     setSearchTerm,
     verifyingPhone,
     loadingWhatsAppData,
-    uploading,
-    processingFile,
     verifiedWhatsAppNumbers,
     contactVerificationData,
 

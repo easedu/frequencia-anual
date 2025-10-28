@@ -6,7 +6,7 @@
  * DELETE - Deleta controle específico
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
@@ -20,10 +20,15 @@ import { logger } from '@/utils/logger'
  * @example
  * GET /api/absence-control/550e8400-e29b-41d4-a716-446655440000
  */
+interface RouteParams {
+  params: Promise<{ id: string }>;
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
+  const params = await context.params;
   try {
     const { id } = params
 
@@ -70,8 +75,9 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
+  const params = await context.params;
   try {
     const { id } = params
     const body = await request.json()
@@ -80,7 +86,15 @@ export async function PUT(
     const validated = updateAbsenceControlSchema.parse(body)
 
     // Preparar dados para update (apenas campos fornecidos)
-    const updateData: Record<string, any> = {}
+    interface AbsenceControlUpdate {
+      school_days?: number;
+      start_date?: string;
+      end_date?: string;
+      notes?: string | null;
+      updated_by?: string | null;
+    }
+
+    const updateData: AbsenceControlUpdate = {}
 
     if (validated.school_days !== undefined) {
       updateData.school_days = validated.school_days
@@ -104,12 +118,15 @@ export async function PUT(
     }
 
     // Atualizar no Supabase
-    const { data, error } = await (supabaseAdmin
-      .from('absence_control') as any)
+    const updateResult = await supabaseAdmin
+      .from('absence_control')
+      // @ts-expect-error - Supabase typing issue with partial updates
       .update(updateData)
       .eq('id', id)
       .select()
       .single()
+
+    const { data, error } = updateResult
 
     if (error) {
       logger.error('Erro ao atualizar controle de faltas', { id }, error)
@@ -140,8 +157,9 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
+  const params = await context.params;
   try {
     const { id } = params
 

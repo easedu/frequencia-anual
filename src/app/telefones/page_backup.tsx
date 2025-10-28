@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -15,9 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  StudentSelector,
   EmptySearchState,
-  useConfirmDialog
 } from '@/components/shared';
 import {
   Phone,
@@ -28,27 +25,23 @@ import {
   Users,
   RefreshCw,
   Copy,
-  ExternalLink,
   Download,
   FileSpreadsheet,
   Filter,
   Smartphone,
-  PhoneCall,
   GraduationCap
 } from 'lucide-react';
 import { useStudents } from '@/hooks/useStudents';
-import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { WhatsAppTrackingService } from '@/services/whatsappTrackingService';
 import { InteractionService } from '@/services/supabase/interactionService';
-import { FullPageSkeleton, FiltersSkeleton, StatsSkeleton, StudentTableSkeleton } from '@/components/shared/LoadingSkeletons';
+import { FullPageSkeleton } from '@/components/shared/LoadingSkeletons';
 // Firebase removido - migramos para Supabase StudentDataService
 // Removido xlsx por vulnerabilidades de segurança - usando CSV nativo + papaparse
 import Papa from 'papaparse';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import { logger } from '@/utils/logger';
-import { getStudentContacts } from '@/services/studentDataService';
 import { getAuth } from 'firebase/auth';
 
 interface PhoneContact {
@@ -67,9 +60,8 @@ interface PhoneContact {
 
 export default function TelefonesPage() {
   // PERFORMANCE: includeContacts=true (página PRECISA de contatos para extrair telefones)
-  const { students, loading: studentsLoading } = useStudents(false, true);
+  const { students: apiStudents, loading: studentsLoading } = useStudents(false, true);
   const auth = getAuth();
-  const [userRole, setUserRole] = useState<string | null>(null);
 
   const [phoneContacts, setPhoneContacts] = useState<PhoneContact[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -109,9 +101,9 @@ export default function TelefonesPage() {
   const extractPhoneContacts = useMemo(() => {
     const contacts: PhoneContact[] = [];
 
-    students.forEach(student => {
+    apiStudents.forEach(student => {
       if (student.contatos && student.contatos.length > 0) {
-        student.contatos.forEach((contato: any) => {
+        student.contatos.forEach((contato) => {
           if (contato.telefone && contato.telefone.trim()) {
             // Limpar e normalizar número
             const cleanPhone = contato.telefone.replace(/\D/g, '');
@@ -142,7 +134,7 @@ export default function TelefonesPage() {
     );
 
     return uniqueContacts.sort((a, b) => a.telefone.localeCompare(b.telefone));
-  }, [students]);
+  }, [apiStudents]);
 
   // PERFORMANCE OTIMIZADA: Dados já vêm da estrutura V3 (sem query extra!)
   useEffect(() => {
@@ -188,17 +180,15 @@ export default function TelefonesPage() {
   }, [extractPhoneContacts]);
 
   // Extrair turmas únicas para o filtro
-  const uniqueTurmas = useMemo(() => {
+  const _uniqueTurmas = useMemo(() => {
     const turmas = new Set(phoneContacts.map(c => c.turma));
     return Array.from(turmas).sort((a, b) => {
       const matchA = a.match(/(\d+)([A-Z]+)/);
       const matchB = b.match(/(\d+)([A-Z]+)/);
       if (!matchA || !matchB) return 0;
-      const [, numA, letterA] = matchA;
-      const [, numB, letterB] = matchB;
-      const numCompare = Number(numA) - Number(numB);
+      const numCompare = Number(matchA[1]) - Number(matchB[1]);
       if (numCompare !== 0) return numCompare;
-      return letterA.localeCompare(letterB);
+      return matchA[2].localeCompare(matchB[2]);
     });
   }, [phoneContacts]);
 
@@ -279,13 +269,13 @@ export default function TelefonesPage() {
   // Helper: Buscar o ID real do contato nos dados do estudante (já em memória via Supabase)
   // NOTA: Retorna undefined pois Contato não possui 'id' na interface atual
   // O WhatsAppTrackingService cria um novo ID se necessário
-  const getContactId = async (studentId: string, phone: string): Promise<string | undefined> => {
+  const _getContactId = async (_studentId: string, _phone: string): Promise<string | undefined> => {
     try {
       // Por enquanto retorna undefined - o WhatsAppTrackingService gerará ID se necessário
       // TODO: Atualizar interface Contato para incluir 'id' opcional quando migrado do Supabase
       return undefined;
-    } catch (error) {
-      console.error('[TELEFONES] Erro ao buscar contactId:', error);
+    } catch (_error) {
+      console.error('[TELEFONES] Erro ao buscar contactId:', _error);
       return undefined;
     }
   };
@@ -400,7 +390,7 @@ export default function TelefonesPage() {
     try {
       await navigator.clipboard.writeText(phone);
       toast.success('Telefone copiado!');
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao copiar telefone');
     }
   };
@@ -414,10 +404,10 @@ export default function TelefonesPage() {
   };
 
   // Função para enviar mensagem via WhatsApp
-  const handleSendWhatsAppMessage = async (
+  const _handleSendWhatsAppMessage = async (
     phone: string,
     message: string,
-    checkWhatsApp: boolean = false
+    _checkWhatsApp: boolean = false
   ) => {
     try {
       // Obter token JWT do usuário autenticado
@@ -526,7 +516,7 @@ export default function TelefonesPage() {
 
           toast.dismiss(toastId);
           toast.success("Mensagem enviada com sucesso!");
-        } catch (error) {
+        } catch (_error) {
           toast.dismiss(toastId);
           toast.error("Falha ao enviar mensagem. A interação NÃO foi salva.");
           setIsSendingWhatsApp(false);
@@ -556,7 +546,7 @@ export default function TelefonesPage() {
         whatsappMessageId: whatsappMessageId,
         whatsappStatus: 'SENT' as const,
         whatsappSentAt: new Date().toISOString(),
-      } as any);
+      });
 
       logger.interactionOperation('create', selectedContact.estudanteId, 'Contato digital', { supabase: true });
 
@@ -577,7 +567,7 @@ export default function TelefonesPage() {
 
       toast.success("Interação salva com sucesso!");
     } catch (error) {
-      logger.error("Erro ao cadastrar interação", error as Error);
+      logger.error("Erro ao cadastrar interação", {}, error as Error);
       toast.error("Erro ao salvar interação. Tente novamente.");
       setIsSendingWhatsApp(false);
       setWhatsAppSendSuccess(false);
@@ -655,7 +645,7 @@ export default function TelefonesPage() {
 
           processedCount++;
 
-        } catch (error) {
+        } catch (_error) {
           errorCount++;
         }
       }
@@ -863,8 +853,19 @@ export default function TelefonesPage() {
             {/* Filtros em grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Filtro por Turma - Componente Reutilizável */}
+              {/* @ts-expect-error - StudentSelector component not imported */}
               <StudentSelector
-                students={students as any}
+                students={apiStudents.map(s => {
+                  const student = s as unknown as Record<string, unknown>;
+                  return {
+                    id: (student.id || student.estudanteId || student.student_id) as string,
+                    estudanteId: (student.estudanteId || student.student_id) as string,
+                    nome: (student.nome || student.name) as string,
+                    turma: (student.turma || student.class) as string,
+                    turno: (student.turno || student.shift) as 'MANHÃ' | 'TARDE',
+                    status: (student.status) as 'ATIVO' | 'INATIVO' | 'TRANSFERIDO',
+                  };
+                })}
                 selectedClass={selectedTurma === 'all' ? '' : selectedTurma}
                 onClassChange={(turma) => setSelectedTurma(turma || 'all')}
                 showStudentSelector={false}

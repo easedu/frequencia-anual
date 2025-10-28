@@ -17,7 +17,7 @@ import {
     AlertCircle,
     Loader2
 } from "lucide-react";
-import { Student, Contato } from "../app/types";
+import { Student, Contato } from "@/types";
 import { formatPhoneNumber } from "@/utils/formatters";
 
 interface WhatsAppModalProps {
@@ -28,7 +28,7 @@ interface WhatsAppModalProps {
     onSendMessage: (phone: string, message: string, checkWhatsApp: boolean) => Promise<{
         success: boolean;
         message: string;
-        data?: any;
+        data?: unknown;
         error?: string;
     }>;
     verifiedNumbers: Set<string>;
@@ -40,7 +40,7 @@ export default function WhatsAppModal({
     student,
     selectedContact,
     onSendMessage,
-    verifiedNumbers
+    _verifiedNumbers
 }: WhatsAppModalProps) {
     const [message, setMessage] = useState("")
     const [isSending, setIsSending] = useState(false);
@@ -53,7 +53,7 @@ export default function WhatsAppModal({
     // Reset modal state when opening/closing
     useEffect(() => {
         if (isOpen) {
-            setMessage("🏫 EMEF Habib Kyrillos - Comunicado Importante!\n\nOlá! A partir de agora, você receberá comunicados da Escola também por aqui!\n\n📢 Confirme que você recebeu esta mensagem com: ”OK”\n\nAssim, saberemos que os próximos comunicados chegarão até você. 😊");
+            setMessage("🏫 EMEF Habib Kyrillos - Comunicado Importante!\n\nOlá! A partir de agora, você receberá comunicados da Escola também por aqui!\n\n📢 Confirme que você recebeu esta mensagem com: \"OK\"\n\nAssim, saberemos que os próximos comunicados chegarão até você. 😊");
             setSendResult(null);
             setIsSending(false);
         }
@@ -74,7 +74,7 @@ export default function WhatsAppModal({
     // Check if this number was already verified
     const isNumberVerified = (phone: string): boolean => {
         const cleanPhone = getCleanPhoneNumber(phone);
-        return verifiedNumbers.has(cleanPhone);
+        return _verifiedNumbers.has(cleanPhone);
     };
 
     const handleSendMessage = async () => {
@@ -111,7 +111,7 @@ export default function WhatsAppModal({
 
     if (!selectedContact || !student) return null;
 
-    const cleanPhone = getCleanPhoneNumber(selectedContact.telefone);
+    const _cleanPhone = getCleanPhoneNumber(selectedContact.telefone);
     const isEligible = isWhatsAppEligible(selectedContact.telefone);
     const isVerified = isNumberVerified(selectedContact.telefone);
 

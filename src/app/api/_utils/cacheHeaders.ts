@@ -114,7 +114,7 @@ export function withCacheHeaders(
  * ```
  */
 export function responseWithCache(
-  data: any,
+  data: unknown,
   strategy: CacheStrategy = 'dynamic',
   additionalHeaders?: Record<string, string>
 ): NextResponse {

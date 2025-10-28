@@ -15,6 +15,14 @@ import { PaginatedResponse } from './useStudents';
 
 export type VerificationStatus = 'VERIFIED' | 'NOT_FOUND' | 'INVALID' | 'PENDING';
 
+export interface VerificationMetadata {
+  source?: 'api' | 'webhook' | 'manual';
+  apiProvider?: string;
+  lastError?: string;
+  retryCount?: number;
+  [key: string]: unknown;
+}
+
 export interface WhatsAppVerifiedNumber {
   id: string;
   phone_number: string;
@@ -24,7 +32,7 @@ export interface WhatsAppVerifiedNumber {
   verification_status: VerificationStatus;
   verified_at: string;
   last_checked_at: string | null;
-  metadata: Record<string, any> | null;
+  metadata: VerificationMetadata | null;
   created_at: string;
   updated_at: string;
 }
@@ -45,7 +53,7 @@ export interface CreateWhatsAppVerifiedData {
   jid?: string | null;
   contact_name?: string | null;
   verification_status?: VerificationStatus;
-  metadata?: Record<string, any> | null;
+  metadata?: VerificationMetadata | null;
 }
 
 export interface UpdateWhatsAppVerifiedData {
@@ -54,7 +62,7 @@ export interface UpdateWhatsAppVerifiedData {
   contact_name?: string | null;
   verification_status?: VerificationStatus;
   last_checked_at?: string | null;
-  metadata?: Record<string, any> | null;
+  metadata?: VerificationMetadata | null;
 }
 
 // ============================================================================

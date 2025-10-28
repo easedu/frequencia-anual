@@ -227,16 +227,18 @@ export class StudentSuspensionsService {
         return date;
       };
 
+      const apiPayload: Record<string, string | null> = {
+        estudanteId: data.studentId, // Firebase UUID (a API resolve internamente)
+        dataInicio: convertDateFormat(data.startDate),
+        dataFim: convertDateFormat(data.endDate),
+        motivo: data.reason,
+        observacoes: data.description || null,
+      };
+
       const response = await fetch('/api/suspensions', {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          estudanteId: data.studentId, // Firebase UUID (a API resolve internamente)
-          dataInicio: convertDateFormat(data.startDate),
-          dataFim: convertDateFormat(data.endDate),
-          motivo: data.reason,
-          observacoes: data.description || null,
-        }),
+        body: JSON.stringify(apiPayload),
       });
 
       if (!response.ok) {
@@ -253,7 +255,7 @@ export class StudentSuspensionsService {
       // Buscar suspensão criada para retornar completa
       return await this.getById(result.data.id);
     } catch (error) {
-      logger.error('Erro ao criar suspensão', data, error as Error);
+      logger.error('Erro ao criar suspensão', { studentId: data.studentId }, error as Error);
       throw error;
     }
   }
@@ -275,7 +277,7 @@ export class StudentSuspensionsService {
         return date;
       };
 
-      const apiUpdates: any = {};
+      const apiUpdates: Record<string, string | number | boolean | null> = {};
 
       // ✅ Mapear campos do frontend (inglês) para API (português)
       if (updates.startDate) apiUpdates.dataInicio = convertDateFormat(updates.startDate);

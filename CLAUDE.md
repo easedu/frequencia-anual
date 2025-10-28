@@ -10,19 +10,20 @@
 2. [Arquitetura e Tecnologias](#-arquitetura-e-tecnologias)
 3. [Estrutura de Diretórios](#-estrutura-de-diretórios)
 4. [Padrões de Código](#-padrões-de-código)
-5. [Boas Práticas de Desenvolvimento](#-boas-práticas-de-desenvolvimento)
-6. [Níveis de Planejamento](#-níveis-de-planejamento)
-7. [Guias de Implementação](#-guias-de-implementação)
-8. [MCPs Configurados](#-mcps-configurados)
-9. [Workflows Comuns](#-workflows-comuns)
-10. [Prompts Efetivos](#-prompts-efetivos)
-11. [Modo Planning (/plan)](#-modo-planning-plan)
-12. [Documentações do Projeto](#-documentações-do-projeto)
-13. [Comandos Úteis](#-comandos-úteis)
-14. [Troubleshooting](#-troubleshooting)
-15. [Checklists](#-checklists)
-16. [Glossário](#-glossário)
-17. [Não Fazer](#-não-fazer)
+5. [🚫 REGRA CRÍTICA: ZERO TOLERÂNCIA COM `any`](#-regra-crítica-zero-tolerância-com-any)
+6. [Boas Práticas de Desenvolvimento](#-boas-práticas-de-desenvolvimento)
+7. [Níveis de Planejamento](#-níveis-de-planejamento)
+8. [Guias de Implementação](#-guias-de-implementação)
+9. [MCPs Configurados](#-mcps-configurados)
+10. [Workflows Comuns](#-workflows-comuns)
+11. [Prompts Efetivos](#-prompts-efetivos)
+12. [Modo Planning (/plan)](#-modo-planning-plan)
+13. [Documentações do Projeto](#-documentações-do-projeto)
+14. [Comandos Úteis](#-comandos-úteis)
+15. [Troubleshooting](#-troubleshooting)
+16. [Checklists](#-checklists)
+17. [Glossário](#-glossário)
+18. [Não Fazer](#-não-fazer)
 
 ---
 
@@ -233,6 +234,353 @@ const value = student[column as keyof Student];
 // ❌ RUIM
 const value = student[column]; // Erro TS7053
 ```
+
+---
+
+## 🚫 REGRA CRÍTICA: ZERO TOLERÂNCIA COM `any`
+
+### ⚠️ POLÍTICA DE TYPE SAFETY
+
+**ATENÇÃO**: Este projeto mantém **100% type safety** - qualquer uso de `any` é considerado um **BUG CRÍTICO**.
+
+#### Regras Absolutas
+
+1. ❌ **NUNCA use `any`** em qualquer código novo
+2. ❌ **NUNCA use `as any`** para resolver erros de tipo
+3. ❌ **NUNCA adicione `// @ts-ignore`** sem justificativa documentada
+4. ✅ **SEMPRE use `unknown`** quando o tipo é realmente desconhecido
+5. ✅ **SEMPRE use type guards** para narrowing de tipos
+6. ✅ **SEMPRE use type assertions explícitas** com interfaces concretas
+
+#### Processo Obrigatório Antes de Commit
+
+**ANTES de cada commit, execute:**
+
+```bash
+# 1. Verificar erros TypeScript
+npm run type-check 2>&1 | grep "^src/"
+
+# 2. Verificar uso de 'any'
+npm run lint 2>&1 | grep "Unexpected any"
+
+# 3. Ambos devem retornar 0 erros
+```
+
+Se houver **QUALQUER erro**, corrija antes de commitar.
+
+---
+
+### 📚 Guia de Substituição de `any`
+
+#### 1. **Para Tipos Realmente Desconhecidos**
+
+```typescript
+// ❌ NUNCA
+function process(data: any) {
+  return data.value;
+}
+
+// ✅ SEMPRE
+function process(data: unknown) {
+  if (typeof data === 'object' && data !== null && 'value' in data) {
+    return (data as { value: unknown }).value;
+  }
+  throw new Error('Invalid data structure');
+}
+```
+
+#### 2. **Para Objetos Dinâmicos**
+
+```typescript
+// ❌ NUNCA
+const config: Record<string, any> = { ... };
+
+// ✅ SEMPRE
+const config: Record<string, unknown> = { ... };
+
+// Ou melhor ainda, interface explícita
+interface Config {
+  apiUrl: string;
+  timeout: number;
+  headers?: Record<string, string>;
+}
+const config: Config = { ... };
+```
+
+#### 3. **Para Respostas de API**
+
+```typescript
+// ❌ NUNCA
+const response = await fetch('/api/students');
+const data: any = await response.json();
+
+// ✅ SEMPRE
+interface ApiResponse {
+  students: Student[];
+  total: number;
+}
+
+const response = await fetch('/api/students');
+const data = await response.json() as ApiResponse;
+```
+
+#### 4. **Para Parâmetros de Funções**
+
+```typescript
+// ❌ NUNCA
+function handleError(error: any) {
+  console.error(error.message);
+}
+
+// ✅ SEMPRE
+function handleError(error: unknown) {
+  if (error instanceof Error) {
+    console.error(error.message);
+  } else {
+    console.error('Unknown error:', error);
+  }
+}
+```
+
+#### 5. **Para Generics**
+
+```typescript
+// ❌ NUNCA
+function cache<T = any>(key: string, value: T) { ... }
+
+// ✅ SEMPRE
+function cache<T = unknown>(key: string, value: T) { ... }
+
+// Ou melhor, sem default
+function cache<T>(key: string, value: T) { ... }
+```
+
+#### 6. **Para Supabase Operations**
+
+```typescript
+// ❌ NUNCA
+const { data } = await (supabaseAdmin.from('students') as any)
+  .update(updateData);
+
+// ✅ SEMPRE - Padrão estabelecido
+const { data } = await supabaseAdmin
+  .from('students')
+  .update(updateData as never)  // Type assertion explícita
+  .eq('id', studentId);
+
+// Tipo do resultado
+const result = data as Student[] | null;
+```
+
+**Nota**: `as never` é o **único** padrão aceito para operações Supabase devido a limitações do SDK.
+
+#### 7. **Para Event Handlers**
+
+```typescript
+// ❌ NUNCA
+function handleChange(e: any) {
+  console.log(e.target.value);
+}
+
+// ✅ SEMPRE
+function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+  console.log(e.target.value);
+}
+```
+
+#### 8. **Para Logger Calls**
+
+```typescript
+// ❌ NUNCA
+logger.error('Erro', error);  // error pode ser any
+
+// ✅ SEMPRE
+logger.error('Erro', {}, error as Error);
+// ou
+logger.error('Erro', { context: 'dados' }, error instanceof Error ? error : new Error(String(error)));
+```
+
+---
+
+### 🔍 Type Guards Comuns
+
+#### Verificação de Tipos Primitivos
+
+```typescript
+// String
+if (typeof value === 'string') { ... }
+
+// Number
+if (typeof value === 'number' && !isNaN(value)) { ... }
+
+// Boolean
+if (typeof value === 'boolean') { ... }
+
+// Object (não null)
+if (typeof value === 'object' && value !== null) { ... }
+
+// Array
+if (Array.isArray(value)) { ... }
+
+// Error
+if (error instanceof Error) { ... }
+
+// Propriedade existe
+if (typeof obj === 'object' && obj !== null && 'prop' in obj) { ... }
+```
+
+#### Type Narrowing com Union Types
+
+```typescript
+type Status = 'ATIVO' | 'INATIVO' | 'PENDENTE';
+
+function processStatus(status: string): Status {
+  // ✅ Validar antes de assertar
+  if (status === 'ATIVO' || status === 'INATIVO' || status === 'PENDENTE') {
+    return status as Status;
+  }
+
+  // Fallback seguro
+  return 'PENDENTE';
+}
+```
+
+#### Custom Type Guards
+
+```typescript
+// Define um type guard
+function isStudent(obj: unknown): obj is Student {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'estudanteId' in obj &&
+    'nome' in obj &&
+    'turma' in obj
+  );
+}
+
+// Uso
+function process(data: unknown) {
+  if (isStudent(data)) {
+    // TypeScript sabe que data é Student aqui
+    console.log(data.nome);
+  }
+}
+```
+
+---
+
+### 🛠️ Casos Especiais Permitidos
+
+#### 1. **Supabase SDK Type Limitations**
+
+```typescript
+// ✅ ÚNICO caso onde 'as never' é permitido
+const { data } = await supabaseAdmin
+  .from('students')
+  .update(updateData as never)  // Necessário devido ao SDK
+  .eq('id', id);
+```
+
+**Justificativa**: O Supabase SDK tem problemas com inferência de tipos genéricos em operações insert/update.
+
+#### 2. **@ts-expect-error com Justificativa**
+
+```typescript
+// ✅ Permitido com comentário explicativo
+// @ts-expect-error - Supabase RPC não gera tipos automaticamente para funções customizadas
+const { data } = await supabase.rpc('custom_function');
+```
+
+**Regra**: `@ts-expect-error` deve **SEMPRE** ter um comentário na linha anterior explicando o motivo.
+
+#### 3. **Type Assertion para Unknown**
+
+```typescript
+// ✅ Permitido quando necessário
+const data = unknownValue as unknown as KnownInterface;
+```
+
+**Regra**: Sempre passar por `unknown` primeiro para garantir que você sabe o que está fazendo.
+
+---
+
+### ⚡ Automação e Validação
+
+#### Pre-commit Hook (Recomendado)
+
+Adicione ao `.git/hooks/pre-commit`:
+
+```bash
+#!/bin/bash
+
+echo "🔍 Verificando type safety..."
+
+# Check TypeScript errors
+TS_ERRORS=$(npm run type-check 2>&1 | grep "^src/" | wc -l)
+
+if [ $TS_ERRORS -gt 0 ]; then
+  echo "❌ Encontrados $TS_ERRORS erros TypeScript em src/"
+  echo "Execute: npm run type-check 2>&1 | grep '^src/'"
+  exit 1
+fi
+
+# Check 'any' usage
+ANY_ERRORS=$(npm run lint 2>&1 | grep "Unexpected any" | wc -l)
+
+if [ $ANY_ERRORS -gt 0 ]; then
+  echo "❌ Encontrados $ANY_ERRORS usos de 'any'"
+  echo "Execute: npm run lint 2>&1 | grep 'Unexpected any'"
+  exit 1
+fi
+
+echo "✅ Type safety verificada - commit permitido"
+exit 0
+```
+
+#### CI/CD Integration
+
+Adicione ao GitHub Actions:
+
+```yaml
+- name: Type Safety Check
+  run: |
+    npm run type-check 2>&1 | grep "^src/" && exit 1 || exit 0
+    npm run lint 2>&1 | grep "Unexpected any" && exit 1 || exit 0
+```
+
+---
+
+### 📊 Métricas de Qualidade
+
+**Status Atual do Projeto** (2025-01-10):
+- ✅ Erros TypeScript em src/: **0**
+- ✅ Usos de `any`: **0**
+- ✅ Arquivos corrigidos: **122+**
+- ✅ Type safety: **100%**
+
+**Meta para Novos Commits**:
+- 🎯 Manter 0 erros TypeScript
+- 🎯 Manter 0 usos de `any`
+- 🎯 100% coverage em type definitions
+
+---
+
+### 🚨 Processo de Code Review
+
+**Checklist Obrigatória**:
+
+- [ ] ✅ `npm run type-check` sem erros em src/
+- [ ] ✅ `npm run lint` sem "Unexpected any"
+- [ ] ✅ Todos os parâmetros tipados explicitamente
+- [ ] ✅ Todas as funções com return type explícito
+- [ ] ✅ Type guards para valores unknown/nullable
+- [ ] ✅ Interfaces concretas ao invés de Record<string, unknown>
+- [ ] ✅ Sem uso de `@ts-ignore` (usar `@ts-expect-error` com comentário)
+
+**Se houver QUALQUER violação, o PR deve ser rejeitado até correção.**
+
+---
 
 ### React e Next.js
 
@@ -3436,11 +3784,12 @@ npm run bundle:report
 - [ ] Planejar implementação (listar etapas)
 - [ ] Criar branch: `git checkout -b feature/nome`
 - [ ] Implementar seguindo padrões deste doc
-- [ ] Adicionar tipos TypeScript
+- [ ] **CRÍTICO**: Adicionar tipos TypeScript explícitos (ZERO `any`)
 - [ ] Testar localmente (casos felizes + edge cases)
 - [ ] Verificar responsividade
-- [ ] `npm run type-check`
-- [ ] `npm run lint`
+- [ ] **CRÍTICO**: `npm run type-check 2>&1 | grep "^src/"` → **DEVE retornar 0 erros**
+- [ ] **CRÍTICO**: `npm run lint 2>&1 | grep "Unexpected any"` → **DEVE retornar 0 erros**
+- [ ] `npm run build` → Verificar se compila sem erros
 - [ ] Commitar: `git commit -m "feat: descrição"`
 - [ ] Push e criar PR
 - [ ] Documentar se necessário
@@ -3450,11 +3799,11 @@ npm run bundle:report
 - [ ] Reproduzir o bug
 - [ ] Identificar causa raiz
 - [ ] Criar branch: `git checkout -b fix/nome`
-- [ ] Implementar correção
+- [ ] Implementar correção (sem usar `any`)
 - [ ] Adicionar validação para prevenir recorrência
 - [ ] Testar fix + casos relacionados
-- [ ] `npm run type-check`
-- [ ] `npm run lint`
+- [ ] **CRÍTICO**: `npm run type-check 2>&1 | grep "^src/"` → **0 erros**
+- [ ] **CRÍTICO**: `npm run lint 2>&1 | grep "Unexpected any"` → **0 erros**
 - [ ] Commitar: `git commit -m "fix: descrição"`
 - [ ] Push e criar PR
 - [ ] Atualizar issue com detalhes
@@ -3464,20 +3813,21 @@ npm run bundle:report
 - [ ] Documentar estado atual
 - [ ] Planejar mudanças
 - [ ] Criar branch: `git checkout -b refactor/nome`
-- [ ] Refatorar incrementalmente
+- [ ] Refatorar incrementalmente (ZERO `any`)
 - [ ] Testar após cada mudança
-- [ ] Garantir tipos TypeScript corretos
+- [ ] **CRÍTICO**: Garantir tipos TypeScript explícitos e corretos
 - [ ] Verificar performance (antes vs depois)
-- [ ] `npm run type-check`
-- [ ] `npm run build` (verificar se não quebrou)
+- [ ] **CRÍTICO**: `npm run type-check 2>&1 | grep "^src/"` → **0 erros**
+- [ ] **CRÍTICO**: `npm run lint 2>&1 | grep "Unexpected any"` → **0 erros**
+- [ ] `npm run build` → Verificar se compila sem erros
 - [ ] Commitar: `git commit -m "refactor: descrição"`
 - [ ] Documentar mudanças
 
 ### Checklist: Pré-Deploy
 
-- [ ] `npm run type-check` ✅
-- [ ] `npm run lint` ✅
-- [ ] `npm run build` ✅
+- [ ] **CRÍTICO**: `npm run type-check 2>&1 | grep "^src/"` → **DEVE ser 0**
+- [ ] **CRÍTICO**: `npm run lint 2>&1 | grep "Unexpected any"` → **DEVE ser 0**
+- [ ] **CRÍTICO**: `npm run build` → **DEVE compilar sem erros** ✅
 - [ ] Testar build localmente: `npm start`
 - [ ] Verificar env variables em produção
 - [ ] Conferir regras Firestore
@@ -3489,8 +3839,16 @@ npm run bundle:report
 
 ### Checklist: Code Review
 
+**🚨 BLOQUEADORES (deve reprovar PR se falhar)**:
+- [ ] **CRÍTICO**: `npm run type-check 2>&1 | grep "^src/"` retorna **0 erros**
+- [ ] **CRÍTICO**: `npm run lint 2>&1 | grep "Unexpected any"` retorna **0 erros**
+- [ ] **CRÍTICO**: ZERO uso de `any` no código (ver seção Type Safety)
+- [ ] **CRÍTICO**: Todos parâmetros de função com tipos explícitos
+- [ ] **CRÍTICO**: Todas funções com return type explícito
+
+**✅ Verificações Adicionais**:
 - [ ] Código segue padrões deste doc?
-- [ ] Tipos TypeScript corretos?
+- [ ] Type guards para valores unknown/nullable?
 - [ ] Imports organizados?
 - [ ] Sem console.logs desnecessários?
 - [ ] Error handling adequado?
@@ -3585,6 +3943,21 @@ npm run bundle:report
 ---
 
 ## ⛔ NÃO FAZER
+
+### 🚨 REGRA #1: ZERO TOLERÂNCIA COM `any`
+
+**⚠️ ANTES DE LER ESTA SEÇÃO**: Leia primeiro a seção [🚫 REGRA CRÍTICA: ZERO TOLERÂNCIA COM `any`](#-regra-crítica-zero-tolerância-com-any) que contém o guia completo de type safety.
+
+**Resumo Executivo**:
+- ❌ **NUNCA use `any`** em código novo
+- ❌ **NUNCA use `as any`** para resolver erros
+- ✅ **SEMPRE use `unknown`** + type guards
+- ✅ **SEMPRE execute `npm run type-check` antes de commit**
+- ✅ **SEMPRE execute `npm run lint` antes de commit**
+
+**Se houver QUALQUER erro TypeScript ou uso de `any`, NÃO COMMITE até corrigir.**
+
+---
 
 ### 🚫 Código - NUNCA
 
@@ -4381,6 +4754,27 @@ Histórico de mensagens enviadas (prevenção de duplicatas)
 
 ---
 
-**Última Atualização**: 2025-10-09
-**Versão**: 1.0.0
-**Status do Projeto**: ✅ Produção (Migração V3 Concluída)
+**Última Atualização**: 2025-01-10
+**Versão**: 2.0.0
+**Status do Projeto**: ✅ Produção (Migração V3 Concluída + Type Safety 100%)
+
+---
+
+## 🎯 RESUMO EXECUTIVO PARA IMPLEMENTAÇÕES
+
+**Antes de começar QUALQUER implementação, lembre-se:**
+
+1. ❌ **ZERO `any`** - Use `unknown` + type guards
+2. ✅ **SEMPRE tipar explicitamente** - Parâmetros e return types
+3. ✅ **SEMPRE validar antes de commit**:
+   ```bash
+   npm run type-check 2>&1 | grep "^src/"  # Deve ser 0
+   npm run lint 2>&1 | grep "Unexpected any"  # Deve ser 0
+   ```
+4. ✅ **Use `as never` APENAS para Supabase** insert/update
+5. ✅ **Type guards para unknown/nullable** - Sempre
+6. ✅ **Interfaces explícitas** ao invés de Record<string, unknown>
+
+**Se houver QUALQUER erro TypeScript ou `any`, NÃO commite até corrigir.**
+
+**Este projeto mantém 100% type safety. Qualquer degradação é considerada bug crítico.**

@@ -7,7 +7,7 @@
  * - DELETE: Deletar contato
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAuth } from '@/app/api/_middleware/auth';
 import { sanitizeObject } from '@/app/api/_middleware/validation';
 import {
@@ -22,6 +22,8 @@ import {
 } from '@/app/api/_utils/response';
 import { handleError } from '@/app/api/_utils/errorHandler';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import type { StudentContact } from '@/lib/supabaseClient';
+import type { WhatsAppData } from '@/types';
 
 // Tipo para os parâmetros da rota
 type RouteParams = {
@@ -35,7 +37,7 @@ type RouteParams = {
 // ============================================================================
 
 export const GET = withAuth(
-  async (req: NextRequest, userId: string, context?: RouteParams) => {
+  async (req: NextRequest, _userId: string, context?: RouteParams) => {
     try {
       const params = await context?.params;
       const id = params?.id;
@@ -91,7 +93,7 @@ export const GET = withAuth(
 // ============================================================================
 
 export const PUT = withAuth(
-  async (req: NextRequest, userId: string, context?: RouteParams) => {
+  async (req: NextRequest, _userId: string, context?: RouteParams) => {
     try {
       const params = await context?.params;
       const id = params?.id;
@@ -134,7 +136,7 @@ export const PUT = withAuth(
       }
 
       // 5. Preparar dados para atualização
-      const updateData: Record<string, any> = {
+      const updateData: Record<string, string | number | boolean | WhatsAppData | null> = {
         updated_at: new Date().toISOString(),
       };
 
@@ -186,7 +188,7 @@ export const PUT = withAuth(
 // ============================================================================
 
 export const DELETE = withAuth(
-  async (req: NextRequest, userId: string, context?: RouteParams) => {
+  async (req: NextRequest, _userId: string, context?: RouteParams) => {
     try {
       const params = await context?.params;
       const id = params?.id;
@@ -248,10 +250,29 @@ export const DELETE = withAuth(
 // ============================================================================
 
 /**
+ * Formato legacy do contato para resposta da API
+ */
+interface LegacyContactResponse {
+  id: string;
+  estudanteId: string;
+  nome: string;
+  parentesco: string;
+  telefone: string;
+  podeReceberMensagem: boolean;
+  whatsapp?: {
+    verified: boolean;
+    exists: boolean;
+    verifiedAt: string | null;
+    name: string | null;
+    number: string | null;
+  };
+}
+
+/**
  * Converte StudentContact do Supabase para formato legacy
  */
-function convertSupabaseToContact(contact: any): any {
-  const whatsappData = (contact.whatsapp_data as any) || {};
+function convertSupabaseToContact(contact: StudentContact & { students?: { student_id: string } }): LegacyContactResponse {
+  const whatsappData = (contact.whatsapp_data as WhatsAppData) || {};
 
   return {
     id: contact.id,
@@ -264,7 +285,7 @@ function convertSupabaseToContact(contact: any): any {
       ? {
           verified: whatsappData.verified || false,
           exists: whatsappData.exists || false,
-          verifiedAt: whatsappData.verified_at || null,
+          verifiedAt: whatsappData.verifiedAt || null,
           name: whatsappData.name || null,
           number: whatsappData.number || null,
         }

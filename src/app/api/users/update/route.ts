@@ -9,12 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export async function PUT(request: NextRequest) {
   try {
@@ -35,14 +30,10 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // @ts-ignore - Supabase type inference issue with users table
-    const result = await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from('users')
-      // @ts-ignore - Type inference issue
-      .update(updates)
+      .update(updates as never)
       .eq('firebase_uid', firebase_uid);
-
-    const { error } = result as { error: any };
 
     if (error) throw error;
 

@@ -29,8 +29,20 @@ export interface StudentFullInfo extends StudentBasicInfo {
   matricula?: string;
   dataNascimento?: string;
   bolsaFamilia?: string;
-  endereco?: any;
-  deficiencia?: any[];
+  endereco?: {
+    rua?: string;
+    numero?: string;
+    bairro?: string;
+    cidade?: string;
+    estado?: string;
+    cep?: string;
+    [key: string]: unknown;
+  };
+  deficiencia?: Array<{
+    tipo?: string;
+    descricao?: string;
+    [key: string]: unknown;
+  }>;
   contatos?: Array<{
     nome: string;
     parentesco: string;
@@ -58,12 +70,19 @@ export async function getStudentByFirebaseUUID(
   firebaseUUID: string
 ): Promise<StudentBasicInfo | null> {
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error} = (await supabaseAdmin
       .from('students')
       .select('id, student_id, name, class, shift, status')
       .eq('student_id', firebaseUUID)
       .eq('deleted', false)
-      .maybeSingle() as { data: any; error: any };
+      .maybeSingle()) as { data: {
+        id: string;
+        student_id: string;
+        name: string;
+        class: string;
+        shift: string;
+        status: string;
+      } | null; error: Error | null };
 
     if (error) {
       logger.error('[StudentService] Erro ao buscar estudante', {
@@ -111,12 +130,33 @@ export async function getStudentFullInfo(
   firebaseUUID: string
 ): Promise<StudentFullInfo | null> {
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = (await supabaseAdmin
       .from('students')
       .select('id, student_id, name, class, shift, status, registration_number, birth_date, bolsa_familia, address, disabilities, student_contacts(*)')
       .eq('student_id', firebaseUUID)
       .eq('deleted', false)
-      .maybeSingle() as { data: any; error: any };
+      .maybeSingle()) as {
+        data: {
+          id: string;
+          student_id: string;
+          name: string;
+          class: string;
+          shift: string;
+          status: string;
+          registration_number?: string;
+          birth_date?: string;
+          bolsa_familia?: string;
+          address?: unknown;
+          disabilities?: unknown[];
+          student_contacts?: Array<{
+            name: string;
+            relationship?: string;
+            phone?: string;
+            can_receive_whatsapp?: boolean;
+          }>;
+        } | null;
+        error: Error | null
+      };
 
     if (error) {
       logger.error('[StudentService] Erro ao buscar estudante completo', {
@@ -141,9 +181,9 @@ export async function getStudentFullInfo(
       matricula: data.registration_number || undefined,
       dataNascimento: data.birth_date || undefined,
       bolsaFamilia: data.bolsa_familia || undefined,
-      endereco: data.address || undefined,
-      deficiencia: data.disabilities || [],
-      contatos: (data.student_contacts || []).map((contact: any) => ({
+      endereco: (data.address as { [key: string]: unknown } | undefined) || undefined,
+      deficiencia: (data.disabilities as Array<{ [key: string]: unknown }> | undefined) || [],
+      contatos: (data.student_contacts || []).map((contact) => ({
         nome: contact.name,
         parentesco: contact.relationship || '',
         telefone: contact.phone || '',
@@ -172,12 +212,19 @@ export async function getStudentByInternalId(
   internalId: string
 ): Promise<StudentBasicInfo | null> {
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = (await supabaseAdmin
       .from('students')
       .select('id, student_id, name, class, shift, status')
       .eq('id', internalId)
       .eq('deleted', false)
-      .maybeSingle() as { data: any; error: any };
+      .maybeSingle()) as { data: {
+        id: string;
+        student_id: string;
+        name: string;
+        class: string;
+        shift: string;
+        status: string;
+      } | null; error: Error | null };
 
     if (error) {
       logger.error('[StudentService] Erro ao buscar por Internal ID', {
@@ -251,11 +298,18 @@ export async function getStudentsByFirebaseUUIDs(
       return [];
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = (await supabaseAdmin
       .from('students')
       .select('id, student_id, name, class, shift, status')
       .in('student_id', firebaseUUIDs)
-      .eq('deleted', false) as { data: any; error: any };
+      .eq('deleted', false)) as { data: Array<{
+        id: string;
+        student_id: string;
+        name: string;
+        class: string;
+        shift: string;
+        status: string;
+      }> | null; error: Error | null };
 
     if (error) {
       logger.error('[StudentService] Erro ao buscar estudantes em batch', {
@@ -265,7 +319,7 @@ export async function getStudentsByFirebaseUUIDs(
       return [];
     }
 
-    return (data || []).map((row: any) => ({
+    return (data || []).map((row) => ({
       id: row.id,
       estudanteId: row.student_id,
       nome: row.name,

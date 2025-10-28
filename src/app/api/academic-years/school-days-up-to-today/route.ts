@@ -35,13 +35,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Chamar RPC function do Supabase
-    const { data, error } = (await supabaseAdmin.rpc('get_school_days_up_to_today', {
-      p_year: year,
-    } as any)) as { data: number | null; error: any }
+    const rpcParams = { p_year: year };
+    // @ts-expect-error - Supabase RPC typing issue with dynamic functions
+    const result = await supabaseAdmin.rpc('get_school_days_up_to_today', rpcParams)
+    const { data, error } = result as { data: number | null; error: Error | null }
 
     if (error) {
-      logger.error('Erro ao contar dias letivos até hoje', { year }, error)
-      return errorResponse(error.message, 500)
+      logger.error('Erro ao contar dias letivos até hoje', { year }, error as Error)
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao contar dias letivos'
+      return errorResponse(errorMessage, 500)
     }
 
     const today = new Date().toISOString().split('T')[0]

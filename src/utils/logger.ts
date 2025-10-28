@@ -13,7 +13,7 @@ interface LogEntry {
   level: LogLevel;
   message: string;
   timestamp: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
   error?: Error;
 }
 
@@ -44,7 +44,7 @@ class Logger {
     return `[${timestamp}] ${level.toUpperCase()}: ${message}${contextStr}`;
   }
 
-  private log(level: LogLevel, message: string, context?: Record<string, any>, error?: Error) {
+  private log(level: LogLevel, message: string, context?: Record<string, unknown>, error?: Error) {
     // Verificar se deve logar este nível
     if (!this.shouldLog(level)) {
       return;
@@ -123,7 +123,7 @@ class Logger {
         }
         localStorage.setItem('app-error-logs', JSON.stringify(errorLogs));
       }
-    } catch (err) {
+    } catch {
       // Falha silenciosa
     }
   }
@@ -137,37 +137,37 @@ class Logger {
         logs.splice(0, logs.length - 100);
       }
       localStorage.setItem('app-logs', JSON.stringify(logs));
-    } catch (err) {
+    } catch {
       // Falha silenciosa em caso de problemas com localStorage
     }
   }
 
   // Métodos públicos
-  debug(message: string, context?: Record<string, any>) {
+  debug(message: string, context?: Record<string, unknown>) {
     // SILENCIAR COMPLETAMENTE debug em produção e dev
     if (!this.enableConsoleLogs) return;
     this.log('debug', message, context);
   }
 
-  info(message: string, context?: Record<string, any>) {
+  info(message: string, context?: Record<string, unknown>) {
     // SILENCIAR COMPLETAMENTE info em produção e dev
     if (!this.enableConsoleLogs) return;
     this.log('info', message, context);
   }
 
-  warn(message: string, context?: Record<string, any>, error?: Error) {
+  warn(message: string, context?: Record<string, unknown>, error?: Error) {
     // SILENCIAR COMPLETAMENTE warn em produção e dev
     if (!this.enableConsoleLogs) return;
     this.log('warn', message, context, error);
   }
 
-  error(message: string, context?: Record<string, any>, error?: Error) {
+  error(message: string, context?: Record<string, unknown>, error?: Error) {
     // Errors sempre logam (importante!)
     this.log('error', message, context, error);
   }
 
   // Helpers específicos para o domínio da aplicação
-  firebaseError(operation: string, error: Error, context?: Record<string, any>) {
+  firebaseError(operation: string, error: Error, context?: Record<string, unknown>) {
     this.error(
       `Firebase operation failed: ${operation}`,
       { ...context, operation },
@@ -175,14 +175,14 @@ class Logger {
     );
   }
 
-  userAction(action: string, userId?: string, context?: Record<string, any>) {
+  userAction(action: string, userId?: string, context?: Record<string, unknown>) {
     this.info(
       `User action: ${action}`,
       { ...context, action, userId }
     );
   }
 
-  performanceLog(operation: string, duration: number, context?: Record<string, any>) {
+  performanceLog(operation: string, duration: number, context?: Record<string, unknown>) {
     const level = duration > 2000 ? 'warn' : 'info';
     this[level](
       `Performance: ${operation} took ${duration}ms`,
@@ -196,7 +196,7 @@ class Logger {
     operation: 'create' | 'update' | 'delete' | 'read',
     studentId: string,
     studentName?: string,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ) {
     this.info(
       `Student ${operation}: ${studentName || studentId}`,
@@ -208,7 +208,7 @@ class Logger {
     operation: 'register' | 'justify' | 'delete',
     studentId: string,
     date: string,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ) {
     this.info(
       `Absence ${operation}: ${studentId} on ${date}`,
@@ -220,7 +220,7 @@ class Logger {
     operation: 'send' | 'verify' | 'error',
     phone: string,
     status: 'success' | 'failed',
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ) {
     const level = status === 'success' ? 'info' : 'error';
     this[level](
@@ -233,7 +233,7 @@ class Logger {
     operation: 'create' | 'update' | 'complete' | 'delete',
     taskId: string,
     taskTitle?: string,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ) {
     this.info(
       `Task ${operation}: ${taskTitle || taskId}`,
@@ -245,7 +245,7 @@ class Logger {
     operation: 'create' | 'update' | 'delete',
     studentId: string,
     type: string,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ) {
     this.info(
       `Interaction ${operation}: ${type} for ${studentId}`,
@@ -258,7 +258,7 @@ class Logger {
     format: 'excel' | 'pdf' | 'csv',
     recordCount: number,
     duration: number,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ) {
     this.info(
       `Export ${format}: ${recordCount} records in ${duration}ms`,
@@ -270,7 +270,7 @@ class Logger {
   slowQuery(
     collection: string,
     duration: number,
-    filters?: Record<string, any>
+    filters?: Record<string, unknown>
   ) {
     this.warn(
       `Slow Firestore query: ${collection} took ${duration}ms`,
@@ -286,7 +286,7 @@ export const usePerformanceLogger = () => {
   const measureOperation = async <T>(
     operation: string,
     fn: () => Promise<T>,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ): Promise<T> => {
     const startTime = performance.now();
     try {
@@ -313,12 +313,12 @@ export const createTimer = (operation: string) => {
   const startTime = performance.now();
 
   return {
-    end: (context?: Record<string, any>) => {
+    end: (context?: Record<string, unknown>) => {
       const duration = performance.now() - startTime;
       logger.performanceLog(operation, duration, context);
       return duration;
     },
-    endWithError: (error: Error, context?: Record<string, any>) => {
+    endWithError: (error: Error, context?: Record<string, unknown>) => {
       const duration = performance.now() - startTime;
       logger.error(
         `Operation failed: ${operation}`,

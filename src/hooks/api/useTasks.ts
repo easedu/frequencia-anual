@@ -13,6 +13,14 @@ import { PaginatedResponse } from './useStudents';
 // TYPES
 // ============================================================================
 
+export interface TaskMetadata {
+  absenceCount?: number;
+  absenceMultiple?: number;
+  contactAttempts?: number;
+  whatsappMessageId?: string;
+  [key: string]: unknown;
+}
+
 export interface UserTask {
   id: string;
   student_id: string;
@@ -41,7 +49,7 @@ export interface UserTask {
   resolved_by_name?: string | null;
   action_taken: string | null;
   notes: string | null;
-  metadata: Record<string, any> | null;
+  metadata: TaskMetadata | null;
   created_at: string;
   updated_at: string;
 }
@@ -70,7 +78,7 @@ export interface CreateTaskData {
   due_date?: string | null;
   assigned_to?: string | null;
   notes?: string | null;
-  metadata?: Record<string, any> | null;
+  metadata?: TaskMetadata | null;
 }
 
 export interface UpdateTaskData {
@@ -84,7 +92,7 @@ export interface UpdateTaskData {
   is_resolved?: boolean;
   action_taken?: string | null;
   notes?: string | null;
-  metadata?: Record<string, any> | null;
+  metadata?: TaskMetadata | null;
 }
 
 // ============================================================================

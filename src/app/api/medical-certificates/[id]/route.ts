@@ -67,19 +67,31 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
       return date; // Já está em YYYY-MM-DD
     };
 
-    const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+    // Build update data object with proper types
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (sanitizedData.dataInicio) updateData.start_date = convertToISODate(sanitizedData.dataInicio);
     if (sanitizedData.dataFim) updateData.end_date = convertToISODate(sanitizedData.dataFim);
     if (sanitizedData.motivo !== undefined) updateData.diagnosis = sanitizedData.motivo; // ✅ Usar 'diagnosis'
     if (sanitizedData.arquivoUrl !== undefined) updateData.document_url = sanitizedData.arquivoUrl;
 
-    const { data: updatedData, error: updateError } = (await supabaseAdmin
+    type MedicalCertificateWithStudent = {
+      id: string;
+      start_date: string;
+      end_date: string;
+      diagnosis: string | null;
+      document_url: string | null;
+      students?: { id: string; student_id: string } | null;
+    };
+
+    const updateResult = await supabaseAdmin
       .from('medical_certificates')
-      // @ts-ignore - Supabase types are complex
-      .update(updateData)
+      .update(updateData as never)
       .eq('id', id)
       .select('*, students(id, student_id)')
-      .single()) as { data: any; error: any };
+      .single();
+
+    const updatedData = updateResult.data as MedicalCertificateWithStudent | null;
+    const updateError = updateResult.error;
 
     if (updateError) {
       console.error('[PUT /api/medical-certificates/[id]] Error:', updateError);
@@ -93,6 +105,11 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
       console.log('[PUT /api/medical-certificates/[id]] Dados atualizados:', updatedData);
 
       try {
+        // ✅ Verificar se updatedData existe antes de acessar propriedades
+        if (!updatedData) {
+          throw new Error('Dados atualizados não encontrados');
+        }
+
         // ✅ USAR dados já convertidos (updatedData tem YYYY-MM-DD)
         const startDate = updatedData.start_date;
         const endDate = updatedData.end_date;
@@ -113,14 +130,15 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
 
         // 1. ✅ DESASSOCIAR faltas antigas (NÃO DELETAR!)
         // Remover atestado e marcar como não justificadas
-        const { error: updateOldError } = (await supabaseAdmin
+        const disassociateResult = await supabaseAdmin
           .from('student_absences')
-          // @ts-ignore - Supabase types inference issue
           .update({
             medical_certificate_id: null,
             is_justified: false
-          })
-          .eq('medical_certificate_id', id)) as { error: any };
+          } as never)
+          .eq('medical_certificate_id', id);
+
+        const updateOldError = disassociateResult.error;
 
         if (updateOldError) {
           console.error('[PUT /api/medical-certificates/[id]] ❌ Erro ao desassociar faltas antigas:', updateOldError);
@@ -171,39 +189,44 @@ export const PUT = withAuth(async (req: NextRequest, userId: string, context?: R
                                  bimester === 4 ? '4º Bimestre' : null;
 
               // Verificar se falta já existe para este estudante e data
-              const { data: existing, error: checkError } = (await supabaseAdmin
+              if (!internalId) {
+                console.error('[PUT /api/medical-certificates/[id]] ❌ Internal ID não encontrado');
+                continue;
+              }
+
+              const existingResult = await supabaseAdmin
                 .from('student_absences')
                 .select('id')
                 .eq('student_id', internalId)
                 .eq('absence_date', absenceDate)
-                .maybeSingle()) as { data: { id: string } | null; error: any };
+                .maybeSingle();
+
+              const existing = existingResult.data as { id: string } | null;
 
               if (existing) {
                 // ✅ Falta existe: ATUALIZAR para associar ao atestado
-                const { error: updateError } = (await supabaseAdmin
+                const justifyResult = await supabaseAdmin
                   .from('student_absences')
-                  // @ts-ignore - Supabase types inference issue
                   .update({
                     is_justified: true,
                     medical_certificate_id: id,
-                  })
-                  .eq('id', existing.id)) as { error: any };
+                  } as never)
+                  .eq('id', existing.id);
 
-                if (!updateError) updatedCount++;
+                if (!justifyResult.error) updatedCount++;
               } else {
                 // ✅ Falta não existe: CRIAR nova
-                const { error: insertError } = (await supabaseAdmin
+                const insertResult = await supabaseAdmin
                   .from('student_absences')
-                  // @ts-ignore - Supabase types inference issue
                   .insert({
                     student_id: internalId,
                     absence_date: absenceDate,
                     bimester: bimesterStr,
                     is_justified: true,
                     medical_certificate_id: id,
-                  })) as { error: any };
+                  } as never);
 
-                if (!insertError) createdCount++;
+                if (!insertResult.error) createdCount++;
               }
             }
 
@@ -258,14 +281,15 @@ export const DELETE = withAuth(async (req: NextRequest, userId: string, context?
     // ✅ ANTES de deletar, desassociar faltas e marcar como não justificadas
     console.log('[DELETE /api/medical-certificates/[id]] 🔄 Desassociando faltas antes de deletar atestado');
 
-    const { error: updateAbsencesError } = (await supabaseAdmin
+    const updateAbsencesResult = await supabaseAdmin
       .from('student_absences')
-      // @ts-ignore - Supabase types inference issue
       .update({
         medical_certificate_id: null,
         is_justified: false
-      })
-      .eq('medical_certificate_id', id)) as { error: any };
+      } as never)
+      .eq('medical_certificate_id', id);
+
+    const updateAbsencesError = updateAbsencesResult.error;
 
     if (updateAbsencesError) {
       console.error('[DELETE /api/medical-certificates/[id]] ❌ Erro ao desassociar faltas:', updateAbsencesError);

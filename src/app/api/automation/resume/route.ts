@@ -2,6 +2,44 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AutomationExecutionService } from '@/services/supabase/automationExecutionService';
 import { logger } from '@/utils/logger';
 import { processAbsencesWithCheckpoint } from '@/services/automationOrchestrator';
+import type { AutomationExecution } from '@/types';
+
+/**
+ * Helper para extrair dados da execução do metadata
+ */
+function extractExecutionData(execution: {
+  id: string;
+  metadata: Record<string, unknown>;
+  executionStatus: string;
+}): AutomationExecution | null {
+  try {
+    return {
+      executionId: execution.id,
+      status: execution.executionStatus as AutomationExecution['status'],
+      startedAt: (execution.metadata.startedAt as number) || Date.now(),
+      finishedAt: execution.metadata.finishedAt as number | undefined,
+      lastCheckpointAt: execution.metadata.lastCheckpointAt as number | undefined,
+      dryRun: (execution.metadata.dryRun as boolean) || false,
+      absenceMultiple: (execution.metadata.absenceMultiple as number) || 3,
+      notificationPhone: (execution.metadata.notificationPhone as string) || '',
+      referenceMonth: (execution.metadata.referenceMonth as number) || 1,
+      referenceYear: (execution.metadata.referenceYear as number) || 2025,
+      totalStudents: (execution.metadata.totalStudents as number) || 0,
+      processedStudents: (execution.metadata.processedStudents as number) || 0,
+      currentStudentIndex: (execution.metadata.currentStudentIndex as number) || 0,
+      processedStudentIds: (execution.metadata.processedStudentIds as string[]) || [],
+      messagesSucceeded: (execution.metadata.messagesSucceeded as number) || 0,
+      messagesFailed: (execution.metadata.messagesFailed as number) || 0,
+      tasksCreated: (execution.metadata.tasksCreated as number) || 0,
+      errors: (execution.metadata.errors as Array<{ estudanteId: string; estudanteNome: string; error: string }>) || [],
+      summary: execution.metadata.summary as AutomationExecution['summary'],
+      error: execution.metadata.error as string | undefined,
+    };
+  } catch (_error) {
+    logger.error('[RESUME] Erro ao extrair dados da execução', { executionId: execution.id }, error as Error);
+    return null;
+  }
+}
 
 /**
  * API DE RETOMADA MANUAL
@@ -14,8 +52,6 @@ import { processAbsencesWithCheckpoint } from '@/services/automationOrchestrator
  * Auth: Basic Auth
  */
 export async function POST(request: NextRequest) {
-  logger.info('[AUTOMATION] 🔄 Tentativa de retomada de execução');
-
   // ==========================================
   // AUTENTICAÇÃO
   // ==========================================
@@ -42,7 +78,7 @@ export async function POST(request: NextRequest) {
         { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="API"' } }
       );
     }
-  } catch (error) {
+  } catch (_error: unknown) {
     return NextResponse.json(
       { success: false, error: 'Invalid authorization format' },
       { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="API"' } }
@@ -63,7 +99,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-  } catch (error) {
+  } catch (_error: unknown) {
     return NextResponse.json(
       { success: false, error: 'Invalid JSON body' },
       { status: 400 }
@@ -74,12 +110,22 @@ export async function POST(request: NextRequest) {
   // BUSCAR EXECUÇÃO NO SUPABASE
   // ==========================================
   try {
-    const execution = await AutomationExecutionService.getExecutionById(executionId);
+    const rawExecution = await AutomationExecutionService.getExecutionById(executionId);
 
-    if (!execution) {
+    if (!rawExecution) {
       return NextResponse.json(
         { success: false, error: 'Execution not found' },
         { status: 404 }
+      );
+    }
+
+    // Extrair dados da execução do metadata
+    const execution = extractExecutionData(rawExecution);
+
+    if (!execution) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid execution data' },
+        { status: 500 }
       );
     }
 
@@ -117,13 +163,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logger.info('[AUTOMATION] 🔍 Execução encontrada, retomando...', {
-      executionId,
-      currentStatus: execution.status,
-      processedStudents: execution.processedStudents,
-      totalStudents: execution.totalStudents
-    });
-
     // ==========================================
     // MARCAR COMO RUNNING (RETOMANDO)
     // ==========================================
@@ -132,24 +171,20 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // RETOMAR PROCESSAMENTO EM BACKGROUND
     // ==========================================
-    const currentDate = new Date();
-    const referenceMonth = execution.absenceMultiple ? currentDate.getMonth() + 1 : 1;
-    const referenceYear = execution.absenceMultiple ? currentDate.getFullYear() : 2025;
-
     processAbsencesWithCheckpoint(
       executionId,
       {
         dryRun: execution.dryRun,
-        absenceMultiple: execution.absenceMultiple || 3,
-        notificationPhone: execution.notificationPhone || '',
-        referenceMonth,
-        referenceYear
+        absenceMultiple: execution.absenceMultiple,
+        notificationPhone: execution.notificationPhone,
+        referenceMonth: execution.referenceMonth,
+        referenceYear: execution.referenceYear
       },
       authorization
-    ).catch(error => {
+    ).catch((error: unknown) => {
       logger.error('[AUTOMATION] ❌ Erro ao retomar processamento', {
         executionId,
-        error: error.message
+        error: error instanceof Error ? error.message : 'Erro desconhecido'
       });
     });
 
@@ -171,7 +206,7 @@ export async function POST(request: NextRequest) {
       { status: 202 } // 202 Accepted
     );
 
-  } catch (error) {
+  } catch (_error: unknown) {
     logger.error('[AUTOMATION] ❌ Erro ao retomar execução', {
       executionId,
       error: error instanceof Error ? error.message : 'Erro desconhecido'

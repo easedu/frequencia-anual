@@ -239,7 +239,7 @@ export class MedicalCertificatesService {
       const result = await response.json();
       return this.mapApiToCertificate(result.data);
     } catch (error) {
-      logger.error('Erro ao criar atestado', data, error as Error);
+      logger.error('Erro ao criar atestado', { studentId: data.studentId, startDate: data.startDate, endDate: data.endDate }, error as Error);
       throw error;
     }
   }
@@ -308,7 +308,11 @@ export class MedicalCertificatesService {
         return date;
       };
 
-      const apiUpdates: any = {};
+      const apiUpdates: {
+        dataInicio?: string;
+        dataFim?: string;
+        motivo?: string | null;
+      } = {};
       if (updates.startDate) apiUpdates.dataInicio = convertDateFormat(updates.startDate);
       if (updates.endDate) apiUpdates.dataFim = convertDateFormat(updates.endDate);
       if (updates.diagnosis !== undefined) apiUpdates.motivo = updates.diagnosis || null;
@@ -380,7 +384,7 @@ export class MedicalCertificatesService {
       const result = await response.json();
       return (result.data || []).map(this.mapApiToCertificate);
     } catch (error) {
-      logger.error('Erro ao buscar atestados pendentes', error as Error);
+      logger.error('Erro ao buscar atestados pendentes', {}, error as Error);
       return [];
     }
   }

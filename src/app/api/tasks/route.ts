@@ -5,7 +5,7 @@
  * POST - Cria nova task (simplificada, sem lógica de automação)
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query
 
     if (error) {
-      logger.error('Erro ao buscar tasks', error)
+      logger.error('Erro ao buscar tasks', {}, new Error(error.message))
       return errorResponse(error.message, 500)
     }
 
@@ -136,30 +136,38 @@ export async function POST(request: NextRequest) {
     const validated = createTaskSchema.parse(body)
 
     // Criar task no Supabase
-    const { data, error } = await supabaseAdmin
+    const insertData = {
+      student_id: validated.student_id,
+      title: validated.title,
+      description: validated.description || null,
+      recommended_action: validated.recommended_action || null,
+      is_resolved: validated.is_resolved || false,
+      action_taken: validated.action_taken || null,
+      created_by: validated.created_by || null,
+      assigned_to: validated.assigned_to || null,
+      due_date: validated.due_date || null,
+    };
+
+    type TaskRecord = Record<string, unknown>;
+    type TaskError = { message: string } | null;
+
+    const result = await supabaseAdmin
       .from('user_tasks')
-      .insert({
-        student_id: validated.student_id,
-        title: validated.title,
-        description: validated.description || null,
-        recommended_action: validated.recommended_action || null,
-        is_resolved: validated.is_resolved || false,
-        action_taken: validated.action_taken || null,
-        created_by: validated.created_by || null,
-        assigned_to: validated.assigned_to || null,
-        due_date: validated.due_date || null,
-      } as any)
+      // @ts-ignore - Supabase types inference limitation
+      .insert(insertData)
       .select()
-      .single()
+      .single();
+
+    const { data, error } = result as unknown as { data: TaskRecord | null; error: TaskError };
 
     if (error) {
-      logger.error('Erro ao criar task', error)
+      logger.error('Erro ao criar task', {}, new Error(error.message))
       return errorResponse(error.message, 500)
     }
 
-    logger.info('Task criada com sucesso', { taskId: (data as any)?.id, studentId: validated.student_id })
+    logger.info('Task criada com sucesso', { taskId: data?.id, studentId: validated.student_id })
 
-    return successResponse(data as any, 201)
+    return successResponse(data, 201)
   } catch (error) {
     return handleError(error)
   }

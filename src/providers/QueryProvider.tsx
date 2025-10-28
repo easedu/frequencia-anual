@@ -51,7 +51,7 @@ export function QueryProvider({ children }: QueryProviderProps) {
             refetchOnReconnect: true,
 
             // ✅ refetchOnMount: Refetch ao montar apenas se stale
-            refetchOnMount: 'stale',
+            refetchOnMount: true,
           },
           mutations: {
             // ✅ retry: Mutations não fazem retry por padrão (evitar duplicação)
@@ -74,8 +74,7 @@ export function QueryProvider({ children }: QueryProviderProps) {
       {process.env.NODE_ENV === 'development' && (
         <ReactQueryDevtools
           initialIsOpen={false}
-          position="bottom-right"
-          buttonPosition="bottom-right"
+          position="bottom"
         />
       )}
     </QueryClientProvider>

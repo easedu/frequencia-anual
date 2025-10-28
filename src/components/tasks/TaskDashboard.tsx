@@ -26,15 +26,15 @@ import {
 import { auth } from '@/firebase.config';
 // ✅ SPRINT 4 - FASE 7: 100% migrado para API REST
 import {
-  useStudents,
   useInteractions,
   useUpdateTask,
   useDeleteTask,
-  useCreateInteraction
+  useCreateInteraction,
+  type UserTask,
+  type UpdateTaskData
 } from '@/hooks/api';
 import { useEnrichedTasks, EnrichedTask } from '@/hooks/useEnrichedTasks';
 import type { DashboardTask, TaskSection, TaskPriorityLevel } from '@/types/dashboardTasks';
-import type { UserTask } from '@/types/tasks';
 import type { Contato } from '@/types';
 import RegisterInteractionCard from '@/components/interactions/RegisterInteractionCard';
 import { toast } from 'sonner';
@@ -129,7 +129,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
         contatos: [] // Será buscado via API quando necessário
       };
     } catch (error) {
-      logger.error('Erro ao buscar dados do estudante:', error as Error);
+      logger.error('Erro ao buscar dados do estudante:', { error: error as Error });
       return null;
     }
   };
@@ -137,15 +137,16 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   // Função para buscar dados atuais da interação (usando hook API REST)
   const getInteractionData = (estudanteId: string, interactionId: string) => {
     try {
+      // ✅ interactions já vem tipado como Interaction[] do hook
       const interaction = interactions.find(
-        i => (i as any).interaction_id === interactionId && (i as any).student_id === estudanteId
+        i => i.id === interactionId && i.studentId === estudanteId
       );
 
       if (interaction) {
         return {
-          type: (interaction as any).interaction_type || 'Resolvida via API',
+          type: interaction.type || 'Resolvida via API',
           description: interaction.description || 'Tarefa marcada como resolvida automaticamente pela API',
-          createdBy: (interaction as any).created_by || 'Usuário desconhecido',
+          createdBy: interaction.createdBy || 'Usuário desconhecido',
           exists: true
         };
       }
@@ -159,7 +160,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
         exists: false
       };
     } catch (error) {
-      logger.error('Erro ao buscar dados da interação:', error as Error);
+      logger.error('Erro ao buscar dados da interação:', { error: error as Error });
       return null;
     }
   };
@@ -173,12 +174,12 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
 
     // Parsear metadata para obter dados específicos da tarefa (se houver)
     const metadata = enrichedTask.metadata || {};
-    const absencesCount = metadata.absencesCount || 0;
-    const frequencyPercentage = metadata.frequencyPercentage || 100;
-    const bimester = metadata.bimester || 'N/A';
+    const absencesCount = typeof metadata.absencesCount === 'number' ? metadata.absencesCount : 0;
+    const frequencyPercentage = typeof metadata.frequencyPercentage === 'number' ? metadata.frequencyPercentage : 100;
+    const bimester = typeof metadata.bimester === 'string' ? metadata.bimester : 'N/A';
 
     // Determinar ação recomendada e prioridade baseado no título/descrição
-    let recommendedAction = enrichedTask.action_taken || 'Contato com a família';
+    const recommendedAction = enrichedTask.action_taken || 'Contato com a família';
     let priority: TaskPriorityLevel = 'routine';
 
     // Inferir prioridade baseado no título/descrição
@@ -188,7 +189,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
       priority = 'attention';
     }
 
-    let resolvedAction = enrichedTask.action_taken || 'Resolvida via API';
+    const resolvedAction = enrichedTask.action_taken || 'Resolvida via API';
     let resolvedDescription = enrichedTask.description || 'Tarefa marcada como resolvida automaticamente';
     let resolvedBy = enrichedTask.resolved_by || enrichedTask.created_by;
 
@@ -217,20 +218,18 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   };
 
   // Função para limpar referências de interações deletadas
-  const cleanupDeletedInteractions = async (userTasks: UserTask[]) => {
-    const tasksToUpdate: Array<{id: string, updates: Partial<UserTask>}> = [];
+  const _cleanupDeletedInteractions = async (userTasks: UserTask[]) => {
+    const tasksToUpdate: Array<{id: string, updates: UpdateTaskData}> = [];
 
     for (const task of userTasks) {
-      if (task.status === 'COMPLETED' && task.interactionId) {
-        const interactionData = await getInteractionData(task.estudanteId, task.interactionId);
+      if (task.status === 'COMPLETED' && task.notes) {
+        const interactionData = await getInteractionData(task.student_id, task.notes);
         if (interactionData && !interactionData.exists) {
           tasksToUpdate.push({
             id: task.id,
             updates: {
-              interactionId: undefined,
-              interactionType: 'Interação removida',
-              interactionDescription: 'A interação associada a esta tarefa foi removida',
-              resolvedBy: 'Desconhecido'
+              notes: 'Interação associada foi removida',
+              action_taken: 'Interação removida'
             }
           });
         }
@@ -241,10 +240,10 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
     if (tasksToUpdate.length > 0) {
       try {
         for (const { id, updates } of tasksToUpdate) {
-          await updateTask(id, updates as any);
+          await updateTask(id, updates);
         }
       } catch (error) {
-        logger.error('Erro ao atualizar tarefas com interações removidas:', error as Error);
+        logger.error('Erro ao atualizar tarefas com interações removidas:', { error: error as Error });
       }
     }
   };
@@ -294,7 +293,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
 
       setTaskSections(sections);
     } catch (error) {
-      logger.error('Erro ao carregar tarefas:', error as Error);
+      logger.error('Erro ao carregar tarefas:', { error: error as Error });
       toast.error('Erro ao carregar tarefas');
     } finally {
       setLoading(false);
@@ -330,7 +329,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
         toast.info('Nenhuma tarefa encontrada para exclusão');
       }
     } catch (error) {
-      logger.error('Erro ao limpar dados da API:', error as Error);
+      logger.error('Erro ao limpar dados da API:', { error: error as Error });
       toast.error('Erro ao limpar dados');
     } finally {
       setClearingData(false);
@@ -385,7 +384,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
         toast.error('Erro ao limpar histórico');
       }
     } catch (error) {
-      logger.error('Erro ao limpar histórico de mensagens:', error as Error);
+      logger.error('Erro ao limpar histórico de mensagens:', { error: error as Error });
       toast.error('Erro ao limpar histórico de mensagens');
     } finally {
       setClearingHistory(false);
@@ -393,11 +392,11 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
   };
 
   // Função para copiar telefone
-  const copyPhoneToClipboard = async (phone: string, contactName: string) => {
+  const _copyPhoneToClipboard = async (phone: string, contactName: string) => {
     try {
       await navigator.clipboard.writeText(phone);
       toast.success(`Telefone de ${contactName} copiado!`);
-    } catch (error) {
+    } catch {
       toast.error('Erro ao copiar telefone');
     }
   };
@@ -426,7 +425,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
       const studentData = await getStudentData(task.estudanteId);
       setStudentContacts(studentData?.contatos || []);
     } catch (error) {
-      logger.error('Erro ao buscar contatos do estudante:', error as Error);
+      logger.error('Erro ao buscar contatos do estudante:', { error: error as Error });
       setStudentContacts([]);
     }
 
@@ -482,25 +481,23 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
       // Obter nome do usuário atual
       const currentUser = auth.currentUser?.displayName || auth.currentUser?.email || "Usuário desconhecido";
 
-      // 2. Salvar interação usando hook (API REST - snake_case)
+      // 2. Salvar interação usando hook (API REST - camelCase como esperado pelo tipo)
       const createdInteraction = await createInteraction({
-        student_id: selectedTask.estudanteId,
-        interaction_type: interactionType,
-        interaction_date: formattedDate,
+        studentId: selectedTask.estudanteId,
+        type: interactionType,
+        date: formattedDate,
         description: interactionDescription,
-        is_sensitive: interactionSensitive,
-        created_by: currentUser
+        sensitive: interactionSensitive,
+        createdBy: currentUser
       });
 
       // 3. Atualizar tarefa como completada
       await updateTask(selectedTask.id, {
         status: 'COMPLETED',
-        completedAt: new Date().toISOString(),
-        interactionId: createdInteraction.interaction_id,
-        interactionType: interactionType,
-        interactionDescription: interactionDescription,
-        resolvedBy: currentUser
-      } as any);
+        is_resolved: true,
+        action_taken: interactionType,
+        notes: `${interactionDescription}\n\nInteração ID: ${createdInteraction.id}`
+      });
 
       toast.success('Tarefa resolvida com sucesso!');
       setShowInteractionModal(false);
@@ -511,7 +508,7 @@ export default function TaskDashboard({ userRole }: TaskDashboardProps) {
       await refetchTasks();
 
     } catch (error) {
-      logger.error('Erro ao resolver tarefa:', error as Error);
+      logger.error('Erro ao resolver tarefa:', { error: error as Error });
       toast.error('Erro ao resolver tarefa');
     }
   };

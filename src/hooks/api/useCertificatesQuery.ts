@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchWithRetry } from '@/utils/retry';
 import { apiCircuitBreaker } from '@/utils/circuitBreaker';
+import type { Atestado } from '@/types';
 
 // ============================================================================
 // QUERY KEYS
@@ -39,7 +40,7 @@ export interface CertificateFilters {
 
 export interface CertificateResponse {
   success: boolean;
-  data: any[];
+  data: Atestado[];
   pagination: {
     limit: number;
     hasNextPage: boolean;
@@ -148,7 +149,7 @@ export function useCreateCertificate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (certificateData: any) => {
+    mutationFn: async (certificateData: Partial<Atestado> & { studentId: string }) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 
@@ -185,7 +186,7 @@ export function useUpdateCertificate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...certificateData }: any) => {
+    mutationFn: async ({ id, ...certificateData }: { id: string } & Partial<Atestado>) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 

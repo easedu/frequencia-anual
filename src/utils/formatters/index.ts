@@ -32,7 +32,7 @@ export function formatFirebaseDate(dateStr: string | undefined): string {
     formatCache.set(dateStr, formatted);
     return formatted;
   } catch (error) {
-    logger.error('Erro ao formatar data do Firebase', error as Error);
+    logger.error('Erro ao formatar data do Firebase', {}, error as Error);
     return "";
   }
 }
@@ -113,7 +113,7 @@ export function formatDate(dateString: string | undefined): string {
     return formattedDate;
 
   } catch (error) {
-    logger.error('Erro ao formatar data', error as Error);
+    logger.error('Erro ao formatar data', {}, error as Error);
     return "";
   }
 }
@@ -153,7 +153,7 @@ export function parseDateToFirebase(dateStr: string): string {
     
     return "";
   } catch (error) {
-    logger.error('Erro ao converter data para Firebase', error as Error);
+    logger.error('Erro ao converter data para Firebase', {}, error as Error);
     return "";
   }
 }
@@ -179,7 +179,7 @@ export function parseDate(dateStr: string): Date | null {
     
     return new Date(dateStr);
   } catch (error) {
-    logger.error('Erro ao fazer parse da data', error as Error);
+    logger.error('Erro ao fazer parse da data', {}, error as Error);
     return null;
   }
 }
@@ -376,7 +376,6 @@ export function getFrequencyBand(percentualFrequencia: number): {
  */
 export function clearFormatCache(): void {
   formatCache.clear();
-  logger.info('Cache de formatação limpo');
 }
 
 /**

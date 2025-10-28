@@ -136,11 +136,16 @@ export const calculateDiasLetivos = async (start: string, end: string): Promise<
         // Contar dias letivos por bimestre
         const totalsByBimester = { b1: 0, b2: 0, b3: 0, b4: 0 };
 
+        interface SchoolDay {
+            date: string;
+            isChecked: boolean;
+        }
+
         const bimesterKeys = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
         bimesterKeys.forEach((key, index) => {
             const bimesterData = academicYearData[key];
             if (bimesterData?.dates) {
-                const count = bimesterData.dates.filter((day: any) => day.isChecked).length;
+                const count = (bimesterData.dates as SchoolDay[]).filter((day) => day.isChecked).length;
                 if (index === 0) totalsByBimester.b1 = count;
                 if (index === 1) totalsByBimester.b2 = count;
                 if (index === 2) totalsByBimester.b3 = count;
@@ -181,6 +186,11 @@ export const calculateDiasLetivos = async (start: string, end: string): Promise<
  */
 export async function getDiasLetivosNoPeriodo(startDate: Date, endDate: Date): Promise<string[]> {
     try {
+        interface SchoolDay {
+            date: string;
+            isChecked: boolean;
+        }
+
         // Usar import estático (já importado no topo do arquivo)
         const currentYear = new Date().getFullYear();
 
@@ -199,14 +209,14 @@ export async function getDiasLetivosNoPeriodo(startDate: Date, endDate: Date): P
             const bimesterData = academicYearData[key];
             if (bimesterData?.dates) {
                 // Filtrar dias letivos marcados no período
-                const bimesterDates = bimesterData.dates
-                    .filter((day: any) => {
+                const bimesterDates = (bimesterData.dates as SchoolDay[])
+                    .filter((day) => {
                         if (!day.isChecked) return false;
 
                         const date = parseDate(day.date);
                         return date && date >= startDate && date <= endDate;
                     })
-                    .map((day: any) => day.date);
+                    .map((day) => day.date);
 
                 diasLetivos.push(...bimesterDates);
             }

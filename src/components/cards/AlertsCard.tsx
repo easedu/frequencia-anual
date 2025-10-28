@@ -645,7 +645,9 @@ const AlertsCard = memo(function AlertsCard({ data, students = [] }: AlertsCardP
             return {
                 ...student,
                 temDeficiencia: studentInfo?.deficiencia?.estudanteComDeficiencia || false,
-                tipoDeficiencia: Array.isArray(tipoDeficiencia) ? tipoDeficiencia : (tipoDeficiencia ? [tipoDeficiencia] : [])
+                tipoDeficiencia: Array.isArray(tipoDeficiencia)
+                    ? tipoDeficiencia as string[]
+                    : (tipoDeficiencia ? [tipoDeficiencia as string] : [])
             };
         });
     };

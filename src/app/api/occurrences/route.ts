@@ -5,7 +5,7 @@
  * POST - Cria nova occurrence
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
@@ -91,16 +91,15 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query
 
     if (error) {
-      logger.error('Erro ao buscar occurrences', error)
+      logger.error('Erro ao buscar occurrences', { error })
       return errorResponse(error.message, 500)
     }
 
     // Buscar nomes dos usuários (reported_by) para enriquecer os dados
     if (data && data.length > 0) {
       // Coletar IDs únicos de reported_by (filtrar apenas valores que parecem ser Firebase UIDs)
-      const potentialUIDs = [...new Set(
-        data.map((occ: any) => occ.reported_by).filter(Boolean)
-      )].filter((id: any) => id.length > 20); // Firebase UIDs têm 28 caracteres
+      const reportedByIds = data.map((occ: Record<string, unknown>) => occ.reported_by as string | null).filter(Boolean) as string[];
+      const potentialUIDs = [...new Set(reportedByIds)].filter((id: string) => id.length > 20);
 
       let userMap = new Map<string, string>();
 
@@ -110,19 +109,20 @@ export async function GET(request: NextRequest) {
           .select('firebase_uid, full_name')
           .in('firebase_uid', potentialUIDs);
 
-        userMap = new Map((users || []).map((u: any) => [u.firebase_uid, u.full_name]));
+        userMap = new Map((users || []).map((u: Record<string, unknown>) => [u.firebase_uid as string, u.full_name as string]));
       }
 
       // Adicionar nome do usuário aos dados
-      data.forEach((occ: any) => {
+      data.forEach((occ: Record<string, unknown>) => {
+        const reportedBy = occ.reported_by as string | null;
         // Tentar buscar nome do Firebase UID primeiro
-        let userName = userMap.get(occ.reported_by);
+        let userName = reportedBy ? userMap.get(reportedBy) : undefined;
 
         // Se não encontrou no userMap, verificar se é um nome direto (dados antigos)
         if (!userName) {
           // Se reported_by tem menos de 20 caracteres, provavelmente é um nome direto
-          if (occ.reported_by && occ.reported_by.length < 20) {
-            userName = occ.reported_by;
+          if (reportedBy && reportedBy.length < 20) {
+            userName = reportedBy;
           } else {
             // Firebase UID não encontrado em user_profiles
             userName = 'Usuário não encontrado';
@@ -184,36 +184,44 @@ export async function POST(request: NextRequest) {
     const validated = createOccurrenceSchema.parse(body)
 
     // Criar occurrence no Supabase
-    const { data, error } = await supabaseAdmin
+    const insertData = {
+      student_id: validated.student_id,
+      occurrence_type: validated.occurrence_type,
+      occurrence_date: validated.occurrence_date,
+      description: validated.description,
+      severity: validated.severity || 'LEVE',
+      action_taken: validated.action_taken || null,
+      family_notified: validated.family_notified || false,
+      notification_method: validated.notification_method || null,
+      reported_by: validated.reported_by,
+      follow_up_notes: validated.follow_up_notes || null,
+      created_by: validated.reported_by, // reported_by também é created_by
+    };
+
+    type OccurrenceRecord = Record<string, unknown>;
+    type OccurrenceError = { message: string } | null;
+
+    const result = await supabaseAdmin
       .from('student_occurrences')
-      .insert({
-        student_id: validated.student_id,
-        occurrence_type: validated.occurrence_type,
-        occurrence_date: validated.occurrence_date,
-        description: validated.description,
-        severity: validated.severity || 'LEVE',
-        action_taken: validated.action_taken || null,
-        family_notified: validated.family_notified || false,
-        notification_method: validated.notification_method || null,
-        reported_by: validated.reported_by,
-        follow_up_notes: validated.follow_up_notes || null,
-        created_by: validated.reported_by, // reported_by também é created_by
-      } as any)
+      // @ts-ignore - Supabase types inference limitation
+      .insert(insertData)
       .select()
-      .single()
+      .single();
+
+    const { data, error } = result as unknown as { data: OccurrenceRecord | null; error: OccurrenceError };
 
     if (error) {
-      logger.error('Erro ao criar occurrence', error)
+      logger.error('Erro ao criar occurrence', {}, new Error(error.message))
       return errorResponse(error.message, 500)
     }
 
     logger.info('Occurrence criada com sucesso', {
-      occurrenceId: (data as any)?.id,
+      occurrenceId: data?.id,
       studentId: validated.student_id,
       type: validated.occurrence_type
     })
 
-    return successResponse(data as any, 201)
+    return successResponse(data, 201)
   } catch (error) {
     return handleError(error)
   }

@@ -33,10 +33,99 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Converte data de DDMMYYYY para YYYY-MM-DD (formato ISO do Supabase)
+ */
+function convertToISODate(date: string): string {
+  if (date.match(/^\d{8}$/)) {
+    // Format: DDMMYYYY → YYYY-MM-DD
+    const day = date.substring(0, 2);
+    const month = date.substring(2, 4);
+    const year = date.substring(4, 8);
+    return `${year}-${month}-${day}`;
+  }
+  return date; // Já está em YYYY-MM-DD
+}
+
+/**
+ * Converte bimestre de string ('B1', 'B2', etc.) para number (1, 2, etc.)
+ */
+function convertBimesterToNumber(bimestre: 'B1' | 'B2' | 'B3' | 'B4'): number {
+  const map: Record<string, number> = { B1: 1, B2: 2, B3: 3, B4: 4 };
+  return map[bimestre];
+}
+
+interface SupabaseAbsence {
+  id: string;
+  student_id: string;
+  absence_date: string;
+  bimester: number;
+  is_justified: boolean;
+  medical_certificate_id?: string | null;
+  suspension_id?: string | null;
+  created_at: string;
+  students?: {
+    student_id: string;
+    name: string;
+    class: string;
+  };
+}
+
+interface LegacyAbsence {
+  id: string;
+  estudanteId: string;
+  student_id: string;
+  estudanteNome: string;
+  turma: string;
+  data: string;
+  absence_date: string;
+  bimestre: number;
+  justificada: boolean;
+  justified: boolean;
+  is_justified: boolean;
+  motivoJustificativa: undefined;
+  atestadoId?: string;
+  suspensaoId?: string;
+  observacoes: undefined;
+  anoLetivo: string;
+  criadoPor: string;
+  criadoEm: string;
+}
+
+/**
+ * Converte StudentAbsence do Supabase para formato legacy
+ */
+function convertSupabaseToAbsence(absence: SupabaseAbsence): LegacyAbsence {
+  return {
+    id: absence.id,
+    estudanteId: absence.students?.student_id || absence.student_id, // ✅ Firebase UUID (legacy)
+    student_id: absence.student_id, // ✅ Internal ID (para comparações)
+    estudanteNome: absence.students?.name || 'Nome não disponível',
+    turma: absence.students?.class || 'Turma não disponível',
+    data: absence.absence_date, // ✅ Formato legacy (YYYY-MM-DD)
+    absence_date: absence.absence_date, // ✅ Formato Supabase (para compatibilidade)
+    bimestre: absence.bimester,
+    justificada: absence.is_justified, // ✅ Formato legacy
+    justified: absence.is_justified, // ✅ Alias
+    is_justified: absence.is_justified, // ✅ Formato Supabase (para compatibilidade)
+    motivoJustificativa: undefined, // Coluna não existe
+    atestadoId: absence.medical_certificate_id || undefined,
+    suspensaoId: absence.suspension_id || undefined,
+    observacoes: undefined, // Coluna não existe
+    anoLetivo: new Date().getFullYear().toString(),
+    criadoPor: 'system',
+    criadoEm: absence.created_at,
+  };
+}
+
+// ============================================================================
 // GET /api/absences - Listar faltas com filtros
 // ============================================================================
 
-export const GET = withAuth(async (req: NextRequest, userId: string) => {
+export const GET = withAuth(async (req: NextRequest) => {
   try {
     // 1. Validar query params
     const validation = validateQueryParams(req, absenceQuerySchema);
@@ -54,7 +143,6 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       turma,
       page,
       limit,
-      allowAll,
     } = validation.data;
 
     // 2. Resolver Firebase UUID para Internal ID (se fornecido)
@@ -74,11 +162,38 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       internalStudentId = resolved;
     }
 
-    // 3. Construir query no Supabase
+    // 3. Se filtro por turma, buscar Internal IDs primeiro
+    let studentIdsFilter: string[] | undefined = undefined;
+
+    if (turma) {
+      const { data: studentsInClass, error: classError } = (await supabaseAdmin
+        .from('students')
+        .select('id')
+        .eq('class', turma)
+        .eq('deleted', false)) as { data: { id: string }[] | null; error: unknown };
+
+      if (classError) {
+        console.error('[GET /api/absences] Error fetching students by class:', classError);
+        return errorResponse(
+          'DATABASE_ERROR',
+          'Erro ao buscar estudantes da turma',
+          500
+        );
+      }
+
+      // Se não há estudantes na turma, retornar vazio
+      if (!studentsInClass || studentsInClass.length === 0) {
+        return paginatedResponse([], page, limit, 0);
+      }
+
+      studentIdsFilter = studentsInClass.map((s) => s.id);
+    }
+
+    // 4. Construir query no Supabase
     // ✅ FASE 4.1: Otimizar count (estimated na 1ª página, planned depois)
     const countOption = getCountStrategy(page);
 
-    let query: any = supabaseAdmin
+    let query = supabaseAdmin
       .from('student_absences')
       .select('*, students(name, class, student_id)', countOption)
       .order('absence_date', { ascending: false });
@@ -86,6 +201,10 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // Aplicar filtros
     if (internalStudentId) {
       query = query.eq('student_id', internalStudentId);
+    }
+
+    if (studentIdsFilter) {
+      query = query.in('student_id', studentIdsFilter);
     }
 
     if (bimestre) {
@@ -97,30 +216,20 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     }
 
     if (dataInicio) {
-      // Formato DDMMYYYY → converter para comparação
-      query = query.gte('absence_date', dataInicio);
+      // Formato DDMMYYYY → converter para YYYY-MM-DD
+      const dataInicioISO = convertToISODate(dataInicio);
+      query = query.gte('absence_date', dataInicioISO);
     }
 
     if (dataFim) {
-      query = query.lte('absence_date', dataFim);
-    }
-
-    if (turma) {
-      query = query.eq('students.class', turma);
+      // Formato DDMMYYYY → converter para YYYY-MM-DD
+      const dataFimISO = convertToISODate(dataFim);
+      query = query.lte('absence_date', dataFimISO);
     }
 
     // Paginação
     const from = (page - 1) * limit;
     const to = from + limit - 1;
-
-    // 🔍 DEBUG: Log dos parâmetros de paginação
-    console.log(`📄 [GET /api/absences] Paginação:`, {
-        page,
-        limit,
-        from,
-        to,
-        range: `${from}-${to}`
-    });
 
     // ⚠️ IMPORTANTE: Supabase tem limite padrão de 1000 registros!
     // Precisamos usar AMBOS .range() E verificar se limit > 1000
@@ -130,8 +239,12 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
     // A solução é usar APENAS range, que já define o tamanho da página
     // Ref: https://supabase.com/docs/reference/javascript/limit
 
-    // 4. Executar query
-    const { data, error, count } = await query;
+    // 5. Executar query
+    const { data, error, count } = (await query) as {
+      data: SupabaseAbsence[] | null;
+      error: { message?: string; code?: string; details?: string; hint?: string } | null;
+      count: number | null;
+    };
 
     if (error) {
       console.error('[GET /api/absences] Supabase error:', error);
@@ -154,10 +267,10 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
       }, { status: 500 });
     }
 
-    // 5. Converter para formato legacy
+    // 6. Converter para formato legacy
     const absences = (data || []).map(convertSupabaseToAbsence);
 
-    // 6. Retornar com paginação
+    // 7. Retornar com paginação
     return paginatedResponse(absences, page, limit, count || 0);
   } catch (error) {
     return handleError(error, 'GET /api/absences');
@@ -168,7 +281,7 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
 // POST /api/absences - Criar nova falta
 // ============================================================================
 
-export const POST = withAuth(async (req: NextRequest, userId: string) => {
+export const POST = withAuth(async (req: NextRequest) => {
   try {
     // 1. Parse body
     const body = await req.json();
@@ -185,21 +298,10 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     // 3. Sanitizar dados
     const sanitizedData = sanitizeObject(data);
 
-    // ✅ Converter DDMMYYYY → YYYY-MM-DD (formato do Supabase)
-    const convertToISODate = (date: string): string => {
-      if (date.match(/^\d{8}$/)) {
-        // Format: DDMMYYYY → YYYY-MM-DD
-        const day = date.substring(0, 2);
-        const month = date.substring(2, 4);
-        const year = date.substring(4, 8);
-        return `${year}-${month}-${day}`;
-      }
-      return date; // Já está em YYYY-MM-DD
-    };
-
+    // 4. Converter DDMMYYYY → YYYY-MM-DD (formato do Supabase)
     const absenceDate = convertToISODate(sanitizedData.data);
 
-    // 4. Resolver Firebase UUID para Internal ID
+    // 5. Resolver Firebase UUID para Internal ID
     const internalStudentId = await resolveFirebaseUUIDToInternal(sanitizedData.estudanteId);
 
     if (!internalStudentId) {
@@ -210,13 +312,13 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       );
     }
 
-    // 5. Verificar se estudante não está deletado
-    const { data: student, error: studentError } = await supabaseAdmin
+    // 6. Verificar se estudante não está deletado
+    const { data: student, error: studentError } = (await supabaseAdmin
       .from('students')
       .select('id')
       .eq('id', internalStudentId)
       .eq('deleted', false)
-      .single();
+      .single()) as { data: { id: string } | null; error: unknown };
 
     if (studentError || !student) {
       return errorResponse(
@@ -226,13 +328,13 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       );
     }
 
-    // 6. Verificar se já existe falta para esta data (prevenir duplicatas)
-    const { data: existingAbsence } = await supabaseAdmin
+    // 7. Verificar se já existe falta para esta data (prevenir duplicatas)
+    const { data: existingAbsence } = (await supabaseAdmin
       .from('student_absences')
       .select('id')
       .eq('student_id', internalStudentId)
       .eq('absence_date', absenceDate)
-      .single();
+      .single()) as { data: { id: string } | null };
 
     if (existingAbsence) {
       return errorResponse(
@@ -242,21 +344,22 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       );
     }
 
-    // 7. Preparar dados para Supabase
-    const absenceInsert: any = {
+    // 8. Preparar dados para Supabase
+    const absenceInsert = {
       student_id: internalStudentId,
       absence_date: absenceDate,
-      bimester: sanitizedData.bimestre,
+      bimester: sanitizedData.bimestre ? convertBimesterToNumber(sanitizedData.bimestre) : null,
       is_justified: sanitizedData.justificada ?? false,
       medical_certificate_id: sanitizedData.atestadoId || null,
     };
 
-    // 8. Inserir falta
-    const { data: absenceData, error: absenceError } = (await supabaseAdmin
+    // 9. Inserir falta
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: absenceData, error: absenceError } = (await (supabaseAdmin as any)
       .from('student_absences')
       .insert(absenceInsert)
       .select('id')
-      .single()) as { data: any; error: any };
+      .single()) as { data: { id: string } | null; error: unknown };
 
     if (absenceError) {
       console.error('[POST /api/absences] Error inserting absence:', absenceError);
@@ -268,7 +371,15 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
       );
     }
 
-    // 9. Retornar sucesso
+    if (!absenceData) {
+      return errorResponse(
+        'DATABASE_ERROR',
+        'Erro ao criar falta: dados não retornados',
+        500
+      );
+    }
+
+    // 10. Retornar sucesso
     return successResponse(
       {
         id: absenceData.id,
@@ -280,33 +391,3 @@ export const POST = withAuth(async (req: NextRequest, userId: string) => {
     return handleError(error, 'POST /api/absences');
   }
 });
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Converte StudentAbsence do Supabase para formato legacy
- */
-function convertSupabaseToAbsence(absence: any): any {
-  return {
-    id: absence.id,
-    estudanteId: absence.students?.student_id || absence.student_id, // ✅ Firebase UUID (legacy)
-    student_id: absence.student_id, // ✅ Internal ID (para comparações)
-    estudanteNome: absence.students?.name || 'Nome não disponível',
-    turma: absence.students?.class || 'Turma não disponível',
-    data: absence.absence_date, // ✅ Formato legacy (YYYY-MM-DD)
-    absence_date: absence.absence_date, // ✅ Formato Supabase (para compatibilidade)
-    bimestre: absence.bimester,
-    justificada: absence.is_justified, // ✅ Formato legacy
-    justified: absence.is_justified, // ✅ Alias
-    is_justified: absence.is_justified, // ✅ Formato Supabase (para compatibilidade)
-    motivoJustificativa: undefined, // Coluna não existe
-    atestadoId: absence.medical_certificate_id || undefined,
-    suspensaoId: absence.suspension_id || undefined,
-    observacoes: undefined, // Coluna não existe
-    anoLetivo: new Date().getFullYear().toString(),
-    criadoPor: 'system',
-    criadoEm: absence.created_at,
-  };
-}

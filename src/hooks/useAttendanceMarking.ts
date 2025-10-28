@@ -15,7 +15,7 @@ import { StudentSuspensionsService } from "@/services/supabase/studentSuspension
 import { AbsenceService } from "@/services/supabase/absenceService";
 import { toast } from "sonner";
 import { scheduleSync } from "@/lib/serviceWorker";
-import type { Estudante } from "@/hooks/useStudents";
+import type { Estudante } from "@/types";
 
 // ════════════════════════════════════════════════════════════════
 // TIPOS
@@ -47,6 +47,13 @@ interface Suspensao {
     createdBy: string;
 }
 
+interface AbsenceWithId {
+    id: string;
+    estudanteId: string;
+    data?: string;
+    absence_date?: string;
+}
+
 interface UseAttendanceMarkingProps {
     students: Estudante[];
     isOnline: boolean;
@@ -70,7 +77,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
     const [selectedClass, setSelectedClass] = useState("");
     const [existingAbsences, setExistingAbsences] = useState<{ [key: string]: boolean }>({});
     const [markedAbsences, setMarkedAbsences] = useState<{ [key: string]: boolean }>({});
-    const [existingAbsenceDocs, setExistingAbsenceDocs] = useState<{ [key: string]: string }>({});
+    const [, setExistingAbsenceDocs] = useState<{ [key: string]: string }>({});
     const [openDialog, setOpenDialog] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [role, setRole] = useState<Role | null>(null);
@@ -94,7 +101,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
         if (!academicYearData) return [];
 
         const validDates: string[] = [];
-        Object.entries(academicYearData).forEach(([key, bimData]) => {
+        Object.entries(academicYearData).forEach(([, bimData]) => {
             bimData?.dates?.forEach((d) => {
                 if (d.isChecked) {
                     const formattedDate = convertDateToDDMMYYYY(d.date);
@@ -182,13 +189,11 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
             let slowConnectionTimeout: NodeJS.Timeout | undefined;
 
             try {
-                console.log("[useAttendanceMarking] Iniciando fetch do ano letivo via API REST");
                 setLoadingAcademicYear(true); // ✅ Inicia loading
                 setErrorMessage(""); // ✅ Limpa erro ao iniciar loading
 
                 // ✅ Feedback progressivo para conexões lentas (após 8s)
                 slowConnectionTimeout = setTimeout(() => {
-                    console.info("[useAttendanceMarking] ⏳ Conexão lenta detectada, aguarde...");
                     // Opcional: mostrar toast ao usuário
                     // toast.info("Conexão lenta detectada. Carregando dados...", { duration: 5000 });
                 }, 8000);
@@ -201,14 +206,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
 
                 clearTimeout(slowConnectionTimeout); // ✅ Limpa timeout de aviso
 
-                console.log("[useAttendanceMarking] Fetch completado via API", {
-                    hasData: !!yearData,
-                    keysLength: yearData ? Object.keys(yearData).length : 0,
-                    yearDataKeys: yearData ? Object.keys(yearData) : []
-                });
-
                 if (yearData && Object.keys(yearData).length > 0) {
-                    console.log("[useAttendanceMarking] ✅ Dados carregados com sucesso via API REST");
                     // ✅ CRÍTICO: Usar setAcademicYearLoaded APÓS setAcademicYearData
                     // para garantir que o useEffect de validação veja os dados atualizados
                     setAcademicYearData(yearData);
@@ -216,7 +214,6 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
                     // Aguardar próximo tick para garantir que academicYearData foi atualizado
                     setTimeout(() => setAcademicYearLoaded(true), 0);
                 } else {
-                    console.warn("[useAttendanceMarking] ⚠️ Dados vazios retornados pela API. O ano letivo 2025 pode não estar cadastrado.");
                     setAcademicYearData(null);
                     setErrorMessage("Ano letivo 2025 não encontrado. Cadastre em 'Cadastrar Ano Letivo'.");
                     setTimeout(() => setAcademicYearLoaded(true), 0);
@@ -227,7 +224,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
                 }
 
                 console.error("[useAttendanceMarking] ❌ Erro no fetch via API", error);
-                logger.error("Erro ao carregar ano letivo via API", error as Error);
+                logger.error("Erro ao carregar ano letivo via API", {}, error as Error);
 
                 // ✅ Mensagem de erro mais específica
                 const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
@@ -235,7 +232,6 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
                 setAcademicYearData(null);
                 setTimeout(() => setAcademicYearLoaded(true), 0); // ✅ Marca como carregado (mesmo com erro)
             } finally {
-                console.log("[useAttendanceMarking] Finalizando loading");
                 setLoadingAcademicYear(false); // ✅ Finaliza loading
             }
         };
@@ -250,16 +246,8 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
 
     // Valida data selecionada
     useEffect(() => {
-        console.log("[useAttendanceMarking] Validação disparada", {
-            academicYearLoaded,
-            hasData: !!academicYearData,
-            selectedDate,
-            loadingAcademicYear
-        });
-
         // ✅ CORREÇÃO: Não validar antes da primeira carga completar
         if (!academicYearLoaded) {
-            console.log("[useAttendanceMarking] Aguardando primeira carga completar");
             return; // Aguarda primeira carga completar (sucesso ou erro)
         }
 
@@ -276,14 +264,9 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
             });
             setIsValidDay(valid);
             setErrorMessage(valid ? "" : "O dia selecionado não está disponível para marcação de faltas.");
-            console.log("[useAttendanceMarking] Validação executada", { valid });
         } else if (!academicYearData && selectedDate) {
             // ✅ Só mostra erro se primeira carga completou, não há dados E usuário já tem data selecionada
-            console.log("[useAttendanceMarking] Setando erro: dados não encontrados (selectedDate presente)");
             setErrorMessage("Dados do ano letivo não encontrados.");
-        } else if (!academicYearData && !selectedDate) {
-            // ✅ Ainda carregando ambos - não fazer nada
-            console.log("[useAttendanceMarking] Aguardando dados e selectedDate");
         }
     }, [academicYearData, selectedDate, academicYearLoaded, loadingAcademicYear]);
 
@@ -306,7 +289,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
                     setRole("user");
                 }
             } catch (error) {
-                logger.error("Erro ao buscar usuário", error as Error);
+                logger.error("Erro ao buscar usuário", {}, error as Error);
                 setRole("user");
             }
         };
@@ -375,7 +358,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
                 setAtestados(newAtestados);
                 setSuspensoes(newSuspensoes);
             } catch (error) {
-                logger.error("Erro ao carregar atestados e suspensões", error as Error);
+                logger.error("Erro ao carregar atestados e suspensões", {}, error as Error);
             }
         };
 
@@ -392,7 +375,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
                 const newExistingAbsences: { [key: string]: boolean } = {};
                 const newExistingAbsenceDocs: { [key: string]: string } = {};
 
-                absences.forEach((absence: any) => {
+                (absences as AbsenceWithId[]).forEach((absence) => {
                     const estudanteId = absence.estudanteId;
                     newExistingAbsences[estudanteId] = true;
                     newExistingAbsenceDocs[estudanteId] = absence.id;
@@ -402,7 +385,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
                 setExistingAbsenceDocs(newExistingAbsenceDocs);
                 setMarkedAbsences(newExistingAbsences);
             } catch (error) {
-                logger.error("Erro ao carregar faltas existentes", error as Error);
+                logger.error("Erro ao carregar faltas existentes", {}, error as Error);
             }
         };
 
@@ -502,7 +485,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
 
             const currentAbsencesList = await AbsenceService.getByTurmaAndDate(selectedClass, formattedDate);
             const currentAbsences: { [key: string]: string } = {};
-            currentAbsencesList.forEach((absence: any) => {
+            (currentAbsencesList as AbsenceWithId[]).forEach((absence) => {
                 currentAbsences[absence.estudanteId] = absence.id;
             });
 
@@ -542,7 +525,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
             const updatedAbsences = await AbsenceService.getByTurmaAndDate(selectedClass, formattedDate);
             const newExistingAbsences: { [key: string]: boolean } = {};
             const newExistingAbsenceDocs: { [key: string]: string } = {};
-            updatedAbsences.forEach((absence: any) => {
+            (updatedAbsences as AbsenceWithId[]).forEach((absence) => {
                 newExistingAbsences[absence.estudanteId] = true;
                 newExistingAbsenceDocs[absence.estudanteId] = absence.id;
             });
@@ -550,7 +533,7 @@ export function useAttendanceMarking({ students, isOnline }: UseAttendanceMarkin
             setExistingAbsenceDocs(newExistingAbsenceDocs);
             setMarkedAbsences(newExistingAbsences);
         } catch (error) {
-            logger.error("Erro ao salvar faltas", error as Error);
+            logger.error("Erro ao salvar faltas", {}, error as Error);
             toast.error("Erro ao salvar faltas.");
         } finally {
             setIsSaving(false);

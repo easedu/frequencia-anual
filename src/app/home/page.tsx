@@ -69,7 +69,7 @@ export default function Home() {
                     setUserName(auth.currentUser?.displayName || auth.currentUser?.email || "Usuário");
                 }
             } catch (error) {
-                logger.error("Erro ao buscar usuário", error as Error);
+                logger.error("Erro ao buscar usuário", {}, error as Error);
                 setRole("user");
                 setUserName(auth.currentUser?.displayName || auth.currentUser?.email || "Usuário");
             }
@@ -110,9 +110,9 @@ export default function Home() {
             // Atualizar favoritos no notification_preferences do Supabase
             await UserProfilesService.updateNotificationPreferences(uid, {
                 favorites: newFavorites
-            } as any);
+            });
         } catch (error) {
-            logger.error("Erro ao salvar favoritos", error as Error);
+            logger.error("Erro ao salvar favoritos", {}, error as Error);
         }
     };
 

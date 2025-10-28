@@ -30,7 +30,7 @@ export interface FetchAllPagesOptions {
   /** Nome do recurso para logs (ex: 'estudantes', 'faltas') */
   resourceName?: string;
   /** Callback para receber dados progressivamente conforme carregam */
-  onProgress?: (data: any[], progress: { loaded: number; total: number }) => void;
+  onProgress?: (data: unknown[], progress: { loaded: number; total: number }) => void;
 }
 
 /**

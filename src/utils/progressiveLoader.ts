@@ -34,12 +34,12 @@
  * );
  */
 
-export interface ProgressiveLoaderOptions {
+export interface ProgressiveLoaderOptions<T = unknown> {
   /** Tamanho de cada chunk (padrão: 100 para backend, 50 para frontend) */
   pageSize?: number;
 
   /** Callback chamado após cada chunk carregado (para atualizar UI) */
-  onProgress?: (currentData: any[]) => void;
+  onProgress?: (currentData: T[]) => void;
 
   /** Limite máximo de registros (padrão: 10000) */
   maxRecords?: number;
@@ -49,7 +49,7 @@ export interface ProgressiveLoaderOptions {
 }
 
 export interface LoaderFunction {
-  (offset: number, limit: number): Promise<{ data: any[] | null; error: any }>;
+  (offset: number, limit: number): Promise<{ data: unknown[] | null; error: unknown }>;
 }
 
 /**
@@ -59,9 +59,9 @@ export interface LoaderFunction {
  * @param options - Opções de configuração
  * @returns Array com todos os dados carregados
  */
-export async function loadProgressively<T = any>(
+export async function loadProgressively<T = unknown>(
   loaderFn: LoaderFunction,
-  options: ProgressiveLoaderOptions = {}
+  options: ProgressiveLoaderOptions<T> = {}
 ): Promise<T[]> {
   const {
     pageSize = 100,
@@ -96,7 +96,7 @@ export async function loadProgressively<T = any>(
       }
 
       // Adiciona chunk aos dados totais
-      allData.push(...data);
+      allData.push(...(data as T[]));
 
       // Callback de progresso (atualiza UI no frontend)
       if (onProgress) {
@@ -132,7 +132,7 @@ export async function loadProgressively<T = any>(
  *   (offset, limit) => supabaseAdmin.from('students').select('*').range(offset, offset + limit - 1)
  * );
  */
-export async function loadAll<T = any>(
+export async function loadAll<T = unknown>(
   loaderFn: LoaderFunction,
   pageSize = 100
 ): Promise<T[]> {
@@ -148,7 +148,7 @@ export async function loadAll<T = any>(
  *   (data) => setStudents(data)
  * );
  */
-export async function loadWithProgress<T = any>(
+export async function loadWithProgress<T = unknown>(
   loaderFn: LoaderFunction,
   onProgress: (data: T[]) => void,
   pageSize = 50

@@ -8,11 +8,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/app/api/_middleware/auth'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import type { Database } from '@/lib/supabaseClient'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { logger } from '@/utils/logger'
 import { z } from 'zod'
 import { getCountStrategy } from '@/app/api/_utils/countStrategy'
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+type WhatsAppVerifiedNumber = Database['public']['Tables']['whatsapp_verified_numbers']['Row']
+type WhatsAppVerifiedNumberInsert = Database['public']['Tables']['whatsapp_verified_numbers']['Insert']
+type WhatsAppVerifiedNumberUpdate = Database['public']['Tables']['whatsapp_verified_numbers']['Update']
 
 // ============================================================================
 // SCHEMAS
@@ -50,7 +59,7 @@ const createVerifiedNumberSchema = z.object({
  * GET /api/whatsapp/verified?phone_number=5511988384664
  * GET /api/whatsapp/verified?is_verified=true&account_exists=true
  */
-export const GET = withAuth(async (request: NextRequest, userId: string) => {
+export const GET = withAuth(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url)
 
@@ -93,10 +102,14 @@ export const GET = withAuth(async (request: NextRequest, userId: string) => {
       .range(offset, offset + limit - 1)
       .order('created_at', { ascending: false })
 
-    const { data, error, count } = await query
+    const { data, error, count } = await query as {
+      data: WhatsAppVerifiedNumber[] | null;
+      error: { message: string } | null;
+      count: number | null;
+    }
 
     if (error) {
-      logger.error('Erro ao buscar números verificados', error)
+      logger.error('Erro ao buscar números verificados', { error: error.message })
       return errorResponse(error.message, 500)
     }
 
@@ -149,21 +162,23 @@ export async function POST(request: NextRequest) {
       .from('whatsapp_verified_numbers')
       .select('id')
       .eq('phone_number', validated.phone_number)
-      .maybeSingle()
+      .maybeSingle() as {
+        data: { id: string } | null;
+        error: { message: string } | null;
+      }
 
     if (searchError) {
-      logger.error('Erro ao verificar número existente', searchError)
+      logger.error('Erro ao verificar número existente', { error: searchError.message })
       return errorResponse(searchError.message, 500)
     }
 
-    let result
+    let result: WhatsAppVerifiedNumber | null = null
 
     if (existing) {
       // Atualizar existente
-      const updateData: Record<string, any> = {
+      const updateData: Partial<WhatsAppVerifiedNumberUpdate> = {
         is_verified: validated.is_verified,
         account_exists: validated.account_exists,
-        updated_at: new Date().toISOString()
       }
 
       if (validated.whatsapp_jid !== undefined) updateData.whatsapp_jid = validated.whatsapp_jid
@@ -174,44 +189,43 @@ export async function POST(request: NextRequest) {
         updateData.verified_at = new Date().toISOString()
       }
 
-      const { data, error } = await supabaseAdmin
+      const { data, error } = (await supabaseAdmin
         .from('whatsapp_verified_numbers')
-      // @ts-ignore - Supabase type mismatch
-        .update({...updateData} as any)
-        .eq('id', (existing as any)?.id)
+        .update(updateData as never)
+        .eq('id', existing.id)
         .select()
-        .single()
+        .single()) as { data: WhatsAppVerifiedNumber | null; error: { message: string } | null }
 
       if (error) {
-        logger.error('Erro ao atualizar número verificado', error)
+        logger.error('Erro ao atualizar número verificado', { error: error.message })
         return errorResponse(error.message, 500)
       }
 
-      result = data as any
-      logger.info('Número verificado atualizado', { phone: validated.phone_number })
+      result = data
     } else {
       // Criar novo
-      const { data, error } = await supabaseAdmin
+      const insertData: WhatsAppVerifiedNumberInsert = {
+        phone_number: validated.phone_number,
+        is_verified: validated.is_verified || false,
+        verified_at: validated.is_verified ? new Date().toISOString() : null,
+        whatsapp_jid: validated.whatsapp_jid || null,
+        contact_name: validated.contact_name || null,
+        account_exists: validated.account_exists || false,
+        verification_status: validated.verification_status || null,
+      }
+
+      const { data, error } = (await supabaseAdmin
         .from('whatsapp_verified_numbers')
-        .insert({
-          phone_number: validated.phone_number,
-          is_verified: validated.is_verified || false,
-          verified_at: validated.is_verified ? new Date().toISOString() : null,
-          whatsapp_jid: validated.whatsapp_jid || null,
-          contact_name: validated.contact_name || null,
-          account_exists: validated.account_exists || false,
-          verification_status: validated.verification_status || null,
-        } as any)
+        .insert(insertData as never)
         .select()
-        .single()
+        .single()) as { data: WhatsAppVerifiedNumber | null; error: { message: string } | null }
 
       if (error) {
-        logger.error('Erro ao criar número verificado', error)
+        logger.error('Erro ao criar número verificado', { error: error.message })
         return errorResponse(error.message, 500)
       }
 
-      result = data as any
-      logger.info('Número verificado criado', { phone: validated.phone_number })
+      result = data
     }
 
     return successResponse(result, existing ? 200 : 201)

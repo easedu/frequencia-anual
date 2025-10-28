@@ -341,7 +341,6 @@ if (typeof window !== 'undefined') {
   setInterval(() => {
     if (formatCache.size > 1000) {
       formatCache.clear();
-      logger.info('Date cache cleared due to size limit');
     }
   }, 5 * 60 * 1000); // A cada 5 minutos
 }

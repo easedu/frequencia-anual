@@ -19,27 +19,6 @@ import { logger } from '@/utils/logger';
 export type OccurrenceSeverity = 'LEVE' | 'MODERADA' | 'GRAVE';
 
 /**
- * Interface da ocorrência (Supabase)
- */
-interface SupabaseOccurrence {
-  id: string;
-  student_id: string;
-  occurrence_date: string;
-  occurrence_type: string;
-  description: string;
-  severity: OccurrenceSeverity | null;
-  action_taken: string | null;
-  responsible_staff: string | null;
-  family_notified: boolean;
-  notification_date: string | null;
-  notification_method: string | null;
-  created_by: string;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/**
  * Interface da ocorrência (Aplicação)
  */
 export interface StudentOccurrence {
@@ -77,11 +56,35 @@ export interface CreateOccurrenceData {
   createdBy: string;
 }
 
+interface ApiOccurrence {
+  id: string;
+  student_id: string;
+  occurrence_date: string;
+  occurrence_type: string;
+  description: string;
+  severity?: OccurrenceSeverity;
+  action_taken?: string;
+  responsible_staff?: string;
+  family_notified: boolean;
+  notification_date?: string;
+  notification_method?: string;
+  reported_by_name?: string;
+  reported_by?: string;
+  created_by?: string;
+  updated_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export class StudentOccurrencesService {
   /**
    * Converter registro da API (snake_case) para aplicação (camelCase)
    */
-  private static mapApiToOccurrence(record: any): StudentOccurrence {
+  private static mapApiToOccurrence(record: ApiOccurrence): StudentOccurrence {
+    return this.mapApiToOccurrenceInternal(record);
+  }
+
+  private static mapApiToOccurrenceInternal(record: ApiOccurrence): StudentOccurrence {
     return {
       id: record.id,
       studentId: record.student_id,
@@ -115,8 +118,8 @@ export class StudentOccurrencesService {
 
       const result = await response.json();
       return (result.data?.data || []).map(this.mapApiToOccurrence);
-    } catch (error) {
-      logger.error('Erro ao buscar ocorrências do estudante', { studentId }, error as Error);
+    } catch (err) {
+      logger.error('Erro ao buscar ocorrências do estudante', { studentId }, err as Error);
       return [];
     }
   }
@@ -126,22 +129,24 @@ export class StudentOccurrencesService {
    */
   static async create(data: CreateOccurrenceData): Promise<StudentOccurrence | null> {
     try {
+      const apiPayload: Record<string, string | boolean | OccurrenceSeverity | null> = {
+        student_id: data.studentId,
+        occurrence_date: data.occurrenceDate,
+        occurrence_type: data.occurrenceType,
+        description: data.description,
+        severity: data.severity || null,
+        action_taken: data.actionTaken || null,
+        responsible_staff: data.responsibleStaff || null,
+        family_notified: data.familyNotified || false,
+        notification_date: data.notificationDate || null,
+        notification_method: data.notificationMethod || null,
+        created_by: data.createdBy,
+      };
+
       const response = await fetch('/api/occurrences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          student_id: data.studentId,
-          occurrence_date: data.occurrenceDate,
-          occurrence_type: data.occurrenceType,
-          description: data.description,
-          severity: data.severity || null,
-          action_taken: data.actionTaken || null,
-          responsible_staff: data.responsibleStaff || null,
-          family_notified: data.familyNotified || false,
-          notification_date: data.notificationDate || null,
-          notification_method: data.notificationMethod || null,
-          created_by: data.createdBy,
-        }),
+        body: JSON.stringify(apiPayload),
       });
 
       if (!response.ok) {
@@ -151,15 +156,10 @@ export class StudentOccurrencesService {
 
       const result = await response.json();
 
-      logger.info('Ocorrência criada via API', {
-        studentId: data.studentId,
-        type: data.occurrenceType,
-      });
-
-      return this.mapApiToOccurrence(result.data);
-    } catch (error) {
-      logger.error('Erro ao criar ocorrência', data, error as Error);
-      throw error;
+      return this.mapApiToOccurrenceInternal(result.data);
+    } catch (err) {
+      logger.error('Erro ao criar ocorrência', { studentId: data.studentId }, err as Error);
+      throw err;
     }
   }
 
@@ -171,7 +171,19 @@ export class StudentOccurrencesService {
     updates: Partial<CreateOccurrenceData>
   ): Promise<boolean> {
     try {
-      const apiUpdates: any = {};
+      interface ApiUpdateData {
+        occurrence_date?: string;
+        occurrence_type?: string;
+        description?: string;
+        severity?: OccurrenceSeverity;
+        action_taken?: string | null;
+        responsible_staff?: string | null;
+        family_notified?: boolean;
+        notification_date?: string | null;
+        notification_method?: string | null;
+      }
+
+      const apiUpdates: ApiUpdateData = {};
 
       if (updates.occurrenceDate) apiUpdates.occurrence_date = updates.occurrenceDate;
       if (updates.occurrenceType) apiUpdates.occurrence_type = updates.occurrenceType;
@@ -198,11 +210,9 @@ export class StudentOccurrencesService {
         throw new Error(`API returned ${response.status}`);
       }
 
-      logger.info('Ocorrência atualizada via API', { occurrenceId });
-
       return true;
-    } catch (error) {
-      logger.error('Erro ao atualizar ocorrência', { occurrenceId }, error as Error);
+    } catch (err) {
+      logger.error('Erro ao atualizar ocorrência', { occurrenceId }, err as Error);
       return false;
     }
   }
@@ -220,11 +230,9 @@ export class StudentOccurrencesService {
         throw new Error(`API returned ${response.status}`);
       }
 
-      logger.info('Ocorrência deletada via API', { occurrenceId });
-
       return true;
-    } catch (error) {
-      logger.error('Erro ao deletar ocorrência', { occurrenceId }, error as Error);
+    } catch (err) {
+      logger.error('Erro ao deletar ocorrência', { occurrenceId }, err as Error);
       return false;
     }
   }
@@ -242,8 +250,8 @@ export class StudentOccurrencesService {
 
       const result = await response.json();
       return (result.data?.data || []).map(this.mapApiToOccurrence);
-    } catch (error) {
-      logger.error('Erro ao buscar ocorrências por gravidade', { severity }, error as Error);
+    } catch (err) {
+      logger.error('Erro ao buscar ocorrências por gravidade', { severity }, err as Error);
       return [];
     }
   }

@@ -4,7 +4,6 @@
  * GET - Retorna o ano letivo atual (ano em curso)
  */
 
-import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { errorResponse, successResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
@@ -18,7 +17,7 @@ import { logger } from '@/utils/logger'
  * GET /api/academic-years/current
  * Response: { "year": 2025, "start_date": "2025-02-01", ... }
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const currentYear = new Date().getFullYear()
 

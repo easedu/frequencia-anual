@@ -9,17 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FullPageSkeleton } from "@/components/shared/LoadingSkeletons";
 import { EmptySearchState } from "@/components/shared";
-import { useAbsenceControls, useAbsences, useStudents } from "@/hooks/api";
+import { useAbsenceControls, useAbsences } from "@/hooks/api";
 import { logger } from "@/utils/logger";
 import {
     FileText,
     Search,
     Filter,
-    Calendar,
     Users,
-    TrendingDown,
     Printer,
     Eye,
     EyeOff,
@@ -37,31 +34,6 @@ interface Estudante {
     nome: string;
     status: string;
     bolsaFamilia: "SIM" | "NÃO";
-}
-
-interface AbsenceRecord {
-    estudanteId: string;
-    turma: string;
-    data: string;
-    docId: string;
-    justified: boolean;
-}
-
-interface AnoLetivoData {
-    "1º Bimestre"?: BimesterData;
-    "2º Bimestre"?: BimesterData;
-    "3º Bimestre"?: BimesterData;
-    "4º Bimestre"?: BimesterData;
-}
-
-interface BimesterData {
-    startDate?: string;
-    dates: BimesterDate[];
-}
-
-interface BimesterDate {
-    date: string;
-    isChecked: boolean;
 }
 
 const months = [
@@ -86,8 +58,8 @@ export default function RelatorioFaltasPage() {
     const [diasLetivos, setDiasLetivos] = useState<{ [key: number]: number }>({});
 
     // ✅ Usar hooks da API REST (sem Supabase direto)
-    const { controls: absenceControls, loading: loadingAbsenceControls } = useAbsenceControls({ academic_year: 2025 });
-    const { absences, loading: loadingAbsences } = useAbsences({
+    const { controls: absenceControls } = useAbsenceControls({ academic_year: 2025 });
+    const { absences } = useAbsences({
         allowAll: true // ✅ Carrega TODAS as faltas com paginação recursiva paralela
     });
 
@@ -126,7 +98,7 @@ export default function RelatorioFaltasPage() {
             });
 
             // Calcular dias letivos por mês baseado nos bimestres
-            absenceControls.forEach((control: any) => {
+            absenceControls.forEach((control) => {
                 if (control.start_date && control.end_date) {
                     const startDate = new Date(control.start_date);
                     const endDate = new Date(control.end_date);
@@ -143,7 +115,7 @@ export default function RelatorioFaltasPage() {
 
             setDiasLetivos(diasPorMes);
         } catch (error) {
-            logger.error("Erro ao calcular dias letivos", error as Error);
+            logger.error("Erro ao calcular dias letivos", {}, error as Error);
         }
     }, [absenceControls]);
 
@@ -154,8 +126,20 @@ export default function RelatorioFaltasPage() {
     });
 
     useEffect(() => {
-        // Estudantes já vêm filtrados da API
-        setStudents(allStudents as any[]);
+        // Estudantes já vêm filtrados da API - os campos já existem via transformToClientModel
+        const mappedStudents: Estudante[] = allStudents.map(s => {
+            // API retorna tanto snake_case quanto camelCase
+            const student = s as unknown as Record<string, unknown>;
+            return {
+                id: (student.id as string) || '',
+                estudanteId: (student.estudanteId || student.student_id) as string,
+                turma: (student.turma || student.class) as string,
+                nome: (student.nome || student.name) as string,
+                status: student.status as string,
+                bolsaFamilia: (student.bolsaFamilia || student.bolsa_familia || 'NÃO') as "SIM" | "NÃO"
+            };
+        });
+        setStudents(mappedStudents);
         setLoadingStudents(loadingAllStudents);
     }, [allStudents, loadingAllStudents]);
 
@@ -258,8 +242,7 @@ export default function RelatorioFaltasPage() {
         // 🔍 DEBUG: Log do filtro (apenas meses SELECIONADOS)
         if (showOnlyLowFrequency && filtered.length > 0) {
             // Calcular frequência APENAS para meses SELECIONADOS
-            const primeiros5ComFrequencia = filtered.slice(0, 5).map(s => {
-                const mesesSelecionadosArray = Array.from(selectedMonths);
+            const _primeiros5ComFrequencia = filtered.slice(0, 5).map(s => {
                 const totalFaltas = months.reduce((sum, month, idx) =>
                     selectedMonths.has(month) ? sum + getAbsencesByMonth(s.id, idx) : sum,
                     0

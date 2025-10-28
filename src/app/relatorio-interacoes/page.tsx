@@ -16,16 +16,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InteractionListSkeleton, ChartCardSkeleton } from "@/components/shared/LoadingSkeletons";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
-  DateRangePicker,
-  StudentSelector,
   EmptyState,
-  InfoState,
 } from "@/components/shared";
 import {
   TrendingUp,
-  Calendar,
   Users,
   MessageSquare,
   Search,
@@ -33,12 +28,8 @@ import {
   FileText,
   Download,
   AlertTriangle,
-  User
 } from "lucide-react";
-import { FamilyInteraction } from "@/types";
-import { Student as ApiStudent } from "@/hooks/api";
-import { formatFirebaseDate } from "../utils";
-import { CURRENT_SCHOOL_YEAR } from "@/config/constants";
+import { FamilyInteraction, Student } from "@/types";
 import dynamic from "next/dynamic";
 
 // ✅ FASE 4.2: Lazy Loading de componentes pesados (Charts)
@@ -60,11 +51,6 @@ interface InteractionStats {
   recent: number;
 }
 
-interface StudentWithInteractions extends ApiStudent {
-  interactionCount: number;
-  lastInteraction?: string;
-}
-
 // Helper para parsear datas brasileiras (dd/mm/aaaa)
 function parseDateBR(dateStr: string): Date {
   if (!dateStr || !dateStr.includes('/')) {
@@ -75,7 +61,7 @@ function parseDateBR(dateStr: string): Date {
 }
 
 export default function InteractionReportsPage() {
-  const [localStudents, setLocalStudents] = useState<ApiStudent[]>([]);
+  const [localStudents, setLocalStudents] = useState<Student[]>([]);
   const [localInteractions, setLocalInteractions] = useState<FamilyInteraction[]>([]);
   const [filteredInteractions, setFilteredInteractions] = useState<FamilyInteraction[]>([]);
   const [stats, setStats] = useState<InteractionStats>({
@@ -114,6 +100,7 @@ export default function InteractionReportsPage() {
   // Processar dados dos hooks quando carregarem
   useEffect(() => {
     if (!loadingStudents && students) {
+      // Students are already in the correct format from useStudents hook
       setLocalStudents(students);
     }
   }, [students, loadingStudents]);
@@ -148,8 +135,13 @@ export default function InteractionReportsPage() {
             // 📊 Atualizar UI progressivamente conforme carrega
             setLoadingProgress(progress);
 
+            // Type guard para garantir que data é FamilyInteraction[]
+            if (!Array.isArray(data)) return;
+
+            const interactions = data as FamilyInteraction[];
+
             // Ordenar por data (mais recentes primeiro)
-            const sorted = [...data].sort((a, b) => {
+            const sorted = [...interactions].sort((a, b) => {
               const dateA = parseDateBR(a.date);
               const dateB = parseDateBR(b.date);
               return dateB.getTime() - dateA.getTime();
@@ -197,25 +189,25 @@ export default function InteractionReportsPage() {
     // Filtro por turma
     if (selectedTurma && selectedTurma !== "all") {
       const studentIds = localStudents
-        .filter(s => s.class === selectedTurma)
-        .map(s => s.student_id);
-      filtered = filtered.filter(i => studentIds.includes((i as any).studentId));
+        .filter(s => s.turma === selectedTurma)
+        .map(s => s.estudanteId);
+      filtered = filtered.filter(i => studentIds.includes(i.studentId));
     }
 
     // Filtro por estudante
     if (selectedStudent && selectedStudent !== "all") {
-      filtered = filtered.filter(i => (i as any).studentId === selectedStudent);
+      filtered = filtered.filter(i => i.studentId === selectedStudent);
     }
 
     // Filtro por tipo
     if (selectedType && selectedType !== "all") {
-      filtered = filtered.filter(i => (i as any).type === selectedType);
+      filtered = filtered.filter(i => i.type === selectedType);
     }
 
     // Filtro por data (formato dd/mm/aaaa)
     if (startDate) {
       filtered = filtered.filter(i => {
-        const interactionDate = (i as any).date; // formato: dd/mm/aaaa
+        const interactionDate = i.date; // formato: dd/mm/aaaa
         if (!interactionDate) return false;
 
         // Converter dd/mm/aaaa para aaaammdd para comparação
@@ -231,7 +223,7 @@ export default function InteractionReportsPage() {
     }
     if (endDate) {
       filtered = filtered.filter(i => {
-        const interactionDate = (i as any).date; // formato: dd/mm/aaaa
+        const interactionDate = i.date; // formato: dd/mm/aaaa
         if (!interactionDate) return false;
 
         // Converter dd/mm/aaaa para aaaammdd para comparação
@@ -250,15 +242,15 @@ export default function InteractionReportsPage() {
     if (debouncedSearchTerm) {
       const term = debouncedSearchTerm.toLowerCase();
       filtered = filtered.filter(i =>
-        ((i as any).description || '').toLowerCase().includes(term) ||
-        ((i as any).type || '').toLowerCase().includes(term) ||
-        ((i as any).createdBy || '').toLowerCase().includes(term)
+        (i.description || '').toLowerCase().includes(term) ||
+        (i.type || '').toLowerCase().includes(term) ||
+        (i.createdBy || '').toLowerCase().includes(term)
       );
     }
 
     // Filtro por sensibilidade
     if (showSensitive) {
-      filtered = filtered.filter(i => (i as any).sensitive);
+      filtered = filtered.filter(i => i.sensitive);
     }
 
     setFilteredInteractions(filtered);
@@ -306,27 +298,26 @@ export default function InteractionReportsPage() {
   };
 
   const getUniqueValues = (key: keyof FamilyInteraction) => {
-    return [...new Set(localInteractions.map(i => (i as any)[key] as string))].filter(Boolean);
+    return [...new Set(localInteractions.map(i => i[key] as string))].filter(Boolean);
   };
 
   const getTurmas = () => {
-    return [...new Set(localStudents.map(s => s.class))].filter(Boolean).sort();
+    return [...new Set(localStudents.map(s => s.turma))].filter(Boolean).sort();
   };
 
 
   const exportToCSV = () => {
     const headers = ["Data", "Tipo", "Estudante", "Turma", "Descrição", "Criado por", "Sensível"];
     const csvData = filteredInteractions.map(interaction => {
-      const intData = interaction as any;
-      const student = localStudents.find(s => s.student_id === intData.studentId);
+      const student = localStudents.find(s => s.estudanteId === interaction.studentId);
       return [
-        intData.date,
-        intData.type,
-        student?.name || "N/A",
-        student?.class || "N/A",
-        (intData.description || '').replace(/"/g, '""'),
-        intData.createdBy,
-        intData.sensitive ? "Sim" : "Não"
+        interaction.date,
+        interaction.type,
+        student?.nome || "N/A",
+        student?.turma || "N/A",
+        (interaction.description || '').replace(/"/g, '""'),
+        interaction.createdBy,
+        interaction.sensitive ? "Sim" : "Não"
       ];
     });
 
@@ -501,7 +492,7 @@ export default function InteractionReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-              {new Set(localInteractions.map((i: any) => i.studentId)).size.toLocaleString()}
+              {new Set(localInteractions.map(i => i.studentId)).size.toLocaleString()}
             </div>
             <p className="text-xs text-slate-500 mt-1">
               Com interações registradas
@@ -515,12 +506,12 @@ export default function InteractionReportsPage() {
       {!loading && localInteractions.length > 0 && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <InteractionChartsCard
-            interactions={filteredInteractions as any}
-            students={localStudents as any}
+            interactions={filteredInteractions}
+            students={localStudents}
           />
           <StudentInteractionAnalysisCard
-            interactions={localInteractions as any}
-            students={localStudents as any}
+            interactions={localInteractions}
+            students={localStudents}
           />
         </div>
       )}
@@ -560,10 +551,10 @@ export default function InteractionReportsPage() {
                 <SelectContent>
                   <SelectItem value="all">Todos os estudantes</SelectItem>
                   {localStudents
-                    .filter(s => !selectedTurma || selectedTurma === "all" || s.class === selectedTurma)
+                    .filter(s => !selectedTurma || selectedTurma === "all" || s.turma === selectedTurma)
                     .map(student => (
-                      <SelectItem key={student.student_id} value={student.student_id}>
-                        {student.name}
+                      <SelectItem key={student.estudanteId} value={student.estudanteId}>
+                        {student.nome}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -684,13 +675,12 @@ export default function InteractionReportsPage() {
               </div>
             ) : (
               filteredInteractions.slice(0, 50).map(interaction => {
-                const intData = interaction as any;
-                const student = localStudents.find(s => s.student_id === intData.studentId);
+                const student = localStudents.find(s => s.estudanteId === interaction.studentId);
                 return (
                   <div
-                    key={intData.id}
+                    key={interaction.id}
                     className={`p-4 border rounded-lg ${
-                      intData.sensitive
+                      interaction.sensitive
                         ? "border-red-200 bg-red-50 dark:bg-red-900/20"
                         : "border-gray-200 bg-gray-50 dark:bg-gray-900/20"
                     }`}
@@ -698,26 +688,26 @@ export default function InteractionReportsPage() {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-xs">
-                          {intData.type}
+                          {interaction.type}
                         </Badge>
-                        {intData.sensitive && (
+                        {interaction.sensitive && (
                           <Badge variant="destructive" className="text-xs">
                             <AlertTriangle className="w-3 h-3 mr-1" />
                             Sensível
                           </Badge>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500">{intData.date}</span>
+                      <span className="text-xs text-gray-500">{interaction.date}</span>
                     </div>
 
                     <div className="mb-2">
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <User className="w-3 h-3" />
-                        <span className="font-medium">{student?.name || "Estudante não encontrado"}</span>
-                        {student?.class && (
+                        <span className="font-medium">{student?.nome || "Estudante não encontrado"}</span>
+                        {student?.turma && (
                           <>
                             <span className="text-gray-400">•</span>
-                            <span>{student.class}</span>
+                            <span>{student.turma}</span>
                           </>
                         )}
                       </div>

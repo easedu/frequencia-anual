@@ -16,8 +16,9 @@
 
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
-import type { FamilyInteraction, WhatsAppMessageStatus } from '@/types';
+import type { FamilyInteraction, WhatsAppMessageStatus, StatusHistoryEntry } from '@/types';
 import { getAuthHeaders } from '@/utils/authToken';
+import type { PostgrestError } from '@supabase/supabase-js';
 
 interface SupabaseInteraction {
   id: string;
@@ -27,12 +28,17 @@ interface SupabaseInteraction {
   description: string;
   created_by: string;
   is_sensitive: boolean;
-  whatsapp_message?: string; // Mensagem WhatsApp original
-  whatsapp_phones?: string[]; // Telefones WhatsApp (array JSONB)
-  // 🆕 Campos de status WhatsApp (webhook)
+  whatsapp_message?: string;
+  whatsapp_phones?: string[];
   whatsapp_message_id?: string;
-  whatsapp_status?: string;
-  whatsapp_status_history?: any; // JSONB array
+  whatsapp_status?: WhatsAppMessageStatus;
+  // Database stores as JSONB with Unix timestamps (ms)
+  whatsapp_status_history?: Array<{
+    status: WhatsAppMessageStatus;
+    timestamp: number;
+    source?: 'webhook' | 'api' | 'migration';
+    [key: string]: unknown;
+  }>;
   whatsapp_sent_at?: string;
   whatsapp_delivered_at?: string;
   whatsapp_read_at?: string;
@@ -56,10 +62,10 @@ export class InteractionService {
       sensitive: record.is_sensitive,
       whatsappMessage: record.whatsapp_message,
       whatsappPhones: record.whatsapp_phones,
-      // 🆕 Campos de status WhatsApp (webhook)
       whatsappMessageId: record.whatsapp_message_id,
-      whatsappStatus: record.whatsapp_status as WhatsAppMessageStatus | undefined,
-      whatsappStatusHistory: record.whatsapp_status_history,
+      whatsappStatus: record.whatsapp_status,
+      // Database stores timestamps as number (Unix ms), type system expects StatusHistoryEntry[]
+      whatsappStatusHistory: record.whatsapp_status_history as StatusHistoryEntry[] | undefined,
       whatsappSentAt: record.whatsapp_sent_at,
       whatsappDeliveredAt: record.whatsapp_delivered_at,
       whatsappReadAt: record.whatsapp_read_at,
@@ -81,10 +87,15 @@ export class InteractionService {
       is_sensitive: interaction.sensitive,
       whatsapp_message: interaction.whatsappMessage,
       whatsapp_phones: interaction.whatsappPhones,
-      // 🆕 Campos de status WhatsApp
       whatsapp_message_id: interaction.whatsappMessageId,
       whatsapp_status: interaction.whatsappStatus,
-      whatsapp_status_history: interaction.whatsappStatusHistory,
+      // StatusHistoryEntry[] has number timestamps, database accepts this JSONB format
+      whatsapp_status_history: interaction.whatsappStatusHistory as Array<{
+        status: WhatsAppMessageStatus;
+        timestamp: number;
+        source?: 'webhook' | 'api' | 'migration';
+        [key: string]: unknown;
+      }> | undefined,
       whatsapp_sent_at: interaction.whatsappSentAt,
       whatsapp_delivered_at: interaction.whatsappDeliveredAt,
       whatsapp_read_at: interaction.whatsappReadAt,
@@ -98,31 +109,44 @@ export class InteractionService {
    */
   static async getInteractionById(firebaseStudentId: string, interactionId: string): Promise<FamilyInteraction | null> {
     try {
-      // 🔧 FIX: Buscar ID interno do Supabase a partir do Firebase UUID
-      const { data: student, error: studentError } = await (supabase
+      // Buscar ID interno do Supabase a partir do Firebase UUID
+      type StudentIdRow = { id: string };
+      type StudentResult = { data: StudentIdRow | null; error: PostgrestError | null };
+
+      const studentResult = await supabase
         .from('students')
         .select('id')
         .eq('student_id', firebaseStudentId)
-        .single() as any);
+        .single() as unknown as StudentResult;
 
-      if (studentError || !student) {
-        logger.error('Estudante não encontrado', { firebaseStudentId }, studentError as Error);
+      if (studentResult.error || !studentResult.data) {
+        if (studentResult.error) {
+          logger.error('Estudante não encontrado', { firebaseStudentId }, studentResult.error as Error);
+        }
         return null;
       }
 
-      const { data, error } = await (supabase
+      const student = studentResult.data;
+
+      type InteractionResult = { data: SupabaseInteraction | null; error: PostgrestError | null };
+
+      const interactionResult = await supabase
         .from('family_interactions')
         .select('*')
         .eq('id', interactionId)
-        .eq('student_id', student.id)  // ✅ Usar ID interno do Supabase (sem casting)
-        .single() as any);
+        .eq('student_id', student.id)
+        .single() as unknown as InteractionResult;
 
-      if (error) {
-        if (error.code === 'PGRST116') return null; // Not found
-        throw error;
+      if (interactionResult.error) {
+        const pgError = interactionResult.error;
+        if (pgError.code === 'PGRST116') return null; // Not found
+        logger.error('Erro ao buscar interação', { interactionId }, interactionResult.error as Error);
+        throw interactionResult.error;
       }
 
-      return data ? this.mapSupabaseToInteraction(data) : null;
+      if (!interactionResult.data) return null;
+
+      return this.mapSupabaseToInteraction(interactionResult.data);
     } catch (error) {
       logger.error('Erro ao buscar interação por ID', { firebaseStudentId, interactionId }, error as Error);
       return null;
@@ -158,7 +182,25 @@ export class InteractionService {
       }
 
       // Converter do formato API para formato FamilyInteraction
-      return (result.data || []).map((interaction: any) => ({
+      return (result.data || []).map((interaction: {
+        id: string;
+        studentId: string;
+        type: string;
+        date: string;
+        description: string;
+        createdBy: string;
+        sensitive: boolean;
+        whatsappMessage?: string;
+        whatsappPhones?: string[];
+        whatsappMessageId?: string;
+        whatsappStatus?: string;
+        whatsappStatusHistory?: unknown[];
+        whatsappSentAt?: string;
+        whatsappDeliveredAt?: string;
+        whatsappReadAt?: string;
+        whatsappPlayedAt?: string;
+        whatsappUpdatedAt?: string;
+      }) => ({
         id: interaction.id,
         studentId: interaction.studentId,
         type: interaction.type,
@@ -177,8 +219,8 @@ export class InteractionService {
         whatsappPlayedAt: interaction.whatsappPlayedAt,
         whatsappUpdatedAt: interaction.whatsappUpdatedAt,
       }));
-    } catch (error) {
-      logger.error('Erro ao buscar interações do estudante', { firebaseStudentId }, error as Error);
+    } catch (err) {
+      logger.error('Erro ao buscar interações do estudante', { firebaseStudentId }, err as Error);
       return [];
     }
   }
@@ -222,8 +264,6 @@ export class InteractionService {
         throw new Error(result.message || 'Erro ao criar interação');
       }
 
-      logger.info('Interação criada com sucesso via API', { interactionId: result.data?.id });
-
       // Retornar interação completa (buscar novamente)
       return {
         id: result.data.id,
@@ -239,9 +279,9 @@ export class InteractionService {
         whatsappStatus: interaction.whatsappStatus,
         whatsappSentAt: interaction.whatsappSentAt,
       };
-    } catch (error) {
-      logger.error('Erro ao criar interação', { firebaseStudentId }, error as Error);
-      throw error;
+    } catch (err) {
+      logger.error('Erro ao criar interação', { firebaseStudentId }, err as Error);
+      throw err;
     }
   }
 
@@ -253,25 +293,34 @@ export class InteractionService {
     updates: Partial<Omit<FamilyInteraction, 'id' | 'studentId'>>
   ): Promise<boolean> {
     try {
-      const updateData: any = {};
+      // Build update object matching Supabase schema
+      const updateData: Record<string, string | boolean | null> = {};
 
       if (updates.type !== undefined) updateData.interaction_type = updates.type;
       if (updates.date !== undefined) updateData.interaction_date = updates.date;
-      if (updates.description !== undefined) updateData.description = updates.description;
-      if (updates.createdBy !== undefined) updateData.created_by = updates.createdBy;
+      if (updates.description !== undefined) updateData.description = updates.description || null;
+      if (updates.createdBy !== undefined) updateData.created_by = updates.createdBy || null;
       if (updates.sensitive !== undefined) updateData.is_sensitive = updates.sensitive;
 
-      const { error } = await ((supabase
-        .from('family_interactions') as any)
+      type UpdateResult = { error: PostgrestError | null };
+
+      // Use type assertion to work around Supabase proxy type inference issue
+      const query = supabase
+        .from('family_interactions') as unknown as {
+          update: (data: Record<string, unknown>) => {
+            eq: (column: string, value: unknown) => Promise<UpdateResult>
+          }
+        };
+
+      const result = await query
         .update(updateData)
-        .eq('id', interactionId));
+        .eq('id', interactionId);
 
-      if (error) throw error;
+      if (result.error) throw result.error;
 
-      logger.info('Interação atualizada', { interactionId });
       return true;
-    } catch (error) {
-      logger.error('Erro ao atualizar interação', { interactionId }, error as Error);
+    } catch (err) {
+      logger.error('Erro ao atualizar interação', { interactionId }, err as Error);
       return false;
     }
   }
@@ -288,10 +337,9 @@ export class InteractionService {
 
       if (error) throw error;
 
-      logger.info('Interação deletada', { interactionId });
       return true;
-    } catch (error) {
-      logger.error('Erro ao deletar interação', { interactionId }, error as Error);
+    } catch (err) {
+      logger.error('Erro ao deletar interação', { interactionId }, err as Error);
       return false;
     }
   }
@@ -309,9 +357,9 @@ export class InteractionService {
 
       if (error) throw error;
 
-      return (data || []).map(this.mapSupabaseToInteraction);
-    } catch (error) {
-      logger.error('Erro ao buscar interações por tipo', { type }, error as Error);
+      return (data || []).map((record) => this.mapSupabaseToInteraction(record as SupabaseInteraction));
+    } catch (err) {
+      logger.error('Erro ao buscar interações por tipo', { type }, err as Error);
       return [];
     }
   }
@@ -333,9 +381,9 @@ export class InteractionService {
 
       if (error) throw error;
 
-      return (data || []).map(this.mapSupabaseToInteraction);
-    } catch (error) {
-      logger.error('Erro ao buscar interações por período', { startDate, endDate }, error as Error);
+      return (data || []).map((record) => this.mapSupabaseToInteraction(record as SupabaseInteraction));
+    } catch (err) {
+      logger.error('Erro ao buscar interações por período', { startDate, endDate }, err as Error);
       return [];
     }
   }

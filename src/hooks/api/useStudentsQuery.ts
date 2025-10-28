@@ -10,6 +10,7 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import type { DetailLevel } from '@/types/api-responses';
+import type { Student } from '@/types';
 
 // ============================================================================
 // QUERY KEYS
@@ -45,7 +46,7 @@ export interface StudentFilters {
 
 export interface PaginatedStudentsResponse {
   success: boolean;
-  data: any[];
+  data: Student[];
   pagination: {
     page: number;
     limit: number;
@@ -56,7 +57,7 @@ export interface PaginatedStudentsResponse {
 
 export interface CursorPaginatedStudentsResponse {
   success: boolean;
-  data: any[];
+  data: Student[];
   pagination: {
     limit: number;
     total?: number;
@@ -191,7 +192,7 @@ export function useInfiniteStudents(filters: Omit<StudentFilters, 'page' | 'limi
 
   return useInfiniteQuery({
     queryKey: [...studentsKeys.lists(), 'infinite', filters],
-    queryFn: async ({ pageParam = null }) => {
+    queryFn: async ({ pageParam }: { pageParam?: string | null }) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 
@@ -211,11 +212,11 @@ export function useInfiniteStudents(filters: Omit<StudentFilters, 'page' | 'limi
 
       return fetchWithAuth(`/api/students?${params.toString()}`, token) as Promise<CursorPaginatedStudentsResponse>;
     },
+    initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => {
       // Fase 2: retornar nextCursor
       return lastPage.pagination.hasNextPage ? lastPage.pagination.nextCursor : undefined;
     },
-    initialPageParam: null,
     enabled: !!user,
   });
 }
@@ -239,7 +240,7 @@ export function useCreateStudent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (studentData: any) => {
+    mutationFn: async (studentData: Partial<Student>) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 
@@ -284,7 +285,7 @@ export function useUpdateStudent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...studentData }: any) => {
+    mutationFn: async ({ id, ...studentData }: { id: string } & Partial<Student>) => {
       if (!user) throw new Error('Usuário não autenticado');
       const token = await user.getIdToken();
 
@@ -367,9 +368,9 @@ export function useDeleteStudent() {
  * ```
  */
 export async function prefetchStudents(
-  queryClient: any,
+  queryClient: import('@tanstack/react-query').QueryClient,
   filters: StudentFilters,
-  user: any
+  user: import('firebase/auth').User
 ) {
   if (!user) return;
 
@@ -385,9 +386,9 @@ export async function prefetchStudents(
  * Prefetch estudante específico
  */
 export async function prefetchStudent(
-  queryClient: any,
+  queryClient: import('@tanstack/react-query').QueryClient,
   id: string,
-  user: any,
+  user: import('firebase/auth').User,
   detail: DetailLevel = 'full'
 ) {
   if (!user) return;

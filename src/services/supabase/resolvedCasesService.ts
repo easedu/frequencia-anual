@@ -113,7 +113,7 @@ export class ResolvedCasesService {
         throw error;
       }
 
-      return data ? this.mapSupabaseToResolvedCase(data) : null;
+      return data ? this.mapSupabaseToResolvedCase(data as SupabaseResolvedCase) : null;
     } catch (error) {
       logger.error('Erro ao buscar caso resolvido por studentId', { studentId }, error as Error);
       return null;
@@ -132,7 +132,7 @@ export class ResolvedCasesService {
 
       if (error) throw error;
 
-      return (data || []).map(this.mapSupabaseToResolvedCase);
+      return (data || []).map((record) => this.mapSupabaseToResolvedCase(record as SupabaseResolvedCase));
     } catch (error) {
       logger.error('Erro ao buscar todos os casos resolvidos', {}, error as Error);
       return [];
@@ -148,20 +148,19 @@ export class ResolvedCasesService {
     try {
       const insertData = this.mapResolvedCaseToSupabase(resolvedCase);
 
-      const { data, error } = await ((supabase
-        .from('resolved_consecutive_absence_cases') as any)
-        .insert(insertData)
+      // Type assertion needed due to Supabase generic inference limitations
+      const { data, error } = await supabase
+        .from('resolved_consecutive_absence_cases')
+        .insert(insertData as never)
         .select()
-        .single());
+        .single();
 
       if (error) throw error;
+      if (!data) throw new Error('Nenhum dado retornado');
 
-      logger.info('Caso resolvido criado no Supabase', {
-        caseId: data.id,
-        studentId: resolvedCase.studentId
-      });
+      const castedData = data as SupabaseResolvedCase;
 
-      return this.mapSupabaseToResolvedCase(data);
+      return this.mapSupabaseToResolvedCase(castedData);
     } catch (error) {
       logger.error('Erro ao criar caso resolvido', { studentId: resolvedCase.studentId }, error as Error);
       throw error;
@@ -180,7 +179,6 @@ export class ResolvedCasesService {
 
       if (error) throw error;
 
-      logger.info('Caso resolvido deletado do Supabase', { studentId });
       return true;
     } catch (error) {
       logger.error('Erro ao deletar caso resolvido', { studentId }, error as Error);
@@ -193,13 +191,13 @@ export class ResolvedCasesService {
    */
   static async getResolvedStudentIds(): Promise<string[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = (await supabase
         .from('resolved_consecutive_absence_cases')
-        .select('student_id');
+        .select('student_id')) as { data: Array<{ student_id: string }> | null; error: Error | null };
 
       if (error) throw error;
 
-      return (data || []).map((record: any) => record.student_id);
+      return (data || []).map((record) => record.student_id);
     } catch (error) {
       logger.error('Erro ao buscar IDs de estudantes resolvidos', {}, error as Error);
       return [];

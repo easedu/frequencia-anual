@@ -31,9 +31,7 @@ export default function Login() {
 
         setLoading(true);
         try {
-            logger.info('🔐 Tentando fazer login...', { email });
             await signInWithEmailAndPassword(auth, email, password);
-            logger.info('✅ Login realizado com sucesso');
             // O redirecionamento será feito automaticamente pelo AuthProvider
         } catch (err: unknown) {
             const errorInfo = err as { code?: string; message: string };

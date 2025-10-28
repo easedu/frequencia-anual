@@ -12,26 +12,42 @@ import { successResponse, errorResponse } from '@/app/api/_utils/response'
 import { handleError } from '@/app/api/_utils/errorHandler'
 import { logger } from '@/utils/logger'
 
+// ════════════════════════════════════════════════════════════════
+// TYPES
+// ════════════════════════════════════════════════════════════════
+
+interface DuplicateAbsence {
+  student_id: string;
+  absence_date: string;
+  count: number;
+}
+
+interface SupabaseRpcResponse<T> {
+  data: T | null;
+  error: {
+    message: string;
+    code?: string;
+    details?: string;
+  } | null;
+}
+
 /**
  * GET /api/absences/duplicates
  * Busca faltas duplicadas (mesmo student_id + mesma absence_date)
  *
  * @returns Array de duplicatas { student_id, absence_date, count }
  */
-export const GET = withAuth(async (req: NextRequest, userId: string) => {
+export const GET = withAuth(async (_req: NextRequest, __userId: string) => {
   try {
     const { searchParams } = new URL(req.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 1000)
 
     // Chamar RPC function do Supabase
-    const { data, error } = (await supabaseAdmin.rpc('find_duplicate_absences')) as {
-      data: Array<{ student_id: string; absence_date: string; count: number }> | null
-      error: any
-    }
+    const { data, error: _error } = (await supabaseAdmin.rpc('find_duplicate_absences')) as SupabaseRpcResponse<DuplicateAbsence[]>
 
     if (error) {
-      logger.error('Erro ao buscar duplicatas de faltas', {}, error)
+      logger.error('Erro ao buscar duplicatas de faltas', {}, new Error(error.message || 'Erro desconhecido'))
       return errorResponse('DATABASE_ERROR', 'Erro ao buscar duplicatas', 500)
     }
 
@@ -64,16 +80,13 @@ export const GET = withAuth(async (req: NextRequest, userId: string) => {
  *
  * @returns { deleted_count: number } - Quantidade de duplicatas removidas
  */
-export const DELETE = withAuth(async (req: NextRequest, userId: string) => {
+export const DELETE = withAuth(async (_req: NextRequest, __userId: string) => {
   try {
     // Chamar RPC function do Supabase
-    const { data, error } = (await supabaseAdmin.rpc('remove_duplicate_absences')) as {
-      data: number | null
-      error: any
-    }
+    const { data, error: _error } = (await supabaseAdmin.rpc('remove_duplicate_absences')) as SupabaseRpcResponse<number>
 
     if (error) {
-      logger.error('Erro ao remover duplicatas de faltas', {}, error)
+      logger.error('Erro ao remover duplicatas de faltas', {}, new Error(error.message || 'Erro desconhecido'))
       return errorResponse('DATABASE_ERROR', 'Erro ao remover duplicatas', 500)
     }
 

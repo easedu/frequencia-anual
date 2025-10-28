@@ -121,13 +121,6 @@ export async function validateAuth(request: NextRequest): Promise<AuthResult> {
     }
 
     // Autenticação bem-sucedida!
-    logger.info('User authenticated successfully', {
-      provider: authProvider.name,
-      userId: result.user.id,
-      email: result.user.email,
-      url: request.url,
-      method: request.method
-    });
 
     return {
       valid: true,

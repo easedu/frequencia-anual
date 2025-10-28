@@ -22,20 +22,13 @@ import { processAbsencesWithCheckpoint } from '@/services/automationOrchestrator
  * Auth: Basic Auth (mesmas credenciais da API absence-multiples)
  */
 export async function GET(request: NextRequest) {
-  const executionId = `exec-${Date.now()}`;
+  const _executionId = `exec-${Date.now()}`;
 
   // Query params
   const searchParams = request.nextUrl.searchParams;
   const dryRun = searchParams.get('dryRun') === 'true';
   const absenceMultiple = parseInt(searchParams.get('multiple') || '3');
   const notificationPhone = searchParams.get('notificationPhone') || '5511988384664';
-
-  logger.info('[AUTOMATION] 🚀 Execução iniciada (Fire-and-Forget)', {
-    executionId,
-    dryRun,
-    absenceMultiple,
-    notificationPhone
-  });
 
   // ==========================================
   // AUTENTICAÇÃO
@@ -63,7 +56,7 @@ export async function GET(request: NextRequest) {
         { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="API"' } }
       );
     }
-  } catch (error) {
+  } catch (_error: unknown) {
     return NextResponse.json(
       { success: false, error: 'Invalid authorization format' },
       { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="API"' } }
@@ -79,19 +72,20 @@ export async function GET(request: NextRequest) {
     const referenceYear = currentDate.getFullYear();
 
     const execution = await AutomationExecutionService.createExecution({
-      totalStudents: 0,
-      studentsData: [],
-      dryRun,
-      absenceMultiple,
-      notificationPhone
+      automationType: 'ABSENCE_ALERTS',
+      executionStatus: 'PENDING',
+      metadata: {
+        totalStudents: 0,
+        studentsData: {} as Record<string, number | string | boolean | null | Record<string, unknown>>,
+        dryRun,
+        absenceMultiple,
+        notificationPhone,
+        referenceMonth,
+        referenceYear
+      }
     });
 
     const createdExecutionId = execution.id;
-
-    logger.info('[AUTOMATION] ✅ Execução criada no Supabase', {
-      executionId: createdExecutionId,
-      status: 'PENDING'
-    });
 
     // ==========================================
     // DISPARAR PROCESSAMENTO EM BACKGROUND
@@ -106,10 +100,10 @@ export async function GET(request: NextRequest) {
         referenceYear
       },
       authorization
-    ).catch(error => {
+    ).catch((error: unknown) => {
       logger.error('[AUTOMATION] ❌ Erro no processamento background', {
         executionId: createdExecutionId,
-        error: error.message
+        error: error instanceof Error ? error.message : 'Erro desconhecido'
       });
     });
 
@@ -129,7 +123,7 @@ export async function GET(request: NextRequest) {
       { status: 202 } // 202 Accepted
     );
 
-  } catch (error) {
+  } catch (_error: unknown) {
     logger.error('[AUTOMATION] ❌ Erro ao criar execução', {
       error: error instanceof Error ? error.message : 'Erro desconhecido'
     });

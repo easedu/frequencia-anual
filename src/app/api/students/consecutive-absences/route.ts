@@ -42,18 +42,30 @@ interface ApiResponse {
   };
 }
 
-// Cache para dados do ano letivo (otimização)
-let academicYearCache: any = null;
-let academicYearCacheTime = 0;
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+// ============================================================================
+// TIPOS
+// ============================================================================
 
-async function loadAcademicYearData(): Promise<any> {
+interface AcademicYearData {
+  [bimester: string]: {
+    startDate?: string;
+    endDate?: string;
+    dates?: SchoolDay[];
+  };
+}
+
+interface StudentAbsence {
+  estudante_id: string;
+  data: string;
+}
+
+async function loadAcademicYearData(): Promise<AcademicYearData | null> {
   const cacheKey = 'academic-year-2025';
 
   // Verificar cache melhorado
   const cached = apiCache.get(cacheKey);
   if (cached) {
-    return cached;
+    return cached as AcademicYearData;
   }
 
   try {
@@ -151,7 +163,7 @@ async function loadAllStudentAbsences(studentIds: string[], schoolDays: SchoolDa
     });
 
     // Processar faltas
-    absencesData.forEach(absence => {
+    absencesData.forEach((absence: StudentAbsence) => {
       if (absence.estudante_id && absence.data) {
         // Converter formato yyyy-mm-dd para dd/mm/yyyy se necessário
         let dateStr = absence.data;
@@ -374,7 +386,7 @@ export async function GET(request: NextRequest) {
 
     // FASE 3: Carregar estudantes com DUAL-READ
     console.log('[CONSECUTIVE-ABSENCES] Carregando estudantes com dual-read...');
-    const students = await getStudentsByYear('2025');
+    const students = await getStudentsByYear();
 
     if (!students || students.length === 0) {
       return NextResponse.json({
@@ -397,13 +409,10 @@ export async function GET(request: NextRequest) {
 
     checkTimeout();
 
-    // Carregar todas as faltas (passando schoolDays para otimização)
-    const studentIds = activeStudents.map((s: any) => s.estudanteId);
-
     // Limitar processamento para evitar timeout
     const maxStudents = 200; // Reduzir limite para melhor performance
     const limitedStudents = activeStudents.slice(0, maxStudents);
-    const limitedStudentIds = limitedStudents.map((s: any) => s.estudanteId);
+    const limitedStudentIds = limitedStudents.map((s) => s.estudanteId);
 
     const allStudentAbsences = await loadAllStudentAbsences(limitedStudentIds, schoolDays);
 

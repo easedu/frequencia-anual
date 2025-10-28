@@ -6,8 +6,6 @@
  * Para cache persistente, usar Redis/Vercel KV
  */
 
-import { logger } from './logger';
-
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -16,7 +14,7 @@ interface CacheEntry<T> {
 }
 
 class ServerCacheManager {
-  private cache = new Map<string, CacheEntry<any>>();
+  private cache = new Map<string, CacheEntry<unknown>>();
   private maxEntries = 100;
 
   /**
@@ -59,17 +57,15 @@ class ServerCacheManager {
    */
   get<T>(key: string): T | null {
     const cacheKey = this.generateKey(key);
-    const entry = this.cache.get(cacheKey);
+    const entry = this.cache.get(cacheKey) as CacheEntry<T> | undefined;
 
     if (entry && this.isValid(entry)) {
       entry.hits++;
-      logger.debug('[ServerCache] Cache hit', { key: cacheKey });
-      return entry.data as T;
+      return entry.data;
     }
 
     if (entry) {
       this.cache.delete(cacheKey);
-      logger.debug('[ServerCache] Cache expired', { key: cacheKey });
     }
 
     return null;
@@ -89,7 +85,6 @@ class ServerCacheManager {
     });
 
     this.cleanup();
-    logger.debug('[ServerCache] Cache set', { key: cacheKey, ttl: `${ttl / 1000}s` });
   }
 
   /**
@@ -98,7 +93,6 @@ class ServerCacheManager {
   invalidate(key: string): void {
     const cacheKey = this.generateKey(key);
     this.cache.delete(cacheKey);
-    logger.debug('[ServerCache] Cache invalidated', { key: cacheKey });
   }
 
   /**
@@ -106,7 +100,6 @@ class ServerCacheManager {
    */
   clear(): void {
     this.cache.clear();
-    logger.info('[ServerCache] Cache cleared');
   }
 
   /**

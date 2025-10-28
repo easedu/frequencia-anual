@@ -13,7 +13,6 @@
 import { AutomationExecutionService } from './supabase/automationExecutionService';
 import { getStudentByFirebaseUUID } from './supabase/studentService';
 import {
-  AutomationExecution,
   AutomationExecutionSummary,
   Student
 } from '@/types';
@@ -87,7 +86,13 @@ async function checkDuplicateTask(params: {
     // - Criada pela automação
     const titlePattern = `Alerta de ${params.absencesCount} faltas - ${params.referenceMonth}/${params.referenceYear}`;
 
-    const duplicate = tasks.some((task: any) => {
+    interface TaskRecord {
+      title: string;
+      created_by: string;
+      whatsapp_phone?: string;
+    }
+
+    const duplicate = (tasks as TaskRecord[]).some((task: TaskRecord) => {
       return (
         task.title === titlePattern &&
         task.created_by === 'AUTOMAÇÃO' &&
@@ -95,18 +100,9 @@ async function checkDuplicateTask(params: {
       );
     });
 
-    if (duplicate) {
-      logger.info('[checkDuplicateTask] Task duplicada detectada', {
-        estudanteId: params.estudanteId,
-        absencesCount: params.absencesCount,
-        referenceMonth: params.referenceMonth,
-        whatsappPhone: params.whatsappPhone // ✅ Log do telefone
-      });
-    }
-
     return duplicate;
   } catch (error) {
-    logger.error('[checkDuplicateTask] Erro ao verificar duplicata', error as Error);
+    logger.error('[checkDuplicateTask] Erro ao verificar duplicata', {}, error as Error);
     return false; // Em caso de erro, assumir que não há duplicata (fail-safe)
   }
 }
@@ -160,7 +156,7 @@ async function fetchStudentsWithAbsences(
 async function processStudentAbsences(
   student: Student,
   params: AutomationParams,
-  authorization: string
+  _authorization: string
 ): Promise<StudentProcessResult> {
   const result: StudentProcessResult = {
     messagesSucceeded: 0,
@@ -172,7 +168,10 @@ async function processStudentAbsences(
   };
 
   // ✅ CORREÇÃO: API retorna 'verifiedWhatsAppContacts' não 'contatos'
-  const contacts = (student as any).verifiedWhatsAppContacts || student.contatos || [];
+  interface StudentWithVerifiedContacts extends Student {
+    verifiedWhatsAppContacts?: Array<{ nome: string; telefone?: string }>;
+  }
+  const contacts = (student as StudentWithVerifiedContacts).verifiedWhatsAppContacts || student.contatos || [];
   const hasContacts = contacts && contacts.length > 0;
 
   // 1. SE TEM CONTATOS: Enviar mensagens
@@ -370,7 +369,7 @@ async function processStudentAbsences(
  *
  * @deprecated Use getStudentByFirebaseUUID() diretamente para mais detalhes
  */
-async function resolveStudentInternalId(firebaseUUID: string): Promise<string | null> {
+async function _resolveStudentInternalId(firebaseUUID: string): Promise<string | null> {
   try {
     const student = await getStudentByFirebaseUUID(firebaseUUID);
 
@@ -459,11 +458,6 @@ async function createTaskClosed(params: {
 
     const taskId = data.taskId || data.task?.id || 'unknown';
 
-    logger.info('[createTaskClosed] Tarefa criada com sucesso', {
-      taskId,
-      estudante: student.nome
-    });
-
     // 🆕 CRIAR INTERAÇÃO "Contato digital" registrando o envio do WhatsApp
     try {
       const today = new Date();
@@ -494,12 +488,7 @@ async function createTaskClosed(params: {
 
       const interactionResult = await interactionResponse.json();
 
-      if (interactionResponse.ok && interactionResult.success) {
-        logger.info('[createTaskClosed] Interação criada com sucesso', {
-          interactionId: interactionResult.data?.id,
-          estudante: student.nome
-        });
-      } else {
+      if (!interactionResponse.ok || !interactionResult.success) {
         logger.warn('[createTaskClosed] Erro ao criar interação (não crítico)', {
           error: interactionResult.error,
           estudante: student.nome
@@ -589,11 +578,6 @@ async function createTaskOpen(params: {
     if (!response.ok || !data.success) {
       throw new Error(data.error || `API returned ${response.status}`);
     }
-
-    logger.info('[createTaskOpen] Tarefa ABERTA criada com sucesso', {
-      taskId: data.taskId,
-      estudante: student.nome
-    });
 
     return {
       success: true,
@@ -747,7 +731,15 @@ export async function processAbsencesWithCheckpoint(
 
     // 4. VERIFICAR SE É RETOMADA (estudantes já processados)
     const execution = await AutomationExecutionService.getExecutionById(executionId);
-    const processedIds = execution?.processedStudentIds || [];
+
+    // Extrair processedStudentIds do metadata.checkpoint (se existir)
+    interface ExecutionMetadata {
+      checkpoint?: {
+        processedStudentIds?: string[];
+      };
+    }
+    const metadata = execution?.metadata as ExecutionMetadata;
+    const processedIds = metadata?.checkpoint?.processedStudentIds || [];
 
     // Filtrar apenas estudantes não processados
     const remainingStudents = students.filter(
@@ -833,7 +825,10 @@ export async function processAbsencesWithCheckpoint(
     // - student.contatos (campo padrão)
     // - student.verifiedWhatsAppContacts (retornado pela API /api/students/absence-multiples)
     const studentsWithContacts = remainingStudents.filter(s => {
-      const contacts = (s as any).verifiedWhatsAppContacts || s.contatos || [];
+      interface StudentWithContacts extends Student {
+        verifiedWhatsAppContacts?: Array<{ nome: string; telefone?: string }>;
+      }
+      const contacts = (s as StudentWithContacts).verifiedWhatsAppContacts || s.contatos || [];
       return contacts && contacts.length > 0;
     }).length;
     const studentsWithoutContacts = remainingStudents.length - studentsWithContacts;

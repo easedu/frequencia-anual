@@ -84,7 +84,7 @@ export function useCreateSuspension() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createSuspension = useCallback(async (data: any) => {
+  const createSuspension = useCallback(async (data: Partial<Omit<Suspension, 'id' | 'created_at' | 'updated_at'>>) => {
     if (!user) throw new Error('Usuário não autenticado');
     try {
       setLoading(true);
@@ -112,7 +112,7 @@ export function useUpdateSuspension() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateSuspension = useCallback(async (id: string, data: any) => {
+  const updateSuspension = useCallback(async (id: string, data: Partial<Omit<Suspension, 'id' | 'created_at' | 'updated_at'>>) => {
     if (!user) throw new Error('Usuário não autenticado');
     try {
       setLoading(true);
@@ -236,7 +236,7 @@ export function useCreateMedicalCertificate() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createCertificate = useCallback(async (data: any) => {
+  const createCertificate = useCallback(async (data: Partial<Omit<MedicalCertificate, 'id' | 'created_at' | 'updated_at'>>) => {
     if (!user) throw new Error('Usuário não autenticado');
     try {
       setLoading(true);
@@ -264,7 +264,7 @@ export function useUpdateMedicalCertificate() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateCertificate = useCallback(async (id: string, data: any) => {
+  const updateCertificate = useCallback(async (id: string, data: Partial<Omit<MedicalCertificate, 'id' | 'created_at' | 'updated_at'>>) => {
     if (!user) throw new Error('Usuário não autenticado');
     try {
       setLoading(true);
@@ -401,7 +401,7 @@ export function useCreateInteraction() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createInteraction = useCallback(async (data: any) => {
+  const createInteraction = useCallback(async (data: Partial<Omit<Interaction, 'id' | 'createdAt'>>) => {
     if (!user) throw new Error('Usuário não autenticado');
     try {
       setLoading(true);
@@ -429,7 +429,7 @@ export function useUpdateInteraction() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateInteraction = useCallback(async (id: string, data: any) => {
+  const updateInteraction = useCallback(async (id: string, data: Partial<Omit<Interaction, 'id' | 'createdAt'>>) => {
     if (!user) throw new Error('Usuário não autenticado');
     try {
       setLoading(true);
