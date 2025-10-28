@@ -53,6 +53,7 @@ export interface Student {
   school_year: string;
   registration_number?: string | null;
   bolsa_familia?: 'SIM' | 'NÃO' | null;
+  email?: string | null;
   address?: StudentAddress;
   disabilities?: StudentDisability[];
   student_contacts?: StudentContact[];
