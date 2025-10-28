@@ -132,8 +132,8 @@ function convertSupabaseToFrontend(student: Record<string, unknown>): Record<str
         })
       : [],
 
-    // Prova São Paulo (não migrado)
-    provaSaoPaulo: [],
+    // Prova São Paulo (exam_scores JSONB)
+    provaSaoPaulo: Array.isArray(student.exam_scores) ? student.exam_scores : [],
 
     // Metadados
     createdAt: student.created_at && typeof student.created_at === 'string' ? new Date(student.created_at).toISOString() : '',

@@ -36,7 +36,7 @@ import type {
   StudentContactInsert,
 } from '@/lib/supabaseClient';
 import { logger } from '@/utils/logger';
-import type { Estudante, Contato } from '@/types';
+import type { Estudante, Contato, ProvaSaoPaulo } from '@/types';
 
 /**
  * Helper: Convert Supabase Student to legacy Estudante type
@@ -76,7 +76,8 @@ function convertSupabaseToEstudante(
     contatos: student.student_contacts?.map(convertSupabaseContactToLegacy) || [],
     endereco: endereco,
     deficiencia: parseDisabilities(student.disabilities as unknown[] || [], addressData as AddressDataWithDeficiencia),
-    provaSaoPaulo: [], // Not migrated
+    // @ts-expect-error - exam_scores will be added after migration 009 is executed
+    provaSaoPaulo: ((student.exam_scores as unknown) as ProvaSaoPaulo[]) || [],
   };
 }
 
@@ -656,7 +657,8 @@ export class StudentDataService {
         registration_number: updatedStudent.matricula || null,
         address: updateAddress,
         disabilities: updatedStudent.deficiencia ? convertLegacyDisabilities(updatedStudent.deficiencia as LegacyDeficienciaData) : [],
-      };
+        exam_scores: updatedStudent.provaSaoPaulo || [],
+      } as StudentUpdate;
 
       interface UpdateResult {
         error: Error | null;

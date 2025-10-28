@@ -52,6 +52,7 @@ import type {
   BimesterDates,
   Contato,
   WhatsAppData,
+  ProvaSaoPaulo,
 } from "@/types";
 import {
   parseDate,
@@ -146,8 +147,9 @@ export function useStudentProfile() {
         aee: apiStudent.disabilities[0].aee,
         observacoes: apiStudent.disabilities[0].observacoes,
       } : undefined,
-      // Prova São Paulo vazio por padrão
-      provaSaoPaulo: [],
+      // Prova São Paulo from Supabase exam_scores
+      // @ts-expect-error - exam_scores will be added after migration 009 is executed
+      provaSaoPaulo: ((apiStudent.exam_scores as unknown) as ProvaSaoPaulo[]) || [],
     })).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [allStudentsData]);
 
@@ -272,7 +274,8 @@ export function useStudentProfile() {
         aee: apiStudent.disabilities[0].aee,
         observacoes: apiStudent.disabilities[0].observacoes,
       } : undefined,
-      provaSaoPaulo: [],
+      // @ts-expect-error - exam_scores will be added after migration 009 is executed
+      provaSaoPaulo: ((apiStudent.exam_scores as unknown) as ProvaSaoPaulo[]) || [],
     };
   }, [studentData]);
 

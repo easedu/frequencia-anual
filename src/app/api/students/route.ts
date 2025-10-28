@@ -45,6 +45,7 @@ interface SupabaseStudent {
   email?: string;
   address?: Record<string, unknown>;
   disabilities?: string[];
+  exam_scores?: unknown[]; // Prova São Paulo data (JSONB array)
   created_at: string;
   updated_at: string;
   student_contacts?: SupabaseContact[] | { count: number };
@@ -451,6 +452,6 @@ function convertSupabaseToEstudante(
       whatsapp: contact.whatsapp_data || undefined,
     })),
     student_contacts: student.student_contacts,
-    provaSaoPaulo: [],
+    provaSaoPaulo: Array.isArray(student.exam_scores) ? student.exam_scores : [],
   };
 }

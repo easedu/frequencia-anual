@@ -15,18 +15,14 @@ interface ProvaSaoPauloSectionProps {
 
 /**
  * Seção de resultados da Prova São Paulo.
- * Só renderiza se houver estudante selecionado e dados da prova.
+ * Renderiza o card que mostra dados ou empty state.
  */
 export const ProvaSaoPauloSection = memo(function ProvaSaoPauloSection(props: ProvaSaoPauloSectionProps) {
   if (!props.student) {
     return null;
   }
 
-  // Só renderizar se o estudante tiver dados da Prova São Paulo
-  if (!props.student.provaSaoPaulo || props.student.provaSaoPaulo.length === 0) {
-    return null;
-  }
-
+  // Sempre renderizar o card - ele decide se mostra dados ou empty state
   return (
     <div>
       <ProvaSaoPauloCard student={props.student} />
