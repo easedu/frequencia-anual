@@ -214,6 +214,7 @@ export function useStudent(id: string | null) {
 
   const fetchStudent = useCallback(async () => {
     if (!user || !id) {
+      setStudent(null);
       setLoading(false);
       return;
     }
@@ -221,6 +222,7 @@ export function useStudent(id: string | null) {
     try {
       setLoading(true);
       setError(null);
+      setStudent(null); // ✅ Limpar estudante anterior antes de buscar novo
 
       const token = await user.getIdToken();
 
@@ -241,14 +243,67 @@ export function useStudent(id: string | null) {
     } catch (err) {
       console.error('[useStudent] Error:', err);
       setError((err as Error).message);
+      setStudent(null);
     } finally {
       setLoading(false);
     }
   }, [user, id]);
 
   useEffect(() => {
-    fetchStudent();
-  }, [fetchStudent]);
+    let isCancelled = false;
+
+    const fetchWithCancellation = async () => {
+      if (!user || !id) {
+        setStudent(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        setStudent(null); // ✅ Limpar estudante anterior
+
+        const token = await user.getIdToken();
+
+        const response = await fetch(`/api/students/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao buscar estudante');
+        }
+
+        const data: ApiResponse<{ student: Student }> = await response.json();
+
+        // ✅ Apenas atualizar estado se não foi cancelado (previne race condition)
+        if (!isCancelled) {
+          setStudent(data.data?.student || null);
+        }
+      } catch (err) {
+        console.error('[useStudent] Error:', err);
+        if (!isCancelled) {
+          setError((err as Error).message);
+          setStudent(null);
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchWithCancellation();
+
+    // Cleanup: marcar como cancelado quando o ID mudar
+    return () => {
+      isCancelled = true;
+    };
+  }, [user, id]);
 
   return {
     student,

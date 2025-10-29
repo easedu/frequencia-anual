@@ -388,6 +388,7 @@ export function useInteractions(filters?: InteractionFilters) {
     try {
       setLoading(true);
       setError(null);
+      setInteractions([]); // ✅ Limpar dados anteriores
       const params = new URLSearchParams();
       if (filters?.estudanteId) params.append('estudanteId', filters.estudanteId);
       if (filters?.tipo) params.append('tipo', filters.tipo);
@@ -409,10 +410,62 @@ export function useInteractions(filters?: InteractionFilters) {
     } catch (err) {
       console.error('[useInteractions] Error:', err);
       setError((err as Error).message);
+      setInteractions([]); // ✅ Limpar em caso de erro
     } finally { setLoading(false); }
   }, [user, filters?.estudanteId, filters?.tipo, filters?.responsavel, filters?.dataInicio, filters?.dataFim, filters?.page, filters?.limit]);
 
-  useEffect(() => { fetchInteractions(); }, [fetchInteractions]);
+  useEffect(() => {
+    let isCancelled = false;
+
+    const fetchWithCancellation = async () => {
+      if (!user) { setLoading(false); return; }
+
+      try {
+        setLoading(true);
+        setError(null);
+        setInteractions([]); // ✅ Limpar dados anteriores
+
+        const params = new URLSearchParams();
+        if (filters?.estudanteId) params.append('estudanteId', filters.estudanteId);
+        if (filters?.tipo) params.append('tipo', filters.tipo);
+        if (filters?.responsavel) params.append('responsavel', filters.responsavel);
+        if (filters?.dataInicio) params.append('dataInicio', filters.dataInicio);
+        if (filters?.dataFim) params.append('dataFim', filters.dataFim);
+        if (filters?.page) params.append('page', filters.page.toString());
+        if (filters?.limit) params.append('limit', filters.limit.toString());
+
+        const token = await user.getIdToken();
+        const response = await fetch(`/api/interactions?${params.toString()}`, {
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) throw new Error((await response.json()).error || 'Erro ao buscar interações');
+        const data: PaginatedResponse<Interaction> = await response.json();
+
+        // ✅ Apenas atualizar se não foi cancelado
+        if (!isCancelled) {
+          setInteractions(data.data);
+          setPagination(data.pagination);
+        }
+      } catch (err) {
+        console.error('[useInteractions] Error:', err);
+        if (!isCancelled) {
+          setError((err as Error).message);
+          setInteractions([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchWithCancellation();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user, filters?.estudanteId, filters?.tipo, filters?.responsavel, filters?.dataInicio, filters?.dataFim, filters?.page, filters?.limit]);
+
   return { interactions, loading, error, pagination, refetch: fetchInteractions };
 }
 
