@@ -298,28 +298,35 @@ export function useStudentProfile() {
   }, [absencesData]);
 
   const atestados = useMemo(() => {
-    return (atestadosData || []).map((cert) => {
-      const certificate = cert as { id: string; start_date?: string; end_date?: string; startDate?: string; endDate?: string; reason?: string; notes?: string; diagnosis?: string; doctor_name?: string; submitter?: { name?: string }; submitted_by?: string; createdBy?: string };
+    return (atestadosData || [])
+      .map((cert) => {
+        const certificate = cert as { id: string; start_date?: string; end_date?: string; startDate?: string; endDate?: string; reason?: string; notes?: string; diagnosis?: string; doctor_name?: string; submitter?: { name?: string }; submitted_by?: string; createdBy?: string };
 
-      // ✅ CALCULAR quantidade de dias entre start_date e end_date
-      let days = 1;
-      if (certificate.start_date && certificate.end_date) {
-        const start = new Date(certificate.start_date);
-        const end = new Date(certificate.end_date);
-        const diffTime = Math.abs(end.getTime() - start.getTime());
-        days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 porque inclui o dia inicial
-      }
+        // ✅ CALCULAR quantidade de dias entre start_date e end_date
+        let days = 1;
+        if (certificate.start_date && certificate.end_date) {
+          const start = new Date(certificate.start_date);
+          const end = new Date(certificate.end_date);
+          const diffTime = Math.abs(end.getTime() - start.getTime());
+          days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 porque inclui o dia inicial
+        }
 
-      return {
-        id: certificate.id,
-        startDate: certificate.start_date || certificate.startDate || '',
-        endDate: certificate.end_date || certificate.endDate || '',
-        days,
-        description: certificate.reason || certificate.notes || certificate.diagnosis || certificate.doctor_name || 'Sem descrição',
-        // Buscar nome do usuário via JOIN (submitter.name)
-        createdBy: certificate.submitter?.name || certificate.submitted_by || certificate.createdBy || 'Desconhecido'
-      };
-    });
+        return {
+          id: certificate.id,
+          startDate: certificate.start_date || certificate.startDate || '',
+          endDate: certificate.end_date || certificate.endDate || '',
+          days,
+          description: certificate.reason || certificate.notes || certificate.diagnosis || certificate.doctor_name || 'Sem descrição',
+          // Buscar nome do usuário via JOIN (submitter.name)
+          createdBy: certificate.submitter?.name || certificate.submitted_by || certificate.createdBy || 'Desconhecido'
+        };
+      })
+      .sort((a, b) => {
+        // Ordenar do mais recente para o mais antigo
+        const dateA = new Date(a.startDate);
+        const dateB = new Date(b.startDate);
+        return dateB.getTime() - dateA.getTime();
+      });
   }, [atestadosData]);
 
   const suspensoes = useMemo(() => {
