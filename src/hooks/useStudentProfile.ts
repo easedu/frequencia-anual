@@ -157,7 +157,6 @@ export function useStudentProfile() {
   // ⚠️ IMPORTANTE: Se o estudante foi explicitamente selecionado (via URL ou busca),
   // permitir carregar seus dados mesmo que não esteja na lista de ATIVOS
   const validatedStudentId = useMemo(() => {
-
     if (!selectedStudentId) {
       return '';
     }
@@ -756,7 +755,8 @@ export function useStudentProfile() {
 
       // ✅ GUARD 3: Evitar chamadas múltiplas enquanto ainda está selecionando
       if (isSelectingStudent.current) {
-        return;
+        // ✅ CORREÇÃO: Resetar flag ao invés de abortar para permitir nova seleção
+        isSelectingStudent.current = false;
       }
 
       isSelectingStudent.current = true;
@@ -1589,13 +1589,15 @@ export function useStudentProfile() {
     }
 
     setSearchName(value);
-    setSelectedTurma("");
 
-    if (selectedStudentId) {
-      setSelectedStudentId("");
-    }
-
+    // ✅ CORREÇÃO: Só limpar selectedTurma e selectedStudentId se o usuário REALMENTE digitou algo
+    // Se value está vazio e é chamado sem razão (ex: re-render), não limpar o estudante selecionado
     if (value.length > 0) {
+      setSelectedTurma("");
+      if (selectedStudentId) {
+        setSelectedStudentId("");
+      }
+
       const filtered = allStudents
         .filter((student) => student.nome.toLowerCase().includes(value.toLowerCase()))
         .slice(0, 5);
