@@ -788,6 +788,18 @@ export function useStudentProfile() {
       return;
     }
 
+    // ✅ VALIDAÇÃO: Se tipo "Contato digital", OBRIGAR seleção de número e mensagem
+    if (interactionType === "Contato digital") {
+      if (selectedWhatsAppPhones.size === 0) {
+        toast.error("Selecione pelo menos um número para enviar a mensagem via WhatsApp.");
+        return;
+      }
+      if (!whatsAppMessage || whatsAppMessage.trim() === "") {
+        toast.error("Digite a mensagem que será enviada via WhatsApp.");
+        return;
+      }
+    }
+
     // Converter data de DD/MM/YYYY para DDMMYYYY (formato esperado pela API)
     const dateParts = interactionDate.split('/');
     if (dateParts.length !== 3) {
@@ -1482,7 +1494,21 @@ export function useStudentProfile() {
   }, [auth, selectedContact, selectedStudentId]);
 
   const handleSaveWhatsAppInteraction = useCallback(async () => {
-    if (!selectedStudentId || !student || selectedWhatsAppPhones.size === 0) return;
+    // ✅ VALIDAÇÃO: Verificar campos obrigatórios com feedback ao usuário
+    if (!selectedStudentId || !student) {
+      toast.error("Nenhum estudante selecionado.");
+      return;
+    }
+
+    if (selectedWhatsAppPhones.size === 0) {
+      toast.error("Selecione pelo menos um número para enviar a mensagem via WhatsApp.");
+      return;
+    }
+
+    if (!whatsAppMessage || whatsAppMessage.trim() === "") {
+      toast.error("Digite a mensagem que será enviada via WhatsApp.");
+      return;
+    }
 
     try {
       setIsSendingWhatsApp(true);
